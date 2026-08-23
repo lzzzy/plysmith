@@ -1,0 +1,4 @@
+# Local agent control and project memory
+/.agents/
+/.github/
+/AGENTS.md
