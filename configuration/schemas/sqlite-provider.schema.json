@@ -1,0 +1,37 @@
+{
+  "$id": "https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/sqlite-provider.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "enabled": {
+      "type": "boolean"
+    },
+    "provider": {
+      "const": "sqlite",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "sqlite": {
+      "additionalProperties": false,
+      "properties": {
+        "databasePath": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "databasePath"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "provider",
+    "enabled",
+    "sqlite"
+  ],
+  "type": "object"
+}

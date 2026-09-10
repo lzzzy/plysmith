@@ -2,3 +2,25 @@
 /.agents/
 /.github/
 /AGENTS.md
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated build output
+/node_modules/
+/.pnpm-store/
+/dist/
+/build/
+/coverage/
+/test-results/
+/playwright-report/
+*.tsbuildinfo
+
+# Source-development application home
+/configuration/active/
+/configuration/.staging-*/
+/data/
+/logs/
+/runtime/

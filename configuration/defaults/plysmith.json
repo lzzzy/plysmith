@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "bindings": {
+    "persistence": "sqlite-main",
+    "analysisEngines": [],
+    "playoutEngines": [],
+    "liveProviders": []
+  }
+}

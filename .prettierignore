@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+dist
+build
+coverage
+configuration/active
+configuration/schemas
+contracts/host/openapi.json
+contracts/host/generated
+data
+logs
+runtime

@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": { "types": ["node"], "noEmit": true },
+  "include": [
+    "../../../app/infrastructure/channels/api/**/*.ts",
+    "./**/*.ts",
+    "../../integration/api/**/*.ts"
+  ]
+}

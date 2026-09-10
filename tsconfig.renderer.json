@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": [],
+    "composite": true,
+    "declaration": true,
+    "outDir": "build/types/renderer"
+  },
+  "include": [
+    "contracts/**/*.ts",
+    "app/infrastructure/channels/api/contract.ts",
+    "app/infrastructure/channels/api/schemas.ts",
+    "app/infrastructure/channels/host_client/**/*.ts",
+    "app/infrastructure/channels/ui/renderer/**/*.ts",
+    "app/infrastructure/channels/ui/renderer/**/*.tsx"
+  ]
+}

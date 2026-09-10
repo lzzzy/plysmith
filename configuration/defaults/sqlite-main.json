@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "provider": "sqlite",
+  "enabled": true,
+  "sqlite": {
+    "databasePath": "data/plysmith.db"
+  }
+}
