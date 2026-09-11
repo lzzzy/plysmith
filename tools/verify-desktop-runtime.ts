@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,6 +18,20 @@ const screenshotPath = path.join(
   'settings.png',
 );
 await mkdir(path.dirname(screenshotPath), { recursive: true });
+assert.ok(
+  (
+    await stat(
+      path.join(
+        repositoryRoot,
+        'build',
+        'desktop',
+        'renderer',
+        'branding',
+        'plysmith-icon-black.ico',
+      ),
+    )
+  ).size > 0,
+);
 
 const application = await electron.launch({
   executablePath: path.join(
@@ -59,6 +73,31 @@ try {
     window.getByText('Connected').first().waitFor(),
     window.getByText('Verbunden').first().waitFor(),
   ]);
+
+  const brandIcon = window.locator('aside img').first();
+  await brandIcon.waitFor();
+  const brandImage = await brandIcon.evaluate((element) => {
+    const image = element as {
+      complete: boolean;
+      currentSrc: string;
+      naturalHeight: number;
+      naturalWidth: number;
+    };
+    return {
+      complete: image.complete,
+      currentSource: image.currentSrc,
+      naturalHeight: image.naturalHeight,
+      naturalWidth: image.naturalWidth,
+    };
+  });
+  assert.equal(brandImage.complete, true);
+  assert.ok(brandImage.naturalWidth > 0);
+  assert.ok(brandImage.naturalHeight > 0);
+  assert.match(brandImage.currentSource, /plysmith-icon-white-(32|64)\.png$/);
+  assert.equal(
+    await window.locator('link[rel="icon"]').getAttribute('href'),
+    './branding/favicon.ico',
+  );
 
   assert.equal(await window.getByRole('radio').count(), 2);
   assert.equal(await window.getByRole('button').count(), 1);

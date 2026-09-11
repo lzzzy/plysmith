@@ -11,14 +11,15 @@ const repositoryRoot = path.resolve(
   '..',
 );
 const outputRoot = path.join(repositoryRoot, 'build', 'desktop');
-const rendererRoot = path.join(
+const uiRoot = path.join(
   repositoryRoot,
   'app',
   'infrastructure',
   'channels',
   'ui',
-  'renderer',
 );
+const rendererRoot = path.join(uiRoot, 'renderer');
+const rendererPublicRoot = path.join(uiRoot, 'assets', 'public');
 
 await rm(outputRoot, { recursive: true, force: true });
 
@@ -26,6 +27,7 @@ await Promise.all([
   buildRenderer({
     root: rendererRoot,
     base: './',
+    publicDir: rendererPublicRoot,
     plugins: [react()],
     build: {
       outDir: path.join(outputRoot, 'renderer'),

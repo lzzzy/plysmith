@@ -36,6 +36,7 @@ export async function createDesktopWindow(
     autoHideMenuBar: true,
     show: true,
     title: 'Plysmith',
+    icon: path.join(options.assetsRoot, 'branding', 'plysmith-icon-black.ico'),
     webPreferences: {
       preload: path.resolve(options.preloadPath),
       sandbox: true,

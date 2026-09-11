@@ -140,6 +140,8 @@ function contentTypeFor(filePath: string): string {
       return 'image/svg+xml';
     case '.png':
       return 'image/png';
+    case '.ico':
+      return 'image/vnd.microsoft.icon';
     case '.woff2':
       return 'font/woff2';
     default:

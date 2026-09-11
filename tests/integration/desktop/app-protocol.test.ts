@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   createContentSecurityPolicy,
+  handleAppRequest,
   isPlysmithRendererUrl,
   resolveAppAsset,
 } from '../../../app/infrastructure/channels/ui/desktop/app-protocol.ts';
@@ -18,6 +19,29 @@ test('app assets remain inside the built renderer root', () => {
   assert.equal(resolveAppAsset(root, '/../secret.txt'), undefined);
   assert.equal(resolveAppAsset(root, '/%2e%2e/secret.txt'), undefined);
   assert.equal(resolveAppAsset(root, '/assets%5csecret.txt'), undefined);
+});
+
+test('app protocol serves the packaged favicon with its explicit media type', async () => {
+  const assetsRoot = path.resolve(
+    'app',
+    'infrastructure',
+    'channels',
+    'ui',
+    'assets',
+    'public',
+  );
+  const response = await handleAppRequest(
+    new Request('app://plysmith/branding/favicon.ico'),
+    assetsRoot,
+    () => ({ kind: 'unavailable', generation: 0 }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get('content-type'),
+    'image/vnd.microsoft.icon',
+  );
+  assert.ok((await response.arrayBuffer()).byteLength > 0);
 });
 
 test('renderer CSP permits only the active discovered host origin', () => {

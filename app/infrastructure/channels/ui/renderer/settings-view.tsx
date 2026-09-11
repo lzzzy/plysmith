@@ -52,7 +52,14 @@ function SettingsView({
     <div className={styles.applicationFrame}>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-          <span className={styles.brandMark}>P</span>
+          <img
+            className={styles.brandMark}
+            src="./branding/plysmith-icon-white-32.png"
+            srcSet="./branding/plysmith-icon-white-64.png 2x"
+            width="30"
+            height="30"
+            alt=""
+          />
           <span>Plysmith</span>
         </div>
         <nav aria-label="Plysmith">
