@@ -4,6 +4,17 @@ export type SystemStatus = components['schemas']['SystemStatus'];
 export type UserPreferences = components['schemas']['UserPreferences'];
 export type SetUiLanguageRequest = components['schemas']['SetUiLanguageBody'];
 export type SetUiLanguageResult = components['schemas']['SetUiLanguageResult'];
+export type DiagnosticSettings = components['schemas']['DiagnosticSettings'];
+export type SetDiagnosticLogLevelRequest =
+  components['schemas']['SetDiagnosticLogLevelBody'];
+export type SetDiagnosticLogLevelResult =
+  components['schemas']['SetDiagnosticLogLevelResult'];
+export type DiagnosticReportManifest =
+  components['schemas']['DiagnosticReportManifest'];
+export type CreateDiagnosticReportRequest =
+  components['schemas']['CreateDiagnosticReportBody'];
+export type CreateDiagnosticReportResult =
+  components['schemas']['CreateDiagnosticReportResult'];
 export type UiLocale = UserPreferences['uiLocale'];
 export type GetAnalysisWorkspaceRequest =
   components['schemas']['GetAnalysisWorkspaceQuery'];
@@ -66,6 +77,14 @@ export interface HostClient {
   getSystemStatus(): Promise<SystemStatus>;
   getUserPreferences(): Promise<UserPreferences>;
   setUiLanguage(request: SetUiLanguageRequest): Promise<SetUiLanguageResult>;
+  getDiagnosticSettings(): Promise<DiagnosticSettings>;
+  setDiagnosticLogLevel(
+    request: SetDiagnosticLogLevelRequest,
+  ): Promise<SetDiagnosticLogLevelResult>;
+  getDiagnosticReportManifest(): Promise<DiagnosticReportManifest>;
+  createDiagnosticReport(
+    request: CreateDiagnosticReportRequest,
+  ): Promise<CreateDiagnosticReportResult>;
   getAnalysisWorkspace(
     request: GetAnalysisWorkspaceRequest,
   ): Promise<AnalysisWorkspace>;

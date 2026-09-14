@@ -12,6 +12,8 @@ if (rootElement === null) {
 
 const store = new PlysmithApplicationStore({
   getBootstrap: () => window.plysmithDesktop.getBootstrap(),
+  chooseDiagnosticReportDestination: (suggestedFileName) =>
+    window.plysmithDesktop.chooseDiagnosticReportDestination(suggestedFileName),
   recordDiagnostic: (event) => window.plysmithDesktop.recordDiagnostic(event),
 });
 

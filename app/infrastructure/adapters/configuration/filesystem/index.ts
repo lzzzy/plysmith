@@ -20,3 +20,4 @@ export {
   loadConfiguration,
   type RuntimeConfiguration,
 } from './load-configuration.ts';
+export { FileDiagnosticSettingsRepository } from './file-diagnostic-settings.ts';

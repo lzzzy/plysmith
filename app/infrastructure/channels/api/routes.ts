@@ -5,7 +5,13 @@ import type { UserPreferences } from '../../../application/preferences/index.ts'
 import type { HostDependencies } from './host-dependencies.ts';
 import {
   EmptyQuerySchema,
+  CreateDiagnosticReportBodySchema,
+  CreateDiagnosticReportResultSchema,
+  DiagnosticReportManifestSchema,
+  DiagnosticSettingsSchema,
   problemResponses,
+  SetDiagnosticLogLevelBodySchema,
+  SetDiagnosticLogLevelResultSchema,
   SetUiLanguageBodySchema,
   SetUiLanguageResultSchema,
   SystemStatusSchema,
@@ -62,6 +68,76 @@ export function registerUseCaseRoutes(
       },
     },
     async () => preferencesDto(await dependencies.getUserPreferences.execute()),
+  );
+
+  api.get(
+    '/diagnostics/settings',
+    {
+      schema: {
+        operationId: 'GetDiagnosticSettings',
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(DiagnosticSettingsSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async () => dependencies.getDiagnosticSettings.execute(),
+  );
+
+  api.put(
+    '/diagnostics/settings/log-level',
+    {
+      schema: {
+        operationId: 'SetDiagnosticLogLevel',
+        querystring: EmptyQuerySchema,
+        body: SetDiagnosticLogLevelBodySchema,
+        response: {
+          200: Type.Ref(SetDiagnosticLogLevelResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) => dependencies.setDiagnosticLogLevel.execute(request.body),
+  );
+
+  api.get(
+    '/diagnostics/report-manifest',
+    {
+      schema: {
+        operationId: 'GetDiagnosticReportManifest',
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(DiagnosticReportManifestSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async () => {
+      const result = await dependencies.getDiagnosticReportManifest.execute();
+      return {
+        ...result,
+        includedCategories: [...result.includedCategories],
+        excludedCategories: [...result.excludedCategories],
+      };
+    },
+  );
+
+  api.post(
+    '/diagnostics/reports',
+    {
+      schema: {
+        operationId: 'CreateDiagnosticReport',
+        querystring: EmptyQuerySchema,
+        body: CreateDiagnosticReportBodySchema,
+        response: {
+          200: Type.Ref(CreateDiagnosticReportResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      dependencies.createDiagnosticReport.execute(request.body),
   );
 
   api.put(

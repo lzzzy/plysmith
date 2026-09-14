@@ -25,6 +25,10 @@ export async function generateHostContract(
         persistence: { schemaVersion: 1, dataRevision: 0 },
       }),
     },
+    getDiagnosticSettings: unavailableUseCase,
+    setDiagnosticLogLevel: unavailableUseCase,
+    getDiagnosticReportManifest: unavailableUseCase,
+    createDiagnosticReport: unavailableUseCase,
     getUserPreferences: {
       execute: async () => ({
         uiLocale: 'de-DE',

@@ -18,7 +18,11 @@ import {
   analysisWorkspaceDto,
   createAnalysisRecordResultDto,
   createAnalysisNoteResultDto,
+  createDiagnosticReportResultDto,
   createWorkingContextResultDto,
+  diagnosticLogLevelResultDto,
+  diagnosticReportManifestDto,
+  diagnosticSettingsDto,
   languageResultDto,
   listWorkingContextsResultDto,
   preferencesDto,
@@ -42,8 +46,12 @@ import {
   CreateAnalysisRecordResultSchema,
   CreateAnalysisNoteArgumentsSchema,
   CreateAnalysisNoteResultSchema,
+  CreateDiagnosticReportArgumentsSchema,
+  CreateDiagnosticReportResultSchema,
   CreatePositionNoteArgumentsSchema,
   DeleteAnalysisNoteArgumentsSchema,
+  DiagnosticReportManifestSchema,
+  DiagnosticSettingsSchema,
   CreateWorkingContextArgumentsSchema,
   CreateWorkingContextResultSchema,
   EmptyArgumentsSchema,
@@ -56,6 +64,8 @@ import {
   SearchInventoryResultSchema,
   SetUiLanguageArgumentsSchema,
   SetUiLanguageResultSchema,
+  SetDiagnosticLogLevelArgumentsSchema,
+  SetDiagnosticLogLevelResultSchema,
   SetWorkScopeResumeArgumentsSchema,
   SetWorkScopeResumeResultSchema,
   SystemStatusSchema,
@@ -125,6 +135,60 @@ export function createMcpServer({
         anyOf: [UserPreferencesSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_diagnostic_settings',
+      title: 'Get diagnostic settings',
+      description:
+        'Read the configured and active diagnostic log level and whether Plysmith must be restarted.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DiagnosticSettingsSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'set_diagnostic_log_level',
+      title: 'Set diagnostic log level',
+      description:
+        'Set off, error, info or debug using the current configuration revision. ' +
+        'The new level becomes active after the user restarts Plysmith. This sends one write only.',
+      inputSchema: SetDiagnosticLogLevelArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [SetDiagnosticLogLevelResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_diagnostic_report_manifest',
+      title: 'Get diagnostic report manifest',
+      description:
+        'Read the fixed included and excluded data categories before creating a local diagnostic report.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DiagnosticReportManifestSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'create_diagnostic_report',
+      title: 'Create diagnostic report',
+      description:
+        'Create one redacted local diagnostic report at an explicit new .json.gz path after accepting the current manifest version. ' +
+        'The report is never transmitted and existing files are not replaced.',
+      inputSchema: CreateDiagnosticReportArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [CreateDiagnosticReportResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
       _meta: problemMetadata,
     },
     {
@@ -368,6 +432,48 @@ export function createMcpServer({
         case 'get_user_preferences': {
           const dto = preferencesDto(await hostClient.getUserPreferences());
           return toolResult(dto, preferencesSummary(dto));
+        }
+        case 'get_diagnostic_settings': {
+          const dto = diagnosticSettingsDto(
+            await hostClient.getDiagnosticSettings(),
+          );
+          return toolResult(
+            dto,
+            `Diagnostic level: ${dto.configuredLevel}; active level: ${dto.activeLevel}.`,
+          );
+        }
+        case 'set_diagnostic_log_level': {
+          if (!Value.Check(SetDiagnosticLogLevelArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = diagnosticLogLevelResultDto(
+            await hostClient.setDiagnosticLogLevel(args),
+          );
+          return toolResult(
+            dto,
+            dto.settings.restartRequired
+              ? 'Diagnostic level saved. Restart Plysmith to activate it.'
+              : `Diagnostic level ${dto.settings.configuredLevel} is active.`,
+          );
+        }
+        case 'get_diagnostic_report_manifest': {
+          const dto = diagnosticReportManifestDto(
+            await hostClient.getDiagnosticReportManifest(),
+          );
+          return toolResult(
+            dto,
+            `Diagnostic report manifest ${dto.manifestVersion}: ${dto.includedCategories.length} included and ${dto.excludedCategories.length} excluded categories.`,
+          );
+        }
+        case 'create_diagnostic_report': {
+          if (!Value.Check(CreateDiagnosticReportArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = createDiagnosticReportResultDto(
+            await hostClient.createDiagnosticReport(args),
+          );
+          return toolResult(
+            dto,
+            `Diagnostic report created with ${dto.eventCount} redacted events.`,
+          );
         }
         case 'set_ui_language': {
           if (!Value.Check(SetUiLanguageArgumentsSchema, args)) {
@@ -630,7 +736,13 @@ function inputSchema(name: string) {
   switch (name) {
     case 'get_system_status':
     case 'get_user_preferences':
+    case 'get_diagnostic_settings':
+    case 'get_diagnostic_report_manifest':
       return EmptyArgumentsSchema;
+    case 'set_diagnostic_log_level':
+      return SetDiagnosticLogLevelArgumentsSchema;
+    case 'create_diagnostic_report':
+      return CreateDiagnosticReportArgumentsSchema;
     case 'set_ui_language':
       return SetUiLanguageArgumentsSchema;
     case 'get_analysis_workspace':

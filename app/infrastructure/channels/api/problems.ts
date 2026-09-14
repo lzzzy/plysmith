@@ -75,6 +75,36 @@ const catalog = {
     'Preference revision conflict',
     'Read the current preferences before submitting another change.',
   ],
+  'diagnostics.invalid_log_level': [
+    400,
+    'Invalid diagnostic log level',
+    'The diagnostic log level is not supported.',
+  ],
+  'diagnostics.invalid_configuration_revision': [
+    400,
+    'Invalid diagnostic configuration revision',
+    'The diagnostic configuration revision is invalid.',
+  ],
+  'diagnostics.configuration_conflict': [
+    409,
+    'Diagnostic configuration conflict',
+    'Read the current diagnostic settings before submitting another change.',
+  ],
+  'diagnostics.invalid_report_request': [
+    400,
+    'Invalid diagnostic report request',
+    'The diagnostic report request is invalid.',
+  ],
+  'diagnostics.invalid_report_target': [
+    400,
+    'Invalid diagnostic report target',
+    'The diagnostic report target is not permitted.',
+  ],
+  'diagnostics.report_target_exists': [
+    409,
+    'Diagnostic report target exists',
+    'Choose a new file name for the diagnostic report.',
+  ],
   'analysis.invalid_update': [
     400,
     'Invalid analysis update',
@@ -221,6 +251,10 @@ export function installProblemHandling(
       switch (error.problemCode) {
         case 'preference.invalid_ui_language':
         case 'preference.invalid_revision':
+        case 'diagnostics.invalid_log_level':
+        case 'diagnostics.invalid_configuration_revision':
+        case 'diagnostics.invalid_report_request':
+        case 'diagnostics.invalid_report_target':
           return replyWithProblem(
             request,
             reply,
@@ -250,6 +284,14 @@ export function installProblemHandling(
             parameters,
           );
         }
+        case 'diagnostics.configuration_conflict':
+        case 'diagnostics.report_target_exists':
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
         case 'analysis.invalid_update':
         case 'analysis.invalid_record':
         case 'analysis.invalid_note':

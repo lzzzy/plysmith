@@ -4,20 +4,24 @@ import type {
   ReadResourceResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import type {
-  HostProblem,
-  SetUiLanguageResult,
-  SystemStatus,
-  UserPreferences,
   AddContextReferenceResult,
   AnalysisNoteMutationResult,
   AnalysisWorkspace,
+  HostProblem,
   CreateAnalysisRecordResult,
   CreateAnalysisNoteResult,
+  CreateDiagnosticReportResult,
   CreateWorkingContextResult,
+  DiagnosticReportManifest,
+  DiagnosticSettings,
   ListWorkingContextsResult,
   SearchInventoryResult,
+  SetDiagnosticLogLevelResult,
+  SetUiLanguageResult,
   SetWorkScopeResumeResult,
+  SystemStatus,
   UpdateAnalysisScratchResult,
+  UserPreferences,
   WorkingContextWorkspace,
 } from './host-client.ts';
 import {
@@ -26,9 +30,13 @@ import {
   AnalysisWorkspaceSchema,
   CreateAnalysisRecordResultSchema,
   CreateAnalysisNoteResultSchema,
+  CreateDiagnosticReportResultSchema,
   CreateWorkingContextResultSchema,
+  DiagnosticReportManifestSchema,
+  DiagnosticSettingsSchema,
   ListWorkingContextsResultSchema,
   SearchInventoryResultSchema,
+  SetDiagnosticLogLevelResultSchema,
   SetUiLanguageResultSchema,
   SetWorkScopeResumeResultSchema,
   SystemStatusSchema,
@@ -72,6 +80,26 @@ export function languageResultDto(model: SetUiLanguageResult) {
   if (!Value.Check(SetUiLanguageResultSchema, dto))
     throw new Error('Invalid host response');
   return dto;
+}
+
+export function diagnosticSettingsDto(model: DiagnosticSettings) {
+  return checked(DiagnosticSettingsSchema, model);
+}
+
+export function diagnosticLogLevelResultDto(
+  model: SetDiagnosticLogLevelResult,
+) {
+  return checked(SetDiagnosticLogLevelResultSchema, model);
+}
+
+export function diagnosticReportManifestDto(model: DiagnosticReportManifest) {
+  return checked(DiagnosticReportManifestSchema, model);
+}
+
+export function createDiagnosticReportResultDto(
+  model: CreateDiagnosticReportResult,
+) {
+  return checked(CreateDiagnosticReportResultSchema, model);
 }
 
 export function analysisWorkspaceDto(model: AnalysisWorkspace) {

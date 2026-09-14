@@ -63,6 +63,101 @@ export const SetUiLanguageResultSchema = Type.Object(
   objectOptions,
 );
 
+const diagnosticLogLevel = Type.Union([
+  Type.Literal('off'),
+  Type.Literal('error'),
+  Type.Literal('info'),
+  Type.Literal('debug'),
+]);
+const configurationRevision = Type.String({
+  pattern: '^sha256:[a-f0-9]{64}$',
+});
+
+export const DiagnosticSettingsSchema = Type.Object(
+  {
+    configuredLevel: diagnosticLogLevel,
+    activeLevel: diagnosticLogLevel,
+    configurationRevision,
+    restartRequired: Type.Boolean(),
+  },
+  objectOptions,
+);
+
+export const SetDiagnosticLogLevelArgumentsSchema = Type.Object(
+  {
+    level: diagnosticLogLevel,
+    expectedConfigurationRevision: configurationRevision,
+  },
+  objectOptions,
+);
+
+export const SetDiagnosticLogLevelResultSchema = Type.Object(
+  { changed: Type.Boolean(), settings: DiagnosticSettingsSchema },
+  objectOptions,
+);
+
+const diagnosticReportIncludedCategory = Type.Union([
+  Type.Literal('product_identity'),
+  Type.Literal('runtime_environment'),
+  Type.Literal('diagnostic_settings'),
+  Type.Literal('redacted_diagnostic_events'),
+  Type.Literal('excluded_data_declaration'),
+]);
+const diagnosticReportExcludedCategory = Type.Union([
+  Type.Literal('secrets_and_credentials'),
+  Type.Literal('active_configuration'),
+  Type.Literal('database_and_backups'),
+  Type.Literal('local_paths'),
+  Type.Literal('chess_and_user_content'),
+  Type.Literal('external_identities'),
+  Type.Literal('provider_payloads'),
+  Type.Literal('memory_and_raw_errors'),
+]);
+
+export const DiagnosticReportManifestSchema = Type.Object(
+  {
+    manifestVersion: Type.Literal(1),
+    format: Type.Literal('plysmith-diagnostics-json-gzip-v1'),
+    suggestedFileName: Type.String({
+      pattern: '^plysmith-diagnostics-[A-Za-z0-9-]+\\.json\\.gz$',
+      maxLength: 160,
+    }),
+    maximumBytes: Type.Integer({ minimum: 1, maximum: 10_485_760 }),
+    includedCategories: Type.Array(diagnosticReportIncludedCategory, {
+      minItems: 5,
+      maxItems: 5,
+      uniqueItems: true,
+    }),
+    excludedCategories: Type.Array(diagnosticReportExcludedCategory, {
+      minItems: 8,
+      maxItems: 8,
+      uniqueItems: true,
+    }),
+  },
+  objectOptions,
+);
+
+export const CreateDiagnosticReportArgumentsSchema = Type.Object(
+  {
+    acceptedManifestVersion: Type.Literal(1),
+    destinationPath: Type.String({ minLength: 1, maxLength: 1_024 }),
+  },
+  objectOptions,
+);
+
+export const CreateDiagnosticReportResultSchema = Type.Object(
+  {
+    created: Type.Literal(true),
+    generatedAt: timestamp,
+    format: Type.Literal('plysmith-diagnostics-json-gzip-v1'),
+    bytesWritten: Type.Integer({ minimum: 1, maximum: 10_485_760 }),
+    eventCount: revision,
+    discardedLineCount: revision,
+    truncated: Type.Boolean(),
+  },
+  objectOptions,
+);
+
 export const HostProblemSchema = Type.Object(
   {
     type: Type.String(),

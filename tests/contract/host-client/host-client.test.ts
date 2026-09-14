@@ -98,6 +98,106 @@ test('generated host client performs each write exactly once', async () => {
   assert.equal(writes, 1);
 });
 
+test('generated diagnostic client keeps settings, consent and report target explicit', async () => {
+  const requests: { path: string; body?: unknown }[] = [];
+  const client = new PlysmithHostClient(connection, {
+    fetch: async (request) => {
+      const input = request instanceof Request ? request : new Request(request);
+      const url = new URL(input.url);
+      requests.push({
+        path: url.pathname,
+        ...(input.method === 'GET' ? {} : { body: await input.json() }),
+      });
+      switch (url.pathname) {
+        case '/diagnostics/settings':
+          return Response.json({
+            configuredLevel: 'off',
+            activeLevel: 'off',
+            configurationRevision: `sha256:${'a'.repeat(64)}`,
+            restartRequired: false,
+          });
+        case '/diagnostics/settings/log-level':
+          return Response.json({
+            changed: true,
+            settings: {
+              configuredLevel: 'debug',
+              activeLevel: 'off',
+              configurationRevision: `sha256:${'b'.repeat(64)}`,
+              restartRequired: true,
+            },
+          });
+        case '/diagnostics/report-manifest':
+          return Response.json({
+            manifestVersion: 1,
+            format: 'plysmith-diagnostics-json-gzip-v1',
+            suggestedFileName: 'plysmith-diagnostics-20260914080000.json.gz',
+            maximumBytes: 10_485_760,
+            includedCategories: [
+              'product_identity',
+              'runtime_environment',
+              'diagnostic_settings',
+              'redacted_diagnostic_events',
+              'excluded_data_declaration',
+            ],
+            excludedCategories: [
+              'secrets_and_credentials',
+              'active_configuration',
+              'database_and_backups',
+              'local_paths',
+              'chess_and_user_content',
+              'external_identities',
+              'provider_payloads',
+              'memory_and_raw_errors',
+            ],
+          });
+        case '/diagnostics/reports':
+          return Response.json({
+            created: true,
+            generatedAt: '2026-09-14T08:00:00.000Z',
+            format: 'plysmith-diagnostics-json-gzip-v1',
+            bytesWritten: 321,
+            eventCount: 4,
+            discardedLineCount: 0,
+            truncated: false,
+          });
+        default:
+          return Response.json({}, { status: 404 });
+      }
+    },
+  });
+
+  await client.getDiagnosticSettings();
+  await client.setDiagnosticLogLevel({
+    level: 'debug',
+    expectedConfigurationRevision: `sha256:${'a'.repeat(64)}`,
+  });
+  const manifest = await client.getDiagnosticReportManifest();
+  assert.equal(manifest.includedCategories.length, 5);
+  await client.createDiagnosticReport({
+    acceptedManifestVersion: manifest.manifestVersion,
+    destinationPath: 'C:\\reports\\report.json.gz',
+  });
+
+  assert.deepEqual(requests, [
+    { path: '/diagnostics/settings' },
+    {
+      path: '/diagnostics/settings/log-level',
+      body: {
+        level: 'debug',
+        expectedConfigurationRevision: `sha256:${'a'.repeat(64)}`,
+      },
+    },
+    { path: '/diagnostics/report-manifest' },
+    {
+      path: '/diagnostics/reports',
+      body: {
+        acceptedManifestVersion: 1,
+        destinationPath: 'C:\\reports\\report.json.gz',
+      },
+    },
+  ]);
+});
+
 test('host problems retain the server taxonomy and safe parameters', async () => {
   const client = new PlysmithHostClient(connection, {
     fetch: async () =>

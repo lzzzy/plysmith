@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import type {
   AnalysisWorkspaceDto,
+  DiagnosticReportManifestDto,
+  DiagnosticSettingsDto,
   GetAnalysisWorkspaceRequestDto,
   HostConnection,
   HostEvent,
@@ -75,6 +77,44 @@ function analysis(dataRevision = 0): AnalysisWorkspaceDto {
   };
 }
 
+function diagnosticSettings(
+  configuredLevel: DiagnosticSettingsDto['configuredLevel'] = 'off',
+  activeLevel: DiagnosticSettingsDto['activeLevel'] = configuredLevel,
+): DiagnosticSettingsDto {
+  return {
+    configuredLevel,
+    activeLevel,
+    restartRequired: configuredLevel !== activeLevel,
+    configurationRevision: 'sha256:diagnostic-settings-test',
+  };
+}
+
+function diagnosticManifest(): DiagnosticReportManifestDto {
+  return {
+    manifestVersion: 1,
+    format: 'plysmith-diagnostics-json-gzip-v1',
+    suggestedFileName: 'plysmith-diagnostics-20260914154309.json.gz',
+    maximumBytes: 10_485_760,
+    includedCategories: [
+      'product_identity',
+      'runtime_environment',
+      'diagnostic_settings',
+      'redacted_diagnostic_events',
+      'excluded_data_declaration',
+    ],
+    excludedCategories: [
+      'secrets_and_credentials',
+      'active_configuration',
+      'database_and_backups',
+      'local_paths',
+      'chess_and_user_content',
+      'external_identities',
+      'provider_payloads',
+      'memory_and_raw_errors',
+    ],
+  };
+}
+
 function contexts(dataRevision = 0): ListWorkingContextsResultDto {
   return { contexts: [], dataRevision };
 }
@@ -124,6 +164,12 @@ function createClient(
     getSystemStatus: async () => status(),
     getUserPreferences: async () => preferences(),
     setUiLanguage: async () => assert.fail('no language write expected'),
+    getDiagnosticSettings: async () => diagnosticSettings(),
+    setDiagnosticLogLevel: async () =>
+      assert.fail('no diagnostic settings write expected'),
+    getDiagnosticReportManifest: async () => diagnosticManifest(),
+    createDiagnosticReport: async () =>
+      assert.fail('no diagnostic report write expected'),
     getAnalysisWorkspace: async () => analysis(),
     updateAnalysisScratch: async () => assert.fail('no scratch write expected'),
     createAnalysisRecord: async () => assert.fail('no record write expected'),
@@ -157,6 +203,14 @@ test('renderer subscribes to events before loading all authoritative snapshots',
       order.push('preferences');
       return preferences();
     },
+    getDiagnosticSettings: async () => {
+      order.push('diagnostics');
+      return diagnosticSettings();
+    },
+    getDiagnosticReportManifest: async () => {
+      order.push('diagnostic-manifest');
+      return diagnosticManifest();
+    },
     getAnalysisWorkspace: async () => {
       order.push('analysis');
       return analysis();
@@ -188,7 +242,15 @@ test('renderer subscribes to events before loading all authoritative snapshots',
   assert.equal(order[0], 'events');
   assert.deepEqual(
     new Set(order.slice(1)),
-    new Set(['status', 'preferences', 'analysis', 'inventory', 'contexts']),
+    new Set([
+      'status',
+      'preferences',
+      'diagnostics',
+      'diagnostic-manifest',
+      'analysis',
+      'inventory',
+      'contexts',
+    ]),
   );
   assert.equal(store.getSnapshot().phase, 'ready');
   store.close();
@@ -366,6 +428,106 @@ test('language command is sent once and reconciled through authoritative reads',
     snapshot.phase === 'ready' ? snapshot.preferences.uiLocale : undefined,
     'en-GB',
   );
+  store.close();
+});
+
+test('diagnostic level is written once and exposes the pending Plysmith restart', async () => {
+  let currentSettings = diagnosticSettings();
+  let writes = 0;
+  const client = createClient({
+    getDiagnosticSettings: async () => currentSettings,
+    setDiagnosticLogLevel: async (request) => {
+      writes += 1;
+      assert.deepEqual(request, {
+        level: 'debug',
+        expectedConfigurationRevision: 'sha256:diagnostic-settings-test',
+      });
+      currentSettings = {
+        configuredLevel: 'debug',
+        activeLevel: 'off',
+        restartRequired: true,
+        configurationRevision: 'sha256:diagnostic-settings-updated',
+      };
+      return { changed: true, settings: currentSettings };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.equal(await store.setDiagnosticLogLevel('debug'), true);
+
+  assert.equal(writes, 1);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.diagnostics.configuredLevel
+      : undefined,
+    'debug',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.diagnostics.restartRequired : false,
+    true,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.announcement : undefined,
+    'diagnostics.levelSavedPendingRestart',
+  );
+  store.close();
+});
+
+test('diagnostic report requires a chosen destination and sends one write', async () => {
+  const requests: unknown[] = [];
+  const destinations = [
+    undefined,
+    'C:\\Users\\test\\Desktop\\plysmith-diagnostics-20260914154309.json.gz',
+  ];
+  const client = createClient({
+    createDiagnosticReport: async (request) => {
+      requests.push(request);
+      return {
+        created: true,
+        format: 'plysmith-diagnostics-json-gzip-v1',
+        generatedAt: '2026-09-14T15:43:09.000Z',
+        bytesWritten: 512,
+        eventCount: 3,
+        discardedLineCount: 0,
+        truncated: false,
+      };
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+    chooseDiagnosticReportDestination: async (suggestedFileName) => {
+      assert.equal(
+        suggestedFileName,
+        'plysmith-diagnostics-20260914154309.json.gz',
+      );
+      return destinations.shift();
+    },
+  });
+  await store.start();
+
+  assert.equal(await store.createDiagnosticReport(), false);
+  assert.equal(requests.length, 0);
+  assert.equal(await store.createDiagnosticReport(), true);
+  assert.deepEqual(requests, [
+    {
+      acceptedManifestVersion: 1,
+      destinationPath:
+        'C:\\Users\\test\\Desktop\\plysmith-diagnostics-20260914154309.json.gz',
+    },
+  ]);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.announcement : undefined,
+    'diagnostics.reportCreated',
+  );
+  assert.equal(JSON.stringify(snapshot).includes('Users\\\\test'), false);
   store.close();
 });
 

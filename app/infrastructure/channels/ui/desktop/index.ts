@@ -8,7 +8,9 @@ export {
 } from './desktop-host-connection.ts';
 export {
   desktopBootstrapChannel,
+  desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
+  parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
   type PlysmithDesktopApi,

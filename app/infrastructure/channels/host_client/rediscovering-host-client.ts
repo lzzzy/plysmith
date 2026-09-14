@@ -13,8 +13,12 @@ import {
   type CreateAnalysisRecordResultDto,
   type CreateAnalysisNoteRequestDto,
   type CreateAnalysisNoteResultDto,
+  type CreateDiagnosticReportRequestDto,
+  type CreateDiagnosticReportResultDto,
   type CreatePositionNoteRequestDto,
   type DeleteAnalysisNoteRequestDto,
+  type DiagnosticReportManifestDto,
+  type DiagnosticSettingsDto,
   type CreateWorkingContextRequestDto,
   type CreateWorkingContextResultDto,
   type GetAnalysisWorkspaceRequestDto,
@@ -22,6 +26,8 @@ import {
   type ListWorkingContextsResultDto,
   type SearchInventoryRequestDto,
   type SearchInventoryResultDto,
+  type SetDiagnosticLogLevelRequestDto,
+  type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
   type UpdateAnalysisScratchRequestDto,
@@ -67,6 +73,26 @@ export class RediscoveringHostClient {
   }): Promise<SetUiLanguageResultDto> {
     const client = await this.#currentClient();
     return client.setUiLanguage(request);
+  }
+
+  async getDiagnosticSettings(): Promise<DiagnosticSettingsDto> {
+    return this.#read((client) => client.getDiagnosticSettings());
+  }
+
+  async setDiagnosticLogLevel(
+    request: SetDiagnosticLogLevelRequestDto,
+  ): Promise<SetDiagnosticLogLevelResultDto> {
+    return (await this.#currentClient()).setDiagnosticLogLevel(request);
+  }
+
+  async getDiagnosticReportManifest(): Promise<DiagnosticReportManifestDto> {
+    return this.#read((client) => client.getDiagnosticReportManifest());
+  }
+
+  async createDiagnosticReport(
+    request: CreateDiagnosticReportRequestDto,
+  ): Promise<CreateDiagnosticReportResultDto> {
+    return (await this.#currentClient()).createDiagnosticReport(request);
   }
 
   async getAnalysisWorkspace(

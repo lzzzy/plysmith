@@ -66,6 +66,39 @@ test('composition root wires the real store and use cases without listening', as
       runtime.contractFingerprint,
     );
 
+    const diagnosticSettings = await runtime.host.inject({
+      url: '/diagnostics/settings',
+      headers,
+    });
+    assert.equal(diagnosticSettings.statusCode, 200);
+    assert.deepEqual(
+      {
+        configuredLevel: diagnosticSettings.json().configuredLevel,
+        activeLevel: diagnosticSettings.json().activeLevel,
+        restartRequired: diagnosticSettings.json().restartRequired,
+      },
+      {
+        configuredLevel: 'off',
+        activeLevel: 'off',
+        restartRequired: false,
+      },
+    );
+    const changedDiagnosticSettings = await runtime.host.inject({
+      method: 'PUT',
+      url: '/diagnostics/settings/log-level',
+      headers,
+      payload: {
+        level: 'debug',
+        expectedConfigurationRevision:
+          diagnosticSettings.json().configurationRevision,
+      },
+    });
+    assert.equal(changedDiagnosticSettings.statusCode, 200);
+    assert.equal(
+      changedDiagnosticSettings.json().settings.restartRequired,
+      true,
+    );
+
     const initialWorkspace = await runtime.host.inject({
       url: '/analysis/workspace?scopeKind=free',
       headers,

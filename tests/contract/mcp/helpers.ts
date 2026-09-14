@@ -30,6 +30,41 @@ export const preferences: Awaited<
   updatedAt: '2026-09-09T08:00:00.000Z',
 };
 
+export const diagnosticSettings: Awaited<
+  ReturnType<HostClient['getDiagnosticSettings']>
+> = {
+  configuredLevel: 'debug',
+  activeLevel: 'off',
+  configurationRevision: `sha256:${'a'.repeat(64)}`,
+  restartRequired: true,
+};
+
+export const diagnosticReportManifest: Awaited<
+  ReturnType<HostClient['getDiagnosticReportManifest']>
+> = {
+  manifestVersion: 1,
+  format: 'plysmith-diagnostics-json-gzip-v1',
+  suggestedFileName: 'plysmith-diagnostics-20260914080000.json.gz',
+  maximumBytes: 10_485_760,
+  includedCategories: [
+    'product_identity',
+    'runtime_environment',
+    'diagnostic_settings',
+    'redacted_diagnostic_events',
+    'excluded_data_declaration',
+  ],
+  excludedCategories: [
+    'secrets_and_credentials',
+    'active_configuration',
+    'database_and_backups',
+    'local_paths',
+    'chess_and_user_content',
+    'external_identities',
+    'provider_payloads',
+    'memory_and_raw_errors',
+  ],
+};
+
 export const revisionConflict: HostProblem = {
   type: 'https://github.com/lzzzy/plysmith/blob/main/docs/problems/preference.revision_conflict.md',
   title: 'Preference revision conflict',
@@ -67,6 +102,41 @@ export async function connectMcp(
         : {
             changed: true,
             preferences: { ...preferences, uiLocale: request.uiLocale },
+          };
+    },
+    async getDiagnosticSettings() {
+      calls.push({ method: 'getDiagnosticSettings' });
+      return overrides.getDiagnosticSettings
+        ? overrides.getDiagnosticSettings()
+        : diagnosticSettings;
+    },
+    async setDiagnosticLogLevel(request) {
+      calls.push({ method: 'setDiagnosticLogLevel', request });
+      return overrides.setDiagnosticLogLevel
+        ? overrides.setDiagnosticLogLevel(request)
+        : {
+            changed: true,
+            settings: { ...diagnosticSettings, configuredLevel: request.level },
+          };
+    },
+    async getDiagnosticReportManifest() {
+      calls.push({ method: 'getDiagnosticReportManifest' });
+      return overrides.getDiagnosticReportManifest
+        ? overrides.getDiagnosticReportManifest()
+        : diagnosticReportManifest;
+    },
+    async createDiagnosticReport(request) {
+      calls.push({ method: 'createDiagnosticReport', request });
+      return overrides.createDiagnosticReport
+        ? overrides.createDiagnosticReport(request)
+        : {
+            created: true,
+            generatedAt: '2026-09-14T08:00:00.000Z',
+            format: 'plysmith-diagnostics-json-gzip-v1',
+            bytesWritten: 321,
+            eventCount: 4,
+            discardedLineCount: 1,
+            truncated: false,
           };
     },
     async getAnalysisWorkspace(request) {

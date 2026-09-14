@@ -10,12 +10,14 @@ import {
   assertNeutralProblem,
   assertToolData,
   connectMcp,
+  diagnosticReportManifest,
+  diagnosticSettings,
   preferences,
   revisionConflict,
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises the explicit sixteen-tool allowlist and two fixed resources', async (t) => {
+test('MCP advertises the explicit twenty-tool allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -23,6 +25,10 @@ test('MCP advertises the explicit sixteen-tool allowlist and two fixed resources
     [
       'get_system_status',
       'get_user_preferences',
+      'get_diagnostic_settings',
+      'set_diagnostic_log_level',
+      'get_diagnostic_report_manifest',
+      'create_diagnostic_report',
       'set_ui_language',
       'get_analysis_workspace',
       'update_analysis_scratch',
@@ -43,7 +49,8 @@ test('MCP advertises the explicit sixteen-tool allowlist and two fixed resources
     tools: {},
     resources: {},
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(tools[2]?.inputSchema)), {
+  const languageTool = tools.find((tool) => tool.name === 'set_ui_language');
+  assert.deepEqual(JSON.parse(JSON.stringify(languageTool?.inputSchema)), {
     type: 'object',
     additionalProperties: false,
     required: ['uiLocale', 'expectedRevision'],
@@ -63,8 +70,18 @@ test('MCP advertises the explicit sixteen-tool allowlist and two fixed resources
   });
   assert.equal(tools[0]?.annotations?.readOnlyHint, true);
   assert.equal(tools[1]?.annotations?.readOnlyHint, true);
-  assert.equal(tools[2]?.annotations?.readOnlyHint, false);
-  assert.equal(tools[2]?.annotations?.idempotentHint, false);
+  assert.equal(languageTool?.annotations?.readOnlyHint, false);
+  assert.equal(languageTool?.annotations?.idempotentHint, false);
+  assert.equal(
+    tools.find((tool) => tool.name === 'get_diagnostic_settings')?.annotations
+      ?.readOnlyHint,
+    true,
+  );
+  assert.equal(
+    tools.find((tool) => tool.name === 'create_diagnostic_report')?.annotations
+      ?.idempotentHint,
+    false,
+  );
   const { resources } = await client.listResources();
   assert.deepEqual(
     resources.map(({ uri, mimeType }) => ({ uri, mimeType })),
@@ -127,6 +144,97 @@ test('set_ui_language forwards both locales and positive safe revisions exactly 
     assert.deepEqual(calls.at(-1), { method: 'setUiLanguage', request });
   }
   assert.equal(calls.length, 3);
+});
+
+test('diagnostic tools preserve manifest consent and execute each write once', async (t) => {
+  const { client, calls } = await connectMcp(t);
+
+  const settings = await client.callTool({ name: 'get_diagnostic_settings' });
+  assertToolData(settings, diagnosticSettings);
+
+  const levelRequest = {
+    level: 'info' as const,
+    expectedConfigurationRevision: diagnosticSettings.configurationRevision,
+  };
+  const level = await client.callTool({
+    name: 'set_diagnostic_log_level',
+    arguments: levelRequest,
+  });
+  assertToolData(level, {
+    changed: true,
+    settings: { ...diagnosticSettings, configuredLevel: 'info' },
+  });
+
+  const manifest = await client.callTool({
+    name: 'get_diagnostic_report_manifest',
+  });
+  assertToolData(manifest, diagnosticReportManifest);
+
+  const reportRequest = {
+    acceptedManifestVersion: 1 as const,
+    destinationPath: 'C:\\reports\\private-canary.json.gz',
+  };
+  const report = await client.callTool({
+    name: 'create_diagnostic_report',
+    arguments: reportRequest,
+  });
+  assertToolData(report, {
+    created: true,
+    generatedAt: '2026-09-14T08:00:00.000Z',
+    format: 'plysmith-diagnostics-json-gzip-v1',
+    bytesWritten: 321,
+    eventCount: 4,
+    discardedLineCount: 1,
+    truncated: false,
+  });
+  assert.doesNotMatch(JSON.stringify(report), /private-canary/);
+  assert.deepEqual(calls, [
+    { method: 'getDiagnosticSettings' },
+    { method: 'setDiagnosticLogLevel', request: levelRequest },
+    { method: 'getDiagnosticReportManifest' },
+    { method: 'createDiagnosticReport', request: reportRequest },
+  ]);
+});
+
+test('invalid diagnostic writes never reach the host or echo their arguments', async (t) => {
+  const { client, calls } = await connectMcp(t);
+  for (const [name, arguments_] of [
+    [
+      'set_diagnostic_log_level',
+      {
+        level: 'trace',
+        expectedConfigurationRevision: diagnosticSettings.configurationRevision,
+      },
+    ],
+    [
+      'set_diagnostic_log_level',
+      { level: 'debug', expectedConfigurationRevision: 'secret-canary' },
+    ],
+    [
+      'create_diagnostic_report',
+      {
+        acceptedManifestVersion: 2,
+        destinationPath: 'C:\\secret-canary.json.gz',
+      },
+    ],
+    [
+      'create_diagnostic_report',
+      {
+        acceptedManifestVersion: 1,
+        destinationPath: 'C:\\report.json.gz',
+        extra: 'secret-canary',
+      },
+    ],
+  ] as const) {
+    const result = await client.callTool({ name, arguments: arguments_ });
+    assert.equal(result.isError, true);
+    assert.equal(
+      (result.structuredContent as { code: string }).code,
+      'request.invalid',
+    );
+    assert.doesNotMatch(JSON.stringify(result), /secret-canary/);
+  }
+  assert.deepEqual(calls, []);
 });
 
 test('no-op and committed revision metadata are returned without alteration', async (t) => {
@@ -462,7 +570,12 @@ test('resume tool rejects mixed manage and analyze shapes before the host', asyn
 
 test('read tools reject undeclared arguments', async (t) => {
   const { client, calls } = await connectMcp(t);
-  for (const name of ['get_system_status', 'get_user_preferences']) {
+  for (const name of [
+    'get_system_status',
+    'get_user_preferences',
+    'get_diagnostic_settings',
+    'get_diagnostic_report_manifest',
+  ]) {
     const result = await client.callTool({
       name,
       arguments: { path: 'secret-canary' },

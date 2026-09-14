@@ -31,11 +31,13 @@ export function installRequestDiagnostics(
     const context = requestContexts.get(request);
     if (context === undefined) return;
     const failed = reply.statusCode >= 400;
+    const operation = requestOperation(request);
+    if (!failed && operation === 'GetSystemStatus') return;
     diagnostics.write({
       level: reply.statusCode >= 500 ? 'error' : failed ? 'info' : 'debug',
       eventCode: 'host.request.completed',
       correlationId: context.correlationId,
-      operation: requestOperation(request),
+      operation,
       status: failed ? 'failed' : 'succeeded',
       ...(context.problemCode === undefined
         ? {}

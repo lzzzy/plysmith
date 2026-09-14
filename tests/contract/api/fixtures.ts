@@ -35,6 +35,61 @@ export function createFixture() {
       runtime: { getState: () => 'ready' },
       store,
     }),
+    getDiagnosticSettings: {
+      execute: async () => ({
+        configuredLevel: 'off',
+        activeLevel: 'off',
+        configurationRevision: `sha256:${'a'.repeat(64)}`,
+        restartRequired: false,
+      }),
+    },
+    setDiagnosticLogLevel: {
+      execute: async () => ({
+        changed: false,
+        settings: {
+          configuredLevel: 'off',
+          activeLevel: 'off',
+          configurationRevision: `sha256:${'a'.repeat(64)}`,
+          restartRequired: false,
+        },
+      }),
+    },
+    getDiagnosticReportManifest: {
+      execute: async () => ({
+        manifestVersion: 1,
+        format: 'plysmith-diagnostics-json-gzip-v1',
+        suggestedFileName: 'plysmith-diagnostics-20260908120000.json.gz',
+        maximumBytes: 10_485_760,
+        includedCategories: [
+          'product_identity',
+          'runtime_environment',
+          'diagnostic_settings',
+          'redacted_diagnostic_events',
+          'excluded_data_declaration',
+        ],
+        excludedCategories: [
+          'secrets_and_credentials',
+          'active_configuration',
+          'database_and_backups',
+          'local_paths',
+          'chess_and_user_content',
+          'external_identities',
+          'provider_payloads',
+          'memory_and_raw_errors',
+        ],
+      }),
+    },
+    createDiagnosticReport: {
+      execute: async () => ({
+        created: true,
+        generatedAt: occurredAt,
+        format: 'plysmith-diagnostics-json-gzip-v1',
+        bytesWritten: 123,
+        eventCount: 2,
+        discardedLineCount: 0,
+        truncated: false,
+      }),
+    },
     getUserPreferences: new GetUserPreferences(store),
     setUiLanguage: new SetUiLanguage({
       unitOfWork: store,

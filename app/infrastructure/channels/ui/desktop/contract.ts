@@ -3,6 +3,8 @@ import type { DiagnosticEventInput } from '../../../../../contracts/diagnostics/
 
 export const desktopBootstrapChannel = 'plysmith:desktop-bootstrap';
 export const desktopDiagnosticsChannel = 'plysmith:desktop-diagnostics';
+export const desktopDiagnosticReportDestinationChannel =
+  'plysmith:diagnostic-report-destination';
 
 const rendererEventCodes = new Set([
   'renderer.lifecycle.starting',
@@ -48,7 +50,23 @@ export type DesktopBootstrap =
 
 export interface PlysmithDesktopApi {
   getBootstrap(): Promise<DesktopBootstrap>;
+  chooseDiagnosticReportDestination(
+    suggestedFileName: string,
+  ): Promise<string | undefined>;
   recordDiagnostic(event: RendererDiagnosticEvent): void;
+}
+
+export function parseDiagnosticReportSuggestedFileName(
+  candidate: unknown,
+): string | undefined {
+  if (
+    typeof candidate !== 'string' ||
+    candidate.length > 120 ||
+    !/^plysmith-diagnostics-\d{14}\.json\.gz$/.test(candidate)
+  ) {
+    return undefined;
+  }
+  return candidate;
 }
 
 export function parseRendererDiagnosticEvent(

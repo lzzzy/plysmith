@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseRendererDiagnosticEvent } from '../../../app/infrastructure/channels/ui/desktop/contract.ts';
+import {
+  parseDiagnosticReportSuggestedFileName,
+  parseRendererDiagnosticEvent,
+} from '../../../app/infrastructure/channels/ui/desktop/contract.ts';
 
 test('accepts only bounded content-free renderer diagnostic fields', () => {
   assert.deepEqual(
@@ -57,5 +60,24 @@ test('rejects unknown event codes, fields and user content', () => {
     },
   ]) {
     assert.equal(parseRendererDiagnosticEvent(candidate), undefined);
+  }
+});
+
+test('accepts only the bounded diagnostic report filename shape', () => {
+  assert.equal(
+    parseDiagnosticReportSuggestedFileName(
+      'plysmith-diagnostics-20260914154309.json.gz',
+    ),
+    'plysmith-diagnostics-20260914154309.json.gz',
+  );
+  for (const candidate of [
+    '../plysmith-diagnostics-20260914154309.json.gz',
+    'C:\\private\\plysmith-diagnostics-20260914154309.json.gz',
+    'plysmith-diagnostics-today.json.gz',
+    'plysmith-diagnostics-20260914154309.json',
+    '',
+    undefined,
+  ]) {
+    assert.equal(parseDiagnosticReportSuggestedFileName(candidate), undefined);
   }
 });

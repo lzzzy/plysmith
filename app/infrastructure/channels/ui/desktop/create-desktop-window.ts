@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   BrowserWindow,
+  dialog,
   ipcMain,
   session,
   type IpcMainEvent,
@@ -11,7 +12,9 @@ import {
 import type { DiagnosticSink } from '../../../../../contracts/diagnostics/index.ts';
 import {
   desktopBootstrapChannel,
+  desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
+  parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
 } from './contract.ts';
@@ -82,7 +85,27 @@ export async function createDesktopWindow(
     if (diagnostic !== undefined) options.diagnostics.write(diagnostic);
   };
   ipcMain.on(desktopDiagnosticsChannel, diagnosticHandler);
-
+  const diagnosticReportDestinationHandler = async (
+    event: IpcMainInvokeEvent,
+    candidate: unknown,
+  ): Promise<string | undefined> => {
+    if (!isTrustedRendererSender(event, window)) return undefined;
+    const suggestedFileName = parseDiagnosticReportSuggestedFileName(candidate);
+    if (suggestedFileName === undefined) return undefined;
+    const result = await dialog.showSaveDialog(window, {
+      title: 'Plysmith diagnostic report',
+      defaultPath: suggestedFileName,
+      filters: [
+        { name: 'Plysmith diagnostic report', extensions: ['json.gz'] },
+      ],
+      properties: ['createDirectory', 'showOverwriteConfirmation'],
+    });
+    return result.canceled ? undefined : result.filePath;
+  };
+  ipcMain.handle(
+    desktopDiagnosticReportDestinationChannel,
+    diagnosticReportDestinationHandler,
+  );
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.on('will-attach-webview', (event) =>
@@ -117,6 +140,7 @@ export async function createDesktopWindow(
   window.once('closed', () => {
     unsubscribe();
     ipcMain.removeHandler(desktopBootstrapChannel);
+    ipcMain.removeHandler(desktopDiagnosticReportDestinationChannel);
     ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });

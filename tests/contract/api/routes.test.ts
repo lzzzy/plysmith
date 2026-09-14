@@ -11,7 +11,10 @@ import {
 } from './fixtures.ts';
 
 test('status includes the application read model and release handshake only', async (t) => {
-  const { host } = await buildFixture(t);
+  const diagnostics: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    diagnostics: { write: (event) => diagnostics.push(event) },
+  });
   const response = await host.inject({ url: '/status', headers });
   assert.deepEqual(response.json(), {
     state: 'ready',
@@ -19,6 +22,7 @@ test('status includes the application read model and release handshake only', as
     productRelease: '0.0.0-test',
     contractFingerprint: 'test-contract-fingerprint',
   });
+  assert.deepEqual(diagnostics, []);
 });
 
 test('real application use cases preserve success, no-op and stale-write semantics', async (t) => {
@@ -67,6 +71,140 @@ test('real application use cases preserve success, no-op and stale-write semanti
     currentRevision: 2,
   });
   assert.equal(published.length, 1);
+});
+
+test('diagnostic routes expose settings and manifest while keeping report targets write-only', async (t) => {
+  const received: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    setDiagnosticLogLevel: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          changed: true,
+          settings: {
+            configuredLevel: request.level,
+            activeLevel: 'off',
+            configurationRevision: `sha256:${'b'.repeat(64)}`,
+            restartRequired: true,
+          },
+        };
+      },
+    },
+    createDiagnosticReport: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          created: true,
+          generatedAt: occurredAt,
+          format: 'plysmith-diagnostics-json-gzip-v1',
+          bytesWritten: 321,
+          eventCount: 4,
+          discardedLineCount: 1,
+          truncated: false,
+        };
+      },
+    },
+  });
+
+  const settings = await host.inject({ url: '/diagnostics/settings', headers });
+  assert.equal(settings.statusCode, 200);
+  assert.equal(settings.json().configuredLevel, 'off');
+  const manifest = await host.inject({
+    url: '/diagnostics/report-manifest',
+    headers,
+  });
+  assert.equal(manifest.statusCode, 200);
+  assert.equal(manifest.json().manifestVersion, 1);
+
+  const changed = await host.inject({
+    method: 'PUT',
+    url: '/diagnostics/settings/log-level',
+    headers,
+    payload: {
+      level: 'debug',
+      expectedConfigurationRevision: `sha256:${'a'.repeat(64)}`,
+    },
+  });
+  assert.equal(changed.statusCode, 200);
+  assert.equal(changed.json().settings.restartRequired, true);
+
+  const destinationPath = 'C:\\reports\\private-canary.json.gz';
+  const created = await host.inject({
+    method: 'POST',
+    url: '/diagnostics/reports',
+    headers,
+    payload: { acceptedManifestVersion: 1, destinationPath },
+  });
+  assert.equal(created.statusCode, 200);
+  assert.equal(created.json().bytesWritten, 321);
+  assert.ok(!created.body.includes('private-canary'));
+  assert.deepEqual(received, [
+    {
+      level: 'debug',
+      expectedConfigurationRevision: `sha256:${'a'.repeat(64)}`,
+    },
+    { acceptedManifestVersion: 1, destinationPath },
+  ]);
+});
+
+test('diagnostic write schemas reject invalid and additional fields before application', async (t) => {
+  let calls = 0;
+  const unavailable = {
+    execute: async () => {
+      calls += 1;
+      throw new Error('must not be called');
+    },
+  };
+  const { host } = await buildFixture(t, {
+    setDiagnosticLogLevel: unavailable,
+    createDiagnosticReport: unavailable,
+  });
+  for (const scenario of [
+    {
+      url: '/diagnostics/settings/log-level',
+      method: 'PUT',
+      payload: {
+        level: 'trace',
+        expectedConfigurationRevision: `sha256:${'a'.repeat(64)}`,
+      },
+    },
+    {
+      url: '/diagnostics/settings/log-level',
+      method: 'PUT',
+      payload: {
+        level: 'debug',
+        expectedConfigurationRevision: 'CANARY',
+      },
+    },
+    {
+      url: '/diagnostics/reports',
+      method: 'POST',
+      payload: {
+        acceptedManifestVersion: 2,
+        destinationPath: 'C:\\CANARY.json.gz',
+      },
+    },
+    {
+      url: '/diagnostics/reports',
+      method: 'POST',
+      payload: {
+        acceptedManifestVersion: 1,
+        destinationPath: 'C:\\report.json.gz',
+        extra: 'CANARY',
+      },
+    },
+  ] as const) {
+    const response = await host.inject({
+      method: scenario.method,
+      url: scenario.url,
+      headers,
+      payload: scenario.payload,
+    });
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.json().code, 'request.invalid');
+    assert.ok(!response.body.includes('CANARY'));
+  }
+  assert.equal(calls, 0);
 });
 
 test('concurrent writes invoke the application once per request without retry', async (t) => {
@@ -176,6 +314,12 @@ for (const [code, status] of [
   ['preference.invalid_ui_language', 400],
   ['preference.invalid_revision', 400],
   ['preference.revision_conflict', 409],
+  ['diagnostics.invalid_log_level', 400],
+  ['diagnostics.invalid_configuration_revision', 400],
+  ['diagnostics.configuration_conflict', 409],
+  ['diagnostics.invalid_report_request', 400],
+  ['diagnostics.invalid_report_target', 400],
+  ['diagnostics.report_target_exists', 409],
   ['unknown.CANARY', 500],
 ] as const) {
   test(`application problem ${code} maps without exposing its message or arbitrary parameters`, async (t) => {
@@ -206,7 +350,9 @@ for (const [code, status] of [
     assert.ok(!response.body.includes('CANARY'));
     assert.deepEqual(
       body.parameters,
-      status === 409 ? { expectedRevision: 1, currentRevision: 3 } : {},
+      code === 'preference.revision_conflict'
+        ? { expectedRevision: 1, currentRevision: 3 }
+        : {},
     );
   });
 }

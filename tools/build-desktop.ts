@@ -33,6 +33,13 @@ await Promise.all([
       outDir: path.join(outputRoot, 'renderer'),
       emptyOutDir: true,
       sourcemap: true,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [{ name: 'vendor', test: /[\\/]node_modules[\\/]/ }],
+          },
+        },
+      },
     },
   }),
   buildModule({

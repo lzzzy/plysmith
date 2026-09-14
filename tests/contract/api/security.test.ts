@@ -27,6 +27,10 @@ test('every route checks authentication before body validation or use cases', as
     ['GET', '/status'],
     ['GET', '/preferences'],
     ['PUT', '/preferences/ui-language'],
+    ['GET', '/diagnostics/settings'],
+    ['PUT', '/diagnostics/settings/log-level'],
+    ['GET', '/diagnostics/report-manifest'],
+    ['POST', '/diagnostics/reports'],
     ['GET', '/events'],
   ] as const) {
     const response = await host.inject({
@@ -144,6 +148,10 @@ test('browser preflight covers every public use-case route including queries and
     ['/status', 'GET', 'GET'],
     ['/preferences', 'GET', 'GET'],
     ['/preferences/ui-language', 'PUT', 'PUT'],
+    ['/diagnostics/settings', 'GET', 'GET'],
+    ['/diagnostics/settings/log-level', 'PUT', 'PUT'],
+    ['/diagnostics/report-manifest', 'GET', 'GET'],
+    ['/diagnostics/reports', 'POST', 'POST'],
     ['/events', 'GET', 'GET'],
     ['/analysis/workspace?scopeKind=free', 'GET', 'GET'],
     ['/analysis/scratch', 'PUT', 'PUT'],

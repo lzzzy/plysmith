@@ -2,7 +2,13 @@ import type {
   GetUserPreferencesUseCase,
   SetUiLanguageUseCase,
 } from '../../../application/preferences/index.ts';
-import type { GetSystemStatusUseCase } from '../../../application/system/index.ts';
+import type {
+  CreateDiagnosticReportUseCase,
+  GetDiagnosticReportManifestUseCase,
+  GetDiagnosticSettingsUseCase,
+  GetSystemStatusUseCase,
+  SetDiagnosticLogLevelUseCase,
+} from '../../../application/system/index.ts';
 import type { HostEventSource } from '../../../application/events/index.ts';
 import type {
   CreateAnalysisRecordUseCase,
@@ -25,6 +31,10 @@ import type { DiagnosticSink } from '../../../../contracts/diagnostics/index.ts'
 
 export interface HostDependencies {
   readonly getSystemStatus: GetSystemStatusUseCase;
+  readonly getDiagnosticSettings: GetDiagnosticSettingsUseCase;
+  readonly setDiagnosticLogLevel: SetDiagnosticLogLevelUseCase;
+  readonly getDiagnosticReportManifest: GetDiagnosticReportManifestUseCase;
+  readonly createDiagnosticReport: CreateDiagnosticReportUseCase;
   readonly getUserPreferences: GetUserPreferencesUseCase;
   readonly setUiLanguage: SetUiLanguageUseCase;
   readonly getAnalysisWorkspace: GetAnalysisWorkspaceUseCase;

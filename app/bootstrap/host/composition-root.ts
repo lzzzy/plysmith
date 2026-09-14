@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 
 import { HostEventStream } from '../../application/events/index.ts';
@@ -17,7 +18,13 @@ import {
   GetUserPreferences,
   SetUiLanguage,
 } from '../../application/preferences/index.ts';
-import { GetSystemStatus } from '../../application/system/index.ts';
+import {
+  CreateDiagnosticReport,
+  GetDiagnosticReportManifest,
+  GetDiagnosticSettings,
+  GetSystemStatus,
+  SetDiagnosticLogLevel,
+} from '../../application/system/index.ts';
 import {
   AddContextReference,
   CreateWorkingContext,
@@ -28,9 +35,13 @@ import {
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
   initializeConfiguration,
+  FileDiagnosticSettingsRepository,
   loadConfiguration,
 } from '../../infrastructure/adapters/configuration/filesystem/index.ts';
-import { FileDiagnosticLog } from '../../infrastructure/adapters/diagnostics/filesystem/index.ts';
+import {
+  FileDiagnosticLog,
+  FileDiagnosticReport,
+} from '../../infrastructure/adapters/diagnostics/filesystem/index.ts';
 import { SqlitePersistenceAdapter } from '../../infrastructure/adapters/persistence/sqlite/index.ts';
 import {
   acquireHostOwnerLease,
@@ -96,6 +107,37 @@ export async function composeHost(
 
     const runtimeStatus = new RuntimeStatus();
     const clock = { now: options.now ?? (() => new Date().toISOString()) };
+    const activeLevel = configuration.central.diagnostics.logging.level;
+    const diagnosticSettings = new FileDiagnosticSettingsRepository(
+      options.applicationHome,
+    );
+    const diagnosticReport = new FileDiagnosticReport({
+      applicationHome: options.applicationHome,
+      protectedRoots: [path.resolve(options.defaultsDirectory, '..', '..')],
+    });
+    const getDiagnosticSettings = new GetDiagnosticSettings({
+      repository: diagnosticSettings,
+      activeLevel,
+    });
+    const setDiagnosticLogLevel = new SetDiagnosticLogLevel({
+      repository: diagnosticSettings,
+      activeLevel,
+    });
+    const getDiagnosticReportManifest = new GetDiagnosticReportManifest(clock);
+    const createDiagnosticReport = new CreateDiagnosticReport({
+      settings: diagnosticSettings,
+      source: diagnosticReport,
+      writer: diagnosticReport,
+      clock,
+      activeLevel,
+      productRelease,
+      contractFingerprint,
+      runtime: {
+        platform: process.platform,
+        architecture: process.arch,
+        nodeVersion: process.versions.node,
+      },
+    });
     const eventStream = new HostEventStream({
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.correlationIdFactory === undefined
@@ -187,6 +229,10 @@ export async function composeHost(
 
     host = await buildHost({
       getSystemStatus,
+      getDiagnosticSettings,
+      setDiagnosticLogLevel,
+      getDiagnosticReportManifest,
+      createDiagnosticReport,
       getUserPreferences,
       setUiLanguage,
       getAnalysisWorkspace,

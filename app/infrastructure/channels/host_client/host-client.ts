@@ -21,6 +21,17 @@ export type SystemStatusDto = components['schemas']['SystemStatus'];
 export type UserPreferencesDto = components['schemas']['UserPreferences'];
 export type SetUiLanguageResultDto =
   components['schemas']['SetUiLanguageResult'];
+export type DiagnosticSettingsDto = components['schemas']['DiagnosticSettings'];
+export type SetDiagnosticLogLevelRequestDto =
+  components['schemas']['SetDiagnosticLogLevelBody'];
+export type SetDiagnosticLogLevelResultDto =
+  components['schemas']['SetDiagnosticLogLevelResult'];
+export type DiagnosticReportManifestDto =
+  components['schemas']['DiagnosticReportManifest'];
+export type CreateDiagnosticReportRequestDto =
+  components['schemas']['CreateDiagnosticReportBody'];
+export type CreateDiagnosticReportResultDto =
+  components['schemas']['CreateDiagnosticReportResult'];
 export type GetAnalysisWorkspaceRequestDto =
   components['schemas']['GetAnalysisWorkspaceQuery'];
 export type AnalysisWorkspaceDto = components['schemas']['AnalysisWorkspace'];
@@ -105,6 +116,53 @@ export class PlysmithHostClient {
   }): Promise<SetUiLanguageResultDto> {
     try {
       const result = await this.#client.PUT('/preferences/ui-language', {
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getDiagnosticSettings(): Promise<DiagnosticSettingsDto> {
+    try {
+      const result = await this.#client.GET('/diagnostics/settings');
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async setDiagnosticLogLevel(
+    request: SetDiagnosticLogLevelRequestDto,
+  ): Promise<SetDiagnosticLogLevelResultDto> {
+    try {
+      const result = await this.#client.PUT('/diagnostics/settings/log-level', {
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getDiagnosticReportManifest(): Promise<DiagnosticReportManifestDto> {
+    try {
+      const result = await this.#client.GET('/diagnostics/report-manifest');
+      return unwrap<DiagnosticReportManifestDto>(
+        result.data as unknown as DiagnosticReportManifestDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async createDiagnosticReport(
+    request: CreateDiagnosticReportRequestDto,
+  ): Promise<CreateDiagnosticReportResultDto> {
+    try {
+      const result = await this.#client.POST('/diagnostics/reports', {
         body: request,
       });
       return unwrap(result.data, result.error);

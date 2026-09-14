@@ -10,10 +10,14 @@ import {
   type CreateAnalysisRecordResultDto,
   type CreateAnalysisNoteRequestDto,
   type CreateAnalysisNoteResultDto,
+  type CreateDiagnosticReportRequestDto,
+  type CreateDiagnosticReportResultDto,
   type CreatePositionNoteRequestDto,
   type CreateWorkingContextRequestDto,
   type CreateWorkingContextResultDto,
   type GetAnalysisWorkspaceRequestDto,
+  type DiagnosticReportManifestDto,
+  type DiagnosticSettingsDto,
   type HostConnection,
   type HostEvent,
   type HostRequestDiagnostic,
@@ -22,6 +26,8 @@ import {
   type SearchInventoryRequestDto,
   type SearchInventoryResultDto,
   type SetUiLanguageResultDto,
+  type SetDiagnosticLogLevelRequestDto,
+  type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
   type SystemStatusDto,
@@ -44,6 +50,8 @@ export type InventoryItem = SearchInventoryResultDto['items'][number];
 export type WorkingContext = ListWorkingContextsResultDto['contexts'][number];
 export type ApplicationCommand =
   | 'set_language'
+  | 'set_diagnostic_log_level'
+  | 'create_diagnostic_report'
   | 'start_scratch'
   | 'update_scratch'
   | 'prepare_note'
@@ -67,6 +75,14 @@ export interface PlysmithApplicationClient {
     readonly uiLocale: UiLocale;
     readonly expectedRevision: number;
   }): Promise<SetUiLanguageResultDto>;
+  getDiagnosticSettings(): Promise<DiagnosticSettingsDto>;
+  setDiagnosticLogLevel(
+    request: SetDiagnosticLogLevelRequestDto,
+  ): Promise<SetDiagnosticLogLevelResultDto>;
+  getDiagnosticReportManifest(): Promise<DiagnosticReportManifestDto>;
+  createDiagnosticReport(
+    request: CreateDiagnosticReportRequestDto,
+  ): Promise<CreateDiagnosticReportResultDto>;
   getAnalysisWorkspace(
     request: GetAnalysisWorkspaceRequestDto,
   ): Promise<AnalysisWorkspaceDto>;
@@ -119,6 +135,9 @@ export interface HostEventSubscription {
 
 export interface PlysmithApplicationStoreOptions {
   readonly getBootstrap: () => Promise<DesktopBootstrap>;
+  readonly chooseDiagnosticReportDestination?: (
+    suggestedFileName: string,
+  ) => Promise<string | undefined>;
   readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
@@ -144,6 +163,8 @@ export type PlysmithApplicationState =
       readonly phase: 'ready';
       readonly status: SystemStatusDto;
       readonly preferences: UserPreferencesDto;
+      readonly diagnostics: DiagnosticSettingsDto;
+      readonly diagnosticReportManifest: DiagnosticReportManifestDto;
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
       readonly analysis: AnalysisWorkspaceDto;
@@ -285,6 +306,8 @@ export class PlysmithApplicationStore {
           const [
             status,
             preferences,
+            diagnostics,
+            diagnosticReportManifest,
             contexts,
             inventory,
             analysis,
@@ -292,6 +315,8 @@ export class PlysmithApplicationStore {
           ] = await Promise.all([
             client.getSystemStatus(),
             client.getUserPreferences(),
+            client.getDiagnosticSettings(),
+            client.getDiagnosticReportManifest(),
             client.listWorkingContexts({ pageSize: '100' }),
             client.searchInventory(this.#inventoryRequest()),
             client.getAnalysisWorkspace(this.#analysisRequest()),
@@ -348,6 +373,8 @@ export class PlysmithApplicationStore {
               phase: 'ready',
               status,
               preferences,
+              diagnostics,
+              diagnosticReportManifest,
               contexts,
               inventory,
               analysis,
@@ -1103,6 +1130,66 @@ export class PlysmithApplicationStore {
     );
   }
 
+  async setDiagnosticLogLevel(
+    level: DiagnosticSettingsDto['configuredLevel'],
+  ): Promise<boolean> {
+    const state = this.#readyState();
+    if (state === undefined) return false;
+    const result = await this.#runCommand(
+      'set_diagnostic_log_level',
+      (client) =>
+        client.setDiagnosticLogLevel({
+          level,
+          expectedConfigurationRevision:
+            state.diagnostics.configurationRevision,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#announcement = result.settings.restartRequired
+      ? 'diagnostics.levelSavedPendingRestart'
+      : 'diagnostics.levelActive';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  async createDiagnosticReport(): Promise<boolean> {
+    const state = this.#readyState();
+    const chooseDestination = this.#options.chooseDiagnosticReportDestination;
+    if (
+      state === undefined ||
+      this.#busyCommand !== undefined ||
+      chooseDestination === undefined
+    ) {
+      return false;
+    }
+    let destinationPath: string | undefined;
+    try {
+      destinationPath = await chooseDestination(
+        state.diagnosticReportManifest.suggestedFileName,
+      );
+    } catch {
+      this.#setReadyError('diagnostics.destination_unavailable');
+      return false;
+    }
+    if (destinationPath === undefined) return false;
+    const result = await this.#runCommand(
+      'create_diagnostic_report',
+      (client) =>
+        client.createDiagnosticReport({
+          acceptedManifestVersion:
+            state.diagnosticReportManifest.manifestVersion,
+          destinationPath,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#announcement = 'diagnostics.reportCreated';
+    this.#finishCommand();
+    return true;
+  }
+
   clearAnnouncement(): void {
     this.#announcement = undefined;
     this.#publishViewState();
@@ -1366,6 +1453,8 @@ export class PlysmithApplicationStore {
         phase: 'ready',
         status: state.status,
         preferences: state.preferences,
+        diagnostics: state.diagnostics,
+        diagnosticReportManifest: state.diagnosticReportManifest,
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,

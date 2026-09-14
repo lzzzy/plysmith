@@ -48,7 +48,7 @@ export function developmentHostArguments(
     'host',
     'main.ts',
   );
-  const watchRoots = ['app', 'configuration', 'contracts'].map((directory) =>
+  const watchRoots = ['app', 'contracts'].map((directory) =>
     path.join(applicationHome, directory),
   );
   return [
