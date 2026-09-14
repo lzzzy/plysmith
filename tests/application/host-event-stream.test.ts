@@ -5,6 +5,7 @@ import {
   HostEventStream,
   type HostEventSubscription,
 } from '../../app/application/events/index.ts';
+import { localId } from '../../app/domain/identity/index.ts';
 
 test('delivers live preference events with monotonic ids and revisions', async () => {
   const stream = makeStream();
@@ -92,6 +93,95 @@ test('abort closes a pending subscription read', async () => {
   controller.abort();
 
   assert.deepEqual(await pending, { done: true, value: undefined });
+});
+
+test('projects analysis, inventory and workspace changes as compact refresh hints', async () => {
+  const stream = makeStream();
+  const subscription = stream.subscribe({
+    lastEventId: undefined,
+    signal: new AbortController().signal,
+  });
+  const contextId = localId('working-context', 3);
+
+  stream.publish({
+    kind: 'analysis.scratch-changed',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 4,
+    scope: { kind: 'context', contextId },
+    scratchId: 'scratch-2',
+    scratchRevision: 2,
+  });
+  stream.publish({
+    kind: 'analysis.contribution-created',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 5,
+    itemId: localId('inventory-item', 7),
+    contributionId: localId('contribution', 9),
+  });
+  stream.publish({
+    kind: 'analysis.contribution-changed',
+    changeKind: 'updated',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 6,
+    itemId: localId('inventory-item', 7),
+    contributionId: localId('contribution', 9),
+  });
+  stream.publish({
+    kind: 'inventory.item-created',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 6,
+    itemId: localId('inventory-item', 7),
+    revisionId: localId('item-revision', 8),
+  });
+  stream.publish({
+    kind: 'workspace.context-created',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 7,
+    contextId,
+    contextVersion: 1,
+  });
+
+  const scratch = await next(subscription);
+  const contribution = await next(subscription);
+  const changedContribution = await next(subscription);
+  const inventory = await next(subscription);
+  const workspace = await next(subscription);
+  assert.deepEqual(scratch.payload, {
+    scope: { kind: 'context', contextId },
+    scratchId: 'scratch-2',
+    scratchRevision: 2,
+  });
+  assert.deepEqual(inventory.payload, {
+    itemId: localId('inventory-item', 7),
+    revisionId: localId('item-revision', 8),
+  });
+  assert.deepEqual(contribution.payload, {
+    itemId: localId('inventory-item', 7),
+    contributionId: localId('contribution', 9),
+  });
+  assert.deepEqual(changedContribution.payload, {
+    itemId: localId('inventory-item', 7),
+    contributionId: localId('contribution', 9),
+    changeKind: 'updated',
+  });
+  assert.deepEqual(workspace.payload, { contextId, contextVersion: 1 });
+  assert.deepEqual(
+    [
+      scratch.kind,
+      contribution.kind,
+      changedContribution.kind,
+      inventory.kind,
+      workspace.kind,
+    ],
+    [
+      'analysis.scratch-changed',
+      'analysis.contribution-created',
+      'analysis.contribution-changed',
+      'inventory.item-created',
+      'workspace.context-created',
+    ],
+  );
+  subscription.close();
 });
 
 function makeStream(

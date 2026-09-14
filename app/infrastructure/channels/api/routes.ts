@@ -11,6 +11,9 @@ import {
   SystemStatusSchema,
   UserPreferencesSchema,
 } from './schemas.ts';
+import { registerAnalysisRoutes } from './analysis-routes.ts';
+import { registerInventoryRoutes } from './inventory-routes.ts';
+import { registerWorkspaceRoutes } from './workspace-routes.ts';
 
 function preferencesDto(model: UserPreferences) {
   return {
@@ -85,4 +88,8 @@ export function registerUseCaseRoutes(
       };
     },
   );
+
+  registerAnalysisRoutes(api, dependencies);
+  registerInventoryRoutes(api, dependencies);
+  registerWorkspaceRoutes(api, dependencies);
 }

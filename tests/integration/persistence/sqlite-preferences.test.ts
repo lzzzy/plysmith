@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -52,8 +53,11 @@ function command(
   });
 }
 
-preferencesStoreContract('SQLite preferences port contract', async (t) =>
-  storeFixture(t).open(),
+preferencesStoreContract(
+  'SQLite preferences port contract',
+  async (t) => storeFixture(t).open(),
+  false,
+  4,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -76,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 1,
+    schemaVersion: 4,
     dataRevision: 1,
   });
 });
@@ -172,7 +176,7 @@ test('close drains accepted commands and rejects new work', async (t) => {
   assert.equal((await fixture.open().readUserPreferences()).uiLocale, 'en-GB');
 });
 
-test('migration 1 contains only strict metadata and the constrained preference singleton', async (t) => {
+test('the current schema contains the strict iteration 2 tables and a healthy FTS projection', async (t) => {
   const fixture = storeFixture(t);
   const store = fixture.open();
   await store.close();
@@ -184,22 +188,54 @@ test('migration 1 contains only strict metadata and the constrained preference s
       )
       .all();
     assert.deepEqual(tables, [
+      { name: 'analysis_scratch_draft', strict: 1 },
+      { name: 'analysis_scratch_step', strict: 1 },
+      { name: 'chess_anchor', strict: 1 },
+      { name: 'chess_move_node_identity', strict: 1 },
+      { name: 'chess_move_node_snapshot', strict: 1 },
+      { name: 'chess_occurrence_identity', strict: 1 },
+      { name: 'chess_occurrence_snapshot', strict: 1 },
+      { name: 'chess_play_state_snapshot', strict: 1 },
+      { name: 'chess_position', strict: 1 },
+      { name: 'inventory_analysis_origin', strict: 1 },
+      { name: 'inventory_analysis_revision', strict: 1 },
+      { name: 'inventory_item', strict: 1 },
+      { name: 'item_revision', strict: 1 },
       { name: 'preference_state', strict: 1 },
       { name: 'runtime_schema_migration', strict: 1 },
       { name: 'runtime_store_state', strict: 1 },
+      { name: 'search_document', strict: 1 },
+      { name: 'search_document_fts', strict: 0 },
+      { name: 'search_document_fts_config', strict: 0 },
+      { name: 'search_document_fts_data', strict: 0 },
+      { name: 'search_document_fts_docsize', strict: 0 },
+      { name: 'search_document_fts_idx', strict: 0 },
+      { name: 'workspace_analysis_note_path_step', strict: 1 },
+      { name: 'workspace_analysis_resume', strict: 1 },
+      { name: 'workspace_context_item', strict: 1 },
+      { name: 'workspace_context_reference', strict: 1 },
+      { name: 'workspace_contribution', strict: 1 },
+      { name: 'workspace_management_resume', strict: 1 },
+      { name: 'workspace_working_context', strict: 1 },
     ]);
     assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
     assert.equal(database.pragma('integrity_check', { simple: true }), 'ok');
     assert.deepEqual(database.pragma('foreign_key_check'), []);
-    assert.equal(
-      (
-        database
-          .prepare(
-            'SELECT length(checksum_sha256) AS size FROM runtime_schema_migration',
-          )
-          .get() as { size: number }
-      ).size,
-      32,
+    assert.deepEqual(
+      database
+        .prepare(
+          `SELECT migration_id AS migrationId,
+                  length(checksum_sha256) AS size
+             FROM runtime_schema_migration
+            ORDER BY migration_id`,
+        )
+        .all(),
+      [
+        { migrationId: 1, size: 32 },
+        { migrationId: 2, size: 32 },
+        { migrationId: 3, size: 32 },
+        { migrationId: 4, size: 32 },
+      ],
     );
     assert.throws(() =>
       database
@@ -248,6 +284,88 @@ test('migration 1 contains only strict metadata and the constrained preference s
   }
 });
 
+test('upgrades a valid schema 1 store once without changing its committed data', async (t) => {
+  const fixture = storeFixture(t);
+  const migrationPath = join(
+    process.cwd(),
+    'app',
+    'infrastructure',
+    'adapters',
+    'persistence',
+    'sqlite',
+    'migrations',
+    '001-user-preferences.sql',
+  );
+  const sql = readFileSync(migrationPath, 'utf8');
+  const checksum = createHash('sha256')
+    .update(sql.replaceAll('\r\n', '\n'))
+    .digest();
+  const database = new Database(fixture.databasePath);
+  try {
+    database.exec(sql);
+    database
+      .prepare(
+        `INSERT INTO runtime_store_state VALUES
+           (1, 1, 7, 0, 'ready', ?)`,
+      )
+      .run(timestamp);
+    database
+      .prepare(
+        `INSERT INTO preference_state VALUES
+           (1, 'en-GB', 3, ?)`,
+      )
+      .run(timestamp);
+    database
+      .prepare(
+        `INSERT INTO runtime_schema_migration VALUES
+           (1, ?, ?)`,
+      )
+      .run(checksum, timestamp);
+  } finally {
+    database.close();
+  }
+
+  const upgraded = fixture.open();
+  assert.deepEqual(await upgraded.readStoreStatus(), {
+    schemaVersion: 4,
+    dataRevision: 7,
+  });
+  assert.deepEqual(await upgraded.readUserPreferences(), {
+    uiLocale: 'en-GB',
+    preferenceRevision: 3,
+    dataRevision: 7,
+    updatedAt: timestamp,
+  });
+  await upgraded.close();
+
+  const reopened = fixture.open();
+  assert.deepEqual(await reopened.readStoreStatus(), {
+    schemaVersion: 4,
+    dataRevision: 7,
+  });
+  const inspection = new Database(fixture.databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    assert.deepEqual(
+      inspection
+        .prepare(
+          'SELECT migration_id AS migrationId FROM runtime_schema_migration ORDER BY migration_id',
+        )
+        .all(),
+      [
+        { migrationId: 1 },
+        { migrationId: 2 },
+        { migrationId: 3 },
+        { migrationId: 4 },
+      ],
+    );
+  } finally {
+    inspection.close();
+  }
+});
+
 test('does not replace or seed an existing corrupt or empty database', async (t) => {
   for (const bytes of [Buffer.from('not a SQLite database'), Buffer.alloc(0)]) {
     const fixture = storeFixture(t);
@@ -277,7 +395,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 2',
+    'UPDATE runtime_store_state SET schema_version = 5',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

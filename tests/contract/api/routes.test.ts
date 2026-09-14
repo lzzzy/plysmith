@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ApplicationProblem } from '../../../app/application/problems/application-problem.ts';
+import { localId } from '../../../app/domain/identity/index.ts';
 import { problemUriBase } from '../../../app/infrastructure/channels/api/problems.ts';
 import {
   buildFixture,
@@ -225,6 +226,213 @@ test('unexpected exceptions receive one injected correlation and no internal det
   assert.equal(response.json().code, 'host.failure');
   assert.equal(response.json().correlationId, 'correlation-1');
   assert.equal(correlations, 1);
+  assert.ok(!response.body.includes('CANARY'));
+});
+
+test('analysis query rejects inconsistent scopes and incomplete previews before application', async (t) => {
+  let calls = 0;
+  const { host } = await buildFixture(t, {
+    getAnalysisWorkspace: {
+      execute: async () => {
+        calls += 1;
+        throw new Error('must not be called');
+      },
+    },
+  });
+  for (const url of [
+    '/analysis/workspace?scopeKind=context',
+    '/analysis/workspace?scopeKind=free&contextId=1',
+    '/analysis/workspace?scopeKind=free&itemId=1',
+    '/analysis/workspace?scopeKind=free&itemId=1&revisionId=1',
+    '/analysis/workspace?scopeKind=context&contextId=9999999999999999',
+  ]) {
+    const response = await host.inject({ url, headers });
+    assert.equal(response.statusCode, 400, url);
+    assert.equal(response.json().code, 'request.invalid');
+  }
+  assert.equal(calls, 0);
+});
+
+test('analysis note route maps explicit source and visibility ids without transport leakage', async (t) => {
+  let received: unknown;
+  const { host } = await buildFixture(t, {
+    createAnalysisNote: {
+      execute: async (request) => {
+        received = request;
+        return {
+          contributionId: localId('contribution', 4),
+          itemId: localId('inventory-item', 2),
+          revisionId: localId('item-revision', 3),
+          anchorId: localId('anchor', 5),
+          scopeKind: 'context',
+          contextId: localId('working-context', 1),
+          resumeUpdate: {
+            contextId: localId('working-context', 1),
+            resumeVersion: 7,
+          },
+          dataRevision: 9,
+        };
+      },
+    },
+  });
+  const response = await host.inject({
+    method: 'POST',
+    url: '/analysis/notes',
+    headers,
+    payload: {
+      scope: { kind: 'context', contextId: '1' },
+      expectedScratchId: 'scratch-6',
+      expectedScratchRevision: 6,
+      languageTag: 'de-DE',
+      noteScope: { kind: 'context', contextId: '1' },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(received, {
+    scope: { kind: 'context', contextId: localId('working-context', 1) },
+    expectedScratchId: 'scratch-6',
+    expectedScratchRevision: 6,
+    languageTag: 'de-DE',
+    noteScope: {
+      kind: 'context',
+      contextId: localId('working-context', 1),
+    },
+  });
+  assert.deepEqual(response.json(), {
+    contributionId: '4',
+    itemId: '2',
+    revisionId: '3',
+    anchorId: '5',
+    scopeKind: 'context',
+    contextId: '1',
+    resumeUpdate: { contextId: '1', resumeVersion: 7 },
+    dataRevision: 9,
+  });
+});
+
+test('position note routes map exact anchors and optimistic note revisions', async (t) => {
+  const received: unknown[] = [];
+  const result = {
+    contributionId: localId('contribution', 4),
+    itemId: localId('inventory-item', 2),
+    anchorId: localId('anchor', 5),
+    contributionVersion: 2,
+    dataRevision: 9,
+  };
+  const { host } = await buildFixture(t, {
+    createPositionNote: {
+      execute: async (request) => {
+        received.push(request);
+        return { ...result, contributionVersion: 1 };
+      },
+    },
+    updateAnalysisNote: {
+      execute: async (request) => {
+        received.push(request);
+        return result;
+      },
+    },
+    deleteAnalysisNote: {
+      execute: async (request) => {
+        received.push(request);
+        return { ...result, contributionVersion: 3 };
+      },
+    },
+  });
+  const scope = { kind: 'context', contextId: '1' } as const;
+  const created = await host.inject({
+    method: 'POST',
+    url: '/analysis/position-notes',
+    headers,
+    payload: {
+      scope,
+      itemId: '2',
+      revisionId: '3',
+      anchorId: '5',
+      body: 'Nach e4',
+      languageTag: 'de-DE',
+      noteScope: { kind: 'context', contextId: '1' },
+    },
+  });
+  const updated = await host.inject({
+    method: 'PATCH',
+    url: '/analysis/notes/4',
+    headers,
+    payload: { scope, expectedContributionVersion: 1, body: 'Nach e4!' },
+  });
+  const deleted = await host.inject({
+    method: 'DELETE',
+    url: '/analysis/notes/4',
+    headers,
+    payload: { scope, expectedContributionVersion: 2 },
+  });
+
+  assert.deepEqual(received, [
+    {
+      scope: { kind: 'context', contextId: localId('working-context', 1) },
+      itemId: localId('inventory-item', 2),
+      revisionId: localId('item-revision', 3),
+      anchorId: localId('anchor', 5),
+      body: 'Nach e4',
+      languageTag: 'de-DE',
+      noteScope: {
+        kind: 'context',
+        contextId: localId('working-context', 1),
+      },
+    },
+    {
+      scope: { kind: 'context', contextId: localId('working-context', 1) },
+      contributionId: localId('contribution', 4),
+      expectedContributionVersion: 1,
+      body: 'Nach e4!',
+    },
+    {
+      scope: { kind: 'context', contextId: localId('working-context', 1) },
+      contributionId: localId('contribution', 4),
+      expectedContributionVersion: 2,
+    },
+  ]);
+  assert.deepEqual(created.json(), {
+    contributionId: '4',
+    itemId: '2',
+    anchorId: '5',
+    contributionVersion: 1,
+    dataRevision: 9,
+  });
+  assert.equal(updated.json().contributionVersion, 2);
+  assert.equal(deleted.json().contributionVersion, 3);
+});
+
+test('iteration-two application problems keep stable status and zero revision sentinels', async (t) => {
+  const { host } = await buildFixture(t, {
+    updateAnalysisScratch: {
+      execute: async () => {
+        throw new ApplicationProblem(
+          'analysis.scratch_revision_conflict',
+          'CANARY private detail',
+          { expectedRevision: 0, currentRevision: 3, secret: 'CANARY' },
+        );
+      },
+    },
+  });
+  const response = await host.inject({
+    method: 'PUT',
+    url: '/analysis/scratch',
+    headers,
+    payload: {
+      scope: { kind: 'free' },
+      expectedScratchId: 'scratch-1',
+      expectedScratchRevision: 1,
+      action: { kind: 'discard' },
+    },
+  });
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.json().code, 'analysis.scratch_revision_conflict');
+  assert.deepEqual(response.json().parameters, {
+    expectedRevision: 0,
+    currentRevision: 3,
+  });
   assert.ok(!response.body.includes('CANARY'));
 });
 

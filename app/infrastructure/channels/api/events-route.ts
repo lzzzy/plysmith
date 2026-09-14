@@ -45,8 +45,87 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
         kind: event.kind,
         payload: { reason: event.payload.reason },
       };
-    default:
+    case 'analysis.scratch-changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          scope:
+            event.payload.scope.kind === 'free'
+              ? { kind: 'free' }
+              : {
+                  kind: 'context',
+                  contextId: String(event.payload.scope.contextId.value),
+                },
+          ...(event.payload.scratchId === undefined
+            ? {}
+            : { scratchId: event.payload.scratchId }),
+          ...(event.payload.scratchRevision === undefined
+            ? {}
+            : { scratchRevision: event.payload.scratchRevision }),
+        },
+      };
+    case 'analysis.contribution-created':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          itemId: String(event.payload.itemId.value),
+          contributionId: String(event.payload.contributionId.value),
+        },
+      };
+    case 'inventory.item-created':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          itemId: String(event.payload.itemId.value),
+          revisionId: String(event.payload.revisionId.value),
+        },
+      };
+    case 'analysis.contribution-changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          itemId: String(event.payload.itemId.value),
+          contributionId: String(event.payload.contributionId.value),
+          changeKind: event.payload.changeKind,
+        },
+      };
+    case 'workspace.context-created':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          contextId: String(event.payload.contextId.value),
+          contextVersion: event.payload.contextVersion,
+        },
+      };
+    case 'workspace.reference-added':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          contextId: String(event.payload.contextId.value),
+          referenceId: String(event.payload.referenceId.value),
+        },
+      };
+    case 'workspace.resume-updated':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          contextId: String(event.payload.contextId.value),
+          area: event.payload.area,
+          resumeVersion: event.payload.resumeVersion,
+        },
+      };
+    default: {
+      const unsupported: never = event;
+      void unsupported;
       throw new Error('Unsupported host event.');
+    }
   }
 }
 

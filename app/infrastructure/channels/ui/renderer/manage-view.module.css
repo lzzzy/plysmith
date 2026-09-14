@@ -1,0 +1,613 @@
+.manageView {
+  min-width: 0;
+  padding: 26px 28px 36px;
+}
+
+.viewHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #d8dde4;
+}
+
+.viewHeader h1 {
+  margin: 3px 0 0;
+  color: #20262e;
+  font-size: 23px;
+  font-weight: 700;
+}
+
+.eyebrow,
+.panelLabel {
+  color: #5f6873;
+  font-size: 10px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.inventoryCount {
+  color: #5e6772;
+  font-size: 12px;
+}
+
+.manageGrid {
+  display: grid;
+  min-height: calc(100vh - 152px);
+  grid-template-columns: 246px minmax(390px, 1fr) 292px;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #d6dbe2;
+  border-radius: 7px;
+}
+
+.contextPanel,
+.inventoryPanel,
+.inspector {
+  min-width: 0;
+}
+
+.contextPanel {
+  background: #f5f6f8;
+  border-right: 1px solid #dfe3e8;
+}
+
+.inspector {
+  background: #fafafa;
+  border-left: 1px solid #dfe3e8;
+}
+
+.panelHeading,
+.inventoryToolbar {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #dfe3e8;
+}
+
+.panelHeading h2,
+.inventoryToolbar h2 {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: #2b323b;
+  font-size: 14px;
+  font-weight: 690;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iconButton {
+  display: grid;
+  flex: 0 0 auto;
+  width: 33px;
+  height: 33px;
+  padding: 0;
+  place-items: center;
+  color: #46515d;
+  background: #ffffff;
+  border: 1px solid #c8ced6;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.iconButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.contextList {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+}
+
+.contextButton {
+  display: grid;
+  width: 100%;
+  min-height: 48px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  color: #505a66;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.contextButton > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.contextButton strong,
+.contextButton small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contextButton strong {
+  color: #343c46;
+  font-size: 12px;
+}
+
+.contextButton small {
+  color: #626b75;
+  font-size: 10px;
+}
+
+.contextButton[data-hovered] {
+  background: #e9edf1;
+}
+
+.contextButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: -2px;
+}
+
+.contextButton.activeContext {
+  color: #1d548d;
+  background: #e8f1fb;
+  border-color: #c7daee;
+}
+
+.searchForm {
+  display: grid;
+  width: min(360px, 52%);
+  height: 36px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+  color: #737c87;
+  background: #f6f7f9;
+  border: 1px solid #cfd4db;
+  border-radius: 5px;
+}
+
+.searchForm svg {
+  margin-left: 9px;
+}
+
+.searchForm input {
+  min-width: 0;
+  padding: 0 8px;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 12px;
+}
+
+.searchForm button {
+  align-self: stretch;
+  padding: 0 10px;
+  color: #33404c;
+  background: #ffffff;
+  border: 0;
+  border-left: 1px solid #cfd4db;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.searchForm:focus-within {
+  border-color: #4d78bd;
+  box-shadow: 0 0 0 2px rgb(47 102 189 / 14%);
+}
+
+.inventoryScope {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(105px, 1fr));
+  margin: 10px 14px 4px;
+  padding: 3px;
+  background: #e8ebef;
+  border: 1px solid #d4d8de;
+  border-radius: 6px;
+}
+
+.scopeOption {
+  display: grid;
+  min-height: 30px;
+  padding: 0 10px;
+  place-items: center;
+  color: #626b76;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.scopeOption[data-selected] {
+  color: #2d3741;
+  background: #ffffff;
+  border-color: #cbd0d7;
+}
+
+.scopeOption[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.inventoryList {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+}
+
+.loadMoreButton {
+  width: 100%;
+  min-height: 36px;
+  color: #2f5f9d;
+  background: #ffffff;
+  border: 1px solid #bcc8d6;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.loadMoreButton[data-disabled] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.loadMoreButton[data-focus-visible] {
+  outline: 2px solid #225faa;
+  outline-offset: 2px;
+}
+
+.inventoryRow {
+  display: grid;
+  width: 100%;
+  min-height: 58px;
+  grid-template-columns: 35px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  color: #3e4853;
+  background: #ffffff;
+  border: 1px solid #e0e3e8;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.inventoryRow[data-hovered] {
+  border-color: #bbc8d7;
+  background: #f8fafc;
+}
+
+.inventoryRow[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 1px;
+}
+
+.inventoryRow.selectedItem {
+  background: #edf4fc;
+  border-color: #aac5e1;
+}
+
+.itemIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #825d16;
+  background: #fff4d8;
+  border: 1px solid #e4c77f;
+  border-radius: 5px;
+}
+
+.itemMain {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.itemMain strong {
+  overflow: hidden;
+  color: #2f3741;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemMain small {
+  color: #626b75;
+  font-size: 10px;
+}
+
+.contextMember,
+.inventoryOnly {
+  padding: 4px 6px;
+  color: #346047;
+  background: #edf7f0;
+  border: 1px solid #c5ddcc;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.inventoryOnly {
+  color: #536171;
+  background: #eef1f4;
+  border-color: #d3d8de;
+}
+
+.emptyInventory,
+.contextSummary {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  color: #616a75;
+  text-align: center;
+}
+
+.emptyInventory strong,
+.contextSummary strong {
+  margin-top: 10px;
+  color: #3c4651;
+  font-size: 13px;
+}
+
+.emptyInventory p,
+.contextSummary p {
+  max-width: 310px;
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.inspectorBody {
+  padding: 15px;
+}
+
+.inspectorTitle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.inspectorTitle > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.inspectorTitle strong {
+  overflow-wrap: anywhere;
+  color: #303943;
+  font-size: 13px;
+}
+
+.inspectorTitle span:last-child {
+  color: #7b8490;
+  font-size: 10px;
+}
+
+.inspectorBody dl {
+  display: grid;
+  gap: 8px;
+  margin: 17px 0;
+}
+
+.inspectorBody dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid #e2e5e9;
+  font-size: 11px;
+}
+
+.inspectorBody dt {
+  color: #7a838e;
+}
+
+.inspectorBody dd {
+  margin: 0;
+  color: #414b56;
+  text-align: right;
+}
+
+.inspectorActions {
+  display: grid;
+  gap: 7px;
+}
+
+.primaryButton,
+.secondaryButton,
+.tertiaryButton {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.primaryButton {
+  color: #ffffff;
+  background: #2e61ad;
+  border: 1px solid #244f90;
+}
+
+.secondaryButton {
+  color: #333d47;
+  background: #ffffff;
+  border: 1px solid #c5cbd3;
+}
+
+.tertiaryButton {
+  color: #5c6672;
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.primaryButton[data-disabled],
+.primaryButton:disabled,
+.secondaryButton[data-disabled] {
+  color: #969da6;
+  background: #e5e8eb;
+  border-color: #d5d9de;
+  cursor: default;
+}
+
+.primaryButton[data-focus-visible],
+.secondaryButton[data-focus-visible],
+.tertiaryButton[data-focus-visible],
+.primaryButton:focus-visible {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.createContextForm {
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  background: #fffaf0;
+  border-bottom: 1px solid #dfc98f;
+}
+
+.formTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 2px;
+  color: #654b17;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.createContextForm label {
+  color: #6d634c;
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.createContextForm input,
+.createContextForm textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  color: #333b44;
+  background: #ffffff;
+  border: 1px solid #cfc5ad;
+  border-radius: 4px;
+  outline: none;
+  font-size: 11px;
+  resize: vertical;
+}
+
+.createContextForm input:focus,
+.createContextForm textarea:focus {
+  border-color: #8f743d;
+  box-shadow: 0 0 0 2px rgb(143 116 61 / 14%);
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.nextStep {
+  margin-top: 14px;
+  padding: 9px;
+  color: #4d5661;
+  background: #ffffff;
+  border: 1px solid #dde1e6;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.nextStep span {
+  display: block;
+  margin-bottom: 3px;
+  color: #858d96;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.referenceSummary {
+  margin-top: 12px;
+  font-size: 10px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 1180px) {
+  .manageGrid {
+    grid-template-columns: 220px minmax(360px, 1fr);
+  }
+
+  .inspector {
+    grid-column: 1 / -1;
+    border-top: 1px solid #dfe3e8;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 780px) {
+  .manageView {
+    padding: 20px 18px 30px;
+  }
+
+  .manageGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .contextPanel {
+    border-right: 0;
+    border-bottom: 1px solid #dfe3e8;
+  }
+
+  .contextList {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .inventoryToolbar,
+  .viewHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .searchForm {
+    width: 100%;
+  }
+}

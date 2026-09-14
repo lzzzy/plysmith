@@ -8,8 +8,9 @@
     "node": ">=24.0.0 <25.0.0"
   },
   "scripts": {
-    "dev:host": "node --watch --enable-source-maps app/bootstrap/host/main.ts",
+    "dev:host": "node tools/run-development-host.ts",
     "dev:mcp": "node --enable-source-maps app/bootstrap/mcp/main.ts",
+    "dev:reset": "node tools/reset-development-data.ts",
     "build:desktop": "node tools/build-desktop.ts",
     "dev:desktop": "pnpm run build:desktop && electron build/desktop/main.mjs --application-home . --install-root .",
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.renderer.json && tsc --noEmit --pretty false -p tsconfig.tests.json && tsc --noEmit --pretty false -p tsconfig.tools.json",
@@ -33,6 +34,7 @@
     "@modelcontextprotocol/sdk": "1.30.0",
     "@sinclair/typebox": "0.34.52",
     "better-sqlite3": "13.0.3",
+    "chess.js": "1.4.0",
     "eventsource": "5.1.1",
     "fastify": "5.12.3",
     "lucide-react": "1.41.0",

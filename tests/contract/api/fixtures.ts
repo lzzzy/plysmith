@@ -25,6 +25,11 @@ export const occurredAt = '2026-09-08T12:00:00.000Z';
 export function createFixture() {
   const store = new FakePreferencesStore();
   const published: UiLanguageChanged[] = [];
+  const unavailableUseCase = {
+    execute: async (): Promise<never> => {
+      throw new Error('Use case not configured for this fixture.');
+    },
+  };
   const dependencies: HostDependencies = {
     getSystemStatus: new GetSystemStatus({
       runtime: { getState: () => 'ready' },
@@ -40,6 +45,19 @@ export function createFixture() {
         },
       },
     }),
+    getAnalysisWorkspace: unavailableUseCase,
+    updateAnalysisScratch: unavailableUseCase,
+    createAnalysisRecord: unavailableUseCase,
+    createAnalysisNote: unavailableUseCase,
+    createPositionNote: unavailableUseCase,
+    updateAnalysisNote: unavailableUseCase,
+    deleteAnalysisNote: unavailableUseCase,
+    searchInventory: unavailableUseCase,
+    listWorkingContexts: unavailableUseCase,
+    getWorkingContextWorkspace: unavailableUseCase,
+    createWorkingContext: unavailableUseCase,
+    addContextReference: unavailableUseCase,
+    setWorkScopeResume: unavailableUseCase,
     events: finiteSource([]),
     security: { hostToken: token },
     productRelease: '0.0.0-test',

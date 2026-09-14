@@ -8,11 +8,13 @@ export interface HostOwnerLease {
   release(): Promise<void>;
 }
 
+export type DevelopmentWatchLease = HostOwnerLease;
+
 // The persistent guard is never unlinked. FileShare.None serializes the complete
 // read/recover/write transition; Windows releases the handle on helper crashes.
 const ownerLockScript = `
-$leasePath = [IO.Path]::Combine($runtimePath, 'host-owner.json')
-$guardPath = [IO.Path]::Combine($runtimePath, 'host-owner.lock')
+$leasePath = [IO.Path]::Combine($runtimePath, $inputData.leaseStem + '.json')
+$guardPath = [IO.Path]::Combine($runtimePath, $inputData.leaseStem + '.lock')
 $guard = $null
 for ($attempt = 0; $null -eq $guard; $attempt++) {
   try {
@@ -102,11 +104,25 @@ try {
 export async function acquireHostOwnerLease(
   applicationHome: string,
 ): Promise<HostOwnerLease> {
+  return acquireRuntimeOwnerLease(applicationHome, 'host-owner');
+}
+
+export async function acquireDevelopmentWatchLease(
+  applicationHome: string,
+): Promise<DevelopmentWatchLease> {
+  return acquireRuntimeOwnerLease(applicationHome, 'development-watch');
+}
+
+async function acquireRuntimeOwnerLease(
+  applicationHome: string,
+  leaseStem: 'host-owner' | 'development-watch',
+): Promise<HostOwnerLease> {
   const ownerId = randomUUID();
   await withPrivateWindowsRuntime(applicationHome, ownerLockScript, {
     ownerId,
     pid: process.pid,
     release: false,
+    leaseStem,
   });
 
   let releasePromise: Promise<void> | undefined;
@@ -117,7 +133,7 @@ export async function acquireHostOwnerLease(
       releasePromise ??= withPrivateWindowsRuntime(
         applicationHome,
         ownerLockScript,
-        { ownerId, release: true },
+        { ownerId, release: true, leaseStem },
       );
       return releasePromise;
     },

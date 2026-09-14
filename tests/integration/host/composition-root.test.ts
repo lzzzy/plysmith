@@ -53,7 +53,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 1,
+      schemaVersion: 4,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');
@@ -61,6 +61,141 @@ test('composition root wires the real store and use cases without listening', as
       status.json().contractFingerprint,
       runtime.contractFingerprint,
     );
+
+    const initialWorkspace = await runtime.host.inject({
+      url: '/analysis/workspace?scopeKind=free',
+      headers,
+    });
+    assert.equal(initialWorkspace.statusCode, 200);
+    assert.equal(
+      initialWorkspace.json().currentState.fen.split(' ')[0],
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+    );
+
+    const start = await runtime.host.inject({
+      method: 'PUT',
+      url: '/analysis/scratch',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        action: { kind: 'start', origin: { kind: 'initial_position' } },
+      },
+    });
+    assert.equal(start.statusCode, 200);
+    assert.equal(start.json().scratch.scratchRevision, 1);
+
+    const moved = await runtime.host.inject({
+      method: 'PUT',
+      url: '/analysis/scratch',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        expectedScratchId: start.json().scratch.scratchId,
+        expectedScratchRevision: 1,
+        action: {
+          kind: 'apply_move',
+          move: { kind: 'notation', value: 'e4', locale: 'de-DE' },
+        },
+      },
+    });
+    assert.equal(moved.statusCode, 200);
+    assert.equal(moved.json().scratch.steps[0].move.san, 'e4');
+
+    const noted = await runtime.host.inject({
+      method: 'PUT',
+      url: '/analysis/scratch',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        expectedScratchId: moved.json().scratch.scratchId,
+        expectedScratchRevision: 2,
+        action: { kind: 'prepare_note', body: 'Mein erster Analysepfad.' },
+      },
+    });
+    assert.equal(noted.statusCode, 200);
+    assert.equal(noted.json().scratch.scratchRevision, 3);
+
+    const record = await runtime.host.inject({
+      method: 'POST',
+      url: '/inventory/analysis-records',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        expectedScratchId: noted.json().scratch.scratchId,
+        expectedScratchRevision: 3,
+        displayName: 'Erste eigene Analyse',
+        languageTag: 'de-DE',
+      },
+    });
+    assert.equal(record.statusCode, 200);
+    const recordDto = record.json();
+
+    const inventory = await runtime.host.inject({
+      url: '/inventory?query=Erste&pageSize=10',
+      headers,
+    });
+    assert.equal(inventory.statusCode, 200);
+    assert.equal(inventory.json().items[0].itemId, recordDto.itemId);
+
+    const createdContext = await runtime.host.inject({
+      method: 'POST',
+      url: '/working-contexts',
+      headers,
+      payload: {
+        displayName: 'Mein Repertoire',
+        purpose: 'Eigene Eröffnungen ausbauen',
+      },
+    });
+    assert.equal(createdContext.statusCode, 200);
+    const contextId = createdContext.json().context.contextId;
+
+    const referenced = await runtime.host.inject({
+      method: 'POST',
+      url: `/working-contexts/${contextId}/references`,
+      headers,
+      payload: {
+        itemId: recordDto.itemId,
+        anchorId: recordDto.rootAnchorId,
+      },
+    });
+    assert.equal(referenced.statusCode, 200);
+
+    const resumed = await runtime.host.inject({
+      method: 'PUT',
+      url: `/working-contexts/${contextId}/resume`,
+      headers,
+      payload: {
+        area: 'analyze',
+        expectedResumeVersion: null,
+        mode: 'analyze',
+        itemId: recordDto.itemId,
+        revisionId: recordDto.revisionId,
+        anchorId: recordDto.rootAnchorId,
+      },
+    });
+    assert.equal(resumed.statusCode, 200);
+    assert.equal(resumed.json().resume.resumeVersion, 1);
+
+    const contextWorkspace = await runtime.host.inject({
+      url: `/working-contexts/${contextId}`,
+      headers,
+    });
+    assert.equal(contextWorkspace.statusCode, 200);
+    assert.equal(contextWorkspace.json().references.length, 1);
+    assert.equal(
+      contextWorkspace.json().analysisResume.itemId,
+      recordDto.itemId,
+    );
+
+    const contextAnalysis = await runtime.host.inject({
+      url: `/analysis/workspace?scopeKind=context&contextId=${contextId}`,
+      headers,
+    });
+    assert.equal(contextAnalysis.statusCode, 200);
+    assert.equal(contextAnalysis.json().record.contextMember, true);
+    assert.equal(contextAnalysis.json().record.readOnlyPreview, false);
   } finally {
     await runtime.close();
   }

@@ -138,6 +138,49 @@ test('valid browser preflight needs no token and grants only the route method an
   assert.equal(response.headers['access-control-allow-credentials'], undefined);
 });
 
+test('browser preflight covers every public use-case route including queries and context paths', async (t) => {
+  const { host } = await buildFixture(t);
+  const cases = [
+    ['/status', 'GET', 'GET'],
+    ['/preferences', 'GET', 'GET'],
+    ['/preferences/ui-language', 'PUT', 'PUT'],
+    ['/events', 'GET', 'GET'],
+    ['/analysis/workspace?scopeKind=free', 'GET', 'GET'],
+    ['/analysis/scratch', 'PUT', 'PUT'],
+    ['/analysis/notes', 'POST', 'POST'],
+    ['/analysis/position-notes', 'POST', 'POST'],
+    ['/analysis/notes/1', 'PATCH', 'PATCH, DELETE'],
+    ['/analysis/notes/1', 'DELETE', 'PATCH, DELETE'],
+    ['/inventory?pageSize=50', 'GET', 'GET'],
+    ['/inventory/analysis-records', 'POST', 'POST'],
+    ['/working-contexts?pageSize=100', 'GET', 'GET, POST'],
+    ['/working-contexts', 'POST', 'GET, POST'],
+    ['/working-contexts/1', 'GET', 'GET'],
+    ['/working-contexts/1/references', 'POST', 'POST'],
+    ['/working-contexts/1/resume', 'PUT', 'PUT'],
+  ] as const;
+
+  for (const [url, method, allowedMethods] of cases) {
+    const response = await host.inject({
+      method: 'OPTIONS',
+      url,
+      headers: {
+        host: headers.host,
+        origin: 'app://plysmith',
+        'access-control-request-method': method,
+        'access-control-request-headers':
+          method === 'GET' ? 'Authorization' : 'Authorization, Content-Type',
+      },
+    });
+    assert.equal(response.statusCode, 204, `${method} ${url}`);
+    assert.equal(
+      response.headers['access-control-allow-methods'],
+      allowedMethods,
+      `${method} ${url}`,
+    );
+  }
+});
+
 test('preflight rejects invalid host, origin, method, header and unknown routes', async (t) => {
   const { host } = await buildFixture(t);
   const base = {
@@ -170,4 +213,18 @@ test('preflight rejects invalid host, origin, method, header and unknown routes'
     headers: base,
   });
   assert.equal(unknown.statusCode, 403);
+
+  for (const url of [
+    '/working-contexts/1/unknown',
+    '/working-contexts/1/references/extra',
+    '/analysis/workspace/extra',
+    '/analysis/notes/1/extra',
+  ]) {
+    const response = await host.inject({
+      method: 'OPTIONS',
+      url,
+      headers: base,
+    });
+    assert.equal(response.statusCode, 403, url);
+  }
 });

@@ -4,9 +4,33 @@ import type {
   UiLanguageChanged,
   UiLanguageChangedPublisher,
 } from '../preferences/index.ts';
+import type {
+  AnalysisContributionChanged,
+  AnalysisContributionChangedPublisher,
+  AnalysisContributionCreated,
+  AnalysisContributionCreatedPublisher,
+  AnalysisScratchChanged,
+  AnalysisScratchChangedPublisher,
+} from '../analysis/index.ts';
+import type {
+  AnalysisRecordCreated,
+  InventoryChangedPublisher,
+} from '../inventory/index.ts';
+import type {
+  WorkspaceChanged,
+  WorkspaceChangedPublisher,
+} from '../workspace/index.ts';
 
 export type HostEvent =
-  PreferenceUiLanguageChangedHostEvent | ReplayGapHostEvent;
+  | PreferenceUiLanguageChangedHostEvent
+  | AnalysisScratchChangedHostEvent
+  | AnalysisContributionCreatedHostEvent
+  | AnalysisContributionChangedHostEvent
+  | InventoryItemCreatedHostEvent
+  | WorkspaceContextCreatedHostEvent
+  | WorkspaceReferenceAddedHostEvent
+  | WorkspaceResumeUpdatedHostEvent
+  | ReplayGapHostEvent;
 
 export interface PreferenceUiLanguageChangedHostEvent extends HostEventMetadata {
   readonly kind: 'preference.ui-language-changed';
@@ -19,6 +43,59 @@ export interface ReplayGapHostEvent extends HostEventMetadata {
   readonly payload: {
     readonly reason: 'replay_unavailable' | 'slow_consumer';
   };
+}
+
+export interface AnalysisScratchChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'analysis.scratch-changed';
+  readonly payload: Pick<
+    AnalysisScratchChanged,
+    'scope' | 'scratchId' | 'scratchRevision'
+  >;
+}
+
+export interface AnalysisContributionCreatedHostEvent extends HostEventMetadata {
+  readonly kind: 'analysis.contribution-created';
+  readonly payload: Pick<
+    AnalysisContributionCreated,
+    'itemId' | 'contributionId'
+  >;
+}
+
+export interface AnalysisContributionChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'analysis.contribution-changed';
+  readonly payload: Pick<
+    AnalysisContributionChanged,
+    'itemId' | 'contributionId' | 'changeKind'
+  >;
+}
+
+export interface InventoryItemCreatedHostEvent extends HostEventMetadata {
+  readonly kind: 'inventory.item-created';
+  readonly payload: Pick<AnalysisRecordCreated, 'itemId' | 'revisionId'>;
+}
+
+export interface WorkspaceContextCreatedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.context-created';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.context-created' }>,
+    'contextId' | 'contextVersion'
+  >;
+}
+
+export interface WorkspaceReferenceAddedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.reference-added';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.reference-added' }>,
+    'contextId' | 'referenceId'
+  >;
+}
+
+export interface WorkspaceResumeUpdatedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.resume-updated';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.resume-updated' }>,
+    'contextId' | 'area' | 'resumeVersion'
+  >;
 }
 
 export interface HostEventMetadata {
@@ -51,7 +128,14 @@ export interface HostEventStreamOptions {
 }
 
 export class HostEventStream
-  implements UiLanguageChangedPublisher, HostEventSource
+  implements
+    UiLanguageChangedPublisher,
+    AnalysisScratchChangedPublisher,
+    AnalysisContributionCreatedPublisher,
+    AnalysisContributionChangedPublisher,
+    InventoryChangedPublisher,
+    WorkspaceChangedPublisher,
+    HostEventSource
 {
   readonly #replayCapacity: number;
   readonly #subscriberQueueCapacity: number;
@@ -74,19 +158,24 @@ export class HostEventStream
     this.#correlationIdFactory = options.correlationIdFactory ?? randomUUID;
   }
 
-  publish(event: UiLanguageChanged): void {
+  publish(event: UiLanguageChanged): void;
+  publish(event: AnalysisScratchChanged): void;
+  publish(event: AnalysisContributionCreated): void;
+  publish(event: AnalysisContributionChanged): void;
+  publish(event: AnalysisRecordCreated): void;
+  publish(event: WorkspaceChanged): void;
+  publish(
+    event:
+      | UiLanguageChanged
+      | AnalysisScratchChanged
+      | AnalysisContributionCreated
+      | AnalysisContributionChanged
+      | AnalysisRecordCreated
+      | WorkspaceChanged,
+  ): void {
     try {
-      const hostEvent: PreferenceUiLanguageChangedHostEvent = Object.freeze({
-        eventId: this.#nextEventId(),
-        kind: event.kind,
-        sequence: this.#sequence,
-        dataRevision: event.dataRevision,
-        occurredAt: event.occurredAt,
-        subscriptionRevision: 1,
-        correlationId: this.#correlationIdFactory(),
-        preferenceRevision: event.preferenceRevision,
-        payload: Object.freeze({ ...event.payload }),
-      });
+      const metadata = this.#eventMetadata(event);
+      const hostEvent = toHostEvent(event, metadata);
       this.#dataRevision = event.dataRevision;
       this.#replay.push(hostEvent);
       while (this.#replay.length > this.#replayCapacity) {
@@ -101,6 +190,20 @@ export class HostEventStream
     } catch {
       // Committed Application commands must not fail because event delivery did.
     }
+  }
+
+  #eventMetadata(event: {
+    readonly dataRevision: number;
+    readonly occurredAt: string;
+  }) {
+    return {
+      eventId: this.#nextEventId(),
+      sequence: this.#sequence,
+      dataRevision: event.dataRevision,
+      occurredAt: event.occurredAt,
+      subscriptionRevision: 1,
+      correlationId: this.#correlationIdFactory(),
+    };
   }
 
   subscribe(request: {
@@ -177,6 +280,99 @@ export class HostEventStream
       correlationId: this.#correlationIdFactory(),
       payload: Object.freeze({ reason }),
     });
+  }
+}
+
+type PublishableEvent =
+  | UiLanguageChanged
+  | AnalysisScratchChanged
+  | AnalysisContributionCreated
+  | AnalysisContributionChanged
+  | AnalysisRecordCreated
+  | WorkspaceChanged;
+
+function toHostEvent(
+  event: PublishableEvent,
+  metadata: HostEventMetadata,
+): Exclude<HostEvent, ReplayGapHostEvent> {
+  switch (event.kind) {
+    case 'preference.ui-language-changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        preferenceRevision: event.preferenceRevision,
+        payload: Object.freeze({ ...event.payload }),
+      });
+    case 'analysis.scratch-changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          scope: event.scope,
+          ...(event.scratchId === undefined
+            ? {}
+            : { scratchId: event.scratchId }),
+          ...(event.scratchRevision === undefined
+            ? {}
+            : { scratchRevision: event.scratchRevision }),
+        }),
+      });
+    case 'analysis.contribution-created':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          itemId: event.itemId,
+          contributionId: event.contributionId,
+        }),
+      });
+    case 'analysis.contribution-changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          itemId: event.itemId,
+          contributionId: event.contributionId,
+          changeKind: event.changeKind,
+        }),
+      });
+    case 'inventory.item-created':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          itemId: event.itemId,
+          revisionId: event.revisionId,
+        }),
+      });
+    case 'workspace.context-created':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          contextId: event.contextId,
+          contextVersion: event.contextVersion,
+        }),
+      });
+    case 'workspace.reference-added':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          contextId: event.contextId,
+          referenceId: event.referenceId,
+        }),
+      });
+    case 'workspace.resume-updated':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          contextId: event.contextId,
+          area: event.area,
+          resumeVersion: event.resumeVersion,
+        }),
+      });
   }
 }
 

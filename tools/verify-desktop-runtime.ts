@@ -4,20 +4,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AxeBuilder } from '@axe-core/playwright';
-import { _electron as electron } from '@playwright/test';
+import { _electron as electron, type Page } from '@playwright/test';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
 );
-const screenshotPath = path.join(
+const verificationDirectory = path.join(
   repositoryRoot,
   'build',
   'desktop',
   'verification',
-  'settings.png',
 );
-await mkdir(path.dirname(screenshotPath), { recursive: true });
+await mkdir(verificationDirectory, { recursive: true });
 assert.ok(
   (
     await stat(
@@ -51,6 +50,8 @@ const application = await electron.launch({
   cwd: repositoryRoot,
 });
 const processOutput: string[] = [];
+let observedWindow: Page | undefined;
+const requestFailures: { readonly url: string; readonly error?: string }[] = [];
 application.process().stdout?.on('data', (chunk: Buffer) => {
   processOutput.push(chunk.toString());
 });
@@ -60,28 +61,46 @@ application.process().stderr?.on('data', (chunk: Buffer) => {
 
 try {
   const window = await application.firstWindow();
+  observedWindow = window;
   const pageErrors: string[] = [];
   window.on('pageerror', (error) => pageErrors.push(error.message));
   window.on('console', (message) => {
-    if (message.type() === 'error') {
-      pageErrors.push(message.text());
-    }
+    if (message.type() === 'error') pageErrors.push(message.text());
+  });
+  window.on('requestfailed', (request) => {
+    const failure = request.failure();
+    requestFailures.push({
+      url: request.url(),
+      ...(failure === null ? {} : { error: failure.errorText }),
+    });
   });
 
-  await window.getByRole('heading', { level: 1 }).waitFor();
+  await Promise.race([
+    Promise.any([
+      window.getByRole('heading', { name: 'Verwalten' }).waitFor(),
+      window.getByRole('heading', { name: 'Manage' }).waitFor(),
+    ]),
+    window
+      .getByText(
+        /Application Host nicht erreichbar|Application Host unavailable/,
+      )
+      .waitFor()
+      .then(() => {
+        throw new Error('Desktop entered the unavailable state.');
+      }),
+  ]);
   await Promise.any([
-    window.getByText('Connected').first().waitFor(),
     window.getByText('Verbunden').first().waitFor(),
+    window.getByText('Connected').first().waitFor(),
   ]);
 
   const brandIcon = window.locator('aside img').first();
-  await brandIcon.waitFor();
   const brandImage = await brandIcon.evaluate((element) => {
-    const image = element as {
-      complete: boolean;
-      currentSrc: string;
-      naturalHeight: number;
-      naturalWidth: number;
+    const image = element as unknown as {
+      readonly complete: boolean;
+      readonly currentSrc: string;
+      readonly naturalHeight: number;
+      readonly naturalWidth: number;
     };
     return {
       complete: image.complete,
@@ -98,21 +117,53 @@ try {
     await window.locator('link[rel="icon"]').getAttribute('href'),
     './branding/favicon.ico',
   );
+  const activityRail = window.getByRole('complementary', { name: 'Plysmith' });
+  const activityNavigation = activityRail.getByRole('navigation', {
+    name: 'Plysmith',
+  });
 
+  const scopeSelector = window.getByRole('combobox', {
+    name: /Arbeitskontext|Working context/,
+  });
+  await scopeSelector.waitFor();
+  assert.ok((await scopeSelector.locator('option').count()) >= 1);
+  await verifyAccessibility(window, 'manage');
+  await window.screenshot({
+    path: path.join(verificationDirectory, 'manage.png'),
+    fullPage: true,
+  });
+
+  await activityNavigation
+    .getByRole('button', { name: /Analysieren|Analyse/ })
+    .click();
+  await window.getByRole('grid', { name: /Schachbrett|Chess board/ }).waitFor();
+  assert.equal(await window.getByRole('gridcell').count(), 64);
+  assert.equal(
+    await activityNavigation
+      .getByRole('button', { name: /Ausspielen|Play out/ })
+      .isDisabled(),
+    true,
+  );
+  assert.equal(
+    await activityNavigation.getByRole('button', { name: 'Live' }).isDisabled(),
+    true,
+  );
+  await verifyAccessibility(window, 'analysis');
+  await window.screenshot({
+    path: path.join(verificationDirectory, 'analysis.png'),
+    fullPage: true,
+  });
+
+  await activityRail
+    .getByRole('button', { name: /Einstellungen|Settings/ })
+    .click();
   assert.equal(await window.getByRole('radio').count(), 2);
-  assert.equal(await window.getByRole('button').count(), 1);
   const radios = window.getByRole('radio');
   const selectedIndex = (await radios.nth(0).isChecked()) ? 0 : 1;
   const expectedLocale = selectedIndex === 0 ? 'de-DE' : 'en-GB';
-  const expectedLanguageControlLabel =
-    selectedIndex === 0 ? 'Sprache auswählen' : 'Choose language';
   assert.equal(
     await window.locator('html').getAttribute('lang'),
     expectedLocale,
-  );
-  assert.equal(
-    await window.getByRole('radiogroup').getAttribute('aria-label'),
-    expectedLanguageControlLabel,
   );
   const otherIndex = selectedIndex === 0 ? 1 : 0;
   const languageLabels = ['Deutsch', 'English'] as const;
@@ -122,51 +173,92 @@ try {
   const otherLabel = window.getByText(languageLabels[otherIndex]!, {
     exact: true,
   });
-  const applyButton = window.getByRole('button');
+  const applyButton = window.getByRole('button', {
+    name: /Übernehmen|Apply/,
+  });
   assert.equal(await applyButton.isDisabled(), true);
   await otherLabel.click();
   assert.equal(await applyButton.isEnabled(), true);
   await selectedLabel.click();
   assert.equal(await applyButton.isDisabled(), true);
+  await verifyAccessibility(window, 'settings');
+  await window.screenshot({
+    path: path.join(verificationDirectory, 'settings.png'),
+    fullPage: true,
+  });
 
-  const accessibility = await new AxeBuilder({ page: window })
+  await activityNavigation
+    .getByRole('button', { name: /Analysieren|Analyse/ })
+    .click();
+  await window.setViewportSize({ width: 390, height: 844 });
+  await window.getByRole('grid', { name: /Schachbrett|Chess board/ }).waitFor();
+  assert.equal(
+    await window.evaluate(() => {
+      const browser = globalThis as unknown as {
+        readonly document: {
+          readonly documentElement: { scrollWidth: number };
+        };
+        readonly innerWidth: number;
+      };
+      return browser.document.documentElement.scrollWidth <= browser.innerWidth;
+    }),
+    true,
+  );
+  await verifyAccessibility(window, 'analysis-narrow');
+  await window.screenshot({
+    path: path.join(verificationDirectory, 'analysis-narrow.png'),
+    fullPage: true,
+  });
+
+  assert.equal(pageErrors.length, 0, pageErrors.join('\n'));
+  console.log(
+    JSON.stringify({
+      title: await window.title(),
+      locale: expectedLocale,
+      screenshots: [
+        'manage.png',
+        'analysis.png',
+        'settings.png',
+        'analysis-narrow.png',
+      ].map((file) => path.join(verificationDirectory, file)),
+    }),
+  );
+} catch (error) {
+  console.error(processOutput.join('').trim());
+  if (observedWindow !== undefined) {
+    console.error(
+      JSON.stringify({
+        url: observedWindow.url(),
+        body: await observedWindow
+          .locator('body')
+          .innerText()
+          .catch(() => ''),
+        requestFailures,
+      }),
+    );
+  }
+  throw error;
+} finally {
+  await application.close();
+}
+
+async function verifyAccessibility(page: Page, view: string): Promise<void> {
+  const accessibility = await new AxeBuilder({ page })
     .setLegacyMode()
     .analyze();
   if (accessibility.violations.length > 0) {
     console.error(
-      JSON.stringify(
-        accessibility.violations.map(({ id, nodes }) => ({
+      JSON.stringify({
+        view,
+        violations: accessibility.violations.map(({ id, nodes }) => ({
           id,
           nodes: nodes.map(({ html, target }) => ({ html, target })),
         })),
-      ),
+      }),
     );
   }
   assert.deepEqual(
     accessibility.violations.map(({ id }) => id),
     [],
   );
-  if (pageErrors.length > 0) {
-    console.error(
-      JSON.stringify({
-        pageErrors,
-        inlineStyles: await window.locator('style').allTextContents(),
-      }),
-    );
-  }
-  assert.equal(pageErrors.length, 0, pageErrors.join('\n'));
-
-  await window.screenshot({ path: screenshotPath, fullPage: true });
-  console.log(
-    JSON.stringify({
-      title: await window.title(),
-      heading: await window.getByRole('heading', { level: 1 }).innerText(),
-      screenshotPath,
-    }),
-  );
-} catch (error) {
-  console.error(processOutput.join('').trim());
-  throw error;
-} finally {
-  await application.close();
 }

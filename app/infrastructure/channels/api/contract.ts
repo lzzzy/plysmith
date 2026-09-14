@@ -2,6 +2,11 @@ export {
   HostEventSchema,
   UiLanguageChangedEventSchema,
   ReplayGapEventSchema,
+  AnalysisScratchChangedEventSchema,
+  InventoryItemCreatedEventSchema,
+  WorkspaceContextCreatedEventSchema,
+  WorkspaceReferenceAddedEventSchema,
+  WorkspaceResumeUpdatedEventSchema,
   ProblemDetailsSchema,
   apiSchemas,
 } from './schemas.ts';

@@ -3,10 +3,29 @@ import type { FastifyInstance } from 'fastify';
 
 import { HostEventStream } from '../../application/events/index.ts';
 import {
+  CreateAnalysisRecord,
+  CreateAnalysisNote,
+  CreatePositionNote,
+  DeleteAnalysisNote,
+  FreeAnalysisSession,
+  GetAnalysisWorkspace,
+  UpdateAnalysisScratch,
+  UpdateAnalysisNote,
+} from '../../application/analysis/index.ts';
+import { SearchInventory } from '../../application/inventory/index.ts';
+import {
   GetUserPreferences,
   SetUiLanguage,
 } from '../../application/preferences/index.ts';
 import { GetSystemStatus } from '../../application/system/index.ts';
+import {
+  AddContextReference,
+  CreateWorkingContext,
+  GetWorkingContextWorkspace,
+  ListWorkingContexts,
+  SetWorkScopeResume,
+} from '../../application/workspace/index.ts';
+import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
   initializeConfiguration,
   loadConfiguration,
@@ -62,6 +81,7 @@ export async function composeHost(
     });
 
     const runtimeStatus = new RuntimeStatus();
+    const clock = { now: options.now ?? (() => new Date().toISOString()) };
     const eventStream = new HostEventStream({
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.correlationIdFactory === undefined
@@ -75,7 +95,76 @@ export async function composeHost(
     const getUserPreferences = new GetUserPreferences(persistence);
     const setUiLanguage = new SetUiLanguage({
       unitOfWork: persistence,
-      clock: { now: options.now ?? (() => new Date().toISOString()) },
+      clock,
+      events: eventStream,
+    });
+    const rules = new ChessJsRulesAdapter();
+    const freeAnalysisSession = new FreeAnalysisSession();
+    const getAnalysisWorkspace = new GetAnalysisWorkspace({
+      reader: persistence,
+      freeSession: freeAnalysisSession,
+      rules,
+      storeStatus: persistence,
+    });
+    const updateAnalysisScratch = new UpdateAnalysisScratch({
+      reader: persistence,
+      writer: persistence,
+      freeSession: freeAnalysisSession,
+      rules,
+      clock,
+      events: eventStream,
+      storeStatus: persistence,
+      scratchId: randomUUID,
+    });
+    const createAnalysisRecord = new CreateAnalysisRecord({
+      reader: persistence,
+      writer: persistence,
+      freeSession: freeAnalysisSession,
+      clock,
+      inventoryEvents: eventStream,
+      workspaceEvents: eventStream,
+    });
+    const createAnalysisNote = new CreateAnalysisNote({
+      reader: persistence,
+      writer: persistence,
+      freeSession: freeAnalysisSession,
+      clock,
+      analysisEvents: eventStream,
+      workspaceEvents: eventStream,
+    });
+    const createPositionNote = new CreatePositionNote({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const updateAnalysisNote = new UpdateAnalysisNote({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const deleteAnalysisNote = new DeleteAnalysisNote({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const searchInventory = new SearchInventory(persistence);
+    const listWorkingContexts = new ListWorkingContexts(persistence);
+    const getWorkingContextWorkspace = new GetWorkingContextWorkspace(
+      persistence,
+    );
+    const createWorkingContext = new CreateWorkingContext({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const addContextReference = new AddContextReference({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const setWorkScopeResume = new SetWorkScopeResume({
+      writer: persistence,
+      clock,
       events: eventStream,
     });
     const hostToken =
@@ -86,6 +175,19 @@ export async function composeHost(
       getSystemStatus,
       getUserPreferences,
       setUiLanguage,
+      getAnalysisWorkspace,
+      updateAnalysisScratch,
+      createAnalysisRecord,
+      createAnalysisNote,
+      createPositionNote,
+      updateAnalysisNote,
+      deleteAnalysisNote,
+      searchInventory,
+      listWorkingContexts,
+      getWorkingContextWorkspace,
+      createWorkingContext,
+      addContextReference,
+      setWorkScopeResume,
       events: eventStream,
       security: { hostToken },
       productRelease,

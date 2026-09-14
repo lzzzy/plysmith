@@ -1,6 +1,7 @@
 export {
   HostEventStream,
   type HostEvent,
+  type AnalysisContributionChangedHostEvent,
   type HostEventMetadata,
   type HostEventSource,
   type HostEventStreamOptions,

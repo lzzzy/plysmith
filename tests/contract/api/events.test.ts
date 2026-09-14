@@ -12,6 +12,7 @@ import {
   headers,
   languageEvent,
 } from './fixtures.ts';
+import { localId } from '../../../app/domain/identity/index.ts';
 
 test('SSE frames preserve ordered replay, ids and the constant wire event name', async (t) => {
   const cursors: (string | undefined)[] = [];
@@ -144,4 +145,59 @@ test('invalid event ids cannot inject extra SSE frames and always close the subs
   const response = await host.inject({ url: '/events', headers });
   assert.ok(!response.body.includes('CANARY'));
   assert.equal(closes, 1);
+});
+
+test('SSE converts local identifiers in iteration-two refresh hints to wire ids', async (t) => {
+  const event = {
+    eventId: 'generation:4',
+    sequence: 4,
+    kind: 'workspace.reference-added' as const,
+    dataRevision: 5,
+    occurredAt: '2026-09-08T12:00:00.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'test-correlation',
+    payload: {
+      contextId: localId('working-context', 2),
+      referenceId: localId('context-reference', 9),
+    },
+  };
+  const noteEvent = {
+    eventId: 'generation:5',
+    sequence: 5,
+    kind: 'analysis.contribution-changed' as const,
+    dataRevision: 6,
+    occurredAt: '2026-09-08T12:00:01.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'test-correlation',
+    payload: {
+      itemId: localId('inventory-item', 3),
+      contributionId: localId('contribution', 10),
+      changeKind: 'deleted' as const,
+    },
+  };
+  const createdNoteEvent = {
+    eventId: 'generation:6',
+    sequence: 6,
+    kind: 'analysis.contribution-created' as const,
+    dataRevision: 7,
+    occurredAt: '2026-09-08T12:00:02.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'test-correlation',
+    payload: {
+      itemId: localId('inventory-item', 3),
+      contributionId: localId('contribution', 11),
+    },
+  };
+  const { host } = await buildFixture(t, {
+    events: finiteSource([event, noteEvent, createdNoteEvent]),
+  });
+  const response = await host.inject({ url: '/events', headers });
+  assert.equal(response.statusCode, 200);
+  assert.ok(response.body.includes('"contextId":"2"'));
+  assert.ok(response.body.includes('"referenceId":"9"'));
+  assert.ok(response.body.includes('"contributionId":"10"'));
+  assert.ok(response.body.includes('"changeKind":"deleted"'));
+  assert.ok(response.body.includes('"contributionId":"11"'));
+  assert.ok(response.body.includes('"kind":"analysis.contribution-created"'));
+  assert.ok(!response.body.includes('"value"'));
 });

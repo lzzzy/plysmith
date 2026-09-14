@@ -13,6 +13,11 @@ export async function generateHostContract(
   outputRoot = defaultOutputRoot,
 ): Promise<void> {
   const productRelease = await readProductRelease();
+  const unavailableUseCase = {
+    execute: async (): Promise<never> => {
+      throw new Error('Contract generation does not execute use cases.');
+    },
+  };
   const host = await buildHost({
     getSystemStatus: {
       execute: async () => ({
@@ -39,6 +44,19 @@ export async function generateHostContract(
         },
       }),
     },
+    getAnalysisWorkspace: unavailableUseCase,
+    updateAnalysisScratch: unavailableUseCase,
+    createAnalysisRecord: unavailableUseCase,
+    createAnalysisNote: unavailableUseCase,
+    createPositionNote: unavailableUseCase,
+    updateAnalysisNote: unavailableUseCase,
+    deleteAnalysisNote: unavailableUseCase,
+    searchInventory: unavailableUseCase,
+    listWorkingContexts: unavailableUseCase,
+    getWorkingContextWorkspace: unavailableUseCase,
+    createWorkingContext: unavailableUseCase,
+    addContextReference: unavailableUseCase,
+    setWorkScopeResume: unavailableUseCase,
     events: {
       subscribe: () => ({ events: emptyEvents(), close: () => undefined }),
     },

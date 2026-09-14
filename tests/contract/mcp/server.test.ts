@@ -15,12 +15,29 @@ import {
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises exactly three tools and two fixed resources', async (t) => {
+test('MCP advertises the explicit sixteen-tool allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
     tools.map((tool) => tool.name),
-    ['get_system_status', 'get_user_preferences', 'set_ui_language'],
+    [
+      'get_system_status',
+      'get_user_preferences',
+      'set_ui_language',
+      'get_analysis_workspace',
+      'update_analysis_scratch',
+      'create_analysis_record',
+      'create_analysis_note',
+      'create_position_note',
+      'update_analysis_note',
+      'delete_analysis_note',
+      'search_inventory',
+      'list_working_contexts',
+      'get_working_context_workspace',
+      'create_working_context',
+      'add_context_reference',
+      'set_work_scope_resume',
+    ],
   );
   assert.deepEqual(client.getServerCapabilities(), {
     tools: {},
@@ -125,6 +142,256 @@ test('no-op and committed revision metadata are returned without alteration', as
   assert.equal(calls.length, 1);
 });
 
+test('analysis, inventory and workspace tools forward explicit host requests once', async (t) => {
+  const timestamp = '2026-09-11T12:00:00.000Z';
+  const state = {
+    position: {
+      ruleSetId: 'standardChess' as const,
+      boardKey:
+        'RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr',
+      sideToMove: 'white' as const,
+      castlingRights: {
+        whiteKingSide: true,
+        whiteQueenSide: true,
+        blackKingSide: true,
+        blackQueenSide: true,
+      },
+      effectiveEnPassantSquare: -1,
+      positionKey: 'standardChess|initial',
+    },
+    playState: {
+      halfmoveClock: 0,
+      fullmoveNumber: 1,
+      historyKnowledge: 'complete' as const,
+    },
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  };
+  const context = {
+    contextId: '1',
+    displayName: 'Mein Repertoire',
+    purpose: 'Eröffnungen ausbauen',
+    lifecycle: 'active' as const,
+    contextVersion: 1,
+    referenceCount: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const reference = {
+    referenceId: '1',
+    itemId: '1',
+    currentRevisionId: '1',
+    itemType: 'analysis' as const,
+    displayName: 'Erste Analyse',
+    anchorId: '1',
+    anchorKind: 'item' as const,
+    createdAt: timestamp,
+  };
+  const { client, calls } = await connectMcp(t, {
+    getAnalysisWorkspace: async () => ({
+      scope: { kind: 'free' },
+      dataRevision: 4,
+      currentState: state,
+      legalMoves: [],
+      allowedActions: ['start_scratch'],
+    }),
+    updateAnalysisScratch: async () => ({
+      discarded: true,
+      dataRevision: 4,
+    }),
+    createAnalysisRecord: async () => ({
+      itemId: '1',
+      revisionId: '1',
+      rootAnchorId: '1',
+      contributionId: '1',
+      resumeUpdates: [],
+      dataRevision: 5,
+    }),
+    createAnalysisNote: async () => ({
+      contributionId: '2',
+      itemId: '1',
+      revisionId: '1',
+      anchorId: '1',
+      scopeKind: 'context',
+      contextId: '1',
+      resumeUpdate: { contextId: '1', resumeVersion: 2 },
+      dataRevision: 6,
+    }),
+    createPositionNote: async () => ({
+      contributionId: '3',
+      itemId: '1',
+      anchorId: '1',
+      contributionVersion: 1,
+      dataRevision: 7,
+    }),
+    updateAnalysisNote: async () => ({
+      contributionId: '3',
+      itemId: '1',
+      anchorId: '1',
+      contributionVersion: 2,
+      dataRevision: 8,
+    }),
+    deleteAnalysisNote: async () => ({
+      contributionId: '3',
+      itemId: '1',
+      anchorId: '1',
+      contributionVersion: 3,
+      dataRevision: 9,
+    }),
+    searchInventory: async () => ({ items: [], dataRevision: 5 }),
+    listWorkingContexts: async () => ({
+      contexts: [context],
+      dataRevision: 5,
+    }),
+    getWorkingContextWorkspace: async () => ({
+      context,
+      references: [],
+      dataRevision: 5,
+    }),
+    createWorkingContext: async () => ({ context, dataRevision: 6 }),
+    addContextReference: async () => ({ reference, dataRevision: 7 }),
+    setWorkScopeResume: async () => ({
+      area: 'manage',
+      resume: {
+        resumeVersion: 1,
+        presentation: 'list',
+        updatedAt: timestamp,
+      },
+      dataRevision: 8,
+    }),
+  });
+
+  const scenarios = [
+    ['get_analysis_workspace', { scope: { kind: 'free' } }],
+    [
+      'update_analysis_scratch',
+      {
+        scope: { kind: 'free' },
+        expectedScratchId: 'scratch-1',
+        expectedScratchRevision: 1,
+        action: { kind: 'discard' },
+      },
+    ],
+    [
+      'create_analysis_record',
+      {
+        scope: { kind: 'free' },
+        expectedScratchId: 'scratch-1',
+        expectedScratchRevision: 1,
+        displayName: 'Erste Analyse',
+        languageTag: 'de-DE',
+      },
+    ],
+    [
+      'create_analysis_note',
+      {
+        scope: { kind: 'context', contextId: '1' },
+        expectedScratchId: 'scratch-3',
+        expectedScratchRevision: 3,
+        languageTag: 'de-DE',
+        noteScope: { kind: 'context', contextId: '1' },
+      },
+    ],
+    [
+      'create_position_note',
+      {
+        scope: { kind: 'free' },
+        itemId: '1',
+        revisionId: '1',
+        anchorId: '1',
+        body: 'Nach e4',
+        languageTag: 'de-DE',
+        noteScope: { kind: 'global' },
+      },
+    ],
+    [
+      'update_analysis_note',
+      {
+        scope: { kind: 'free' },
+        contributionId: '3',
+        expectedContributionVersion: 1,
+        body: 'Nach e4!',
+      },
+    ],
+    [
+      'delete_analysis_note',
+      {
+        scope: { kind: 'free' },
+        contributionId: '3',
+        expectedContributionVersion: 2,
+      },
+    ],
+    ['search_inventory', { query: 'Erste', pageSize: 10 }],
+    ['list_working_contexts', { pageSize: 10 }],
+    ['get_working_context_workspace', { contextId: '1' }],
+    [
+      'create_working_context',
+      { displayName: 'Mein Repertoire', purpose: 'Eröffnungen ausbauen' },
+    ],
+    ['add_context_reference', { contextId: '1', itemId: '1', anchorId: '1' }],
+    [
+      'set_work_scope_resume',
+      {
+        contextId: '1',
+        area: 'manage',
+        expectedResumeVersion: null,
+        presentation: 'list',
+      },
+    ],
+  ] as const;
+  for (const [name, arguments_] of scenarios) {
+    const result = await client.callTool({ name, arguments: arguments_ });
+    assert.notEqual(result.isError, true, name);
+  }
+
+  assert.deepEqual(calls, [
+    { method: 'getAnalysisWorkspace', request: { scopeKind: 'free' } },
+    {
+      method: 'updateAnalysisScratch',
+      request: scenarios[1][1],
+    },
+    { method: 'createAnalysisRecord', request: scenarios[2][1] },
+    { method: 'createAnalysisNote', request: scenarios[3][1] },
+    { method: 'createPositionNote', request: scenarios[4][1] },
+    {
+      method: 'updateAnalysisNote',
+      request: {
+        contributionId: '3',
+        scope: { kind: 'free' },
+        expectedContributionVersion: 1,
+        body: 'Nach e4!',
+      },
+    },
+    {
+      method: 'deleteAnalysisNote',
+      request: {
+        contributionId: '3',
+        scope: { kind: 'free' },
+        expectedContributionVersion: 2,
+      },
+    },
+    {
+      method: 'searchInventory',
+      request: { query: 'Erste', pageSize: '10' },
+    },
+    { method: 'listWorkingContexts', request: { pageSize: '10' } },
+    { method: 'getWorkingContextWorkspace', request: '1' },
+    { method: 'createWorkingContext', request: scenarios[10][1] },
+    {
+      method: 'addContextReference',
+      request: { contextId: '1', itemId: '1', anchorId: '1' },
+    },
+    {
+      method: 'setWorkScopeResume',
+      request: {
+        contextId: '1',
+        area: 'manage',
+        expectedResumeVersion: null,
+        presentation: 'list',
+      },
+    },
+  ]);
+});
+
 test('invalid write arguments never reach the host', async (t) => {
   const { client, calls } = await connectMcp(t);
   for (const arguments_ of [
@@ -153,6 +420,42 @@ test('invalid write arguments never reach the host', async (t) => {
       'request.invalid',
     );
     assert.doesNotMatch(JSON.stringify(result), /secret-canary/);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('resume tool rejects mixed manage and analyze shapes before the host', async (t) => {
+  const { client, calls } = await connectMcp(t);
+  for (const arguments_ of [
+    {
+      contextId: '1',
+      area: 'manage',
+      expectedResumeVersion: null,
+    },
+    {
+      contextId: '1',
+      area: 'manage',
+      expectedResumeVersion: null,
+      presentation: 'list',
+      mode: 'analyze',
+    },
+    {
+      contextId: '1',
+      area: 'analyze',
+      expectedResumeVersion: null,
+      mode: 'analyze',
+      presentation: 'list',
+    },
+  ]) {
+    const result = await client.callTool({
+      name: 'set_work_scope_resume',
+      arguments: arguments_,
+    });
+    assert.equal(result.isError, true);
+    assert.equal(
+      (result.structuredContent as { code: string }).code,
+      'request.invalid',
+    );
   }
   assert.deepEqual(calls, []);
 });

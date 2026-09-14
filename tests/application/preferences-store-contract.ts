@@ -22,6 +22,7 @@ export function preferencesStoreContract(
   name: string,
   createStore: (context: TestContext) => Promise<PreferencesTestStore>,
   skip: false | string = false,
+  expectedSchemaVersion = 1,
 ): void {
   describe(name, { skip }, () => {
     it('starts in German with an independent positive preference revision', async (t) => {
@@ -31,7 +32,7 @@ export function preferencesStoreContract(
       assert.equal(preferences.preferenceRevision, 1);
       assert.equal(preferences.dataRevision, 0);
       assert.deepEqual(await store.readStoreStatus(), {
-        schemaVersion: 1,
+        schemaVersion: expectedSchemaVersion,
         dataRevision: 0,
       });
       assert.ok(Object.isFrozen(preferences));
@@ -73,7 +74,7 @@ export function preferencesStoreContract(
         },
       ]);
       assert.deepEqual(await store.readStoreStatus(), {
-        schemaVersion: 1,
+        schemaVersion: expectedSchemaVersion,
         dataRevision: 1,
       });
     });

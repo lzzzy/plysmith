@@ -1,15 +1,1936 @@
 {
   "components": {
     "schemas": {
+      "AddContextReferenceBody": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "anchorId"
+        ],
+        "type": "object"
+      },
+      "AddContextReferenceResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "reference": {
+            "$ref": "#/components/schemas/ContextReferenceSummary"
+          }
+        },
+        "required": [
+          "reference",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "AnalysisContribution": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 8000,
+            "type": "string"
+          },
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "moves": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalMove"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "scopeKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "global"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "context"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "updatedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contributionId",
+          "anchorId",
+          "body",
+          "moves",
+          "languageTag",
+          "scopeKind",
+          "contributionVersion",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AnalysisContributionChangedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "analysis.contribution-changed"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "changeKind": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "updated"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "deleted"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "contributionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "contributionId",
+              "changeKind"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "AnalysisContributionCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "analysis.contribution-created"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "contributionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "contributionId"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "AnalysisNoteMutationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contributionId",
+          "itemId",
+          "anchorId",
+          "contributionVersion",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "AnalysisNoteScope": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "global"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "context"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "contextId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "AnalysisOrigin": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "initial_position"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "fen"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchorId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "inventory_anchor"
+                ],
+                "type": "string"
+              },
+              "revisionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "itemId",
+              "revisionId",
+              "anchorId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "AnalysisRecord": {
+        "additionalProperties": false,
+        "properties": {
+          "contextMember": {
+            "type": "boolean"
+          },
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContribution"
+            },
+            "type": "array"
+          },
+          "currentAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "cursor": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AnalysisOrigin"
+          },
+          "readOnlyPreview": {
+            "type": "boolean"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "root": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "rootAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "sourceLine": {
+            "$ref": "#/components/schemas/AnalysisSourceLine"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisRecordStep"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "itemId",
+          "revisionId",
+          "rootAnchorId",
+          "currentAnchorId",
+          "displayName",
+          "languageTag",
+          "origin",
+          "root",
+          "steps",
+          "cursor",
+          "contributions",
+          "contextMember",
+          "readOnlyPreview"
+        ],
+        "type": "object"
+      },
+      "AnalysisRecordStep": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "before": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "move": {
+            "$ref": "#/components/schemas/CanonicalMove"
+          }
+        },
+        "required": [
+          "before",
+          "move",
+          "after",
+          "anchorId"
+        ],
+        "type": "object"
+      },
+      "AnalysisResume": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "currentPositionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "analyze"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "edit_inventory"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "edit_overlay"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "resumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "scratchId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "updatedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resumeVersion",
+          "mode",
+          "currentPositionId",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "AnalysisScratch": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "noteDraft": {
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              "moves": {
+                "items": {
+                  "$ref": "#/components/schemas/CanonicalMove"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              }
+            },
+            "required": [
+              "moves",
+              "body"
+            ],
+            "type": "object"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/AnalysisOrigin"
+          },
+          "root": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "scratchId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "scratchRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisStep"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "scratchId",
+          "scratchRevision",
+          "origin",
+          "root",
+          "steps",
+          "cursor"
+        ],
+        "type": "object"
+      },
+      "AnalysisScratchChangedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "analysis.scratch-changed"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "scope": {
+                "$ref": "#/components/schemas/WorkScope"
+              },
+              "scratchId": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              "scratchRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "scope"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "AnalysisSourceLine": {
+        "additionalProperties": false,
+        "properties": {
+          "contributions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisContribution"
+            },
+            "type": "array"
+          },
+          "root": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "rootTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "anchorId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "revisionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "revisionId",
+              "anchorId"
+            ],
+            "type": "object"
+          },
+          "sourceAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "sourceDisplayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceItemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "sourceRevisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "$ref": "#/components/schemas/ChessState"
+                },
+                "anchorId": {
+                  "pattern": "^[1-9]\\d{0,15}$",
+                  "type": "string"
+                },
+                "before": {
+                  "$ref": "#/components/schemas/ChessState"
+                },
+                "itemId": {
+                  "pattern": "^[1-9]\\d{0,15}$",
+                  "type": "string"
+                },
+                "move": {
+                  "$ref": "#/components/schemas/CanonicalMove"
+                },
+                "revisionId": {
+                  "pattern": "^[1-9]\\d{0,15}$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "before",
+                "move",
+                "after",
+                "anchorId",
+                "itemId",
+                "revisionId"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceItemId",
+          "sourceRevisionId",
+          "sourceAnchorId",
+          "sourceDisplayName",
+          "root",
+          "rootTarget",
+          "steps",
+          "contributions"
+        ],
+        "type": "object"
+      },
+      "AnalysisStep": {
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "before": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "move": {
+            "$ref": "#/components/schemas/CanonicalMove"
+          }
+        },
+        "required": [
+          "before",
+          "move",
+          "after"
+        ],
+        "type": "object"
+      },
+      "AnalysisWorkspace": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedActions": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "start_scratch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "apply_move"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "move_cursor"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "prepare_note"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "clear_note"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "discard_scratch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "create_analysis_note"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "create_analysis_record"
+                  ],
+                  "type": "string"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "contextName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "currentState": {
+            "$ref": "#/components/schemas/ChessState"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "legalMoves": {
+            "items": {
+              "$ref": "#/components/schemas/CanonicalMove"
+            },
+            "type": "array"
+          },
+          "record": {
+            "$ref": "#/components/schemas/AnalysisRecord"
+          },
+          "resumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          },
+          "scratch": {
+            "$ref": "#/components/schemas/AnalysisScratch"
+          }
+        },
+        "required": [
+          "scope",
+          "dataRevision",
+          "currentState",
+          "legalMoves",
+          "allowedActions"
+        ],
+        "type": "object"
+      },
+      "CanonicalMove": {
+        "additionalProperties": false,
+        "properties": {
+          "from": {
+            "pattern": "^[a-h][1-8]$",
+            "type": "string"
+          },
+          "promotion": {
+            "anyOf": [
+              {
+                "enum": [
+                  "queen"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "rook"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "bishop"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "knight"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "san": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "to": {
+            "pattern": "^[a-h][1-8]$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "san"
+        ],
+        "type": "object"
+      },
+      "ChessState": {
+        "additionalProperties": false,
+        "properties": {
+          "fen": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "playState": {
+            "additionalProperties": false,
+            "properties": {
+              "fullmoveNumber": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "halfmoveClock": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "historyKnowledge": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "partial"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "halfmoveClock",
+              "fullmoveNumber",
+              "historyKnowledge"
+            ],
+            "type": "object"
+          },
+          "position": {
+            "additionalProperties": false,
+            "properties": {
+              "boardKey": {
+                "pattern": "^[PNBRQKpnbrqk.]{64}$",
+                "type": "string"
+              },
+              "castlingRights": {
+                "additionalProperties": false,
+                "properties": {
+                  "blackKingSide": {
+                    "type": "boolean"
+                  },
+                  "blackQueenSide": {
+                    "type": "boolean"
+                  },
+                  "whiteKingSide": {
+                    "type": "boolean"
+                  },
+                  "whiteQueenSide": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "whiteKingSide",
+                  "whiteQueenSide",
+                  "blackKingSide",
+                  "blackQueenSide"
+                ],
+                "type": "object"
+              },
+              "effectiveEnPassantSquare": {
+                "maximum": 63,
+                "minimum": -1,
+                "type": "integer"
+              },
+              "positionKey": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "ruleSetId": {
+                "enum": [
+                  "standardChess"
+                ],
+                "type": "string"
+              },
+              "sideToMove": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "white"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "black"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ruleSetId",
+              "boardKey",
+              "sideToMove",
+              "castlingRights",
+              "effectiveEnPassantSquare",
+              "positionKey"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "position",
+          "playState",
+          "fen"
+        ],
+        "type": "object"
+      },
+      "ContextIdParams": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId"
+        ],
+        "type": "object"
+      },
+      "ContextReferenceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "anchorKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "item"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "position"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "occurrence"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "move_node"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "createdAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "currentRevisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "itemType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "game"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "analysis"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "source"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "referenceId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "referenceId",
+          "itemId",
+          "currentRevisionId",
+          "itemType",
+          "displayName",
+          "anchorId",
+          "anchorKind",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ContributionIdParams": {
+        "additionalProperties": false,
+        "properties": {
+          "contributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contributionId"
+        ],
+        "type": "object"
+      },
+      "CreateAnalysisNoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedScratchId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "expectedScratchRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "noteScope": {
+            "$ref": "#/components/schemas/AnalysisNoteScope"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "expectedScratchId",
+          "expectedScratchRevision",
+          "languageTag",
+          "noteScope"
+        ],
+        "type": "object"
+      },
+      "CreateAnalysisNoteResult": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "resumeUpdate": {
+            "additionalProperties": false,
+            "properties": {
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "resumeVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contextId",
+              "resumeVersion"
+            ],
+            "type": "object"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "scopeKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "global"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "context"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "contributionId",
+          "itemId",
+          "revisionId",
+          "anchorId",
+          "scopeKind",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "CreateAnalysisRecordBody": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedScratchId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "expectedScratchRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "noteScope": {
+            "$ref": "#/components/schemas/AnalysisNoteScope"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          },
+          "targetContextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "expectedScratchId",
+          "expectedScratchRevision",
+          "displayName",
+          "languageTag"
+        ],
+        "type": "object"
+      },
+      "CreateAnalysisRecordResult": {
+        "additionalProperties": false,
+        "properties": {
+          "contextReferenceId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "resumeUpdates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "contextId": {
+                  "pattern": "^[1-9]\\d{0,15}$",
+                  "type": "string"
+                },
+                "resumeVersion": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "contextId",
+                "resumeVersion"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "rootAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "revisionId",
+          "rootAnchorId",
+          "resumeUpdates",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "CreatePositionNoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "noteScope": {
+            "$ref": "#/components/schemas/AnalysisNoteScope"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "itemId",
+          "revisionId",
+          "anchorId",
+          "body",
+          "languageTag",
+          "noteScope"
+        ],
+        "type": "object"
+      },
+      "CreateWorkingContextBody": {
+        "additionalProperties": false,
+        "properties": {
+          "boundary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nextStep": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "purpose": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "displayName"
+        ],
+        "type": "object"
+      },
+      "CreateWorkingContextResult": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/WorkingContextSummary"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "context",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "DeleteAnalysisNoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedContributionVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "expectedContributionVersion"
+        ],
+        "type": "object"
+      },
+      "GetAnalysisWorkspaceQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "revisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "scopeKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "free"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "context"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "scopeKind"
+        ],
+        "type": "object"
+      },
       "HostEvent": {
         "anyOf": [
           {
             "$ref": "#/components/schemas/UiLanguageChangedEvent"
           },
           {
+            "$ref": "#/components/schemas/AnalysisScratchChangedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/AnalysisContributionCreatedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/AnalysisContributionChangedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/InventoryItemCreatedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceContextCreatedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceReferenceAddedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/WorkspaceResumeUpdatedEvent"
+          },
+          {
             "$ref": "#/components/schemas/ReplayGapEvent"
           }
         ]
+      },
+      "InventoryItemCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "inventory.item-created"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "revisionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "itemId",
+              "revisionId"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "InventorySearchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "contextIds": {
+            "items": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "currentRevisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "itemType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "game"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "analysis"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "source"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "originKind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "manual"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "structured_import"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "playout"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "live_observed"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "live_played"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "rootAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "type": "string"
+          },
+          "updatedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "currentRevisionId",
+          "rootAnchorId",
+          "itemType",
+          "originKind",
+          "displayName",
+          "languageTag",
+          "contextIds",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "InventorySearchQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "cursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pageSize": {
+            "pattern": "^(?:[1-9]|[1-9]\\d|100)$",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListWorkingContextsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "contexts": {
+            "items": {
+              "$ref": "#/components/schemas/WorkingContextSummary"
+            },
+            "type": "array"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "nextCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "contexts",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "ManagementResume": {
+        "additionalProperties": false,
+        "properties": {
+          "presentation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "list"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "atlas"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "resumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "selectedAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "selectedItemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "updatedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resumeVersion",
+          "presentation",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "PageQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pageSize": {
+            "pattern": "^(?:[1-9]|[1-9]\\d|100)$",
+            "type": "string"
+          }
+        },
+        "type": "object"
       },
       "ProblemDetails": {
         "additionalProperties": false,
@@ -34,12 +1955,12 @@
             "properties": {
               "currentRevision": {
                 "maximum": 9007199254740991,
-                "minimum": 1,
+                "minimum": 0,
                 "type": "integer"
               },
               "expectedRevision": {
                 "maximum": 9007199254740991,
-                "minimum": 1,
+                "minimum": 0,
                 "type": "integer"
               }
             },
@@ -151,6 +2072,32 @@
         ],
         "type": "object"
       },
+      "SearchInventoryResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InventorySearchItem"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
       "SetUiLanguageBody": {
         "additionalProperties": false,
         "properties": {
@@ -197,6 +2144,180 @@
           "preferences"
         ],
         "type": "object"
+      },
+      "SetWorkScopeResumeBody": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "area": {
+                "enum": [
+                  "manage"
+                ],
+                "type": "string"
+              },
+              "expectedResumeVersion": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "presentation": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "list"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "atlas"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "selectedAnchorId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "selectedItemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "area",
+              "expectedResumeVersion",
+              "presentation"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchorId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "area": {
+                "enum": [
+                  "analyze"
+                ],
+                "type": "string"
+              },
+              "expectedResumeVersion": {
+                "anyOf": [
+                  {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "itemId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "mode": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "analyze"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "edit_inventory"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "edit_overlay"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "revisionId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "area",
+              "expectedResumeVersion",
+              "mode"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SetWorkScopeResumeResult": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "area": {
+                "enum": [
+                  "manage"
+                ],
+                "type": "string"
+              },
+              "dataRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resume": {
+                "$ref": "#/components/schemas/ManagementResume"
+              }
+            },
+            "required": [
+              "area",
+              "resume",
+              "dataRevision"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "area": {
+                "enum": [
+                  "analyze"
+                ],
+                "type": "string"
+              },
+              "dataRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "resume": {
+                "$ref": "#/components/schemas/AnalysisResume"
+              }
+            },
+            "required": [
+              "area",
+              "resume",
+              "dataRevision"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "SystemStatus": {
         "additionalProperties": false,
@@ -373,6 +2494,336 @@
         ],
         "type": "object"
       },
+      "UpdateAnalysisNoteBody": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedContributionVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "expectedContributionVersion",
+          "body"
+        ],
+        "type": "object"
+      },
+      "UpdateAnalysisScratchBody": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "start"
+                    ],
+                    "type": "string"
+                  },
+                  "origin": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "initial_position"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fen": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "fen"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "fen"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "anchorId": {
+                            "pattern": "^[1-9]\\d{0,15}$",
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "pattern": "^[1-9]\\d{0,15}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "inventory_anchor"
+                            ],
+                            "type": "string"
+                          },
+                          "revisionId": {
+                            "pattern": "^[1-9]\\d{0,15}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "itemId",
+                          "revisionId",
+                          "anchorId"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "origin"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "apply_move"
+                    ],
+                    "type": "string"
+                  },
+                  "move": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "coordinates"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {
+                            "maxLength": 5,
+                            "minLength": 4,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "notation"
+                            ],
+                            "type": "string"
+                          },
+                          "locale": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "de-DE"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "en-GB"
+                                ],
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "maxLength": 32,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value",
+                          "locale"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind",
+                  "move"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "cursor": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "enum": [
+                      "move_cursor"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "cursor"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "prepare_note"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "body"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "clear_note"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "discard"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "expectedScratchId": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedScratchRevision": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "expectedScratchId",
+          "expectedScratchRevision",
+          "action"
+        ],
+        "type": "object"
+      },
+      "UpdateAnalysisScratchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "discarded": {
+            "type": "boolean"
+          },
+          "resumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scratch": {
+            "$ref": "#/components/schemas/AnalysisScratch"
+          }
+        },
+        "required": [
+          "discarded",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
       "UserPreferences": {
         "additionalProperties": false,
         "properties": {
@@ -414,6 +2865,396 @@
           "updatedAt"
         ],
         "type": "object"
+      },
+      "WorkingContextSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisResumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "boundary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "contextId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "contextVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "createdAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "enum": [
+                  "active"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "archived"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "managementResumeVersion": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nextStep": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "pinnedOrder": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "purpose": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "referenceCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contextId",
+          "displayName",
+          "lifecycle",
+          "contextVersion",
+          "referenceCount",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "WorkingContextWorkspace": {
+        "additionalProperties": false,
+        "properties": {
+          "analysisResume": {
+            "$ref": "#/components/schemas/AnalysisResume"
+          },
+          "context": {
+            "$ref": "#/components/schemas/WorkingContextSummary"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "managementResume": {
+            "$ref": "#/components/schemas/ManagementResume"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/ContextReferenceSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "context",
+          "references",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "WorkScope": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "free"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "context"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "contextId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "WorkspaceContextCreatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "workspace.context-created"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "contextVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contextId",
+              "contextVersion"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "WorkspaceReferenceAddedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "workspace.reference-added"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "referenceId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "contextId",
+              "referenceId"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "WorkspaceResumeUpdatedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "workspace.resume-updated"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "area": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "manage"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "analyze"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "contextId": {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              "resumeVersion": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "contextId",
+              "area",
+              "resumeVersion"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -429,6 +3270,1162 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/analysis/notes": {
+      "post": {
+        "operationId": "CreateAnalysisNote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedScratchId": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
+                  "expectedScratchRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "languageTag": {
+                    "maxLength": 35,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "noteScope": {
+                    "$ref": "#/components/schemas/AnalysisNoteScope"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "expectedScratchId",
+                  "expectedScratchRevision",
+                  "languageTag",
+                  "noteScope"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAnalysisNoteResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/notes/{contributionId}": {
+      "delete": {
+        "operationId": "DeleteAnalysisNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contributionId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedContributionVersion": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "expectedContributionVersion"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisNoteMutationResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      },
+      "patch": {
+        "operationId": "UpdateAnalysisNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contributionId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedContributionVersion": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "expectedContributionVersion",
+                  "body"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisNoteMutationResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/position-notes": {
+      "post": {
+        "operationId": "CreatePositionNote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchorId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "body": {
+                    "maxLength": 8000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "languageTag": {
+                    "maxLength": 35,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "noteScope": {
+                    "$ref": "#/components/schemas/AnalysisNoteScope"
+                  },
+                  "revisionId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "itemId",
+                  "revisionId",
+                  "anchorId",
+                  "body",
+                  "languageTag",
+                  "noteScope"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisNoteMutationResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/scratch": {
+      "put": {
+        "operationId": "UpdateAnalysisScratch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "action": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "start"
+                            ],
+                            "type": "string"
+                          },
+                          "origin": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "initial_position"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "fen": {
+                                    "maxLength": 128,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "fen"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "fen"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "anchorId": {
+                                    "pattern": "^[1-9]\\d{0,15}$",
+                                    "type": "string"
+                                  },
+                                  "itemId": {
+                                    "pattern": "^[1-9]\\d{0,15}$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "inventory_anchor"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "revisionId": {
+                                    "pattern": "^[1-9]\\d{0,15}$",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "itemId",
+                                  "revisionId",
+                                  "anchorId"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "origin"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "apply_move"
+                            ],
+                            "type": "string"
+                          },
+                          "move": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "coordinates"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "maxLength": 5,
+                                    "minLength": 4,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "value"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "notation"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "locale": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "de-DE"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "enum": [
+                                          "en-GB"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "value": {
+                                    "maxLength": 32,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "value",
+                                  "locale"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "move"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "cursor": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "kind": {
+                            "enum": [
+                              "move_cursor"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "cursor"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "body": {
+                            "maxLength": 8000,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "prepare_note"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "body"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "clear_note"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "discard"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "expectedScratchId": {
+                    "anyOf": [
+                      {
+                        "maxLength": 160,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9._:-]+$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "expectedScratchRevision": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "expectedScratchId",
+                  "expectedScratchRevision",
+                  "action"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateAnalysisScratchResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/workspace": {
+      "get": {
+        "operationId": "GetAnalysisWorkspace",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scopeKind",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "free"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "context"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "contextId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "itemId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revisionId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "anchorId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisWorkspace"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
     "/events": {
       "get": {
         "operationId": "SubscribeHostEvents",
@@ -458,6 +4455,311 @@
               }
             },
             "description": "SSE frames use event: host-event, id: eventId and JSON data matching HostEvent. A host.replay-gap requires fresh query snapshots."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory": {
+      "get": {
+        "operationId": "SearchInventory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "contextId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "pattern": "^(?:[1-9]|[1-9]\\d|100)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchInventoryResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/analysis-records": {
+      "post": {
+        "operationId": "CreateAnalysisRecord",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "displayName": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedScratchId": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
+                  "expectedScratchRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "languageTag": {
+                    "maxLength": 35,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "noteScope": {
+                    "$ref": "#/components/schemas/AnalysisNoteScope"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  },
+                  "targetContextId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "expectedScratchId",
+                  "expectedScratchRevision",
+                  "displayName",
+                  "languageTag"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateAnalysisRecordResult"
+                }
+              }
+            },
+            "description": "Default Response"
           },
           "400": {
             "content": {
@@ -813,6 +5115,781 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SystemStatus"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/working-contexts": {
+      "get": {
+        "operationId": "ListWorkingContexts",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "pageSize",
+            "required": false,
+            "schema": {
+              "pattern": "^(?:[1-9]|[1-9]\\d|100)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListWorkingContextsResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      },
+      "post": {
+        "operationId": "CreateWorkingContext",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "boundary": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "nextStep": {
+                    "maxLength": 500,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "maxLength": 2000,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "displayName"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWorkingContextResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/working-contexts/{contextId}": {
+      "get": {
+        "operationId": "GetWorkingContextWorkspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contextId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkingContextWorkspace"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/working-contexts/{contextId}/references": {
+      "post": {
+        "operationId": "AddContextReference",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contextId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchorId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "anchorId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddContextReferenceResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/working-contexts/{contextId}/resume": {
+      "put": {
+        "operationId": "SetWorkScopeResume",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contextId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "area": {
+                        "enum": [
+                          "manage"
+                        ],
+                        "type": "string"
+                      },
+                      "expectedResumeVersion": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "presentation": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "list"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "atlas"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "selectedAnchorId": {
+                        "pattern": "^[1-9]\\d{0,15}$",
+                        "type": "string"
+                      },
+                      "selectedItemId": {
+                        "pattern": "^[1-9]\\d{0,15}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "area",
+                      "expectedResumeVersion",
+                      "presentation"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "anchorId": {
+                        "pattern": "^[1-9]\\d{0,15}$",
+                        "type": "string"
+                      },
+                      "area": {
+                        "enum": [
+                          "analyze"
+                        ],
+                        "type": "string"
+                      },
+                      "expectedResumeVersion": {
+                        "anyOf": [
+                          {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "itemId": {
+                        "pattern": "^[1-9]\\d{0,15}$",
+                        "type": "string"
+                      },
+                      "mode": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "analyze"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "edit_inventory"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "edit_overlay"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "revisionId": {
+                        "pattern": "^[1-9]\\d{0,15}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "area",
+                      "expectedResumeVersion",
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetWorkScopeResumeResult"
                 }
               }
             },

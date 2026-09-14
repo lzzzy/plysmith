@@ -1,107 +1,23 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Languages,
-  RefreshCw,
-  Settings,
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Activity, CheckCircle2, Languages, RefreshCw } from 'lucide-react';
 import { Button, Radio, RadioGroup } from 'react-aria-components';
-import { FormattedMessage, IntlProvider, useIntl } from 'react-intl';
+import { FormattedMessage, useIntl } from 'react-intl';
 
-import type {
-  HostReadModelState,
-  HostReadModelStore,
-} from './host-read-model-store.ts';
-import { messages, type UiLocale } from './messages.ts';
+import {
+  type PlysmithApplicationState,
+  type PlysmithApplicationStore,
+} from './plysmith-application-store.ts';
+import type { UiLocale } from './messages.ts';
 import styles from './settings-view.module.css';
 
-export function SettingsApplication({ store }: { store: HostReadModelStore }) {
-  const state = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
-  const locale = state.phase === 'ready' ? state.preferences.uiLocale : 'de-DE';
+type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
 
-  useEffect(() => {
-    void store.start();
-    return () => store.close();
-  }, [store]);
-
-  useEffect(() => {
-    document.documentElement.lang = locale;
-  }, [locale]);
-
-  return (
-    <IntlProvider locale={locale} messages={messages[locale]}>
-      <SettingsView state={state} store={store} />
-    </IntlProvider>
-  );
-}
-
-function SettingsView({
+export function SettingsView({
   state,
   store,
 }: {
-  state: HostReadModelState;
-  store: HostReadModelStore;
-}) {
-  return (
-    <div className={styles.applicationFrame}>
-      <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <img
-            className={styles.brandMark}
-            src="./branding/plysmith-icon-white-32.png"
-            srcSet="./branding/plysmith-icon-white-64.png 2x"
-            width="30"
-            height="30"
-            alt=""
-          />
-          <span>Plysmith</span>
-        </div>
-        <nav aria-label="Plysmith">
-          <div className={styles.activeNavigationItem}>
-            <Settings aria-hidden="true" size={18} />
-            <FormattedMessage id="app.settings" />
-          </div>
-        </nav>
-        <ConnectionSummary state={state} />
-      </aside>
-
-      <main className={styles.main}>
-        <header className={styles.pageHeader}>
-          <div>
-            <h1>
-              <FormattedMessage id="settings.title" />
-            </h1>
-            <p>
-              <FormattedMessage id="settings.subtitle" />
-            </p>
-          </div>
-          <StateBadge state={state} />
-        </header>
-
-        {state.phase === 'loading' && <LoadingState />}
-        {state.phase === 'unavailable' && (
-          <UnavailableState onRetry={() => void store.start()} />
-        )}
-        {state.phase === 'ready' && (
-          <ReadySettings state={state} store={store} />
-        )}
-      </main>
-    </div>
-  );
-}
-
-function ReadySettings({
-  state,
-  store,
-}: {
-  state: Extract<HostReadModelState, { phase: 'ready' }>;
-  store: HostReadModelStore;
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
 }) {
   const intl = useIntl();
   const [draftLocale, setDraftLocale] = useState<UiLocale>(
@@ -111,11 +27,23 @@ function ReadySettings({
     setDraftLocale(state.preferences.uiLocale);
   }, [state.preferences.uiLocale]);
 
+  const saving = state.busyCommand === 'set_language';
   return (
-    <div className={styles.contentStack}>
-      {state.errorCode !== undefined && (
-        <ErrorNotice errorCode={state.errorCode} />
-      )}
+    <main className={styles.settingsView}>
+      <header className={styles.pageHeader}>
+        <div>
+          <span className={styles.eyebrow}>
+            <FormattedMessage id="settings.eyebrow" />
+          </span>
+          <h1>
+            <FormattedMessage id="settings.title" />
+          </h1>
+        </div>
+        <span className={styles.stateBadge}>
+          <span className={styles.statusDotReady} />
+          {intl.formatMessage({ id: `state.${state.status.state}` })}
+        </span>
+      </header>
 
       <section
         className={styles.settingsSection}
@@ -134,7 +62,6 @@ function ReadySettings({
             </p>
           </div>
         </div>
-
         <div className={styles.controlRow}>
           <RadioGroup
             aria-label={intl.formatMessage({ id: 'language.controlLabel' })}
@@ -152,12 +79,10 @@ function ReadySettings({
           </RadioGroup>
           <Button
             className={styles.primaryButton!}
-            isDisabled={
-              state.saving || draftLocale === state.preferences.uiLocale
-            }
+            isDisabled={saving || draftLocale === state.preferences.uiLocale}
             onPress={() => void store.setUiLanguage(draftLocale)}
           >
-            {state.saving ? (
+            {saving ? (
               <RefreshCw
                 aria-hidden="true"
                 className={styles.spinning}
@@ -166,9 +91,7 @@ function ReadySettings({
             ) : (
               <CheckCircle2 aria-hidden="true" size={16} />
             )}
-            <FormattedMessage
-              id={state.saving ? 'state.saving' : 'action.apply'}
-            />
+            <FormattedMessage id={saving ? 'state.saving' : 'action.apply'} />
           </Button>
         </div>
       </section>
@@ -190,7 +113,6 @@ function ReadySettings({
             </p>
           </div>
         </div>
-
         <div className={styles.systemOverview}>
           <div>
             <span className={styles.metadataLabel}>
@@ -204,7 +126,6 @@ function ReadySettings({
             r{state.status.persistence.dataRevision}
           </span>
         </div>
-
         <details className={styles.technicalDetails}>
           <summary>
             <FormattedMessage id="system.details" />
@@ -229,7 +150,7 @@ function ReadySettings({
           </dl>
         </details>
       </section>
-    </div>
+    </main>
   );
 }
 
@@ -240,90 +161,6 @@ function DetailRow({ label, value }: { label: string; value: string }) {
         <FormattedMessage id={label} />
       </dt>
       <dd>{value}</dd>
-    </div>
-  );
-}
-
-function ConnectionSummary({ state }: { state: HostReadModelState }) {
-  return (
-    <div className={styles.connectionSummary}>
-      <span
-        className={
-          state.phase === 'ready'
-            ? styles.statusDotReady
-            : styles.statusDotMuted
-        }
-      />
-      <span>
-        <FormattedMessage
-          id={
-            state.phase === 'ready'
-              ? 'system.connected'
-              : state.phase === 'loading'
-                ? 'system.loading'
-                : 'system.unavailable'
-          }
-        />
-      </span>
-    </div>
-  );
-}
-
-function StateBadge({ state }: { state: HostReadModelState }) {
-  const intl = useIntl();
-  if (state.phase !== 'ready') {
-    return null;
-  }
-  return (
-    <span className={styles.stateBadge}>
-      <span className={styles.statusDotReady} />
-      {intl.formatMessage({ id: `state.${state.status.state}` })}
-    </span>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div className={styles.centeredState} role="status">
-      <RefreshCw aria-hidden="true" className={styles.spinning} size={24} />
-      <p>
-        <FormattedMessage id="system.loading" />
-      </p>
-    </div>
-  );
-}
-
-function UnavailableState({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className={styles.centeredState}>
-      <span className={styles.warningIcon}>
-        <AlertTriangle aria-hidden="true" size={23} />
-      </span>
-      <h2>
-        <FormattedMessage id="system.unavailable" />
-      </h2>
-      <p>
-        <FormattedMessage id="system.unavailableDetail" />
-      </p>
-      <Button className={styles.secondaryButton!} onPress={onRetry}>
-        <RefreshCw aria-hidden="true" size={16} />
-        <FormattedMessage id="action.retry" />
-      </Button>
-    </div>
-  );
-}
-
-function ErrorNotice({ errorCode }: { errorCode: string }) {
-  const messageId =
-    errorCode === 'preference.revision_conflict'
-      ? 'error.revision'
-      : errorCode === 'host.unavailable'
-        ? 'error.unavailable'
-        : 'error.generic';
-  return (
-    <div className={styles.errorNotice} role="alert">
-      <AlertTriangle aria-hidden="true" size={17} />
-      <FormattedMessage id={messageId} />
     </div>
   );
 }

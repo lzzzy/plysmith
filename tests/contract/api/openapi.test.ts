@@ -19,21 +19,45 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
   assert.ok('openapi' in api);
   assert.equal(api.openapi, '3.0.3');
   assert.deepEqual(Object.keys(api.paths ?? {}).sort(), [
+    '/analysis/notes',
+    '/analysis/notes/{contributionId}',
+    '/analysis/position-notes',
+    '/analysis/scratch',
+    '/analysis/workspace',
     '/events',
+    '/inventory',
+    '/inventory/analysis-records',
     '/preferences',
     '/preferences/ui-language',
     '/status',
+    '/working-contexts',
+    '/working-contexts/{contextId}',
+    '/working-contexts/{contextId}/references',
+    '/working-contexts/{contextId}/resume',
   ]);
   const expected = [
     ['/status', 'get', 'GetSystemStatus'],
     ['/preferences', 'get', 'GetUserPreferences'],
     ['/preferences/ui-language', 'put', 'SetUiLanguage'],
     ['/events', 'get', 'SubscribeHostEvents'],
+    ['/analysis/workspace', 'get', 'GetAnalysisWorkspace'],
+    ['/analysis/scratch', 'put', 'UpdateAnalysisScratch'],
+    ['/analysis/notes', 'post', 'CreateAnalysisNote'],
+    ['/analysis/position-notes', 'post', 'CreatePositionNote'],
+    ['/analysis/notes/{contributionId}', 'patch', 'UpdateAnalysisNote'],
+    ['/analysis/notes/{contributionId}', 'delete', 'DeleteAnalysisNote'],
+    ['/inventory/analysis-records', 'post', 'CreateAnalysisRecord'],
+    ['/inventory', 'get', 'SearchInventory'],
+    ['/working-contexts', 'get', 'ListWorkingContexts'],
+    ['/working-contexts', 'post', 'CreateWorkingContext'],
+    ['/working-contexts/{contextId}', 'get', 'GetWorkingContextWorkspace'],
+    ['/working-contexts/{contextId}/references', 'post', 'AddContextReference'],
+    ['/working-contexts/{contextId}/resume', 'put', 'SetWorkScopeResume'],
   ] as const;
   for (const [path, method, operationId] of expected) {
     const item: NonNullable<ApiDocument['paths']>[string] | undefined =
       api.paths?.[path];
-    assert.deepEqual(Object.keys(item ?? {}), [method]);
+    assert.ok(item?.[method]);
     assert.equal(item?.[method]?.operationId, operationId);
     const response: ApiResponse | undefined =
       item?.[method]?.responses?.['500'];
@@ -61,6 +85,24 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
     'ProblemDetails',
     'UiLanguageChangedEvent',
     'ReplayGapEvent',
+    'AnalysisWorkspace',
+    'UpdateAnalysisScratchBody',
+    'UpdateAnalysisScratchResult',
+    'CreateAnalysisRecordBody',
+    'CreateAnalysisRecordResult',
+    'CreateAnalysisNoteBody',
+    'CreateAnalysisNoteResult',
+    'CreatePositionNoteBody',
+    'UpdateAnalysisNoteBody',
+    'DeleteAnalysisNoteBody',
+    'AnalysisNoteMutationResult',
+    'SearchInventoryResult',
+    'ListWorkingContextsResult',
+    'WorkingContextWorkspace',
+    'CreateWorkingContextBody',
+    'CreateWorkingContextResult',
+    'AddContextReferenceBody',
+    'AddContextReferenceResult',
   ]) {
     const schema:
       | NonNullable<NonNullable<ApiDocument['components']>['schemas']>[string]
@@ -71,6 +113,13 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
   assert.deepEqual(api.components?.schemas?.HostEvent, {
     anyOf: [
       { $ref: '#/components/schemas/UiLanguageChangedEvent' },
+      { $ref: '#/components/schemas/AnalysisScratchChangedEvent' },
+      { $ref: '#/components/schemas/AnalysisContributionCreatedEvent' },
+      { $ref: '#/components/schemas/AnalysisContributionChangedEvent' },
+      { $ref: '#/components/schemas/InventoryItemCreatedEvent' },
+      { $ref: '#/components/schemas/WorkspaceContextCreatedEvent' },
+      { $ref: '#/components/schemas/WorkspaceReferenceAddedEvent' },
+      { $ref: '#/components/schemas/WorkspaceResumeUpdatedEvent' },
       { $ref: '#/components/schemas/ReplayGapEvent' },
     ],
   });

@@ -10,7 +10,30 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/preferences': ['GET'],
   '/preferences/ui-language': ['PUT'],
   '/events': ['GET'],
+  '/analysis/workspace': ['GET'],
+  '/analysis/scratch': ['PUT'],
+  '/analysis/notes': ['POST'],
+  '/analysis/position-notes': ['POST'],
+  '/inventory': ['GET'],
+  '/inventory/analysis-records': ['POST'],
+  '/working-contexts': ['GET', 'POST'],
 };
+
+function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
+  let pathname: string;
+  try {
+    pathname = new URL(requestUrl, 'http://127.0.0.1').pathname;
+  } catch {
+    return undefined;
+  }
+  const staticMethods = methodsByPath[pathname];
+  if (staticMethods !== undefined) return staticMethods;
+  if (/^\/analysis\/notes\/[^/]+$/.test(pathname)) return ['PATCH', 'DELETE'];
+  if (/^\/working-contexts\/[^/]+$/.test(pathname)) return ['GET'];
+  if (/^\/working-contexts\/[^/]+\/references$/.test(pathname)) return ['POST'];
+  if (/^\/working-contexts\/[^/]+\/resume$/.test(pathname)) return ['PUT'];
+  return undefined;
+}
 
 function isLocalHost(request: FastifyRequest): boolean {
   const authority = request.headers.host;
@@ -57,7 +80,7 @@ export function installSecurity(host: FastifyInstance, hostToken: string) {
     if (request.method === 'OPTIONS') {
       const method = request.headers['access-control-request-method'];
       const headers = request.headers['access-control-request-headers'];
-      const allowedMethods = methodsByPath[request.url];
+      const allowedMethods = allowedMethodsFor(request.url);
       if (
         origin !== uiOrigin ||
         typeof method !== 'string' ||

@@ -1,0 +1,178 @@
+.boardRegion {
+  min-width: 0;
+}
+
+.boardHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.boardHeading h2 {
+  margin: 0;
+  color: #242a33;
+  font-size: 15px;
+  font-weight: 680;
+}
+
+.boardHeading span {
+  color: #68717d;
+  font-size: 12px;
+}
+
+.board {
+  container-type: inline-size;
+  display: grid;
+  width: 100%;
+  max-width: min(68vh, 680px);
+  aspect-ratio: 1;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #313741;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgb(31 37 46 / 12%);
+}
+
+.boardRow {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.square {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  outline: none;
+  cursor: default;
+}
+
+.light {
+  background: #e7e3d9;
+}
+
+.dark {
+  background: #778699;
+}
+
+.movable {
+  cursor: pointer;
+}
+
+.movable::after,
+.target::after {
+  position: absolute;
+  width: 14%;
+  aspect-ratio: 1;
+  background: rgb(39 92 139 / 58%);
+  border-radius: 50%;
+  content: '';
+}
+
+.target::after {
+  width: 24%;
+  background: #c58a22;
+  box-shadow: 0 0 0 5px rgb(255 255 255 / 45%);
+}
+
+.selected {
+  box-shadow: inset 0 0 0 4px #c58a22;
+}
+
+.square:focus-visible {
+  z-index: 2;
+  outline: 3px solid #225faa;
+  outline-offset: -3px;
+}
+
+.piece {
+  z-index: 1;
+  color: #151a20;
+  font-family: 'Segoe UI Symbol', 'Noto Sans Symbols 2', serif;
+  font-size: 10cqi;
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 38%));
+}
+
+.rankLabel,
+.fileLabel {
+  position: absolute;
+  color: rgb(23 29 36 / 72%);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.rankLabel {
+  top: 4px;
+  left: 5px;
+}
+
+.fileLabel {
+  right: 5px;
+  bottom: 3px;
+}
+
+.promotionOverlay {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(20 27 36 / 42%);
+}
+
+.promotionModal {
+  width: min(100%, 680px);
+  outline: none;
+}
+
+.promotionPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: #28303a;
+  background: #fff8e9;
+  border: 1px solid #dfc17f;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.promotionPanel > div {
+  display: flex;
+  gap: 6px;
+}
+
+.promotionButton {
+  min-height: 32px;
+  padding: 0 10px;
+  color: #29313b;
+  background: #ffffff;
+  border: 1px solid #c7cdd5;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.promotionButton[data-focus-visible] {
+  outline: 2px solid #225faa;
+  outline-offset: 2px;
+}
+
+@media (max-width: 720px) {
+  .board {
+    max-width: 100%;
+  }
+}

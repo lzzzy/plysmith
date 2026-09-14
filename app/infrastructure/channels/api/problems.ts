@@ -71,6 +71,101 @@ const catalog = {
     'Preference revision conflict',
     'Read the current preferences before submitting another change.',
   ],
+  'analysis.invalid_update': [
+    400,
+    'Invalid analysis update',
+    'The analysis scratch update is invalid.',
+  ],
+  'analysis.scratch_not_found': [
+    404,
+    'Analysis scratch not found',
+    'The analysis scratch does not exist.',
+  ],
+  'analysis.scratch_revision_conflict': [
+    409,
+    'Analysis scratch revision conflict',
+    'Read the current analysis workspace before submitting another change.',
+  ],
+  'analysis.note_revision_conflict': [
+    409,
+    'Analysis note revision conflict',
+    'Read the current analysis workspace before submitting another change.',
+  ],
+  'analysis.invalid_record': [
+    400,
+    'Invalid analysis record',
+    'The analysis record input or note draft is invalid.',
+  ],
+  'analysis.invalid_note': [
+    400,
+    'Invalid analysis note',
+    'The analysis note, source anchor or visibility is invalid.',
+  ],
+  'chess.invalid_fen': [
+    400,
+    'Invalid chess position',
+    'The FEN does not describe a valid supported chess position.',
+  ],
+  'chess.invalid_move_input': [
+    400,
+    'Invalid move input',
+    'The move input does not use a supported notation.',
+  ],
+  'chess.illegal_move': [
+    400,
+    'Illegal move',
+    'The move is not legal in the current position.',
+  ],
+  'chess.invalid_line': [
+    400,
+    'Invalid chess line',
+    'The stored or submitted move line is invalid.',
+  ],
+  'inventory.invalid_search': [
+    400,
+    'Invalid inventory search',
+    'The inventory search request is invalid.',
+  ],
+  'inventory.item_not_found': [
+    404,
+    'Inventory item not found',
+    'The inventory item does not exist.',
+  ],
+  'workspace.invalid_context': [
+    400,
+    'Invalid working context',
+    'The working context input is invalid.',
+  ],
+  'workspace.context_not_found': [
+    404,
+    'Working context not found',
+    'The working context does not exist.',
+  ],
+  'workspace.invalid_page': [
+    400,
+    'Invalid working context page',
+    'The working context page request is invalid.',
+  ],
+  'workspace.invalid_resume': [
+    400,
+    'Invalid work-scope resume',
+    'The work-scope resume is invalid.',
+  ],
+  'workspace.resume_revision_conflict': [
+    409,
+    'Work-scope resume revision conflict',
+    'Read the current working context before submitting another change.',
+  ],
+  'workspace.reference_target_not_found': [
+    404,
+    'Context reference target not found',
+    'The referenced inventory item or anchor does not exist.',
+  ],
+  'workspace.reference_exists': [
+    409,
+    'Context reference already exists',
+    'The working context already references this anchor.',
+  ],
 } as const;
 
 export type ApiProblemCode = keyof typeof catalog;
@@ -124,14 +219,17 @@ export function installProblemHandling(
         case 'preference.invalid_ui_language':
         case 'preference.invalid_revision':
           return sendProblem(reply, error.problemCode, correlationIdFactory);
-        case 'preference.revision_conflict': {
+        case 'preference.revision_conflict':
+        case 'analysis.scratch_revision_conflict':
+        case 'analysis.note_revision_conflict':
+        case 'workspace.resume_revision_conflict': {
           const parameters: ProblemDetails['parameters'] = {};
           for (const key of ['expectedRevision', 'currentRevision'] as const) {
             const value = error.parameters[key];
             if (
               typeof value === 'number' &&
               Number.isSafeInteger(value) &&
-              value > 0
+              value >= 0
             ) {
               parameters[key] = value;
             }
@@ -143,6 +241,24 @@ export function installProblemHandling(
             parameters,
           );
         }
+        case 'analysis.invalid_update':
+        case 'analysis.invalid_record':
+        case 'analysis.invalid_note':
+        case 'chess.invalid_fen':
+        case 'chess.invalid_move_input':
+        case 'chess.illegal_move':
+        case 'chess.invalid_line':
+        case 'inventory.invalid_search':
+        case 'workspace.invalid_context':
+        case 'workspace.invalid_page':
+        case 'workspace.invalid_resume':
+          return sendProblem(reply, error.problemCode, correlationIdFactory);
+        case 'analysis.scratch_not_found':
+        case 'inventory.item_not_found':
+        case 'workspace.context_not_found':
+        case 'workspace.reference_target_not_found':
+        case 'workspace.reference_exists':
+          return sendProblem(reply, error.problemCode, correlationIdFactory);
       }
     }
     if (typeof error === 'object' && error !== null) {
