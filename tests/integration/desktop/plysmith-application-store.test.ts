@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type {
   AnalysisWorkspaceDto,
+  GetAnalysisWorkspaceRequestDto,
   HostConnection,
   HostEvent,
   ListWorkingContextsResultDto,
@@ -507,6 +508,151 @@ test('analysis navigation restores context and free return points', async () => 
   await store.setScope({ kind: 'free' });
   assert.equal(requests.at(-1)?.scopeKind, 'free');
   assert.equal(requests.at(-1)?.itemId, '11');
+  store.close();
+});
+
+test('derived analysis navigation sends only the exact source anchor focus', async () => {
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const diagnostics: unknown[] = [];
+  const currentAnalysis: AnalysisWorkspaceDto = {
+    ...analysis(),
+    record: {
+      itemId: '31',
+      revisionId: '32',
+      rootAnchorId: '33',
+      currentAnchorId: '33',
+      displayName: 'Abgeleitete Analyse',
+      languageTag: 'de-DE',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      root: initialState,
+      steps: [],
+      cursor: 0,
+      contributions: [],
+      contextMember: false,
+      readOnlyPreview: false,
+    },
+  };
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return requests.length === 1 ? currentAnalysis : analysis();
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+    recordDiagnostic: (event) => diagnostics.push(event),
+  });
+  await store.start();
+
+  const richSourceTarget = {
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '13',
+    start: initialState,
+    contributions: [],
+  };
+  await store.openAnalysisTarget(richSourceTarget);
+
+  assert.deepEqual(requests.at(-1), {
+    scopeKind: 'free',
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '13',
+  });
+  assert.ok(
+    diagnostics.some(
+      (event) =>
+        (event as { eventCode?: string }).eventCode ===
+          'renderer.analysis.navigation_requested' &&
+        (event as { itemId?: string }).itemId === '11',
+    ),
+  );
+  store.close();
+});
+
+test('starts a scratch at the locally selected path position', async () => {
+  let scratchRequest:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const currentAnalysis: AnalysisWorkspaceDto = {
+    ...analysis(),
+    record: {
+      itemId: '31',
+      revisionId: '32',
+      rootAnchorId: '33',
+      currentAnchorId: '34',
+      displayName: 'Abgeleitete Analyse',
+      languageTag: 'de-DE',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      root: initialState,
+      steps: [],
+      cursor: 0,
+      contributions: [],
+      contextMember: false,
+      readOnlyPreview: false,
+    },
+  };
+  const client = createClient({
+    getAnalysisWorkspace: async () => currentAnalysis,
+    updateAnalysisScratch: async (request) => {
+      scratchRequest = request;
+      return {
+        scratch: {
+          scratchId: 'scratch-local-selection',
+          scratchRevision: 1,
+          origin:
+            request.action.kind === 'start'
+              ? request.action.origin
+              : {
+                  kind: 'initial_position' as const,
+                },
+          root: initialState,
+          steps: [],
+          cursor: 0,
+        },
+        discarded: false,
+        dataRevision: 0,
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.startScratchAtTarget({
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '13',
+  });
+
+  assert.deepEqual(scratchRequest, {
+    scope: { kind: 'free' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+    },
+  });
   store.close();
 });
 

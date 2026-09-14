@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 
 import { composeHost } from '../../../app/bootstrap/host/composition-root.ts';
-import { parseHostPaths } from '../../../app/bootstrap/host/main.ts';
+import {
+  formatHostStartupFailure,
+  parseHostPaths,
+} from '../../../app/bootstrap/host/main.ts';
+import { initializeConfiguration } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
 
 const defaultsDirectory = path.resolve('configuration', 'defaults');
 const hostToken = 'composition-root-test-token';
@@ -219,6 +223,58 @@ test('failed composition releases the owner lease for a corrected restart', asyn
   await runtime.close();
 });
 
+test('configured host diagnostics correlate requests without logging content', async (context) => {
+  const applicationHome = await createApplicationHome(context);
+  const initialized = await initializeConfiguration({
+    applicationHome,
+    defaultsDirectory,
+  });
+  const centralPath = path.join(initialized.activeDirectory, 'plysmith.json');
+  const central = JSON.parse(await readFile(centralPath, 'utf8'));
+  central.diagnostics.logging.level = 'debug';
+  await writeFile(centralPath, `${JSON.stringify(central)}\n`, 'utf8');
+
+  const runtime = await composeHost({
+    applicationHome,
+    defaultsDirectory,
+    hostToken,
+    now: () => '2026-09-14T12:00:00.000Z',
+    correlationIdFactory: () => 'host-generated-correlation',
+  });
+  runtime.markReady();
+  const response = await runtime.host.inject({
+    url: '/analysis/workspace?scopeKind=free',
+    headers: {
+      host: '127.0.0.1',
+      authorization: `Bearer ${hostToken}`,
+      'x-plysmith-correlation-id': 'desktop-correlation-1',
+    },
+  });
+  assert.equal(response.statusCode, 200);
+  await runtime.close();
+
+  const directory = path.join(applicationHome, 'diagnostics');
+  const files = await readdir(directory);
+  const content = await readFile(path.join(directory, files[0]!), 'utf8');
+  const events = content
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'host.request.completed' &&
+        event.operation === 'GetAnalysisWorkspace' &&
+        event.correlationId === 'desktop-correlation-1',
+    ),
+  );
+  assert.ok(events.some((event) => event.eventCode === 'host.lifecycle.ready'));
+  assert.ok(
+    events.some((event) => event.eventCode === 'host.lifecycle.stopped'),
+  );
+  assert.doesNotMatch(content, /scopeKind|analysis\/workspace|Bearer/);
+});
+
 test('host path parsing keeps source application home and install root explicit', () => {
   const paths = parseHostPaths([
     '--application-home',
@@ -235,6 +291,18 @@ test('host path parsing keeps source application home and install root explicit'
     paths.applicationHome,
     path.resolve('C:\\Users\\example\\AppData\\Local\\Plysmith'),
   );
+});
+
+test('host startup failure includes the error and its cause', () => {
+  const error = new Error('Could not open the persistence store.', {
+    cause: new Error('Database file is locked.'),
+  });
+
+  const output = formatHostStartupFailure(error);
+
+  assert.match(output, /^Plysmith Application Host could not start\./);
+  assert.match(output, /Could not open the persistence store\./);
+  assert.match(output, /Caused by: Error: Database file is locked\./);
 });
 
 async function createApplicationHome(context: TestContext): Promise<string> {

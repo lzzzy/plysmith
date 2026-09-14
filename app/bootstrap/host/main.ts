@@ -68,10 +68,28 @@ export function parseHostPaths(arguments_: readonly string[]): {
 }
 
 if (isMainModule()) {
-  runHost(process.argv.slice(2)).catch(() => {
-    console.error('Plysmith Application Host could not start.');
+  runHost(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(formatHostStartupFailure(error));
     process.exitCode = 1;
   });
+}
+
+export function formatHostStartupFailure(error: unknown): string {
+  return [
+    'Plysmith Application Host could not start.',
+    formatFailureCause(error),
+  ].join('\n');
+}
+
+function formatFailureCause(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return `Unknown startup failure: ${String(error)}`;
+  }
+
+  const description = error.stack ?? `${error.name}: ${error.message}`;
+  return error.cause === undefined
+    ? description
+    : `${description}\nCaused by: ${formatFailureCause(error.cause)}`;
 }
 
 function isMainModule(): boolean {

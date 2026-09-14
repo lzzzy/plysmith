@@ -16,6 +16,7 @@ export {
   type ConfigurationProblemCode,
 } from './configuration-problem.ts';
 export {
+  loadCentralConfiguration,
   loadConfiguration,
   type RuntimeConfiguration,
 } from './load-configuration.ts';

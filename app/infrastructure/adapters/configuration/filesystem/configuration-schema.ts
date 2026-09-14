@@ -9,6 +9,22 @@ const ProviderInstanceIdSchema = Type.String({
 export const PlysmithConfigurationSchema = Type.Object(
   {
     schemaVersion: Type.Literal(1),
+    diagnostics: Type.Object(
+      {
+        logging: Type.Object(
+          {
+            level: Type.Union([
+              Type.Literal('off'),
+              Type.Literal('error'),
+              Type.Literal('info'),
+              Type.Literal('debug'),
+            ]),
+          },
+          { additionalProperties: false },
+        ),
+      },
+      { additionalProperties: false },
+    ),
     bindings: Type.Object(
       {
         persistence: ProviderInstanceIdSchema,

@@ -20,8 +20,25 @@ const note = (contributionId: string, anchorId: string, body: string) => ({
   updatedAt: '2026-09-13T10:00:00.000Z',
 });
 const state = (sideToMove: 'white' | 'black', fullmoveNumber: number) => ({
-  position: { sideToMove },
-  playState: { fullmoveNumber },
+  position: {
+    ruleSetId: 'standardChess' as const,
+    boardKey: `${sideToMove}-${fullmoveNumber}`,
+    sideToMove,
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    effectiveEnPassantSquare: -1,
+    positionKey: `${sideToMove}-${fullmoveNumber}`,
+  },
+  playState: {
+    fullmoveNumber,
+    halfmoveClock: 0,
+    historyKnowledge: 'complete' as const,
+  },
+  fen: `${sideToMove}-${fullmoveNumber}`,
 });
 const step = (
   san: string,
@@ -43,6 +60,7 @@ test('keeps the stored route visible while a noted analysis path remains active'
       revisionId: '3',
       rootAnchorId: '15',
       currentAnchorId: '18',
+      root: state('white', 1),
       cursor: 3,
       contributions: [],
       steps: [
@@ -58,6 +76,7 @@ test('keeps the stored route visible while a noted analysis path remains active'
         revisionId: '3',
         anchorId: '18',
       },
+      root: state('black', 2),
       cursor: 1,
       steps: [step('Qxd5', 'black', 2), step('Nc3', 'white', 3)],
       noteDraft: { body: 'Damenrücknahme prüfen.' },
@@ -83,6 +102,55 @@ test('keeps the stored route visible while a noted analysis path remains active'
   assert.equal(presentation.hasStoredPrefix, true);
   assert.equal(presentation.scratchCursor, 1);
   assert.equal(presentation.scratchLength, 2);
+  assert.equal(presentation.currentPositionIndex, 4);
+  assert.deepEqual(
+    presentation.positions.map((position) => position.state.fen),
+    ['white-1', 'black-1', 'white-2', 'black-2', 'white-3', 'black-3'],
+  );
+});
+
+test('keeps the complete stored line visible until a new analysis path has a move', () => {
+  const presentation = analysisPathPresentation({
+    record: {
+      itemId: '3',
+      revisionId: '3',
+      rootAnchorId: '15',
+      currentAnchorId: '15',
+      root: state('white', 1),
+      cursor: 0,
+      contributions: [],
+      steps: [
+        { anchorId: '16', ...step('e4', 'white', 1) },
+        { anchorId: '17', ...step('e6', 'black', 1) },
+      ],
+    },
+    scratch: {
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '3',
+        revisionId: '3',
+        anchorId: '15',
+      },
+      root: state('white', 1),
+      cursor: 0,
+      steps: [],
+    },
+  });
+
+  assert.deepEqual(
+    presentation.entries.map((entry) => [entry.kind, entry.move.san]),
+    [
+      ['stored', 'e4'],
+      ['stored', 'e6'],
+    ],
+  );
+  assert.equal(presentation.rootCurrent, true);
+  assert.equal(presentation.currentPositionIndex, 0);
+  assert.equal(presentation.positions[0]?.scratchCursor, 0);
+  assert.equal(
+    presentation.entries.some((entry) => entry.branchOrigin),
+    false,
+  );
 });
 
 test('does not attach an unrelated context scratch to the displayed record', () => {
@@ -92,6 +160,7 @@ test('does not attach an unrelated context scratch to the displayed record', () 
       revisionId: '3',
       rootAnchorId: '15',
       currentAnchorId: '18',
+      root: state('white', 1),
       cursor: 3,
       contributions: [],
       steps: [{ anchorId: '16', ...step('e4', 'white', 1) }],
@@ -103,6 +172,7 @@ test('does not attach an unrelated context scratch to the displayed record', () 
         revisionId: '1',
         anchorId: '2',
       },
+      root: state('white', 1),
       cursor: 1,
       steps: [step('Nf3', 'white', 1)],
     },
@@ -122,10 +192,15 @@ test('keeps the source route visible for a persisted derived analysis', () => {
       revisionId: '9',
       rootAnchorId: '30',
       currentAnchorId: '31',
+      root: state('white', 2),
       cursor: 1,
       contributions: [],
       sourceLine: {
+        sourceItemId: '3',
+        sourceRevisionId: '3',
+        sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',
+        root: state('white', 1),
         rootTarget: { itemId: '3', revisionId: '3', anchorId: '15' },
         steps: [
           {
@@ -149,18 +224,40 @@ test('keeps the source route visible for a persisted derived analysis', () => {
 
   assert.equal(presentation.sourceDisplayName, 'e4 d5');
   assert.equal(presentation.hasSourcePrefix, true);
+  assert.deepEqual(presentation.sourceOriginTarget, {
+    itemId: '3',
+    revisionId: '3',
+    anchorId: '17',
+  });
   assert.deepEqual(
     presentation.entries.map((entry) => [
       entry.kind,
       entry.move.san,
+      entry.positionIndex,
       entry.branchOrigin,
     ]),
     [
-      ['source', 'e4', false],
-      ['source', 'd5', true],
-      ['stored', 'e5', false],
+      ['source', 'e4', 1, false],
+      ['source', 'd5', 2, true],
+      ['stored', 'e5', 3, false],
     ],
   );
+  assert.equal(presentation.currentPositionIndex, 3);
+  assert.equal(presentation.analysisOriginPositionIndex, 2);
+  assert.deepEqual(presentation.positions[0]?.target, {
+    itemId: '3',
+    revisionId: '3',
+    anchorId: '15',
+    start: state('white', 1),
+    contributions: [],
+  });
+  assert.deepEqual(presentation.positions[2]?.target, {
+    itemId: '9',
+    revisionId: '9',
+    anchorId: '30',
+    start: state('white', 2),
+    contributions: [],
+  });
 });
 
 test('groups half-moves into conventional move rows using chess state', () => {
@@ -170,10 +267,15 @@ test('groups half-moves into conventional move rows using chess state', () => {
       revisionId: '9',
       rootAnchorId: '30',
       currentAnchorId: '31',
+      root: state('white', 2),
       cursor: 1,
       contributions: [],
       sourceLine: {
+        sourceItemId: '3',
+        sourceRevisionId: '3',
+        sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',
+        root: state('white', 1),
         rootTarget: { itemId: '3', revisionId: '3', anchorId: '15' },
         steps: [
           {
@@ -212,6 +314,7 @@ test('groups half-moves into conventional move rows using chess state', () => {
     {
       kind: 'scratch',
       ...step('Kh7', 'black', 23),
+      positionIndex: 1,
       scratchCursor: 1,
       current: true,
       branchOrigin: false,
@@ -254,13 +357,18 @@ test('binds inline notes to their exact source and record anchors', () => {
       revisionId: '9',
       rootAnchorId: '30',
       currentAnchorId: '31',
+      root: state('white', 2),
       cursor: 1,
       contributions: [
         note('3', '30', 'Am Ausgangspunkt'),
         note('4', '31', 'Nach e5'),
       ],
       sourceLine: {
+        sourceItemId: '3',
+        sourceRevisionId: '3',
+        sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',
+        root: state('white', 1),
         rootTarget: { itemId: '3', revisionId: '3', anchorId: '15' },
         steps: [
           {

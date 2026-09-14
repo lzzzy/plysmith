@@ -1,4 +1,10 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -91,9 +97,11 @@ export function AnalysisView({
     pathNoteTarget === undefined ? undefined : scratch?.noteDraft;
   const visibleScratchEntries =
     pathNoteDraft === undefined ? scratchEntries : [];
-  const cursor = scratch?.cursor ?? record?.cursor ?? 0;
   const isBusy = state.busyCommand !== undefined || state.refreshing;
   const canChangeNotes = record?.readOnlyPreview !== true;
+  const lineStartNoteTarget = path.hasSourcePrefix
+    ? path.sourceRootTarget
+    : path.recordRootTarget;
   const [moveInput, setMoveInput] = useState('');
   const [fen, setFen] = useState('');
   const [noteBody, setNoteBody] = useState(scratch?.noteDraft?.body ?? '');
@@ -109,6 +117,29 @@ export function AnalysisView({
   const [recordNoteScope, setRecordNoteScope] = useState<'global' | 'context'>(
     state.scope.kind === 'context' ? 'context' : 'global',
   );
+  const [selectedPositionIndex, setSelectedPositionIndex] = useState(
+    path.currentPositionIndex,
+  );
+  const moveListRef = useRef<HTMLOListElement>(null);
+  const activePositionIndex = Math.max(
+    0,
+    Math.min(selectedPositionIndex, Math.max(0, path.positions.length - 1)),
+  );
+  const activePosition = path.positions[activePositionIndex];
+  const navigationLocked =
+    isBusy || pathNoteDraft !== undefined || noteEditor !== undefined;
+  const atWorkspacePosition = activePositionIndex === path.currentPositionIndex;
+  const displayedAnalysis =
+    activePosition === undefined || atWorkspacePosition
+      ? state.analysis
+      : {
+          ...state.analysis,
+          currentState: activePosition.state,
+          legalMoves: [],
+          allowedActions: state.analysis.allowedActions.filter(
+            (action) => action !== 'apply_move',
+          ),
+        };
 
   useEffect(() => {
     setNoteBody(scratch?.noteDraft?.body ?? '');
@@ -121,9 +152,50 @@ export function AnalysisView({
     setNoteEditor(undefined);
   }, [state.scope]);
 
+  useEffect(() => {
+    setSelectedPositionIndex(path.currentPositionIndex);
+  }, [
+    path.currentPositionIndex,
+    record?.currentAnchorId,
+    record?.itemId,
+    record?.revisionId,
+    scratch?.scratchId,
+    scratch?.scratchRevision,
+  ]);
+
+  useEffect(() => {
+    const moveList = moveListRef.current;
+    if (moveList === null) return;
+    if (activePositionIndex === 0) {
+      moveList.scrollTop = 0;
+      return;
+    }
+    moveList
+      .querySelector<HTMLElement>('[aria-current="step"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [activePositionIndex]);
+
+  function selectPathPosition(positionIndex: number) {
+    const boundedIndex = Math.max(
+      0,
+      Math.min(positionIndex, path.positions.length - 1),
+    );
+    const position = path.positions[boundedIndex];
+    if (position === undefined) return;
+    if (
+      scratch !== undefined &&
+      position.scratchCursor !== undefined &&
+      position.scratchCursor !== scratch.cursor
+    ) {
+      void store.moveAnalysisCursor(position.scratchCursor);
+      return;
+    }
+    setSelectedPositionIndex(boundedIndex);
+  }
+
   async function submitMove(event: FormEvent) {
     event.preventDefault();
-    if (moveInput.trim() === '') return;
+    if (!atWorkspacePosition || moveInput.trim() === '') return;
     await store.applyMove(moveInput);
     setMoveInput('');
   }
@@ -277,6 +349,9 @@ export function AnalysisView({
   ) {
     if (entry === undefined) return renderEmptyMove();
     const storedContext = scratch !== undefined && entry.kind !== 'scratch';
+    const selected =
+      entry.positionIndex === activePositionIndex &&
+      entry.positionIndex !== path.analysisOriginPositionIndex;
     const localizedMove = localizeSan(
       entry.move.san,
       state.preferences.uiLocale,
@@ -284,7 +359,9 @@ export function AnalysisView({
     return (
       <div className={styles.moveCell}>
         <Button
-          className={`${styles.moveButton!} ${entry.current ? styles.currentMove : ''} ${storedContext ? styles.storedMove : ''}`}
+          className={`${styles.moveButton!} ${selected ? styles.currentMove : ''} ${storedContext ? styles.storedMove : ''}`}
+          data-path-position={entry.positionIndex}
+          {...(selected ? { 'aria-current': 'step' as const } : {})}
           aria-label={intl.formatMessage(
             { id: 'analysis.moveAt' },
             {
@@ -293,21 +370,8 @@ export function AnalysisView({
               move: localizedMove,
             },
           )}
-          onPress={() => {
-            if (scratch !== undefined) {
-              if (entry.scratchCursor !== undefined)
-                void store.moveAnalysisCursor(entry.scratchCursor);
-              return;
-            }
-            if (entry.noteTarget !== undefined)
-              void store.openAnalysisTarget(entry.noteTarget);
-          }}
-          isDisabled={
-            isBusy ||
-            storedContext ||
-            (entry.scratchCursor === undefined &&
-              entry.noteTarget === undefined)
-          }
+          onPress={() => selectPathPosition(entry.positionIndex)}
+          isDisabled={navigationLocked}
         >
           {localizedMove}
         </Button>
@@ -325,53 +389,6 @@ export function AnalysisView({
           )}
       </div>
     );
-  }
-
-  function renderRootRow(
-    target: AnalysisNoteTarget | undefined,
-    messageId: string,
-    current: boolean,
-    key: string,
-  ): ReactNode[] {
-    return [
-      <li className={styles.rootRow} key={`${key}-root`}>
-        <div className={styles.rootCell}>
-          <Button
-            className={`${styles.moveButton!} ${current ? styles.currentMove : ''}`}
-            onPress={() => {
-              if (scratch !== undefined) {
-                if (target === path.recordRootTarget)
-                  void store.moveAnalysisCursor(0);
-                return;
-              }
-              if (target !== undefined) void store.openAnalysisTarget(target);
-            }}
-            isDisabled={
-              isBusy ||
-              (scratch !== undefined && target !== path.recordRootTarget) ||
-              (scratch !== undefined && path.hasStoredPrefix) ||
-              (scratch === undefined && target === undefined)
-            }
-          >
-            <RotateCcw aria-hidden="true" size={14} />
-            <FormattedMessage id={messageId} />
-          </Button>
-          {target !== undefined &&
-            canChangeNotes &&
-            pathNoteDraft === undefined && (
-              <Button
-                className={styles.addNoteButton!}
-                aria-label={intl.formatMessage({ id: 'analysis.addNote' })}
-                onPress={() => startCreateNote(target)}
-                isDisabled={isBusy}
-              >
-                <MessageSquarePlus aria-hidden="true" size={14} />
-              </Button>
-            )}
-        </div>
-      </li>,
-      renderInlineNotes(target, `${key}-root-notes`),
-    ].filter((entry): entry is ReactNode => entry !== null);
   }
 
   function renderInlineNotes(
@@ -725,7 +742,7 @@ export function AnalysisView({
 
       <div className={styles.workspaceGrid}>
         <ChessBoard
-          workspace={state.analysis}
+          workspace={displayedAnalysis}
           locale={state.preferences.uiLocale}
           isBusy={isBusy}
           onMove={(from, to, promotion) =>
@@ -735,79 +752,134 @@ export function AnalysisView({
 
         <section className={styles.linePanel} aria-labelledby="line-title">
           <div className={styles.panelHeading}>
-            <div>
-              <span className={styles.panelLabel}>
-                <FormattedMessage id="analysis.path" />
-              </span>
-              <h2 id="line-title">
-                <FormattedMessage id="analysis.mainLine" />
-              </h2>
+            <Button
+              id="line-title"
+              className={styles.pathTitleButton!}
+              onPress={() => selectPathPosition(0)}
+              isDisabled={navigationLocked || path.positions.length === 0}
+            >
+              <RotateCcw aria-hidden="true" size={15} />
+              <FormattedMessage id="analysis.path" />
+            </Button>
+            <div className={styles.cursorControls}>
+              {lineStartNoteTarget !== undefined &&
+                canChangeNotes &&
+                pathNoteDraft === undefined && (
+                  <Button
+                    className={styles.addNoteButton!}
+                    aria-label={intl.formatMessage({
+                      id: 'analysis.addNoteAtPathStart',
+                    })}
+                    onPress={() => startCreateNote(lineStartNoteTarget)}
+                    isDisabled={isBusy || noteEditor !== undefined}
+                  >
+                    <MessageSquarePlus aria-hidden="true" size={14} />
+                  </Button>
+                )}
+              <Button
+                className={styles.iconButton!}
+                aria-label={intl.formatMessage({
+                  id: 'analysis.previousMove',
+                })}
+                isDisabled={navigationLocked || activePositionIndex === 0}
+                onPress={() => selectPathPosition(activePositionIndex - 1)}
+              >
+                <ChevronLeft aria-hidden="true" size={17} />
+              </Button>
+              <Button
+                className={styles.iconButton!}
+                aria-label={intl.formatMessage({ id: 'analysis.nextMove' })}
+                isDisabled={
+                  navigationLocked ||
+                  activePositionIndex >= path.positions.length - 1
+                }
+                onPress={() => selectPathPosition(activePositionIndex + 1)}
+              >
+                <ChevronRight aria-hidden="true" size={17} />
+              </Button>
             </div>
-            {scratch !== undefined && pathNoteDraft === undefined && (
-              <div className={styles.cursorControls}>
-                <Button
-                  className={styles.iconButton!}
-                  aria-label={intl.formatMessage({
-                    id: 'analysis.previousMove',
-                  })}
-                  isDisabled={isBusy || cursor === 0}
-                  onPress={() => void store.moveAnalysisCursor(cursor - 1)}
-                >
-                  <ChevronLeft aria-hidden="true" size={17} />
-                </Button>
-                <Button
-                  className={styles.iconButton!}
-                  aria-label={intl.formatMessage({ id: 'analysis.nextMove' })}
-                  isDisabled={
-                    isBusy || cursor >= (path.scratchLength ?? line.length)
-                  }
-                  onPress={() => void store.moveAnalysisCursor(cursor + 1)}
-                >
-                  <ChevronRight aria-hidden="true" size={17} />
-                </Button>
-              </div>
-            )}
           </div>
 
           <ol
+            ref={moveListRef}
             className={styles.moveList}
             aria-label={intl.formatMessage({ id: 'analysis.moveList' })}
           >
             {path.hasSourcePrefix && (
               <li className={styles.sourceLineLabel}>
-                <FormattedMessage
-                  id="analysis.sourceLine"
-                  values={{ source: path.sourceDisplayName }}
-                />
+                <Button
+                  className={styles.sourceLineButton!}
+                  onPress={() => {
+                    if (path.sourceOriginTarget !== undefined)
+                      void store.openAnalysisTarget(path.sourceOriginTarget);
+                  }}
+                  isDisabled={
+                    navigationLocked ||
+                    scratch !== undefined ||
+                    path.sourceOriginTarget === undefined
+                  }
+                >
+                  <span>
+                    <FormattedMessage
+                      id="analysis.sourceLine"
+                      values={{ source: path.sourceDisplayName }}
+                    />
+                  </span>
+                  <ArrowRight aria-hidden="true" size={13} />
+                </Button>
               </li>
             )}
-            {path.hasSourcePrefix &&
-              renderRootRow(
-                path.sourceRootTarget,
-                'analysis.sourceStartPosition',
-                false,
-                'source',
-              )}
+            {renderInlineNotes(lineStartNoteTarget, 'line-start-notes')}
             {renderMoveRows(sourceEntries, 'source')}
             {path.hasSourcePrefix && (
-              <li
-                className={styles.pathBoundary}
-                role="separator"
-                aria-label={intl.formatMessage({
-                  id: 'analysis.analysisOrigin',
-                })}
-              >
-                <GitBranch aria-hidden="true" size={14} />
-                <FormattedMessage id="analysis.analysisOrigin" />
-              </li>
-            )}
-            {renderRootRow(
-              path.recordRootTarget,
-              path.hasSourcePrefix
-                ? 'analysis.analysisStartPosition'
-                : 'analysis.startPosition',
-              path.rootCurrent,
-              'record',
+              <>
+                <li
+                  className={`${styles.pathBoundary} ${path.analysisOriginPositionIndex === activePositionIndex ? styles.currentBoundary : ''}`}
+                >
+                  <Button
+                    className={styles.pathBoundaryButton!}
+                    {...(path.analysisOriginPositionIndex === undefined
+                      ? {}
+                      : {
+                          'data-path-position':
+                            path.analysisOriginPositionIndex,
+                        })}
+                    {...(path.analysisOriginPositionIndex ===
+                    activePositionIndex
+                      ? { 'aria-current': 'step' as const }
+                      : {})}
+                    onPress={() => {
+                      if (path.analysisOriginPositionIndex !== undefined)
+                        selectPathPosition(path.analysisOriginPositionIndex);
+                    }}
+                    isDisabled={
+                      navigationLocked ||
+                      path.analysisOriginPositionIndex === undefined
+                    }
+                  >
+                    <GitBranch aria-hidden="true" size={14} />
+                    <FormattedMessage id="analysis.analysisOrigin" />
+                  </Button>
+                  {path.recordRootTarget !== undefined &&
+                    canChangeNotes &&
+                    pathNoteDraft === undefined && (
+                      <Button
+                        className={styles.addNoteButton!}
+                        aria-label={intl.formatMessage({
+                          id: 'analysis.addNote',
+                        })}
+                        onPress={() => startCreateNote(path.recordRootTarget!)}
+                        isDisabled={isBusy || noteEditor !== undefined}
+                      >
+                        <MessageSquarePlus aria-hidden="true" size={14} />
+                      </Button>
+                    )}
+                </li>
+                {renderInlineNotes(
+                  path.recordRootTarget,
+                  'analysis-origin-notes',
+                )}
+              </>
             )}
             {renderMoveRows(storedEntries, 'stored')}
             {visibleScratchEntries.length > 0 &&
@@ -826,40 +898,45 @@ export function AnalysisView({
             {renderMoveRows(visibleScratchEntries, 'scratch')}
           </ol>
 
-          {scratch !== undefined && pathNoteDraft === undefined && (
-            <form className={styles.moveEntry} onSubmit={submitMove}>
-              <label htmlFor="analysis-move">
-                <FormattedMessage id="analysis.enterMove" />
-              </label>
-              <div>
-                <input
-                  id="analysis-move"
-                  value={moveInput}
-                  onChange={(event) => setMoveInput(event.target.value)}
-                  placeholder={intl.formatMessage({
-                    id: 'analysis.movePlaceholder',
-                  })}
-                  disabled={isBusy}
-                />
-                <button
-                  type="submit"
-                  className={styles.iconButton}
-                  aria-label={intl.formatMessage({ id: 'analysis.playMove' })}
-                  disabled={isBusy || moveInput.trim() === ''}
-                >
-                  <CornerDownLeft aria-hidden="true" size={17} />
-                </button>
-              </div>
-            </form>
-          )}
+          {scratch !== undefined &&
+            pathNoteDraft === undefined &&
+            atWorkspacePosition && (
+              <form className={styles.moveEntry} onSubmit={submitMove}>
+                <label htmlFor="analysis-move">
+                  <FormattedMessage id="analysis.enterMove" />
+                </label>
+                <div>
+                  <input
+                    id="analysis-move"
+                    value={moveInput}
+                    onChange={(event) => setMoveInput(event.target.value)}
+                    placeholder={intl.formatMessage({
+                      id: 'analysis.movePlaceholder',
+                    })}
+                    disabled={isBusy}
+                  />
+                  <button
+                    type="submit"
+                    className={styles.iconButton}
+                    aria-label={intl.formatMessage({ id: 'analysis.playMove' })}
+                    disabled={isBusy || moveInput.trim() === ''}
+                  >
+                    <CornerDownLeft aria-hidden="true" size={17} />
+                  </button>
+                </div>
+              </form>
+            )}
 
           {scratch === undefined && record?.readOnlyPreview !== true && (
             <div className={styles.startActions}>
               {record !== undefined && (
                 <Button
                   className={styles.primaryButton!}
-                  onPress={() => void store.startScratchAtCurrentRecord()}
-                  isDisabled={isBusy}
+                  onPress={() => {
+                    if (activePosition?.target !== undefined)
+                      void store.startScratchAtTarget(activePosition.target);
+                  }}
+                  isDisabled={isBusy || activePosition?.target === undefined}
                 >
                   <ArrowRight aria-hidden="true" size={16} />
                   <FormattedMessage id="analysis.exploreFromHere" />

@@ -2,14 +2,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 import {
   desktopBootstrapChannel,
+  desktopDiagnosticsChannel,
   type DesktopBootstrap,
   type PlysmithDesktopApi,
+  type RendererDiagnosticEvent,
 } from './contract.ts';
 
 const api: PlysmithDesktopApi = Object.freeze({
   async getBootstrap(): Promise<DesktopBootstrap> {
     const bootstrap = await ipcRenderer.invoke(desktopBootstrapChannel);
     return freezeBootstrap(bootstrap as DesktopBootstrap);
+  },
+  recordDiagnostic(event: RendererDiagnosticEvent): void {
+    ipcRenderer.send(desktopDiagnosticsChannel, event);
   },
 });
 

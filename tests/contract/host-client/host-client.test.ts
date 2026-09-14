@@ -20,8 +20,11 @@ const connection: HostConnection = {
 
 test('host fetch preserves request and init headers while adding credentials', async () => {
   let captured: Request | undefined;
+  const diagnostics: unknown[] = [];
   const hostFetch = createHostFetch(connection, {
     origin: 'app://plysmith',
+    correlationIdFactory: () => 'correlation-1',
+    onDiagnostic: (event) => diagnostics.push(event),
     fetch: async (request) => {
       captured = request instanceof Request ? request : new Request(request);
       return Response.json({});
@@ -40,6 +43,22 @@ test('host fetch preserves request and init headers while adding credentials', a
     `Bearer ${connection.token}`,
   );
   assert.equal(captured?.headers.get('origin'), 'app://plysmith');
+  assert.equal(
+    captured?.headers.get('x-plysmith-correlation-id'),
+    'correlation-1',
+  );
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0], {
+    kind: 'completed',
+    correlationId: 'correlation-1',
+    statusCode: 200,
+    durationMilliseconds: (diagnostics[0] as { durationMilliseconds: number })
+      .durationMilliseconds,
+  });
+  assert.ok(
+    (diagnostics[0] as { durationMilliseconds: number }).durationMilliseconds >=
+      0,
+  );
 });
 
 test('host fetch rejects requests outside the discovered origin', async () => {

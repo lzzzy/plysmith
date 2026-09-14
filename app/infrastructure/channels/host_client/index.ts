@@ -43,6 +43,7 @@ export {
   createHostFetch,
   type HostConnection,
   type HostFetchOptions,
+  type HostRequestDiagnostic,
 } from './host-fetch.ts';
 export {
   HostClientProblem,

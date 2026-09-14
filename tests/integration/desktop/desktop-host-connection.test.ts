@@ -21,12 +21,14 @@ const secondConnection: HostConnection = {
 
 test('desktop connection monitor starts unavailable without owning the host', async () => {
   let discoveries = 0;
+  const diagnostics: unknown[] = [];
   const monitor = new DesktopHostConnectionMonitor({
     discover: async () => {
       discoveries += 1;
       throw new Error('missing');
     },
     validate: async () => assert.fail('nothing should be validated'),
+    diagnostics: { write: (event) => diagnostics.push(event) },
   });
 
   await monitor.start();
@@ -36,6 +38,14 @@ test('desktop connection monitor starts unavailable without owning the host', as
     generation: 0,
   });
   assert.equal(discoveries, 1);
+  assert.deepEqual(diagnostics, [
+    {
+      level: 'error',
+      eventCode: 'desktop.host_connection.unavailable',
+      status: 'unavailable',
+      generation: 0,
+    },
+  ]);
   monitor.close();
 });
 

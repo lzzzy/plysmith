@@ -133,7 +133,7 @@ test('valid browser preflight needs no token and grants only the route method an
   assert.equal(response.headers['access-control-allow-methods'], 'PUT');
   assert.equal(
     response.headers['access-control-allow-headers'],
-    'authorization, content-type, last-event-id',
+    'authorization, content-type, last-event-id, x-plysmith-correlation-id',
   );
   assert.equal(response.headers['access-control-allow-credentials'], undefined);
 });

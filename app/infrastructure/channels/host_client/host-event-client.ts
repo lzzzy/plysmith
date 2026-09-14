@@ -6,11 +6,13 @@ import {
   HostEventSchema,
   type HostEvent,
 } from '../api/contract.ts';
-import { createHostFetch, type HostConnection } from './host-fetch.ts';
+import {
+  createHostFetch,
+  type HostConnection,
+  type HostFetchOptions,
+} from './host-fetch.ts';
 
-export interface HostEventClientOptions {
-  readonly origin?: 'app://plysmith';
-  readonly fetch?: typeof fetch;
+export interface HostEventClientOptions extends HostFetchOptions {
   readonly onEvent: (event: HostEvent) => void;
   readonly onGap: (
     event: Extract<HostEvent, { kind: 'host.replay-gap' }>,

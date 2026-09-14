@@ -16,6 +16,7 @@ import {
   type GetAnalysisWorkspaceRequestDto,
   type HostConnection,
   type HostEvent,
+  type HostRequestDiagnostic,
   type ListWorkingContextsRequestDto,
   type ListWorkingContextsResultDto,
   type SearchInventoryRequestDto,
@@ -31,7 +32,10 @@ import {
   type UserPreferencesDto,
   type WorkingContextWorkspaceDto,
 } from '../../host_client/index.ts';
-import type { DesktopBootstrap } from '../desktop/contract.ts';
+import type {
+  DesktopBootstrap,
+  RendererDiagnosticEvent,
+} from '../desktop/contract.ts';
 import type { UiLocale } from './messages.ts';
 
 export type ActivityId = 'manage' | 'analyze' | 'settings';
@@ -115,6 +119,7 @@ export interface HostEventSubscription {
 
 export interface PlysmithApplicationStoreOptions {
   readonly getBootstrap: () => Promise<DesktopBootstrap>;
+  readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
   ) => PlysmithApplicationClient;
@@ -191,6 +196,11 @@ export class PlysmithApplicationStore {
   };
 
   async start(): Promise<void> {
+    this.#diagnose({
+      level: 'info',
+      eventCode: 'renderer.lifecycle.starting',
+      status: 'starting',
+    });
     const lifecycle = ++this.#lifecycle;
     this.#pendingEventRevision = undefined;
     this.#pendingUnversionedEvent = false;
@@ -203,11 +213,23 @@ export class PlysmithApplicationStore {
     try {
       bootstrap = await this.#options.getBootstrap();
     } catch {
+      this.#diagnose({
+        level: 'error',
+        eventCode: 'renderer.bootstrap.unavailable',
+        status: 'unavailable',
+        problemCode: 'host.unavailable',
+      });
       this.#setUnavailable(lifecycle, 'host.unavailable');
       return;
     }
     if (lifecycle !== this.#lifecycle) return;
     if (bootstrap.kind === 'unavailable') {
+      this.#diagnose({
+        level: 'error',
+        eventCode: 'renderer.bootstrap.unavailable',
+        status: 'unavailable',
+        generation: bootstrap.generation,
+      });
       this.#setUnavailable(lifecycle);
       return;
     }
@@ -223,6 +245,13 @@ export class PlysmithApplicationStore {
     try {
       await events.ready;
     } catch {
+      this.#diagnose({
+        level: 'error',
+        eventCode: 'renderer.bootstrap.unavailable',
+        status: 'unavailable',
+        problemCode: 'host.unavailable',
+        generation: bootstrap.generation,
+      });
       events.close();
       if (this.#events === events) this.#events = undefined;
       this.#client = undefined;
@@ -244,6 +273,7 @@ export class PlysmithApplicationStore {
     this.#setRefreshing(true);
     this.#refreshPromise = (async () => {
       do {
+        const startedAt = performance.now();
         this.#refreshAgain = false;
         const readVersion = ++this.#readVersion;
         const readKey = this.#readKey();
@@ -279,6 +309,13 @@ export class PlysmithApplicationStore {
               workspace,
             )
           ) {
+            this.#diagnose({
+              level: 'debug',
+              eventCode: 'renderer.refresh.discarded',
+              status: 'discarded',
+              readVersion,
+              durationMilliseconds: performance.now() - startedAt,
+            });
             this.#refreshAgain = true;
             continue;
           }
@@ -288,6 +325,14 @@ export class PlysmithApplicationStore {
             readKey !== this.#readKey() ||
             !isCurrentOrNewerRead(this.#state, status, preferences)
           ) {
+            this.#diagnose({
+              level: 'debug',
+              eventCode: 'renderer.refresh.discarded',
+              status: 'discarded',
+              readVersion,
+              dataRevision: status.persistence.dataRevision,
+              durationMilliseconds: performance.now() - startedAt,
+            });
             if (readKey !== this.#readKey()) this.#refreshAgain = true;
             continue;
           }
@@ -325,9 +370,25 @@ export class PlysmithApplicationStore {
                 : { announcement: this.#announcement }),
             }),
           );
+          this.#diagnose({
+            level: 'debug',
+            eventCode: 'renderer.refresh.completed',
+            status: 'succeeded',
+            readVersion,
+            dataRevision: status.persistence.dataRevision,
+            durationMilliseconds: performance.now() - startedAt,
+          });
         } catch (error) {
           if (lifecycle !== this.#lifecycle) return;
           const errorCode = hostErrorCode(error);
+          this.#diagnose({
+            level: 'error',
+            eventCode: 'renderer.refresh.failed',
+            status: 'failed',
+            problemCode: errorCode,
+            readVersion,
+            durationMilliseconds: performance.now() - startedAt,
+          });
           if (this.#state.phase === 'ready') {
             this.#setReadyError(errorCode);
           } else {
@@ -587,6 +648,13 @@ export class PlysmithApplicationStore {
     const state = this.#readyState();
     const record = state?.analysis.record;
     if (state === undefined || record === undefined) return;
+    this.#diagnose({
+      level: 'debug',
+      eventCode: 'renderer.analysis.navigation_requested',
+      itemId: target.itemId,
+      revisionId: target.revisionId,
+      anchorId: target.anchorId,
+    });
     if (
       target.itemId === record.itemId &&
       target.revisionId === record.revisionId
@@ -594,7 +662,11 @@ export class PlysmithApplicationStore {
       await this.openRecordAnchor(target.anchorId);
       return;
     }
-    this.#analysisFocus = Object.freeze({ ...target });
+    this.#analysisFocus = Object.freeze({
+      itemId: target.itemId,
+      revisionId: target.revisionId,
+      anchorId: target.anchorId,
+    });
     this.#publishViewState();
     await this.refresh();
   }
@@ -632,14 +704,14 @@ export class PlysmithApplicationStore {
     await this.#startScratch({ kind: 'fen', fen: fen.trim() });
   }
 
-  async startScratchAtCurrentRecord(): Promise<void> {
+  async startScratchAtTarget(target: AnalysisFocus): Promise<void> {
     const record = this.#readyState()?.analysis.record;
     if (record === undefined || record.readOnlyPreview) return;
     await this.#startScratch({
       kind: 'inventory_anchor',
-      itemId: record.itemId,
-      revisionId: record.revisionId,
-      anchorId: record.currentAnchorId,
+      itemId: target.itemId,
+      revisionId: target.revisionId,
+      anchorId: target.anchorId,
     });
   }
 
@@ -1106,6 +1178,7 @@ export class PlysmithApplicationStore {
     )
       return undefined;
     const lifecycle = this.#lifecycle;
+    const startedAt = performance.now();
     this.#busyCommand = command;
     this.#errorCode = undefined;
     this.#announcement = undefined;
@@ -1116,12 +1189,27 @@ export class PlysmithApplicationStore {
       if (lifecycle !== this.#lifecycle) return undefined;
       succeeded = true;
       if (refreshAfter) await this.refresh();
+      this.#diagnose({
+        level: 'info',
+        eventCode: 'renderer.command.completed',
+        operation: command,
+        status: 'succeeded',
+        durationMilliseconds: performance.now() - startedAt,
+      });
       return result;
     } catch (error) {
       if (lifecycle !== this.#lifecycle) return undefined;
       const errorCode = hostErrorCode(error);
       await this.refresh();
       this.#errorCode = errorCode;
+      this.#diagnose({
+        level: 'error',
+        eventCode: 'renderer.command.failed',
+        operation: command,
+        status: 'failed',
+        problemCode: errorCode,
+        durationMilliseconds: performance.now() - startedAt,
+      });
       return undefined;
     } finally {
       if (lifecycle === this.#lifecycle && (refreshAfter || !succeeded))
@@ -1143,7 +1231,10 @@ export class PlysmithApplicationStore {
   #createClient(connection: HostConnection): PlysmithApplicationClient {
     return (
       this.#options.createClient?.(connection) ??
-      new PlysmithHostClient(connection, { origin: 'app://plysmith' })
+      new PlysmithHostClient(connection, {
+        origin: 'app://plysmith',
+        onDiagnostic: (event) => this.#recordHostRequestDiagnostic(event),
+      })
     );
   }
 
@@ -1162,12 +1253,50 @@ export class PlysmithApplicationStore {
       ) ??
       new HostEventClient(connection, {
         origin: 'app://plysmith',
+        onDiagnostic: (event) => this.#recordHostRequestDiagnostic(event),
         onEvent: onChange,
         onGap: () => undefined,
-        onReconnect,
-        onInvalidEvent,
+        onReconnect: () => {
+          this.#diagnose({
+            level: 'info',
+            eventCode: 'renderer.events.reconnected',
+            status: 'ready',
+          });
+          onReconnect();
+        },
+        onInvalidEvent: () => {
+          this.#diagnose({
+            level: 'error',
+            eventCode: 'renderer.events.invalid',
+            status: 'failed',
+            problemCode: 'host.invalid_event',
+          });
+          onInvalidEvent();
+        },
       })
     );
+  }
+
+  #recordHostRequestDiagnostic(event: HostRequestDiagnostic): void {
+    this.#diagnose({
+      level: event.kind === 'failed' ? 'error' : 'debug',
+      eventCode:
+        event.kind === 'failed'
+          ? 'client.request.failed'
+          : 'client.request.completed',
+      correlationId: event.correlationId,
+      status: event.kind === 'failed' ? 'failed' : 'succeeded',
+      ...(event.kind === 'completed' ? { statusCode: event.statusCode } : {}),
+      durationMilliseconds: event.durationMilliseconds,
+    });
+  }
+
+  #diagnose(event: RendererDiagnosticEvent): void {
+    try {
+      this.#options.recordDiagnostic?.(event);
+    } catch {
+      // Diagnostics must never change application behavior.
+    }
   }
 
   #handleHostEvent(event: HostEvent): void {

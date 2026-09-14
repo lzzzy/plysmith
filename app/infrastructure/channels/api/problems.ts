@@ -1,6 +1,10 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ApplicationProblem } from '../../../application/problems/application-problem.ts';
 import type { ProblemDetails } from './schemas.ts';
+import {
+  markRequestProblem,
+  requestCorrelationId,
+} from './request-diagnostics.ts';
 
 export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
@@ -182,11 +186,10 @@ export class ApiProblem extends Error {
 export function sendProblem(
   reply: FastifyReply,
   code: ApiProblemCode,
-  correlationIdFactory: () => string,
+  correlationId: string,
   parameters: ProblemDetails['parameters'] = {},
 ) {
   const [status, title, detail] = catalog[code];
-  const correlationId = correlationIdFactory();
   const problem: ProblemDetails = {
     type: `${problemUriBase}${code}.md`,
     title,
@@ -206,19 +209,24 @@ export function installProblemHandling(
   host: FastifyInstance,
   correlationIdFactory: () => string,
 ) {
-  host.setErrorHandler((error, _request, reply) => {
+  host.setErrorHandler((error, request, reply) => {
     if (reply.raw.headersSent) {
       reply.raw.end();
       return;
     }
     if (error instanceof ApiProblem) {
-      return sendProblem(reply, error.code, correlationIdFactory);
+      return replyWithProblem(request, reply, error.code, correlationIdFactory);
     }
     if (error instanceof ApplicationProblem) {
       switch (error.problemCode) {
         case 'preference.invalid_ui_language':
         case 'preference.invalid_revision':
-          return sendProblem(reply, error.problemCode, correlationIdFactory);
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
         case 'preference.revision_conflict':
         case 'analysis.scratch_revision_conflict':
         case 'analysis.note_revision_conflict':
@@ -234,7 +242,8 @@ export function installProblemHandling(
               parameters[key] = value;
             }
           }
-          return sendProblem(
+          return replyWithProblem(
+            request,
             reply,
             error.problemCode,
             correlationIdFactory,
@@ -252,32 +261,54 @@ export function installProblemHandling(
         case 'workspace.invalid_context':
         case 'workspace.invalid_page':
         case 'workspace.invalid_resume':
-          return sendProblem(reply, error.problemCode, correlationIdFactory);
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
         case 'analysis.scratch_not_found':
         case 'inventory.item_not_found':
         case 'workspace.context_not_found':
         case 'workspace.reference_target_not_found':
         case 'workspace.reference_exists':
-          return sendProblem(reply, error.problemCode, correlationIdFactory);
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
       }
     }
     if (typeof error === 'object' && error !== null) {
       if ('validation' in error) {
-        return sendProblem(reply, 'request.invalid', correlationIdFactory);
+        return replyWithProblem(
+          request,
+          reply,
+          'request.invalid',
+          correlationIdFactory,
+        );
       }
       if ('code' in error) {
         switch (error.code) {
           case 'FST_ERR_CTP_INVALID_JSON_BODY':
           case 'FST_ERR_CTP_EMPTY_JSON_BODY':
-            return sendProblem(reply, 'request.invalid', correlationIdFactory);
+            return replyWithProblem(
+              request,
+              reply,
+              'request.invalid',
+              correlationIdFactory,
+            );
           case 'FST_ERR_CTP_BODY_TOO_LARGE':
-            return sendProblem(
+            return replyWithProblem(
+              request,
               reply,
               'request.too_large',
               correlationIdFactory,
             );
           case 'FST_ERR_CTP_INVALID_MEDIA_TYPE':
-            return sendProblem(
+            return replyWithProblem(
+              request,
               reply,
               'request.unsupported_media_type',
               correlationIdFactory,
@@ -285,9 +316,30 @@ export function installProblemHandling(
         }
       }
     }
-    return sendProblem(reply, 'host.failure', correlationIdFactory);
+    return replyWithProblem(
+      request,
+      reply,
+      'host.failure',
+      correlationIdFactory,
+    );
   });
-  host.setNotFoundHandler((_request, reply) =>
-    sendProblem(reply, 'request.not_found', correlationIdFactory),
+  host.setNotFoundHandler((request, reply) =>
+    replyWithProblem(request, reply, 'request.not_found', correlationIdFactory),
+  );
+}
+
+function replyWithProblem(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  code: ApiProblemCode,
+  correlationIdFactory: () => string,
+  parameters: ProblemDetails['parameters'] = {},
+) {
+  markRequestProblem(request, code);
+  return sendProblem(
+    reply,
+    code,
+    requestCorrelationId(request, correlationIdFactory),
+    parameters,
   );
 }

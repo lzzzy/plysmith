@@ -30,6 +30,7 @@ import {
   initializeConfiguration,
   loadConfiguration,
 } from '../../infrastructure/adapters/configuration/filesystem/index.ts';
+import { FileDiagnosticLog } from '../../infrastructure/adapters/diagnostics/filesystem/index.ts';
 import { SqlitePersistenceAdapter } from '../../infrastructure/adapters/persistence/sqlite/index.ts';
 import {
   acquireHostOwnerLease,
@@ -68,6 +69,7 @@ export async function composeHost(
   const lease = await acquireHostOwnerLease(options.applicationHome);
   let persistence: SqlitePersistenceAdapter | undefined;
   let host: FastifyInstance | undefined;
+  let diagnostics: FileDiagnosticLog | undefined;
 
   try {
     await initializeConfiguration({
@@ -75,6 +77,18 @@ export async function composeHost(
       defaultsDirectory: options.defaultsDirectory,
     });
     const configuration = await loadConfiguration(options.applicationHome);
+    diagnostics = new FileDiagnosticLog({
+      applicationHome: options.applicationHome,
+      component: 'host',
+      productRelease,
+      level: configuration.central.diagnostics.logging.level,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
+    diagnostics.write({
+      level: 'info',
+      eventCode: 'host.lifecycle.starting',
+      status: 'starting',
+    });
     persistence = new SqlitePersistenceAdapter({
       databasePath: configuration.persistence.databasePath,
       ...(options.now === undefined ? {} : { now: options.now }),
@@ -193,6 +207,7 @@ export async function composeHost(
       productRelease,
       contractFingerprint,
       correlationIdFactory,
+      diagnostics,
     });
 
     return createComposedHost({
@@ -202,11 +217,18 @@ export async function composeHost(
       runtimeStatus,
       hostToken,
       host,
+      diagnostics,
     });
   } catch (error) {
+    diagnostics?.write({
+      level: 'error',
+      eventCode: 'host.lifecycle.start_failed',
+      status: 'failed',
+    });
     await host?.close();
     await persistence?.close();
     await lease.release();
+    await diagnostics?.close();
     throw error;
   }
 }
@@ -218,6 +240,7 @@ function createComposedHost(input: {
   readonly runtimeStatus: RuntimeStatus;
   readonly hostToken: string;
   readonly host: FastifyInstance;
+  readonly diagnostics: FileDiagnosticLog;
 }): ComposedHost {
   let closePromise: Promise<void> | undefined;
 
@@ -230,6 +253,11 @@ function createComposedHost(input: {
     contractFingerprint,
     markReady() {
       input.runtimeStatus.setState('ready');
+      input.diagnostics.write({
+        level: 'info',
+        eventCode: 'host.lifecycle.ready',
+        status: 'ready',
+      });
     },
     close() {
       closePromise ??= closeComposedHost(input);
@@ -244,10 +272,22 @@ async function closeComposedHost(input: {
   readonly persistence: SqlitePersistenceAdapter;
   readonly runtimeStatus: RuntimeStatus;
   readonly host: FastifyInstance;
+  readonly diagnostics: FileDiagnosticLog;
 }): Promise<void> {
   input.runtimeStatus.setState('shutting_down');
+  input.diagnostics.write({
+    level: 'info',
+    eventCode: 'host.lifecycle.stopping',
+    status: 'stopping',
+  });
   await clearHostDiscovery(input.applicationHome, input.lease.ownerId);
   await input.host.close();
   await input.persistence.close();
   await input.lease.release();
+  input.diagnostics.write({
+    level: 'info',
+    eventCode: 'host.lifecycle.stopped',
+    status: 'stopped',
+  });
+  await input.diagnostics.close();
 }

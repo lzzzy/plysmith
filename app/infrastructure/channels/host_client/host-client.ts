@@ -6,7 +6,11 @@ import {
   type components,
   type paths,
 } from '../../../../contracts/host/index.ts';
-import { createHostFetch, type HostConnection } from './host-fetch.ts';
+import {
+  createHostFetch,
+  type HostConnection,
+  type HostFetchOptions,
+} from './host-fetch.ts';
 import {
   HostClientProblem,
   localHostProblem,
@@ -62,10 +66,7 @@ export type SetWorkScopeResumeRequestDto =
 export type SetWorkScopeResumeResultDto =
   components['schemas']['SetWorkScopeResumeResult'];
 
-export interface PlysmithHostClientOptions {
-  readonly fetch?: typeof fetch;
-  readonly origin?: 'app://plysmith';
-}
+export type PlysmithHostClientOptions = HostFetchOptions;
 
 export class PlysmithHostClient {
   readonly #client: Client<paths>;

@@ -4,6 +4,7 @@ import { fastifySSE } from '@fastify/sse';
 import type { HostDependencies } from './host-dependencies.ts';
 import { registerEventsRoute } from './events-route.ts';
 import { installProblemHandling } from './problems.ts';
+import { installRequestDiagnostics } from './request-diagnostics.ts';
 import { registerUseCaseRoutes } from './routes.ts';
 import { apiSchemas, EventHeadersSchema } from './schemas.ts';
 import { installSecurity, registerPreflight } from './security.ts';
@@ -22,6 +23,11 @@ export async function buildHost(dependencies: HostDependencies) {
       },
     },
   });
+  installRequestDiagnostics(
+    host,
+    dependencies.diagnostics ?? { write: () => undefined },
+    dependencies.correlationIdFactory,
+  );
   installProblemHandling(host, dependencies.correlationIdFactory);
   installSecurity(host, dependencies.security.hostToken);
 

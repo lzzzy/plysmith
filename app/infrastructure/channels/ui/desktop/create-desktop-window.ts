@@ -4,10 +4,17 @@ import {
   BrowserWindow,
   ipcMain,
   session,
+  type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from 'electron';
 
-import { desktopBootstrapChannel, type DesktopBootstrap } from './contract.ts';
+import type { DiagnosticSink } from '../../../../../contracts/diagnostics/index.ts';
+import {
+  desktopBootstrapChannel,
+  desktopDiagnosticsChannel,
+  parseRendererDiagnosticEvent,
+  type DesktopBootstrap,
+} from './contract.ts';
 import { handleAppRequest, isPlysmithRendererUrl } from './app-protocol.ts';
 import type { DesktopHostConnectionMonitor } from './desktop-host-connection.ts';
 
@@ -15,6 +22,7 @@ export interface CreateDesktopWindowOptions {
   readonly assetsRoot: string;
   readonly preloadPath: string;
   readonly hostConnections: DesktopHostConnectionMonitor;
+  readonly diagnostics: DiagnosticSink;
 }
 
 export async function createDesktopWindow(
@@ -48,12 +56,7 @@ export async function createDesktopWindow(
 
   const bootstrapHandler = (event: IpcMainInvokeEvent): DesktopBootstrap => {
     const senderFrame = event.senderFrame;
-    if (
-      senderFrame === null ||
-      event.sender !== window.webContents ||
-      senderFrame !== window.webContents.mainFrame ||
-      !isPlysmithRendererUrl(senderFrame.url)
-    ) {
+    if (!isTrustedRendererSender(event, window) || senderFrame === null) {
       return Object.freeze({ kind: 'unavailable', generation: 0 });
     }
 
@@ -73,6 +76,12 @@ export async function createDesktopWindow(
     return snapshot;
   };
   ipcMain.handle(desktopBootstrapChannel, bootstrapHandler);
+  const diagnosticHandler = (event: IpcMainEvent, candidate: unknown): void => {
+    if (!isTrustedRendererSender(event, window)) return;
+    const diagnostic = parseRendererDiagnosticEvent(candidate);
+    if (diagnostic !== undefined) options.diagnostics.write(diagnostic);
+  };
+  ipcMain.on(desktopDiagnosticsChannel, diagnosticHandler);
 
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -94,6 +103,12 @@ export async function createDesktopWindow(
     const url = new URL('app://plysmith/index.html');
     url.searchParams.set('generation', String(snapshot.generation));
     void window.loadURL(url.toString()).catch(() => {
+      options.diagnostics.write({
+        level: 'error',
+        eventCode: 'desktop.renderer.load_failed',
+        status: 'failed',
+        generation: snapshot.generation,
+      });
       console.error('Plysmith Desktop renderer could not load.');
     });
   };
@@ -102,9 +117,23 @@ export async function createDesktopWindow(
   window.once('closed', () => {
     unsubscribe();
     ipcMain.removeHandler(desktopBootstrapChannel);
+    ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });
 
   loadSnapshot(hostConnections.getSnapshot());
   return window;
+}
+
+function isTrustedRendererSender(
+  event: IpcMainEvent | IpcMainInvokeEvent,
+  window: BrowserWindow,
+): boolean {
+  const senderFrame = event.senderFrame;
+  return (
+    senderFrame !== null &&
+    event.sender === window.webContents &&
+    senderFrame === window.webContents.mainFrame &&
+    isPlysmithRendererUrl(senderFrame.url)
+  );
 }

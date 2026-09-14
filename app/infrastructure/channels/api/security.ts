@@ -4,7 +4,12 @@ import { ApiProblem } from './problems.ts';
 import { problemResponses } from './schemas.ts';
 
 export const uiOrigin = 'app://plysmith';
-const allowedHeaders = ['authorization', 'content-type', 'last-event-id'];
+const allowedHeaders = [
+  'authorization',
+  'content-type',
+  'last-event-id',
+  'x-plysmith-correlation-id',
+];
 const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/status': ['GET'],
   '/preferences': ['GET'],

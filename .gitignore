@@ -22,5 +22,5 @@
 /configuration/active/
 /configuration/.staging-*/
 /data/
-/logs/
+/diagnostics/
 /runtime/

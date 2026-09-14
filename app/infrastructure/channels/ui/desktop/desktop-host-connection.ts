@@ -1,4 +1,5 @@
 import { connectHost, type HostConnection } from '../../host_client/index.ts';
+import type { DiagnosticSink } from '../../../../../contracts/diagnostics/index.ts';
 import type { DesktopBootstrap } from './contract.ts';
 
 export type DiscoverDesktopHost = () => Promise<HostConnection>;
@@ -13,6 +14,7 @@ export interface DesktopHostConnectionMonitorOptions {
   readonly pollIntervalMilliseconds?: number;
   readonly validationTimeoutMilliseconds?: number;
   readonly unavailableAfterConsecutiveFailures?: number;
+  readonly diagnostics?: DiagnosticSink;
 }
 
 export class DesktopHostConnectionMonitor {
@@ -21,6 +23,7 @@ export class DesktopHostConnectionMonitor {
   readonly #pollIntervalMilliseconds: number;
   readonly #validationTimeoutMilliseconds: number;
   readonly #unavailableAfterConsecutiveFailures: number;
+  readonly #diagnostics: DiagnosticSink | undefined;
   readonly #listeners = new Set<(snapshot: DesktopBootstrap) => void>();
   #snapshot: DesktopBootstrap = Object.freeze({
     kind: 'unavailable',
@@ -31,6 +34,7 @@ export class DesktopHostConnectionMonitor {
   #validationAbortController: AbortController | undefined;
   #closed = false;
   #consecutiveFailures = 0;
+  #reportedAvailability: boolean | undefined;
 
   constructor(options: DesktopHostConnectionMonitorOptions) {
     this.#discover = options.discover;
@@ -49,6 +53,7 @@ export class DesktopHostConnectionMonitor {
       options.validationTimeoutMilliseconds ?? 5_000;
     this.#unavailableAfterConsecutiveFailures =
       options.unavailableAfterConsecutiveFailures ?? 2;
+    this.#diagnostics = options.diagnostics;
     if (
       !Number.isSafeInteger(this.#unavailableAfterConsecutiveFailures) ||
       this.#unavailableAfterConsecutiveFailures < 1
@@ -133,6 +138,7 @@ export class DesktopHostConnectionMonitor {
       return;
     }
     this.#consecutiveFailures = 0;
+    this.#reportAvailability(true);
     if (
       this.#snapshot.kind === 'ready' &&
       sameConnection(this.#snapshot.connection, connection)
@@ -156,6 +162,7 @@ export class DesktopHostConnectionMonitor {
       return;
     }
     this.#consecutiveFailures += 1;
+    this.#reportAvailability(false);
     if (
       this.#snapshot.kind !== 'ready' ||
       this.#consecutiveFailures < this.#unavailableAfterConsecutiveFailures
@@ -171,6 +178,19 @@ export class DesktopHostConnectionMonitor {
     for (const listener of this.#listeners) {
       listener(snapshot);
     }
+  }
+
+  #reportAvailability(available: boolean): void {
+    if (this.#reportedAvailability === available) return;
+    this.#reportedAvailability = available;
+    this.#diagnostics?.write({
+      level: available ? 'info' : 'error',
+      eventCode: available
+        ? 'desktop.host_connection.available'
+        : 'desktop.host_connection.unavailable',
+      status: available ? 'available' : 'unavailable',
+      generation: this.#snapshot.generation,
+    });
   }
 
   async #validateWithinTimeout(connection: HostConnection): Promise<void> {

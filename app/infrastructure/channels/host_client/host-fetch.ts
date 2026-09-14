@@ -8,7 +8,22 @@ export interface HostConnection {
 export interface HostFetchOptions {
   readonly origin?: 'app://plysmith';
   readonly fetch?: typeof fetch;
+  readonly correlationIdFactory?: () => string;
+  readonly onDiagnostic?: (event: HostRequestDiagnostic) => void;
 }
+
+export type HostRequestDiagnostic =
+  | {
+      readonly kind: 'completed';
+      readonly correlationId: string;
+      readonly statusCode: number;
+      readonly durationMilliseconds: number;
+    }
+  | {
+      readonly kind: 'failed';
+      readonly correlationId: string;
+      readonly durationMilliseconds: number;
+    };
 
 export function createHostFetch(
   connection: HostConnection,
@@ -35,6 +50,9 @@ export function createHostFetch(
     if (options.origin !== undefined) {
       headers.set('origin', options.origin);
     }
+    const correlationId =
+      options.correlationIdFactory?.() ?? globalThis.crypto.randomUUID();
+    headers.set('x-plysmith-correlation-id', correlationId);
 
     const request = new Request(inputRequest, {
       ...init,
@@ -46,6 +64,34 @@ export function createHostFetch(
         'The host client cannot leave its discovered origin.',
       );
     }
-    return fetchImplementation(request);
+    const startedAt = performance.now();
+    try {
+      const response = await fetchImplementation(request);
+      notifyDiagnostic(options, {
+        kind: 'completed',
+        correlationId,
+        statusCode: response.status,
+        durationMilliseconds: performance.now() - startedAt,
+      });
+      return response;
+    } catch (error) {
+      notifyDiagnostic(options, {
+        kind: 'failed',
+        correlationId,
+        durationMilliseconds: performance.now() - startedAt,
+      });
+      throw error;
+    }
   };
+}
+
+function notifyDiagnostic(
+  options: HostFetchOptions,
+  event: HostRequestDiagnostic,
+): void {
+  try {
+    options.onDiagnostic?.(event);
+  } catch {
+    // Diagnostics must never affect a host request.
+  }
 }

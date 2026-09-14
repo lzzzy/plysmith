@@ -27,12 +27,7 @@ export async function loadConfiguration(
   applicationHome: string,
 ): Promise<RuntimeConfiguration> {
   const activeDirectory = path.join(applicationHome, 'configuration', 'active');
-  const central = await readDocument(
-    path.join(activeDirectory, 'plysmith.json'),
-    PlysmithConfigurationSchema,
-    'configuration.active_missing',
-    'configuration.central_invalid',
-  );
+  const central = await loadCentralConfiguration(applicationHome);
 
   const instanceId = central.bindings.persistence;
   const persistence = await readDocument(
@@ -47,7 +42,7 @@ export async function loadConfiguration(
   }
 
   return Object.freeze({
-    central: deepFreezeCentral(central),
+    central,
     persistence: Object.freeze({
       instanceId,
       provider: 'sqlite' as const,
@@ -57,6 +52,18 @@ export async function loadConfiguration(
       ),
     }),
   });
+}
+
+export async function loadCentralConfiguration(
+  applicationHome: string,
+): Promise<PlysmithConfiguration> {
+  const central = await readDocument(
+    path.join(applicationHome, 'configuration', 'active', 'plysmith.json'),
+    PlysmithConfigurationSchema,
+    'configuration.active_missing',
+    'configuration.central_invalid',
+  );
+  return deepFreezeCentral(central);
 }
 
 async function readDocument<T extends TSchema>(
@@ -115,6 +122,8 @@ function resolveManagedDatabasePath(
 function deepFreezeCentral(
   central: PlysmithConfiguration,
 ): PlysmithConfiguration {
+  Object.freeze(central.diagnostics.logging);
+  Object.freeze(central.diagnostics);
   Object.freeze(central.bindings.analysisEngines);
   Object.freeze(central.bindings.playoutEngines);
   Object.freeze(central.bindings.liveProviders);

@@ -79,7 +79,8 @@ module.exports = {
       from: { path: '^app/bootstrap/(mcp|desktop)' },
       to: {
         path: '^app/infrastructure/adapters',
-        pathNot: '^app/infrastructure/adapters/platform/windows(?:/|$)',
+        pathNot:
+          '^app/infrastructure/adapters/(?:platform/windows|configuration/filesystem|diagnostics/filesystem)(?:/|$)',
       },
     },
     {

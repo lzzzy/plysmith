@@ -21,6 +21,7 @@ import type {
   ListWorkingContextsUseCase,
   SetWorkScopeResumeUseCase,
 } from '../../../application/workspace/index.ts';
+import type { DiagnosticSink } from '../../../../contracts/diagnostics/index.ts';
 
 export interface HostDependencies {
   readonly getSystemStatus: GetSystemStatusUseCase;
@@ -44,4 +45,5 @@ export interface HostDependencies {
   readonly productRelease: string;
   readonly contractFingerprint: string;
   readonly correlationIdFactory: () => string;
+  readonly diagnostics?: DiagnosticSink;
 }

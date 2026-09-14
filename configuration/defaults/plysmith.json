@@ -1,5 +1,10 @@
 {
   "schemaVersion": 1,
+  "diagnostics": {
+    "logging": {
+      "level": "off"
+    }
+  },
   "bindings": {
     "persistence": "sqlite-main",
     "analysisEngines": [],

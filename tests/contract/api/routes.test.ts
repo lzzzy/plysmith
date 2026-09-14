@@ -229,6 +229,41 @@ test('unexpected exceptions receive one injected correlation and no internal det
   assert.ok(!response.body.includes('CANARY'));
 });
 
+test('host problems and request diagnostics preserve the client correlation', async (t) => {
+  const diagnostics: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    getSystemStatus: {
+      execute: async () => {
+        throw new Error('CANARY request content');
+      },
+    },
+    diagnostics: { write: (event) => diagnostics.push(event) },
+  });
+
+  const response = await host.inject({
+    url: '/status',
+    headers: {
+      ...headers,
+      'x-plysmith-correlation-id': 'client-correlation-7',
+    },
+  });
+
+  assert.equal(response.json().correlationId, 'client-correlation-7');
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0], {
+    level: 'error',
+    eventCode: 'host.request.completed',
+    correlationId: 'client-correlation-7',
+    operation: 'GetSystemStatus',
+    status: 'failed',
+    problemCode: 'host.failure',
+    statusCode: 500,
+    durationMilliseconds: (diagnostics[0] as { durationMilliseconds: number })
+      .durationMilliseconds,
+  });
+  assert.doesNotMatch(JSON.stringify(diagnostics), /CANARY/);
+});
+
 test('analysis query rejects inconsistent scopes and incomplete previews before application', async (t) => {
   let calls = 0;
   const { host } = await buildFixture(t, {

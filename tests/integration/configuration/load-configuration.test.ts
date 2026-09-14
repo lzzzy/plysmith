@@ -7,6 +7,7 @@ import test, { type TestContext } from 'node:test';
 import {
   ConfigurationProblem,
   initializeConfiguration,
+  loadCentralConfiguration,
   loadConfiguration,
 } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
 
@@ -26,6 +27,20 @@ test('loads an immutable runtime snapshot with a managed database path', async (
   assert.ok(Object.isFrozen(runtime.central));
   assert.ok(Object.isFrozen(runtime.central.bindings));
   assert.ok(Object.isFrozen(runtime.central.bindings.analysisEngines));
+  assert.equal(runtime.central.diagnostics.logging.level, 'off');
+});
+
+test('loads central diagnostics without requiring a persistence provider', async (context) => {
+  const applicationHome = await createApplicationHome(context);
+  await initializeConfiguration({ applicationHome, defaultsDirectory });
+  await rm(
+    path.join(applicationHome, 'configuration', 'active', 'sqlite-main.json'),
+  );
+
+  const central = await loadCentralConfiguration(applicationHome);
+
+  assert.equal(central.diagnostics.logging.level, 'off');
+  assert.ok(Object.isFrozen(central));
 });
 
 test('reports a missing active configuration without seeding it', async (context) => {

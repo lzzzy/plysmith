@@ -87,15 +87,39 @@
   border-bottom: 1px solid #e0e4e9;
 }
 
-.panelHeading h2 {
-  margin: 2px 0 0;
+.pathTitleButton {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 4px;
   color: #2a3038;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
   font-size: 14px;
   font-weight: 680;
 }
 
+.pathTitleButton[data-hovered] {
+  color: #173f72;
+  background: #f0f3f6;
+}
+
+.pathTitleButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.pathTitleButton[data-disabled] {
+  color: #9299a1;
+  cursor: default;
+}
+
 .cursorControls {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -143,21 +167,12 @@
   gap: 3px;
 }
 
-.moveCell,
-.rootCell {
+.moveCell {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
   gap: 2px;
-}
-
-.rootRow {
-  min-width: 0;
-}
-
-.rootCell {
-  grid-template-columns: minmax(0, 1fr) 28px;
 }
 
 .moveButton {
@@ -174,10 +189,6 @@
   cursor: pointer;
   text-align: left;
   font-size: 13px;
-}
-
-.rootRow .moveButton {
-  gap: 8px;
 }
 
 .addNoteButton,
@@ -229,6 +240,44 @@
   white-space: nowrap;
 }
 
+.sourceLineButton {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.sourceLineButton span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sourceLineButton svg {
+  flex: 0 0 auto;
+}
+
+.sourceLineButton[data-hovered] {
+  color: #173f72;
+}
+
+.sourceLineButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.sourceLineButton[data-disabled] {
+  color: #9299a1;
+  cursor: default;
+}
+
 .moveButton[data-hovered] {
   background: #f0f3f6;
 }
@@ -248,7 +297,7 @@
 .moveButton.storedMove {
   color: #68717c;
   background: #f5f6f8;
-  cursor: default;
+  cursor: pointer;
 }
 
 .moveButton.storedMove.currentMove {
@@ -257,12 +306,13 @@
 }
 
 .pathBoundary {
-  display: flex;
+  display: grid;
   min-height: 30px;
+  grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 7px;
+  gap: 2px;
   margin: 7px -8px 5px;
-  padding: 0 12px;
+  padding: 0 10px 0 12px;
   color: #77581c;
   background: #fff7df;
   border-top: 1px solid #ead7a7;
@@ -270,6 +320,36 @@
   font-size: 10px;
   font-weight: 720;
   text-transform: uppercase;
+}
+
+.pathBoundary.currentBoundary {
+  color: #173f72;
+  background: #eaf2fc;
+  border-color: #c4d8ef;
+}
+
+.pathBoundaryButton {
+  display: flex;
+  min-width: 0;
+  min-height: 30px;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.pathBoundaryButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 1px;
+}
+
+.pathBoundaryButton[data-disabled] {
+  cursor: default;
 }
 
 .moveNumber {

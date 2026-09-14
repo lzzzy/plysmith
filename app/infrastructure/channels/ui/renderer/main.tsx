@@ -12,6 +12,7 @@ if (rootElement === null) {
 
 const store = new PlysmithApplicationStore({
   getBootstrap: () => window.plysmithDesktop.getBootstrap(),
+  recordDiagnostic: (event) => window.plysmithDesktop.recordDiagnostic(event),
 });
 
 createRoot(rootElement).render(
