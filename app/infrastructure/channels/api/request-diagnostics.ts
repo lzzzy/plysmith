@@ -32,7 +32,8 @@ export function installRequestDiagnostics(
     if (context === undefined) return;
     const failed = reply.statusCode >= 400;
     const operation = requestOperation(request);
-    if (!failed && operation === 'GetSystemStatus') return;
+    if (!failed && (request.method === 'GET' || operation === 'Preflight'))
+      return;
     diagnostics.write({
       level: reply.statusCode >= 500 ? 'error' : failed ? 'info' : 'debug',
       eventCode: 'host.request.completed',

@@ -34,6 +34,56 @@
   font-size: 12px;
 }
 
+.revisionNotice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  color: #6c4d0f;
+  background: #fff4d8;
+  border: 1px solid #dfbd6f;
+  border-radius: 6px;
+}
+
+.revisionNotice strong {
+  font-size: 13px;
+}
+
+.revisionNotice p {
+  margin: 3px 0 0;
+  font-size: 12px;
+}
+
+.impactButton {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: #ffffff;
+  background: #91650d;
+  border: 1px solid #765108;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.impactButton[data-disabled] {
+  color: #9299a2;
+  background: #e5e8eb;
+  border-color: #d3d7dc;
+  cursor: default;
+}
+
+.impactButton[data-focus-visible] {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
 .previewNotice {
   display: flex;
   align-items: center;
@@ -328,6 +378,13 @@
   border-color: #c4d8ef;
 }
 
+.pathBoundaryLabel {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
 .pathBoundaryButton {
   display: flex;
   min-width: 0;
@@ -420,6 +477,7 @@
 .primaryButton,
 .secondaryButton,
 .ochreButton,
+.dangerButton,
 .discardButton,
 .smallButton {
   display: inline-flex;
@@ -455,6 +513,12 @@
   border: 1px solid #dfbd6f;
 }
 
+.dangerButton {
+  color: #713f3f;
+  background: #fffafa;
+  border: 1px solid #d4adad;
+}
+
 .discardButton {
   width: 100%;
   min-height: 32px;
@@ -467,6 +531,7 @@
 .primaryButton[data-disabled],
 .secondaryButton[data-disabled],
 .ochreButton[data-disabled],
+.dangerButton[data-disabled],
 .discardButton[data-disabled],
 .primaryButton:disabled,
 .smallButton:disabled {
@@ -479,6 +544,7 @@
 .primaryButton[data-focus-visible],
 .secondaryButton[data-focus-visible],
 .ochreButton[data-focus-visible],
+.dangerButton[data-focus-visible],
 .discardButton[data-focus-visible],
 .primaryButton:focus-visible,
 .smallButton:focus-visible {
@@ -499,6 +565,120 @@
   gap: 8px;
   padding: 14px;
   border-top: 1px solid #e0e4e9;
+}
+
+.inventoryEditChoice,
+.revisionActions {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fffaf0;
+  border: 1px solid #e2ca96;
+  border-radius: 5px;
+}
+
+.inventoryEditChoice strong,
+.revisionActions h3 {
+  margin: 0;
+  color: #493a1c;
+  font-size: 13px;
+}
+
+.inventoryEditChoice p,
+.revisionHint,
+.previewSection p {
+  margin: 0;
+  color: #675a3d;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.revisionActions {
+  border-width: 1px 0 0;
+  border-radius: 0;
+}
+
+.revisionHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.revisionHeading > span {
+  color: #745c27;
+  font-size: 10px;
+}
+
+.revisionPreview,
+.previewSection {
+  display: grid;
+  gap: 8px;
+}
+
+.previewSection {
+  padding: 9px;
+  background: #ffffff;
+  border: 1px solid #dfd6c2;
+  border-radius: 5px;
+}
+
+.removedMoves {
+  color: #7a4040 !important;
+}
+
+.impactWarning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px;
+  color: #754f08;
+  background: #fff1c9;
+  border: 1px solid #e3bf68;
+  border-radius: 5px;
+}
+
+.impactWarning strong {
+  font-size: 11px;
+}
+
+.impactWarning ul {
+  margin: 5px 0 0;
+  padding-left: 17px;
+  font-size: 10px;
+}
+
+.followingContexts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px;
+  color: #2f5c45;
+  background: #edf7f0;
+  border: 1px solid #c5ddcc;
+  border-radius: 5px;
+}
+
+.followingContexts strong {
+  font-size: 11px;
+}
+
+.followingContexts p {
+  margin: 3px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.followingContexts ul {
+  margin: 5px 0 0;
+  padding-left: 17px;
+  font-size: 10px;
+}
+
+.previewActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
 }
 
 .analysisActions h3 {
@@ -757,6 +937,7 @@
     grid-template-columns: 1fr;
   }
 
+  .revisionNotice,
   .previewNotice,
   .viewHeader {
     align-items: flex-start;
@@ -766,5 +947,13 @@
   .noticeActions {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .revisionNotice {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .revisionNotice .impactButton {
+    grid-column: 1 / -1;
   }
 }

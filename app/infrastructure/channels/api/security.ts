@@ -25,6 +25,8 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/analysis/position-notes': ['POST'],
   '/inventory': ['GET'],
   '/inventory/analysis-records': ['POST'],
+  '/inventory/revision-edits/preview': ['POST'],
+  '/inventory/revision-edits/save': ['POST'],
   '/working-contexts': ['GET', 'POST'],
 };
 
@@ -38,6 +40,14 @@ function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
   const staticMethods = methodsByPath[pathname];
   if (staticMethods !== undefined) return staticMethods;
   if (/^\/analysis\/notes\/[^/]+$/.test(pathname)) return ['PATCH', 'DELETE'];
+  if (/^\/inventory\/items\/[^/]+\/revision-edits$/.test(pathname))
+    return ['POST'];
+  if (/^\/inventory\/items\/[^/]+\/revisions$/.test(pathname)) return ['GET'];
+  if (/^\/inventory\/items\/[^/]+\/revisions\/[^/]+$/.test(pathname))
+    return ['GET'];
+  if (/^\/workspace\/revision-impacts\/[^/]+$/.test(pathname)) return ['GET'];
+  if (/^\/workspace\/revision-impacts\/[^/]+\/resolution$/.test(pathname))
+    return ['POST'];
   if (/^\/working-contexts\/[^/]+$/.test(pathname)) return ['GET'];
   if (/^\/working-contexts\/[^/]+\/references$/.test(pathname)) return ['POST'];
   if (/^\/working-contexts\/[^/]+\/resume$/.test(pathname)) return ['PUT'];

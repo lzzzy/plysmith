@@ -14,6 +14,8 @@ import type {
 } from '../../../../application/analysis/index.ts';
 import type {
   InventoryReader,
+  InventoryRevisionReader,
+  InventoryRevisionWriter,
   SearchInventoryRequest,
 } from '../../../../application/inventory/index.ts';
 import { ApplicationProblem } from '../../../../application/problems/application-problem.ts';
@@ -54,6 +56,16 @@ import {
 } from './sqlite-analysis-scratch.ts';
 import { readContextAnalysisWorkspace } from './sqlite-context-analysis.ts';
 import { searchInventory as searchInventoryRows } from './sqlite-inventory.ts';
+import {
+  listInventoryRevisions as listInventoryRevisionRows,
+  previewInventoryRevision as previewInventoryRevisionRows,
+  readAnalysisRevision as readAnalysisRevisionRow,
+  saveInventoryRevision as writeInventoryRevision,
+} from './sqlite-inventory-revision.ts';
+import {
+  readPendingRevisionImpact as readPendingRevisionImpactRow,
+  resolvePendingRevisionImpact as writeRevisionImpactResolution,
+} from './sqlite-revision-impact.ts';
 import { SqlitePersistenceProblem } from './sqlite-persistence-problem.ts';
 import {
   addContextReference as writeContextReference,
@@ -83,6 +95,8 @@ export class SqlitePersistenceAdapter
     PreferencesUnitOfWork,
     StoreStatusReader,
     InventoryReader,
+    InventoryRevisionReader,
+    InventoryRevisionWriter,
     WorkingContextReader,
     WorkingContextWriter,
     ContextAnalysisReader,
@@ -119,7 +133,7 @@ export class SqlitePersistenceAdapter
     } catch (error) {
       writer?.close();
       if (error instanceof ApplicationProblem) throw error;
-      throw new SqlitePersistenceProblem('persistence.startup_failed');
+      throw new SqlitePersistenceProblem('persistence.startup_failed', error);
     }
   }
 
@@ -147,6 +161,40 @@ export class SqlitePersistenceAdapter
       Omit<SearchInventoryRequest, 'pageSize'>,
   ) {
     return this.#readSnapshot((reader) => searchInventoryRows(reader, request));
+  }
+
+  async readAnalysisRevision(
+    request: Parameters<InventoryRevisionReader['readAnalysisRevision']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      readAnalysisRevisionRow(reader, request),
+    );
+  }
+
+  async previewInventoryRevision(
+    request: Parameters<InventoryRevisionReader['previewInventoryRevision']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      previewInventoryRevisionRows(reader, request),
+    );
+  }
+
+  async listInventoryRevisions(
+    request: Parameters<InventoryRevisionReader['listInventoryRevisions']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      listInventoryRevisionRows(reader, request),
+    );
+  }
+
+  async readPendingRevisionImpact(
+    impactId: Parameters<
+      InventoryRevisionReader['readPendingRevisionImpact']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      readPendingRevisionImpactRow(reader, impactId),
+    );
   }
 
   async listWorkingContexts(request: {
@@ -238,6 +286,25 @@ export class SqlitePersistenceAdapter
   deleteAnalysisNote(request: PersistDeleteAnalysisNoteRequest) {
     return this.#enqueueWrite(() =>
       writeDeleteAnalysisNote(this.#writer, request),
+    );
+  }
+
+  saveInventoryRevision(
+    request: Parameters<InventoryRevisionWriter['saveInventoryRevision']>[0],
+  ) {
+    return this.#enqueueWrite(() =>
+      writeInventoryRevision(this.#writer, request),
+    );
+  }
+
+  resolvePendingRevisionImpact(
+    request: Parameters<
+      InventoryRevisionWriter['resolvePendingRevisionImpact']
+    >[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeRevisionImpactResolution(this.#writer, request, occurredAt),
     );
   }
 
@@ -336,7 +403,7 @@ export class SqlitePersistenceAdapter
     } catch (error) {
       if (this.#writer.inTransaction) this.#writer.exec('ROLLBACK');
       if (error instanceof ApplicationProblem) throw error;
-      throw new SqlitePersistenceProblem('persistence.unavailable');
+      throw new SqlitePersistenceProblem('persistence.unavailable', error);
     } finally {
       this.#inWork = false;
     }
@@ -358,7 +425,7 @@ export class SqlitePersistenceAdapter
       return result;
     } catch (error) {
       if (error instanceof ApplicationProblem) throw error;
-      throw new SqlitePersistenceProblem('persistence.unavailable');
+      throw new SqlitePersistenceProblem('persistence.unavailable', error);
     } finally {
       if (reader?.inTransaction) reader.exec('ROLLBACK');
       reader?.close();

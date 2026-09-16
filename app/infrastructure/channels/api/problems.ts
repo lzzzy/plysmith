@@ -165,6 +165,21 @@ const catalog = {
     'Inventory item not found',
     'The inventory item does not exist.',
   ],
+  'inventory.invalid_revision': [
+    400,
+    'Invalid inventory revision',
+    'The inventory revision request is invalid.',
+  ],
+  'inventory.revision_conflict': [
+    409,
+    'Inventory revision conflict',
+    'Read the current inventory revision before submitting another change.',
+  ],
+  'inventory.preview_conflict': [
+    409,
+    'Inventory revision preview conflict',
+    'Preview the inventory revision again before saving it.',
+  ],
   'workspace.invalid_context': [
     400,
     'Invalid working context',
@@ -199,6 +214,21 @@ const catalog = {
     409,
     'Context reference already exists',
     'The working context already references this anchor.',
+  ],
+  'workspace.impact_not_found': [
+    404,
+    'Revision impact not found',
+    'The pending revision impact does not exist.',
+  ],
+  'workspace.impact_conflict': [
+    409,
+    'Revision impact conflict',
+    'Read the current revision impact before resolving it.',
+  ],
+  'workspace.invalid_impact_resolution': [
+    400,
+    'Invalid revision impact resolution',
+    'The revision impact resolution is incomplete or invalid.',
   ],
 } as const;
 
@@ -286,6 +316,9 @@ export function installProblemHandling(
         }
         case 'diagnostics.configuration_conflict':
         case 'diagnostics.report_target_exists':
+        case 'inventory.revision_conflict':
+        case 'inventory.preview_conflict':
+        case 'workspace.impact_conflict':
           return replyWithProblem(
             request,
             reply,
@@ -300,9 +333,11 @@ export function installProblemHandling(
         case 'chess.illegal_move':
         case 'chess.invalid_line':
         case 'inventory.invalid_search':
+        case 'inventory.invalid_revision':
         case 'workspace.invalid_context':
         case 'workspace.invalid_page':
         case 'workspace.invalid_resume':
+        case 'workspace.invalid_impact_resolution':
           return replyWithProblem(
             request,
             reply,
@@ -311,6 +346,7 @@ export function installProblemHandling(
           );
         case 'analysis.scratch_not_found':
         case 'inventory.item_not_found':
+        case 'workspace.impact_not_found':
         case 'workspace.context_not_found':
         case 'workspace.reference_target_not_found':
         case 'workspace.reference_exists':

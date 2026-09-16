@@ -104,6 +104,7 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
     const origin = scratch.origin;
     const note = scratch.noteDraft;
     if (
+      scratch.intent.kind !== 'exploration' ||
       origin.kind !== 'inventory_anchor' ||
       note === undefined ||
       !sameMoves(currentAnalysisMoves(scratch), note.moves)

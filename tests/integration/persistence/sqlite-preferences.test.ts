@@ -57,7 +57,7 @@ preferencesStoreContract(
   'SQLite preferences port contract',
   async (t) => storeFixture(t).open(),
   false,
-  4,
+  5,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -80,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 4,
+    schemaVersion: 5,
     dataRevision: 1,
   });
 });
@@ -216,6 +216,8 @@ test('the current schema contains the strict iteration 2 tables and a healthy FT
       { name: 'workspace_context_reference', strict: 1 },
       { name: 'workspace_contribution', strict: 1 },
       { name: 'workspace_management_resume', strict: 1 },
+      { name: 'workspace_pending_revision_impact', strict: 1 },
+      { name: 'workspace_revision_impact_entry', strict: 1 },
       { name: 'workspace_working_context', strict: 1 },
     ]);
     assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
@@ -235,6 +237,7 @@ test('the current schema contains the strict iteration 2 tables and a healthy FT
         { migrationId: 2, size: 32 },
         { migrationId: 3, size: 32 },
         { migrationId: 4, size: 32 },
+        { migrationId: 5, size: 32 },
       ],
     );
     assert.throws(() =>
@@ -327,7 +330,7 @@ test('upgrades a valid schema 1 store once without changing its committed data',
 
   const upgraded = fixture.open();
   assert.deepEqual(await upgraded.readStoreStatus(), {
-    schemaVersion: 4,
+    schemaVersion: 5,
     dataRevision: 7,
   });
   assert.deepEqual(await upgraded.readUserPreferences(), {
@@ -340,7 +343,7 @@ test('upgrades a valid schema 1 store once without changing its committed data',
 
   const reopened = fixture.open();
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 4,
+    schemaVersion: 5,
     dataRevision: 7,
   });
   const inspection = new Database(fixture.databasePath, {
@@ -359,7 +362,160 @@ test('upgrades a valid schema 1 store once without changing its committed data',
         { migrationId: 2 },
         { migrationId: 3 },
         { migrationId: 4 },
+        { migrationId: 5 },
       ],
+    );
+  } finally {
+    inspection.close();
+  }
+});
+
+test('upgrades a populated schema 4 store without losing workspace state', async (t) => {
+  const fixture = storeFixture(t);
+  const database = new Database(fixture.databasePath);
+  try {
+    const migrationChecksums: Buffer[] = [];
+    for (const id of [1, 2, 3, 4]) {
+      const migrationPath = join(
+        process.cwd(),
+        'app',
+        'infrastructure',
+        'adapters',
+        'persistence',
+        'sqlite',
+        'migrations',
+        `00${id}-${
+          [
+            'user-preferences',
+            'analysis-workspace',
+            'analysis-contributions',
+            'stable-analysis-scratch-identity',
+          ][id - 1]
+        }.sql`,
+      );
+      const sql = readFileSync(migrationPath, 'utf8');
+      database.exec(sql);
+      migrationChecksums.push(
+        createHash('sha256').update(sql.replaceAll('\r\n', '\n')).digest(),
+      );
+    }
+    database
+      .prepare(
+        `INSERT INTO runtime_store_state VALUES
+           (1, 4, 9, 1, 'ready', ?)`,
+      )
+      .run(timestamp);
+    database
+      .prepare(`INSERT INTO preference_state VALUES (1, 'de-DE', 1, ?)`)
+      .run(timestamp);
+    for (const [index, checksum] of migrationChecksums.entries()) {
+      database
+        .prepare(`INSERT INTO runtime_schema_migration VALUES (?, ?, ?)`)
+        .run(index + 1, checksum, timestamp);
+    }
+    database
+      .prepare(
+        `INSERT INTO inventory_item VALUES
+           (1, 'analysis', 'manual', 'active', NULL, ?, ?)`,
+      )
+      .run(timestamp, timestamp);
+    database
+      .prepare(
+        `INSERT INTO item_revision VALUES
+           (1, 1, 1, NULL, 'Bestehend', NULL, 'de-DE', zeroblob(32),
+            'user', ?)`,
+      )
+      .run(timestamp);
+    database
+      .prepare(
+        `INSERT INTO chess_position VALUES
+           (1, 'standardChess', ?, 'white', 1, 1, 1, 1, -1, zeroblob(32))`,
+      )
+      .run('RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr');
+    database.exec(`
+      INSERT INTO chess_occurrence_identity VALUES (1, 1, 1);
+      INSERT INTO chess_occurrence_snapshot
+        VALUES (1, 1, 1, 1, 1, zeroblob(32));
+      INSERT INTO chess_play_state_snapshot VALUES (1, 1, 0, 1, 'complete');
+      INSERT INTO inventory_analysis_revision
+        VALUES (1, 1, 1, 'initial_position');
+      INSERT INTO chess_anchor
+        VALUES (1, 'item', NULL, 1, NULL, NULL, NULL);
+      INSERT INTO chess_anchor
+        VALUES (2, 'occurrence', 1, NULL, NULL, 1, NULL);
+      UPDATE inventory_item SET current_revision_id = 1 WHERE item_id = 1;
+    `);
+    database
+      .prepare(
+        `INSERT INTO workspace_working_context VALUES
+           (1, 'Bestehender Context', NULL, NULL, NULL, 'active', NULL, 1, ?, ?)`,
+      )
+      .run(timestamp, timestamp);
+    database
+      .prepare(`INSERT INTO workspace_context_item VALUES (1, 1, 1, ?)`)
+      .run(timestamp);
+    database
+      .prepare(`INSERT INTO workspace_context_reference VALUES (1, 1, 1, 2, ?)`)
+      .run(timestamp);
+    database
+      .prepare(
+        `INSERT INTO workspace_contribution VALUES
+           (1, 'note', 'user', 'context', 1, 2, 'Bestehende Notiz', NULL,
+            'active', 1, 'de-DE', ?, ?)`,
+      )
+      .run(timestamp, timestamp);
+    database
+      .prepare(
+        `INSERT INTO workspace_management_resume VALUES
+           (1, 1, 'list', 1, 2, ?)`,
+      )
+      .run(timestamp);
+    database
+      .prepare(
+        `INSERT INTO analysis_scratch_draft VALUES
+           (1, 1, 'inventory_anchor', 1, 1, 2, 1, 0, 1, 'complete',
+            0, 1, NULL, ?, ?, 'legacy-scratch')`,
+      )
+      .run(timestamp, timestamp);
+    database
+      .prepare(
+        `INSERT INTO workspace_analysis_resume VALUES
+           (1, 1, 1, 1, 2, 'analyze', 1, 1, ?)`,
+      )
+      .run(timestamp);
+  } finally {
+    database.close();
+  }
+
+  const upgraded = fixture.open();
+  assert.deepEqual(await upgraded.readStoreStatus(), {
+    schemaVersion: 5,
+    dataRevision: 9,
+  });
+  const workspace = await upgraded.readWorkingContextWorkspace({
+    kind: 'working-context',
+    value: 1,
+  });
+  assert.equal(workspace?.references[0]?.currentRevisionId.value, 1);
+  assert.equal(workspace?.managementResume?.selectedAnchorId?.value, 2);
+  assert.equal(workspace?.analysisResume?.scratchId, 'legacy-scratch');
+  const analysis = await upgraded.readContextAnalysisWorkspace({
+    kind: 'working-context',
+    value: 1,
+  });
+  assert.equal(analysis?.scratch?.intent.kind, 'exploration');
+  assert.equal(analysis?.record?.contributions[0]?.body, 'Bestehende Notiz');
+  await upgraded.close();
+
+  const inspection = new Database(fixture.databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    assert.equal(inspection.pragma('integrity_check', { simple: true }), 'ok');
+    assert.equal(
+      (inspection.pragma('foreign_key_check') as unknown[]).length,
+      0,
     );
   } finally {
     inspection.close();
@@ -395,7 +551,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 5',
+    'UPDATE runtime_store_state SET schema_version = 6',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

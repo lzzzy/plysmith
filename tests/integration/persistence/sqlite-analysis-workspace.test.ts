@@ -232,6 +232,7 @@ test('persists analysis, note, context reference and resume as one recoverable w
     resumed.record?.contributions.map((entry) => entry.body),
     ['Dieser Zug hält viele Repertoirewege offen.'],
   );
+  assert.deepEqual(resumed.record?.contributions[0]?.moves, []);
 
   await store.close();
   const reopened = fixture.open();
@@ -250,6 +251,16 @@ test('persists analysis, note, context reference and resume as one recoverable w
       (
         inspection
           .prepare('SELECT count(*) AS count FROM analysis_scratch_draft')
+          .get() as { count: number }
+      ).count,
+      0,
+    );
+    assert.equal(
+      (
+        inspection
+          .prepare(
+            'SELECT count(*) AS count FROM workspace_analysis_note_path_step',
+          )
           .get() as { count: number }
       ).count,
       0,

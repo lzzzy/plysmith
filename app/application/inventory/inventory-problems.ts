@@ -13,3 +13,45 @@ export function inventoryItemNotFound(): ApplicationProblem {
     'The inventory item does not exist.',
   );
 }
+
+export function invalidInventoryRevision(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.invalid_revision',
+    'The inventory revision request is invalid.',
+  );
+}
+
+export function inventoryRevisionConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.revision_conflict',
+    'The inventory item has changed. Read its current revision first.',
+  );
+}
+
+export function inventoryPreviewConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.preview_conflict',
+    'The inventory revision preview is stale. Preview the change again.',
+  );
+}
+
+export function revisionImpactNotFound(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.impact_not_found',
+    'The pending revision impact does not exist.',
+  );
+}
+
+export function revisionImpactConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.impact_conflict',
+    'The pending revision impact has changed.',
+  );
+}
+
+export function invalidRevisionImpactResolution(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.invalid_impact_resolution',
+    'The revision impact resolution is incomplete or invalid.',
+  );
+}

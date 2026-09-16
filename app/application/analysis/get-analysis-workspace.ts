@@ -7,7 +7,7 @@ import type { ChessState } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import { workingContextNotFound } from '../workspace/index.ts';
-import { inventoryItemNotFound } from '../inventory/index.ts';
+import { inventoryItemNotFound } from '../inventory/inventory-problems.ts';
 import type {
   AnalysisRecordView,
   AnalysisWorkspace,
@@ -203,6 +203,9 @@ function allowedActions(
     'move_cursor',
     'discard_scratch',
   ];
+  if (scratch.intent.kind === 'inventory_revision') {
+    return Object.freeze(actions);
+  }
   if (scratch.cursor > 0) {
     actions.push('prepare_note', 'create_analysis_record');
   }

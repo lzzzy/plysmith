@@ -31,6 +31,13 @@ import {
   statusSummary,
   systemStatusDto,
   searchInventoryResultDto,
+  analysisRecordDto,
+  inventoryRevisionPreviewDto,
+  listInventoryRevisionsResultDto,
+  pendingRevisionImpactDto,
+  resolvePendingRevisionImpactResultDto,
+  saveInventoryRevisionResultDto,
+  startInventoryRevisionResultDto,
   setWorkScopeResumeResultDto,
   toolProblem,
   toolResult,
@@ -62,6 +69,20 @@ import {
   ListWorkingContextsResultSchema,
   SearchInventoryArgumentsSchema,
   SearchInventoryResultSchema,
+  AnalysisRecordSchema,
+  GetInventoryRevisionArgumentsSchema,
+  GetPendingRevisionImpactArgumentsSchema,
+  InventoryRevisionPreviewSchema,
+  ListInventoryRevisionsArgumentsSchema,
+  ListInventoryRevisionsResultSchema,
+  PendingRevisionImpactSchema,
+  PreviewInventoryRevisionArgumentsSchema,
+  ResolvePendingRevisionImpactArgumentsSchema,
+  ResolvePendingRevisionImpactResultSchema,
+  SaveInventoryRevisionArgumentsSchema,
+  SaveInventoryRevisionResultSchema,
+  StartInventoryRevisionArgumentsSchema,
+  StartInventoryRevisionResultSchema,
   SetUiLanguageArgumentsSchema,
   SetUiLanguageResultSchema,
   SetDiagnosticLogLevelArgumentsSchema,
@@ -313,6 +334,97 @@ export function createMcpServer({
         anyOf: [SearchInventoryResultSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'start_inventory_revision',
+      title: 'Start inventory revision',
+      description:
+        'Start an extend, truncate-after or replace-move revision draft from the current revision and an exact anchor. Replaces the scope scratch using optimistic concurrency.',
+      inputSchema: StartInventoryRevisionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [StartInventoryRevisionResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'preview_inventory_revision',
+      title: 'Preview inventory revision',
+      description:
+        'Preview the exact immutable revision and all affected working contexts before saving. Use the returned fingerprint for the save.',
+      inputSchema: PreviewInventoryRevisionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [InventoryRevisionPreviewSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'save_inventory_revision',
+      title: 'Save inventory revision',
+      description:
+        'Publish the previewed draft as a new immutable current revision. Affected contexts remain pinned until their impacts are resolved. This sends one write only.',
+      inputSchema: SaveInventoryRevisionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [SaveInventoryRevisionResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_inventory_revision',
+      title: 'Get inventory revision',
+      description:
+        'Read an exact current or historical inventory revision, optionally focused on one anchor and within a working-context scope.',
+      inputSchema: GetInventoryRevisionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [AnalysisRecordSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'list_inventory_revisions',
+      title: 'List inventory revisions',
+      description:
+        'List immutable revisions of one inventory item in revision order.',
+      inputSchema: ListInventoryRevisionsArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ListInventoryRevisionsResultSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_pending_revision_impact',
+      title: 'Get pending revision impact',
+      description:
+        'Read one pending working-context impact, including every affected reference, contribution and resume decision.',
+      inputSchema: GetPendingRevisionImpactArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [PendingRevisionImpactSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'resolve_pending_revision_impact',
+      title: 'Resolve pending revision impact',
+      description:
+        'Resolve every entry of one pending context impact atomically, then advance the context to the new revision. This sends one write only.',
+      inputSchema: ResolvePendingRevisionImpactArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ResolvePendingRevisionImpactResultSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
       _meta: problemMetadata,
     },
     {
@@ -602,6 +714,116 @@ export function createMcpServer({
           );
           return toolResult(dto, `${dto.items.length} inventory items found.`);
         }
+        case 'start_inventory_revision': {
+          if (!Value.Check(StartInventoryRevisionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = startInventoryRevisionResultDto(
+            await hostClient.startInventoryRevision(args.itemId, {
+              scope: args.scope,
+              baseRevisionId: args.baseRevisionId,
+              anchorId: args.anchorId,
+              mode: args.mode,
+              expectedScratchId: args.expectedScratchId,
+              expectedScratchRevision: args.expectedScratchRevision,
+              ...(args.displayName === undefined
+                ? {}
+                : { displayName: args.displayName }),
+              ...(args.summary === undefined ? {} : { summary: args.summary }),
+              ...(args.firstMove === undefined
+                ? {}
+                : { firstMove: args.firstMove }),
+            }),
+          );
+          return toolResult(
+            dto,
+            `Inventory revision scratch ${dto.scratch.scratchId} started.`,
+          );
+        }
+        case 'preview_inventory_revision': {
+          if (!Value.Check(PreviewInventoryRevisionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = inventoryRevisionPreviewDto(
+            await hostClient.previewInventoryRevision(args),
+          );
+          return toolResult(
+            dto,
+            `Revision preview affects ${dto.affectedContexts.length} working contexts.`,
+          );
+        }
+        case 'save_inventory_revision': {
+          if (!Value.Check(SaveInventoryRevisionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = saveInventoryRevisionResultDto(
+            await hostClient.saveInventoryRevision(args),
+          );
+          return toolResult(
+            dto,
+            dto.noOp
+              ? 'Inventory revision is unchanged.'
+              : `Inventory revision ${dto.revisionNumber} saved.`,
+          );
+        }
+        case 'get_inventory_revision': {
+          if (!Value.Check(GetInventoryRevisionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = analysisRecordDto(
+            await hostClient.getInventoryRevision(
+              args.itemId,
+              args.revisionId,
+              {
+                scopeKind: args.scope.kind,
+                ...(args.scope.kind === 'context'
+                  ? { contextId: args.scope.contextId }
+                  : {}),
+                ...(args.anchorId === undefined
+                  ? {}
+                  : { anchorId: args.anchorId }),
+              },
+            ),
+          );
+          return toolResult(
+            dto,
+            `Inventory revision ${dto.revisionNumber}${dto.historical ? ' (historical)' : ''}.`,
+          );
+        }
+        case 'list_inventory_revisions': {
+          if (!Value.Check(ListInventoryRevisionsArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = listInventoryRevisionsResultDto(
+            await hostClient.listInventoryRevisions(args.itemId, {
+              ...(args.pageSize === undefined
+                ? {}
+                : { pageSize: String(args.pageSize) }),
+              ...(args.cursor === undefined ? {} : { cursor: args.cursor }),
+            }),
+          );
+          return toolResult(
+            dto,
+            `${dto.revisions.length} inventory revisions found.`,
+          );
+        }
+        case 'get_pending_revision_impact': {
+          if (!Value.Check(GetPendingRevisionImpactArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = pendingRevisionImpactDto(
+            await hostClient.getPendingRevisionImpact(args.impactId),
+          );
+          return toolResult(
+            dto,
+            `Revision impact for ${dto.contextName} requires one context decision.`,
+          );
+        }
+        case 'resolve_pending_revision_impact': {
+          if (!Value.Check(ResolvePendingRevisionImpactArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = resolvePendingRevisionImpactResultDto(
+            await hostClient.resolvePendingRevisionImpact(args.impactId, {
+              expectedImpactVersion: args.expectedImpactVersion,
+              resolution: args.resolution,
+            }),
+          );
+          return toolResult(dto, `Revision impact ${dto.impactId} resolved.`);
+        }
         case 'list_working_contexts': {
           if (!Value.Check(ListWorkingContextsArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -761,6 +983,20 @@ function inputSchema(name: string) {
       return DeleteAnalysisNoteArgumentsSchema;
     case 'search_inventory':
       return SearchInventoryArgumentsSchema;
+    case 'start_inventory_revision':
+      return StartInventoryRevisionArgumentsSchema;
+    case 'preview_inventory_revision':
+      return PreviewInventoryRevisionArgumentsSchema;
+    case 'save_inventory_revision':
+      return SaveInventoryRevisionArgumentsSchema;
+    case 'get_inventory_revision':
+      return GetInventoryRevisionArgumentsSchema;
+    case 'list_inventory_revisions':
+      return ListInventoryRevisionsArgumentsSchema;
+    case 'get_pending_revision_impact':
+      return GetPendingRevisionImpactArgumentsSchema;
+    case 'resolve_pending_revision_impact':
+      return ResolvePendingRevisionImpactArgumentsSchema;
     case 'list_working_contexts':
       return ListWorkingContextsArgumentsSchema;
     case 'get_working_context_workspace':

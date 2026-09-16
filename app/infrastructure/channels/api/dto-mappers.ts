@@ -8,8 +8,14 @@ import type {
   UpdateAnalysisScratchResult,
 } from '../../../application/analysis/index.ts';
 import type {
+  InventoryRevisionPreview,
   InventorySearchItem,
+  ListInventoryRevisionsResult,
+  PendingRevisionImpact,
+  ResolvePendingRevisionImpactResult,
+  SaveInventoryRevisionResult,
   SearchInventoryResult,
+  StartInventoryRevisionResult,
 } from '../../../application/inventory/index.ts';
 import type {
   AddContextReferenceResult,
@@ -304,6 +310,123 @@ export function searchInventoryResultDto(model: SearchInventoryResult) {
   };
 }
 
+export function startInventoryRevisionResultDto(
+  model: StartInventoryRevisionResult,
+) {
+  return {
+    scratch: analysisScratchDto(model.scratch),
+    dataRevision: model.dataRevision,
+    ...(model.resumeVersion === undefined
+      ? {}
+      : { resumeVersion: model.resumeVersion }),
+  };
+}
+
+export function inventoryRevisionPreviewDto(model: InventoryRevisionPreview) {
+  return {
+    itemId: idDto(model.itemId),
+    baseRevisionId: idDto(model.baseRevisionId),
+    mode: model.mode,
+    displayName: model.displayName,
+    ...(model.summary === undefined ? {} : { summary: model.summary }),
+    preservedMoveCount: model.preservedMoveCount,
+    addedSteps: model.addedSteps.map(analysisStepDto),
+    removedSteps: model.removedSteps.map(analysisStepDto),
+    historicalGlobalContributionCount: model.historicalGlobalContributionCount,
+    affectedContexts: model.affectedContexts.map((context) => ({
+      contextId: idDto(context.contextId),
+      contextName: context.contextName,
+      referenceCount: context.referenceCount,
+      contributionCount: context.contributionCount,
+      managementResumeCount: context.managementResumeCount,
+      analysisResumeCount: context.analysisResumeCount,
+    })),
+    followingContexts: model.followingContexts.map((context) => ({
+      contextId: idDto(context.contextId),
+      contextName: context.contextName,
+    })),
+    noOp: model.noOp,
+    previewFingerprint: model.previewFingerprint,
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function saveInventoryRevisionResultDto(
+  model: SaveInventoryRevisionResult,
+) {
+  return {
+    itemId: idDto(model.itemId),
+    revisionId: idDto(model.revisionId),
+    revisionNumber: model.revisionNumber,
+    currentAnchorId: idDto(model.currentAnchorId),
+    impacts: model.impacts.map((impact) => ({
+      impactId: idDto(impact.impactId),
+      contextId: idDto(impact.contextId),
+    })),
+    noOp: model.noOp,
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function listInventoryRevisionsResultDto(
+  model: ListInventoryRevisionsResult,
+) {
+  return {
+    revisions: model.revisions.map((revision) => ({
+      itemId: idDto(revision.itemId),
+      revisionId: idDto(revision.revisionId),
+      revisionNumber: revision.revisionNumber,
+      ...(revision.baseRevisionId === undefined
+        ? {}
+        : { baseRevisionId: idDto(revision.baseRevisionId) }),
+      displayName: revision.displayName,
+      ...(revision.summary === undefined ? {} : { summary: revision.summary }),
+      changeKind: revision.changeKind,
+      createdAt: revision.createdAt,
+      current: revision.current,
+    })),
+    ...(model.nextCursor === undefined ? {} : { nextCursor: model.nextCursor }),
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function pendingRevisionImpactDto(model: PendingRevisionImpact) {
+  return {
+    impactId: idDto(model.impactId),
+    contextId: idDto(model.contextId),
+    contextName: model.contextName,
+    itemId: idDto(model.itemId),
+    pinnedRevisionId: idDto(model.pinnedRevisionId),
+    targetRevisionId: idDto(model.targetRevisionId),
+    targetAnchorId: idDto(model.targetAnchorId),
+    impactVersion: model.impactVersion,
+    referenceCount: model.referenceCount,
+    contributionCount: model.contributionCount,
+    managementResumeAffected: model.managementResumeAffected,
+    analysisResumeAffected: model.analysisResumeAffected,
+    createdAt: model.createdAt,
+    updatedAt: model.updatedAt,
+  };
+}
+
+export function resolvePendingRevisionImpactResultDto(
+  model: ResolvePendingRevisionImpactResult,
+) {
+  return {
+    impactId: idDto(model.impactId),
+    contextId: idDto(model.contextId),
+    itemId: idDto(model.itemId),
+    resolution: model.resolution,
+    ...(model.contextItemId === undefined
+      ? {}
+      : { contextItemId: idDto(model.contextItemId) }),
+    ...(model.contextRevisionId === undefined
+      ? {}
+      : { contextRevisionId: idDto(model.contextRevisionId) }),
+    dataRevision: model.dataRevision,
+  };
+}
+
 export function listWorkingContextsResultDto(model: {
   readonly contexts: readonly WorkingContextSummary[];
   readonly nextCursor?: string;
@@ -320,6 +443,15 @@ export function workingContextWorkspaceDto(model: WorkingContextWorkspace) {
   return {
     context: workingContextSummaryDto(model.context),
     references: model.references.map(contextReferenceDto),
+    pendingRevisionImpacts: model.pendingRevisionImpacts.map((impact) => ({
+      impactId: idDto(impact.impactId),
+      itemId: idDto(impact.itemId),
+      pinnedRevisionId: idDto(impact.pinnedRevisionId),
+      targetRevisionId: idDto(impact.targetRevisionId),
+      impactVersion: impact.impactVersion,
+      entryCount: impact.entryCount,
+      updatedAt: impact.updatedAt,
+    })),
     ...(model.managementResume === undefined
       ? {}
       : { managementResume: managementResumeDto(model.managementResume) }),
@@ -373,6 +505,21 @@ function analysisScratchDto(model: AnalysisScratch) {
             anchorId: idDto(model.origin.anchorId),
           }
         : { kind: model.origin.kind },
+    intent:
+      model.intent.kind === 'exploration'
+        ? { kind: model.intent.kind }
+        : {
+            kind: model.intent.kind,
+            mode: model.intent.mode,
+            itemId: idDto(model.intent.itemId),
+            baseRevisionId: idDto(model.intent.baseRevisionId),
+            cutAnchorId: idDto(model.intent.cutAnchorId),
+            returnAnchorId: idDto(model.intent.returnAnchorId),
+            displayName: model.intent.displayName,
+            ...(model.intent.summary === undefined
+              ? {}
+              : { summary: model.intent.summary }),
+          },
     root: chessStateDto(model.root),
     steps: model.steps.map((step) => ({
       before: chessStateDto(step.before),
@@ -391,13 +538,16 @@ function analysisScratchDto(model: AnalysisScratch) {
   };
 }
 
-function analysisRecordDto(model: AnalysisRecordView) {
+export function analysisRecordDto(model: AnalysisRecordView) {
   return {
     itemId: idDto(model.itemId),
     revisionId: idDto(model.revisionId),
+    currentRevisionId: idDto(model.currentRevisionId),
+    revisionNumber: model.revisionNumber,
     rootAnchorId: idDto(model.rootAnchorId),
     currentAnchorId: idDto(model.currentAnchorId),
     displayName: model.displayName,
+    ...(model.summary === undefined ? {} : { summary: model.summary }),
     languageTag: model.languageTag,
     origin:
       model.origin.kind === 'inventory_anchor'
@@ -446,6 +596,19 @@ function analysisRecordDto(model: AnalysisRecordView) {
     contributions: model.contributions.map(analysisContributionDto),
     contextMember: model.contextMember,
     readOnlyPreview: model.readOnlyPreview,
+    historical: model.historical,
+  };
+}
+
+function analysisStepDto(model: {
+  readonly before: ChessState;
+  readonly move: CanonicalMove;
+  readonly after: ChessState;
+}) {
+  return {
+    before: chessStateDto(model.before),
+    move: canonicalMoveDto(model.move),
+    after: chessStateDto(model.after),
   };
 }
 
@@ -530,6 +693,7 @@ function workingContextSummaryDto(model: WorkingContextSummary) {
       : { pinnedOrder: model.pinnedOrder }),
     contextVersion: model.contextVersion,
     referenceCount: model.referenceCount,
+    pendingRevisionImpactCount: model.pendingRevisionImpactCount,
     ...(model.managementResumeVersion === undefined
       ? {}
       : { managementResumeVersion: model.managementResumeVersion }),

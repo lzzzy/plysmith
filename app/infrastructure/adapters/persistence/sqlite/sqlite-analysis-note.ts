@@ -30,6 +30,7 @@ import {
   readContextScratch,
 } from './sqlite-analysis-scratch.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
+import { assertNoOpenRevisionImpact } from './sqlite-revision-impact-state.ts';
 import {
   requireActiveContext,
   resolveAnchorPosition,
@@ -39,6 +40,13 @@ export function createAnalysisNote(
   database: Database.Database,
   request: PersistAnalysisNoteRequest,
 ): CreateAnalysisNoteResult {
+  if (request.sourceContextId !== undefined) {
+    assertNoOpenRevisionImpact(
+      database,
+      request.sourceContextId.value,
+      request.origin.itemId.value,
+    );
+  }
   validateSourceScratch(database, request);
   const positionId = resolveAnchorPosition(
     database,
@@ -94,6 +102,13 @@ export function createPositionNote(
   database: Database.Database,
   request: PersistPositionNoteRequest,
 ): AnalysisNoteMutationResult {
+  if (request.scope.kind === 'context') {
+    assertNoOpenRevisionImpact(
+      database,
+      request.scope.contextId.value,
+      request.itemId.value,
+    );
+  }
   if (
     resolveAnchorPosition(
       database,
@@ -133,6 +148,7 @@ export function updateAnalysisNote(
   request: PersistUpdateAnalysisNoteRequest,
 ): AnalysisNoteMutationResult {
   const note = readEditableNote(database, request.contributionId);
+  assertNoteImpactWritable(database, note);
   validateMutationScope(database, note, request.scope);
   assertContributionVersion(note, request.expectedContributionVersion);
   const contributionVersion = note.contributionVersion + 1;
@@ -172,6 +188,7 @@ export function deleteAnalysisNote(
   request: PersistDeleteAnalysisNoteRequest,
 ): AnalysisNoteMutationResult {
   const note = readEditableNote(database, request.contributionId);
+  assertNoteImpactWritable(database, note);
   validateMutationScope(database, note, request.scope);
   assertContributionVersion(note, request.expectedContributionVersion);
   const contributionVersion = note.contributionVersion + 1;
@@ -479,6 +496,14 @@ function assertContributionVersion(
       note.contributionVersion,
     );
   }
+}
+
+function assertNoteImpactWritable(
+  database: Database.Database,
+  note: EditableNote,
+): void {
+  if (note.contextId === undefined) return;
+  assertNoOpenRevisionImpact(database, note.contextId.value, note.itemId.value);
 }
 
 function noteMutationResult(

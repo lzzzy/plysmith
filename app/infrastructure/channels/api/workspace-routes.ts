@@ -6,8 +6,10 @@ import {
   addContextReferenceResultDto,
   createWorkingContextResultDto,
   listWorkingContextsResultDto,
+  pendingRevisionImpactDto,
   parseLocalId,
   parseResumeRequest,
+  resolvePendingRevisionImpactResultDto,
   setWorkScopeResumeResultDto,
   workingContextWorkspaceDto,
 } from './dto-mappers.ts';
@@ -20,9 +22,13 @@ import {
   EmptyQuerySchema,
   ListWorkingContextsResultSchema,
   PageQuerySchema,
+  PendingRevisionImpactSchema,
   problemResponses,
   SetWorkScopeResumeBodySchema,
   SetWorkScopeResumeResultSchema,
+  ResolvePendingRevisionImpactBodySchema,
+  ResolvePendingRevisionImpactResultSchema,
+  RevisionImpactIdParamsSchema,
   WorkingContextWorkspaceSchema,
 } from './schemas.ts';
 
@@ -151,6 +157,51 @@ export function registerWorkspaceRoutes(
         await dependencies.setWorkScopeResume.execute(
           parseResumeRequest(request.params.contextId, request.body),
         ),
+      ),
+  );
+
+  api.get(
+    '/workspace/revision-impacts/:impactId',
+    {
+      schema: {
+        operationId: 'GetPendingRevisionImpact',
+        params: RevisionImpactIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(PendingRevisionImpactSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      pendingRevisionImpactDto(
+        await dependencies.getPendingRevisionImpact.execute({
+          impactId: parseLocalId('revision-impact', request.params.impactId),
+        }),
+      ),
+  );
+
+  api.post(
+    '/workspace/revision-impacts/:impactId/resolution',
+    {
+      schema: {
+        operationId: 'ResolvePendingRevisionImpact',
+        params: RevisionImpactIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        body: ResolvePendingRevisionImpactBodySchema,
+        response: {
+          200: Type.Ref(ResolvePendingRevisionImpactResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      resolvePendingRevisionImpactResultDto(
+        await dependencies.resolvePendingRevisionImpact.execute({
+          impactId: parseLocalId('revision-impact', request.params.impactId),
+          expectedImpactVersion: request.body.expectedImpactVersion,
+          resolution: request.body.resolution,
+        }),
       ),
   );
 }

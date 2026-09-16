@@ -1,13 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  AlertTriangle,
   ArrowRight,
   BookOpen,
   Boxes,
   FileSearch,
   FolderPlus,
   Library,
+  Pencil,
   Plus,
+  RefreshCw,
+  Save,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
 import { Button, Radio, RadioGroup } from 'react-aria-components';
@@ -18,9 +23,15 @@ import {
   type PlysmithApplicationState,
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
+import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import styles from './manage-view.module.css';
+import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
+import { RevisionLineComparison } from './revision-line-comparison.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
+type RevisionImpactSummary = NonNullable<
+  ReadyState['contextWorkspace']
+>['pendingRevisionImpacts'][number];
 
 export function ManageView({
   state,
@@ -32,9 +43,18 @@ export function ManageView({
   const intl = useIntl();
   const [query, setQuery] = useState(state.inventoryQuery);
   const [showCreateContext, setShowCreateContext] = useState(false);
-  const selectedItem = state.inventory.items.find(
+  const visibleItems = state.inventory.items.map((item) =>
+    inventoryItemForScope(item, state),
+  );
+  const selectedItem = visibleItems.find(
     (item) => item.itemId === state.selectedInventoryItemId,
   );
+  const selectedImpact =
+    selectedItem === undefined
+      ? undefined
+      : state.contextWorkspace?.pendingRevisionImpacts.find(
+          (impact) => impact.itemId === selectedItem.itemId,
+        );
   const activeContextId =
     state.scope.kind === 'context' ? state.scope.contextId : undefined;
   const activeContext = state.contexts.contexts.find(
@@ -42,6 +62,23 @@ export function ManageView({
   );
 
   useEffect(() => setQuery(state.inventoryQuery), [state.inventoryQuery]);
+  useEffect(() => {
+    if (selectedImpact === undefined) {
+      if (state.revisionImpact !== undefined) store.closeRevisionImpact();
+      return;
+    }
+    if (
+      state.revisionImpact?.impact.impactId !== selectedImpact.impactId &&
+      state.busyCommand === undefined
+    ) {
+      void store.openRevisionImpact(selectedImpact.impactId);
+    }
+  }, [
+    selectedImpact?.impactId,
+    state.busyCommand,
+    state.revisionImpact?.impact.impactId,
+    store,
+  ]);
 
   async function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -67,7 +104,9 @@ export function ManageView({
         </span>
       </header>
 
-      <div className={styles.manageGrid}>
+      <div
+        className={`${styles.manageGrid} ${selectedImpact === undefined ? '' : styles.impactLayout}`}
+      >
         <aside className={styles.contextPanel} aria-labelledby="contexts-title">
           <div className={styles.panelHeading}>
             <div>
@@ -139,6 +178,17 @@ export function ManageView({
                     />
                   </small>
                 </span>
+                {context.pendingRevisionImpactCount > 0 && (
+                  <span
+                    className={styles.impactBadge}
+                    aria-label={intl.formatMessage(
+                      { id: 'revisionImpact.badge' },
+                      { count: context.pendingRevisionImpactCount },
+                    )}
+                  >
+                    {context.pendingRevisionImpactCount}
+                  </span>
+                )}
               </Button>
             ))}
             {state.contexts.nextCursor !== undefined && (
@@ -222,7 +272,7 @@ export function ManageView({
             </div>
           ) : (
             <div className={styles.inventoryList}>
-              {state.inventory.items.map((item) => (
+              {visibleItems.map((item) => (
                 <InventoryRow
                   key={item.itemId}
                   item={item}
@@ -230,6 +280,11 @@ export function ManageView({
                     ? {}
                     : { activeContextId })}
                   isSelected={item.itemId === state.selectedInventoryItemId}
+                  requiresResolution={
+                    state.contextWorkspace?.pendingRevisionImpacts.some(
+                      (impact) => impact.itemId === item.itemId,
+                    ) ?? false
+                  }
                   onSelect={() => void store.selectInventoryItem(item)}
                 />
               ))}
@@ -260,7 +315,14 @@ export function ManageView({
           {selectedItem === undefined ? (
             <ContextSummary state={state} />
           ) : (
-            <ItemInspector item={selectedItem} state={state} store={store} />
+            <ItemInspector
+              item={selectedItem}
+              state={state}
+              store={store}
+              {...(selectedImpact === undefined
+                ? {}
+                : { revisionImpact: selectedImpact })}
+            />
           )}
         </aside>
       </div>
@@ -268,15 +330,44 @@ export function ManageView({
   );
 }
 
+function inventoryItemForScope(
+  item: InventoryItem,
+  state: ReadyState,
+): InventoryItem {
+  if (state.scope.kind !== 'context') return item;
+  const reference = state.contextWorkspace?.references.find(
+    (candidate) => candidate.itemId === item.itemId,
+  );
+  const pinnedRevisionId = state.contextWorkspace?.pendingRevisionImpacts.find(
+    (impact) => impact.itemId === item.itemId,
+  )?.pinnedRevisionId;
+  const effectiveRevisionId =
+    reference?.currentRevisionId ?? pinnedRevisionId ?? item.currentRevisionId;
+  const effectiveDisplayName = reference?.displayName ?? item.displayName;
+  if (
+    effectiveRevisionId === item.currentRevisionId &&
+    effectiveDisplayName === item.displayName
+  ) {
+    return item;
+  }
+  return Object.freeze({
+    ...item,
+    currentRevisionId: effectiveRevisionId,
+    displayName: effectiveDisplayName,
+  });
+}
+
 function InventoryRow({
   item,
   activeContextId,
   isSelected,
+  requiresResolution,
   onSelect,
 }: {
   readonly item: InventoryItem;
   readonly activeContextId?: string;
   readonly isSelected: boolean;
+  readonly requiresResolution: boolean;
   readonly onSelect: () => void;
 }) {
   return (
@@ -297,18 +388,22 @@ function InventoryRow({
       </span>
       <span
         className={
-          activeContextId !== undefined &&
-          item.contextIds.includes(activeContextId)
-            ? styles.contextMember
-            : styles.inventoryOnly
+          requiresResolution
+            ? styles.resolutionRequired
+            : activeContextId !== undefined &&
+                item.contextIds.includes(activeContextId)
+              ? styles.contextMember
+              : styles.inventoryOnly
         }
       >
         <FormattedMessage
           id={
-            activeContextId !== undefined &&
-            item.contextIds.includes(activeContextId)
-              ? 'manage.inContext'
-              : 'manage.inventoryOnly'
+            requiresResolution
+              ? 'revisionImpact.required'
+              : activeContextId !== undefined &&
+                  item.contextIds.includes(activeContextId)
+                ? 'manage.inContext'
+                : 'manage.inventoryOnly'
           }
         />
       </span>
@@ -320,16 +415,43 @@ function ItemInspector({
   item,
   state,
   store,
+  revisionImpact,
 }: {
   readonly item: InventoryItem;
   readonly state: ReadyState;
   readonly store: PlysmithApplicationStore;
+  readonly revisionImpact?: RevisionImpactSummary;
 }) {
   const contextId =
     state.scope.kind === 'context' ? state.scope.contextId : undefined;
   const isContextMember =
     contextId !== undefined && item.contextIds.includes(contextId);
   const isBusy = state.busyCommand !== undefined;
+  const [showRename, setShowRename] = useState(false);
+  const renameDraft =
+    state.manageInventoryRevisionDraft?.itemId === item.itemId
+      ? state.manageInventoryRevisionDraft
+      : undefined;
+  const renamedRevision =
+    renameDraft === undefined
+      ? undefined
+      : {
+          ...renameDraft.previousRevision,
+          displayName: renameDraft.preview.displayName,
+          ...(renameDraft.preview.summary === undefined
+            ? { summary: undefined }
+            : { summary: renameDraft.preview.summary }),
+          steps: [
+            ...renameDraft.previousRevision.steps.slice(
+              0,
+              renameDraft.preview.preservedMoveCount,
+            ),
+            ...renameDraft.preview.addedSteps,
+          ],
+        };
+
+  useEffect(() => setShowRename(false), [item.itemId, item.currentRevisionId]);
+
   return (
     <div className={styles.inspectorBody}>
       <div className={styles.inspectorTitle}>
@@ -365,26 +487,143 @@ function ItemInspector({
           <dd>r{item.currentRevisionId}</dd>
         </div>
       </dl>
-      <div className={styles.inspectorActions}>
-        <Button
-          className={styles.primaryButton!}
-          onPress={() => void store.openInventoryItem(item)}
-          isDisabled={isBusy}
-        >
-          <ArrowRight aria-hidden="true" size={16} />
-          <FormattedMessage id="manage.openAnalysis" />
-        </Button>
-        {contextId !== undefined && !isContextMember && (
+      {revisionImpact === undefined &&
+        showRename &&
+        renameDraft === undefined && (
+          <div className={styles.renameForm}>
+            <strong>
+              <FormattedMessage id="inventory.rename" />
+            </strong>
+            <InventoryMetadataForm
+              displayName={item.displayName}
+              summary={item.summary}
+              isBusy={isBusy}
+              onCancel={() => setShowRename(false)}
+              onPrepare={(displayName, summary) =>
+                void store.prepareInventoryItemRename(
+                  item,
+                  displayName,
+                  summary,
+                )
+              }
+            />
+          </div>
+        )}
+      {revisionImpact === undefined &&
+        renameDraft !== undefined &&
+        renamedRevision !== undefined && (
+          <section className={styles.managedRevisionDraft}>
+            <RevisionLineComparison
+              previous={renameDraft.previousRevision}
+              next={renamedRevision}
+              unchangedCount={renameDraft.preview.preservedMoveCount}
+            />
+            {renameDraft.preview.affectedContexts.length > 0 && (
+              <div className={styles.impactWarning}>
+                <AlertTriangle aria-hidden="true" size={18} />
+                <div>
+                  <strong>
+                    <FormattedMessage id="inventory.contextsAffected" />
+                  </strong>
+                  <ul>
+                    {renameDraft.preview.affectedContexts.map((context) => (
+                      <li key={context.contextId}>{context.contextName}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            {renameDraft.preview.followingContexts.length > 0 && (
+              <div className={styles.followingContexts}>
+                <RefreshCw aria-hidden="true" size={18} />
+                <div>
+                  <strong>
+                    <FormattedMessage id="inventory.contextsFollowing" />
+                  </strong>
+                  <p>
+                    <FormattedMessage id="inventory.contextsFollowingDetail" />
+                  </p>
+                  <ul>
+                    {renameDraft.preview.followingContexts.map((context) => (
+                      <li key={context.contextId}>{context.contextName}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            <div className={styles.managedRevisionActions}>
+              <Button
+                className={styles.secondaryButton!}
+                onPress={async () => {
+                  if (await store.discardManagedInventoryRevision()) {
+                    setShowRename(false);
+                  }
+                }}
+                isDisabled={isBusy}
+              >
+                <Trash2 aria-hidden="true" size={15} />
+                <FormattedMessage id="inventory.discardRevision" />
+              </Button>
+              <Button
+                className={styles.primaryButton!}
+                onPress={async () => {
+                  if (await store.saveManagedInventoryRevision()) {
+                    setShowRename(false);
+                  }
+                }}
+                isDisabled={isBusy || renameDraft.preview.noOp}
+              >
+                <Save aria-hidden="true" size={15} />
+                <FormattedMessage id="inventory.saveRevision" />
+              </Button>
+            </div>
+          </section>
+        )}
+      {revisionImpact === undefined &&
+      !showRename &&
+      renameDraft === undefined ? (
+        <div className={styles.inspectorActions}>
           <Button
-            className={styles.secondaryButton!}
-            onPress={() => void store.addInventoryItemToCurrentContext(item)}
+            className={styles.primaryButton!}
+            onPress={() => void store.openInventoryItem(item)}
             isDisabled={isBusy}
           >
-            <Plus aria-hidden="true" size={16} />
-            <FormattedMessage id="manage.useInContext" />
+            <ArrowRight aria-hidden="true" size={16} />
+            <FormattedMessage id="manage.openAnalysis" />
           </Button>
-        )}
-      </div>
+          <Button
+            className={styles.secondaryButton!}
+            onPress={() => setShowRename((visible) => !visible)}
+            isDisabled={isBusy}
+          >
+            <Pencil aria-hidden="true" size={16} />
+            <FormattedMessage id="inventory.rename" />
+          </Button>
+          {contextId !== undefined && !isContextMember && (
+            <Button
+              className={styles.secondaryButton!}
+              onPress={() => void store.addInventoryItemToCurrentContext(item)}
+              isDisabled={isBusy}
+            >
+              <Plus aria-hidden="true" size={16} />
+              <FormattedMessage id="manage.useInContext" />
+            </Button>
+          )}
+        </div>
+      ) : revisionImpact !== undefined &&
+        state.revisionImpact?.impact.impactId === revisionImpact.impactId ? (
+        <div className={styles.impactResolution}>
+          <RevisionImpactResolutionPanel
+            details={state.revisionImpact}
+            store={store}
+            isBusy={isBusy}
+          />
+        </div>
+      ) : revisionImpact !== undefined ? (
+        <div className={styles.impactLoading}>
+          <FormattedMessage id="revisionImpact.loading" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -405,27 +644,54 @@ function ContextSummary({ state }: { readonly state: ReadyState }) {
   }
   const workspace = state.contextWorkspace;
   return (
-    <div className={styles.contextSummary}>
-      <Boxes aria-hidden="true" size={24} />
-      <strong>{workspace?.context.displayName}</strong>
-      {workspace?.context.purpose !== undefined && (
-        <p>{workspace.context.purpose}</p>
-      )}
-      {workspace?.context.nextStep !== undefined && (
-        <div className={styles.nextStep}>
+    <section className={`${styles.contextSummary} ${styles.contextDetails}`}>
+      <div className={styles.contextDetailsTitle}>
+        <Boxes aria-hidden="true" size={22} />
+        <div>
           <span>
-            <FormattedMessage id="manage.nextStep" />
+            <FormattedMessage id="manage.contextDetails" />
           </span>
-          {workspace.context.nextStep}
+          <strong>{workspace?.context.displayName}</strong>
         </div>
-      )}
-      <span className={styles.referenceSummary}>
-        <FormattedMessage
-          id="manage.referenceCount"
-          values={{ count: workspace?.references.length ?? 0 }}
-        />
-      </span>
-    </div>
+      </div>
+      <dl>
+        {workspace?.context.purpose !== undefined && (
+          <div>
+            <dt>
+              <FormattedMessage id="manage.contextPurpose" />
+            </dt>
+            <dd>{workspace.context.purpose}</dd>
+          </div>
+        )}
+        {workspace?.context.nextStep !== undefined && (
+          <div>
+            <dt>
+              <FormattedMessage id="manage.nextStep" />
+            </dt>
+            <dd>{workspace.context.nextStep}</dd>
+          </div>
+        )}
+        {workspace?.context.boundary !== undefined && (
+          <div>
+            <dt>
+              <FormattedMessage id="manage.contextBoundary" />
+            </dt>
+            <dd>{workspace.context.boundary}</dd>
+          </div>
+        )}
+        <div>
+          <dt>
+            <FormattedMessage id="manage.contents" />
+          </dt>
+          <dd>
+            <FormattedMessage
+              id="manage.referenceCount"
+              values={{ count: workspace?.references.length ?? 0 }}
+            />
+          </dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 

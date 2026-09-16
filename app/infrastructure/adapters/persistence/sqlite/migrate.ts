@@ -14,6 +14,7 @@ const migrations = [
   loadMigration(2, './migrations/002-analysis-workspace.sql'),
   loadMigration(3, './migrations/003-analysis-contributions.sql'),
   loadMigration(4, './migrations/004-stable-analysis-scratch-identity.sql'),
+  loadMigration(5, './migrations/005-inventory-revisions.sql'),
 ] satisfies readonly Migration[];
 
 export function migrateStore(

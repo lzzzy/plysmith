@@ -77,6 +77,53 @@ function analysis(dataRevision = 0): AnalysisWorkspaceDto {
   };
 }
 
+function savedAnalysis(dataRevision = 0): AnalysisWorkspaceDto {
+  return {
+    ...analysis(dataRevision),
+    record: {
+      itemId: '11',
+      revisionId: '12',
+      currentRevisionId: '12',
+      revisionNumber: 1,
+      historical: false,
+      rootAnchorId: '13',
+      currentAnchorId: '13',
+      displayName: 'Französisch',
+      languageTag: 'de-DE',
+      origin: { kind: 'initial_position' },
+      root: initialState,
+      steps: [],
+      cursor: 0,
+      contributions: [],
+      contextMember: false,
+      readOnlyPreview: false,
+    },
+    legalMoves: [{ from: 'e2', to: 'e4', san: 'e4' }],
+  };
+}
+
+function savedLineAnalysis(
+  currentAnchorId: '13' | '14',
+  dataRevision = 0,
+): AnalysisWorkspaceDto {
+  return {
+    ...savedAnalysis(dataRevision),
+    record: {
+      ...savedAnalysis(dataRevision).record!,
+      currentAnchorId,
+      steps: [
+        {
+          anchorId: '14',
+          before: initialState,
+          move: { from: 'e2', to: 'e4', san: 'e4' },
+          after: initialState,
+        },
+      ],
+      cursor: currentAnchorId === '14' ? 1 : 0,
+    },
+  };
+}
+
 function diagnosticSettings(
   configuredLevel: DiagnosticSettingsDto['configuredLevel'] = 'off',
   activeLevel: DiagnosticSettingsDto['activeLevel'] = configuredLevel,
@@ -173,6 +220,18 @@ function createClient(
     getAnalysisWorkspace: async () => analysis(),
     updateAnalysisScratch: async () => assert.fail('no scratch write expected'),
     createAnalysisRecord: async () => assert.fail('no record write expected'),
+    startInventoryRevision: async () =>
+      assert.fail('no inventory revision write expected'),
+    previewInventoryRevision: async () =>
+      assert.fail('no inventory revision preview expected'),
+    saveInventoryRevision: async () =>
+      assert.fail('no inventory revision save expected'),
+    getInventoryRevision: async () =>
+      assert.fail('no inventory revision read expected'),
+    getPendingRevisionImpact: async () =>
+      assert.fail('no revision impact read expected'),
+    resolvePendingRevisionImpact: async () =>
+      assert.fail('no revision impact resolution expected'),
     createAnalysisNote: async () => assert.fail('no note write expected'),
     createPositionNote: async () => assert.fail('no note write expected'),
     updateAnalysisNote: async () => assert.fail('no note write expected'),
@@ -305,6 +364,7 @@ test('a stale scope read cannot replace the current workspace', async () => {
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
   };
@@ -313,6 +373,7 @@ test('a stale scope read cannot replace the current workspace', async () => {
     getWorkingContextWorkspace: async () => ({
       context,
       references: [],
+      pendingRevisionImpacts: [],
       dataRevision: 0,
     }),
     getAnalysisWorkspace: async (request) => {
@@ -374,6 +435,7 @@ test('a free scratch event refreshes despite an unchanged data revision', async 
   backend.scratch = {
     scratchId: 'external-scratch',
     scratchRevision: 1,
+    intent: { kind: 'exploration' },
     origin: { kind: 'initial_position' },
     root: initialState,
     steps: [],
@@ -557,6 +619,7 @@ test('inventory and contexts remain reachable across result pages', async () => 
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
   };
@@ -625,6 +688,7 @@ test('analysis navigation restores context and free return points', async () => 
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
   };
@@ -637,6 +701,7 @@ test('analysis navigation restores context and free return points', async () => 
     getWorkingContextWorkspace: async () => ({
       context,
       references: [],
+      pendingRevisionImpacts: [],
       dataRevision: 0,
     }),
     getAnalysisWorkspace: async (request) => {
@@ -681,6 +746,9 @@ test('derived analysis navigation sends only the exact source anchor focus', asy
     record: {
       itemId: '31',
       revisionId: '32',
+      currentRevisionId: '32',
+      revisionNumber: 1,
+      historical: false,
       rootAnchorId: '33',
       currentAnchorId: '33',
       displayName: 'Abgeleitete Analyse',
@@ -751,6 +819,9 @@ test('starts a scratch at the locally selected path position', async () => {
     record: {
       itemId: '31',
       revisionId: '32',
+      currentRevisionId: '32',
+      revisionNumber: 1,
+      historical: false,
       rootAnchorId: '33',
       currentAnchorId: '34',
       displayName: 'Abgeleitete Analyse',
@@ -777,6 +848,7 @@ test('starts a scratch at the locally selected path position', async () => {
         scratch: {
           scratchId: 'scratch-local-selection',
           scratchRevision: 1,
+          intent: { kind: 'exploration' },
           origin:
             request.action.kind === 'start'
               ? request.action.origin
@@ -839,10 +911,12 @@ test('opening a context member sets its analysis resume exactly once', async () 
       lifecycle: 'active',
       contextVersion: 1,
       referenceCount: 1,
+      pendingRevisionImpactCount: 0,
       createdAt: '2026-09-11T18:00:00.000Z',
       updatedAt: '2026-09-11T18:00:00.000Z',
     },
     references: [],
+    pendingRevisionImpacts: [],
     dataRevision: 0,
   };
   const client = createClient({
@@ -900,6 +974,104 @@ test('opening a context member sets its analysis resume exactly once', async () 
   store.close();
 });
 
+test('a context member with a pending impact cannot be opened before resolution', async () => {
+  const item: SearchInventoryResultDto['items'][number] = {
+    itemId: '11',
+    currentRevisionId: '14',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Neue globale Fassung',
+    languageTag: 'de-DE',
+    contextIds: ['7'],
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-14T12:00:00.000Z',
+  };
+  const context = {
+    contextId: '7',
+    displayName: 'Repertoire',
+    lifecycle: 'active' as const,
+    contextVersion: 1,
+    referenceCount: 1,
+    pendingRevisionImpactCount: 1,
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-14T12:00:00.000Z',
+  };
+  const analysisRequests: GetAnalysisWorkspaceRequestDto[] = [];
+  let resumeWrites = 0;
+  const client = createClient({
+    listWorkingContexts: async () => ({ contexts: [context], dataRevision: 0 }),
+    searchInventory: async () => ({ items: [item], dataRevision: 0 }),
+    getWorkingContextWorkspace: async () => ({
+      context,
+      references: [
+        {
+          referenceId: '31',
+          itemId: '11',
+          currentRevisionId: '12',
+          itemType: 'analysis',
+          displayName: 'Bisherige Context-Fassung',
+          anchorId: '13',
+          anchorKind: 'occurrence',
+          createdAt: '2026-09-11T18:00:00.000Z',
+        },
+      ],
+      pendingRevisionImpacts: [
+        {
+          impactId: '21',
+          itemId: '11',
+          pinnedRevisionId: '12',
+          targetRevisionId: '14',
+          impactVersion: 1,
+          entryCount: 1,
+          updatedAt: '2026-09-14T12:00:00.000Z',
+        },
+      ],
+      dataRevision: 0,
+    }),
+    getAnalysisWorkspace: async (request) => {
+      analysisRequests.push(request);
+      const workspace = savedLineAnalysis(
+        request.anchorId === '14' ? '14' : '13',
+      );
+      return {
+        ...workspace,
+        scope:
+          request.scopeKind === 'context'
+            ? { kind: 'context', contextId: request.contextId! }
+            : { kind: 'free' },
+        record: {
+          ...workspace.record!,
+          revisionId: '12',
+          currentRevisionId: '14',
+          historical: true,
+          contextMember: true,
+        },
+      };
+    },
+    setWorkScopeResume: async () => {
+      resumeWrites += 1;
+      return assert.fail('a pinned context preview must not change the resume');
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const requestsBeforeOpen = analysisRequests.length;
+
+  await store.selectInventoryItem(item);
+  await store.openInventoryItem(item);
+
+  assert.equal(resumeWrites, 0);
+  assert.equal(analysisRequests.length, requestsBeforeOpen);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'manage',
+  );
+  store.close();
+});
+
 test('saving an analysis note sends its explicit context visibility once', async () => {
   let noteRequest: unknown;
   let scratchRequest: unknown;
@@ -909,6 +1081,7 @@ test('saving an analysis note sends its explicit context visibility once', async
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
   };
@@ -917,6 +1090,7 @@ test('saving an analysis note sends its explicit context visibility once', async
     getWorkingContextWorkspace: async () => ({
       context,
       references: [],
+      pendingRevisionImpacts: [],
       dataRevision: 0,
     }),
     getAnalysisWorkspace: async (request) =>
@@ -928,6 +1102,7 @@ test('saving an analysis note sends its explicit context visibility once', async
             scratch: {
               scratchId: 'scratch-1',
               scratchRevision: 3,
+              intent: { kind: 'exploration' },
               origin: {
                 kind: 'inventory_anchor',
                 itemId: '11',
@@ -971,6 +1146,7 @@ test('saving an analysis note sends its explicit context visibility once', async
         scratch: {
           scratchId: 'scratch-1',
           scratchRevision: 4,
+          intent: { kind: 'exploration' },
           origin: {
             kind: 'inventory_anchor',
             itemId: '11',
@@ -1019,6 +1195,7 @@ test('events from one note save are covered by one authoritative refresh', async
   let currentScratch: AnalysisWorkspaceDto['scratch'] = {
     scratchId: 'scratch-1',
     scratchRevision: 2,
+    intent: { kind: 'exploration' },
     origin: {
       kind: 'inventory_anchor',
       itemId: '11',
@@ -1112,6 +1289,7 @@ test('path-to-note preparation starts empty and can return to the intact path', 
   let currentScratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'scratch-1',
     scratchRevision: 2,
+    intent: { kind: 'exploration' },
     origin: {
       kind: 'inventory_anchor',
       itemId: '11',
@@ -1152,6 +1330,7 @@ test('path-to-note preparation starts empty and can return to the intact path', 
           : {
               scratchId: currentScratch.scratchId,
               scratchRevision: currentScratch.scratchRevision + 1,
+              intent: currentScratch.intent,
               origin: currentScratch.origin,
               root: currentScratch.root,
               steps: currentScratch.steps,
@@ -1191,6 +1370,7 @@ test('saving a separate analysis synchronizes its optional visible comment', asy
   const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'scratch-1',
     scratchRevision: 2,
+    intent: { kind: 'exploration' },
     origin: { kind: 'initial_position' },
     root: initialState,
     steps: [],
@@ -1372,6 +1552,7 @@ test('a lost scratch write response is not retried', async () => {
       currentScratch = {
         scratchId: 'accepted-before-response-loss',
         scratchRevision: 1,
+        intent: { kind: 'exploration' },
         origin: { kind: 'initial_position' },
         root: initialState,
         steps: [],
@@ -1405,6 +1586,7 @@ test('failed saves report failure without consuming visible drafts', async () =>
   const currentScratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'scratch-1',
     scratchRevision: 1,
+    intent: { kind: 'exploration' },
     origin: { kind: 'initial_position' },
     root: initialState,
     steps: [],
@@ -1444,6 +1626,448 @@ test('failed saves report failure without consuming visible drafts', async () =>
       ? snapshot.analysis.scratch?.scratchId
       : undefined,
     'scratch-1',
+  );
+  store.close();
+});
+
+test('rename from manage previews and saves one metadata revision in place', async () => {
+  const item: SearchInventoryResultDto['items'][number] = {
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Französisch',
+    languageTag: 'de-DE',
+    contextIds: [],
+    createdAt: '2026-09-15T10:00:00.000Z',
+    updatedAt: '2026-09-15T10:00:00.000Z',
+  };
+  let startRequest:
+    | Parameters<PlysmithApplicationClient['startInventoryRevision']>[1]
+    | undefined;
+  let saveRequest:
+    | Parameters<PlysmithApplicationClient['saveInventoryRevision']>[0]
+    | undefined;
+  let discardRequest:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const previousRevision = savedAnalysis().record!;
+  const preview = {
+    itemId: '11',
+    baseRevisionId: '12',
+    mode: 'metadata' as const,
+    displayName: 'Französische Verteidigung',
+    preservedMoveCount: 0,
+    addedSteps: [],
+    removedSteps: [],
+    historicalGlobalContributionCount: 0,
+    affectedContexts: [],
+    followingContexts: [],
+    noOp: false,
+    previewFingerprint: 'sha256:rename-preview',
+    dataRevision: 0,
+  };
+  const client = createClient({
+    searchInventory: async () => ({ items: [item], dataRevision: 0 }),
+    getInventoryRevision: async () => previousRevision,
+    startInventoryRevision: async (_itemId, request) => {
+      startRequest = request;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'rename-scratch',
+        scratchRevision: 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'metadata',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Französische Verteidigung',
+        },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '13',
+        },
+        root: initialState,
+        steps: [],
+        cursor: 0,
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () => preview,
+    saveInventoryRevision: async (request) => {
+      saveRequest = request;
+      return {
+        itemId: '11',
+        revisionId: '14',
+        revisionNumber: 2,
+        currentAnchorId: '13',
+        impacts: [],
+        noOp: false,
+        dataRevision: 0,
+      };
+    },
+    updateAnalysisScratch: async (request) => {
+      discardRequest = request;
+      return { discarded: true, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.prepareInventoryItemRename(
+    item,
+    'Französische Verteidigung',
+    null,
+  );
+
+  assert.deepEqual(startRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '13',
+    mode: 'metadata',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    displayName: 'Französische Verteidigung',
+    summary: null,
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'manage',
+  );
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.manageInventoryRevisionDraft?.preview.displayName
+      : undefined,
+    'Französische Verteidigung',
+  );
+  assert.equal(await store.saveManagedInventoryRevision(), true);
+  assert.deepEqual(saveRequest, {
+    scope: { kind: 'free' },
+    expectedScratchId: 'rename-scratch',
+    expectedScratchRevision: 1,
+    previewFingerprint: 'sha256:rename-preview',
+  });
+  const savedSnapshot = store.getSnapshot();
+  assert.equal(
+    savedSnapshot.phase === 'ready'
+      ? savedSnapshot.manageInventoryRevisionDraft
+      : undefined,
+    undefined,
+  );
+  assert.equal(
+    savedSnapshot.phase === 'ready' ? savedSnapshot.activity : undefined,
+    'manage',
+  );
+
+  await store.prepareInventoryItemRename(item, 'Französisch kompakt', null);
+  assert.equal(await store.discardManagedInventoryRevision(), true);
+  assert.deepEqual(discardRequest, {
+    scope: { kind: 'free' },
+    expectedScratchId: 'rename-scratch',
+    expectedScratchRevision: 1,
+    action: { kind: 'discard' },
+  });
+  store.close();
+});
+
+test('a first move at the saved line end opens and previews an inventory extension', async () => {
+  let current = savedAnalysis();
+  let startRequest:
+    | Parameters<PlysmithApplicationClient['startInventoryRevision']>[1]
+    | undefined;
+  let saveRequest:
+    | Parameters<PlysmithApplicationClient['saveInventoryRevision']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    startInventoryRevision: async (_itemId, request) => {
+      startRequest = request;
+      const scratch = {
+        scratchId: 'revision-scratch',
+        scratchRevision: 1,
+        intent: {
+          kind: 'inventory_revision' as const,
+          mode: 'extend' as const,
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Französisch',
+        },
+        origin: {
+          kind: 'inventory_anchor' as const,
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '13',
+        },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'e2', to: 'e4', san: 'e4' },
+            after: initialState,
+          },
+        ],
+        cursor: 1,
+      };
+      current = {
+        ...current,
+        scratch,
+        allowedActions: ['apply_move', 'move_cursor', 'discard_scratch'],
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () => ({
+      itemId: '11',
+      baseRevisionId: '12',
+      mode: 'extend',
+      displayName: 'Französisch',
+      preservedMoveCount: 0,
+      addedSteps: current.scratch?.steps ?? [],
+      removedSteps: [],
+      historicalGlobalContributionCount: 0,
+      affectedContexts: [],
+      followingContexts: [],
+      noOp: false,
+      previewFingerprint:
+        'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      dataRevision: 0,
+    }),
+    saveInventoryRevision: async (request) => {
+      saveRequest = request;
+      current = {
+        ...savedAnalysis(),
+        record: {
+          ...savedAnalysis().record!,
+          revisionId: '14',
+          currentRevisionId: '14',
+          revisionNumber: 2,
+        },
+      };
+      return {
+        itemId: '11',
+        revisionId: '14',
+        revisionNumber: 2,
+        currentAnchorId: '13',
+        impacts: [],
+        noOp: false,
+        dataRevision: 1,
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.applyMove('e4');
+  assert.deepEqual(startRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '13',
+    mode: 'extend',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    firstMove: { kind: 'notation', value: 'e4', locale: 'de-DE' },
+  });
+
+  await store.previewInventoryRevision();
+  const previewed = store.getSnapshot();
+  assert.equal(
+    previewed.phase === 'ready'
+      ? previewed.inventoryRevisionPreview?.previewFingerprint
+      : undefined,
+    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  );
+  store.clearInventoryRevisionPreview();
+  const cleared = store.getSnapshot();
+  assert.equal(
+    cleared.phase === 'ready' ? cleared.inventoryRevisionPreview : undefined,
+    undefined,
+  );
+  await store.previewInventoryRevision();
+  assert.equal(await store.saveInventoryRevision(), true);
+  assert.deepEqual(saveRequest, {
+    scope: { kind: 'free' },
+    expectedScratchId: 'revision-scratch',
+    expectedScratchRevision: 1,
+    previewFingerprint:
+      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  });
+  const saved = store.getSnapshot();
+  assert.equal(
+    saved.phase === 'ready' ? saved.inventoryRevisionPreview : undefined,
+    undefined,
+  );
+  store.close();
+});
+
+test('focusing the saved line end makes the next move an inventory extension', async () => {
+  let startRequest:
+    | Parameters<PlysmithApplicationClient['startInventoryRevision']>[1]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async (request) =>
+      savedLineAnalysis(request.anchorId === '14' ? '14' : '13'),
+    startInventoryRevision: async (_itemId, request) => {
+      startRequest = request;
+      return {
+        scratch: {
+          scratchId: 'revision-scratch',
+          scratchRevision: 1,
+          intent: {
+            kind: 'inventory_revision',
+            mode: 'extend',
+            itemId: '11',
+            baseRevisionId: '12',
+            cutAnchorId: '14',
+            returnAnchorId: '14',
+            displayName: 'Französisch',
+          },
+          origin: {
+            kind: 'inventory_anchor',
+            itemId: '11',
+            revisionId: '12',
+            anchorId: '14',
+          },
+          root: initialState,
+          steps: [
+            {
+              before: initialState,
+              move: { from: 'd7', to: 'd5', san: 'd5' },
+              after: initialState,
+            },
+          ],
+          cursor: 1,
+        },
+        dataRevision: 0,
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.openRecordAnchor('14');
+  await store.applyMove('d5');
+
+  assert.deepEqual(startRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '14',
+    mode: 'extend',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    firstMove: { kind: 'notation', value: 'd5', locale: 'de-DE' },
+  });
+  store.close();
+});
+
+test('an open context impact is discoverable, loaded with both revisions and resolved once', async () => {
+  const context = {
+    contextId: '7',
+    displayName: 'Repertoire',
+    lifecycle: 'active' as const,
+    contextVersion: 1,
+    referenceCount: 1,
+    pendingRevisionImpactCount: 1,
+    createdAt: '2026-09-14T12:00:00.000Z',
+    updatedAt: '2026-09-14T12:00:00.000Z',
+  };
+  let pending = true;
+  let resolution:
+    | Parameters<PlysmithApplicationClient['resolvePendingRevisionImpact']>[1]
+    | undefined;
+  const client = createClient({
+    listWorkingContexts: async () => ({ contexts: [context], dataRevision: 0 }),
+    getWorkingContextWorkspace: async () => ({
+      context: {
+        ...context,
+        pendingRevisionImpactCount: pending ? 1 : 0,
+      },
+      references: [],
+      pendingRevisionImpacts: pending
+        ? [
+            {
+              impactId: '21',
+              itemId: '11',
+              pinnedRevisionId: '12',
+              targetRevisionId: '14',
+              impactVersion: 1,
+              entryCount: 1,
+              updatedAt: '2026-09-14T12:00:00.000Z',
+            },
+          ]
+        : [],
+      dataRevision: 0,
+    }),
+    getPendingRevisionImpact: async () => ({
+      impactId: '21',
+      contextId: '7',
+      contextName: 'Repertoire',
+      itemId: '11',
+      pinnedRevisionId: '12',
+      targetRevisionId: '14',
+      targetAnchorId: '15',
+      impactVersion: 1,
+      referenceCount: 1,
+      contributionCount: 0,
+      managementResumeAffected: false,
+      analysisResumeAffected: false,
+      createdAt: '2026-09-14T12:00:00.000Z',
+      updatedAt: '2026-09-14T12:00:00.000Z',
+    }),
+    getInventoryRevision: async (_itemId, revisionId) => ({
+      ...savedAnalysis().record!,
+      revisionId,
+      currentRevisionId: '14',
+      revisionNumber: revisionId === '12' ? 1 : 2,
+      historical: revisionId === '12',
+      readOnlyPreview: revisionId === '12',
+    }),
+    resolvePendingRevisionImpact: async (_impactId, request) => {
+      resolution = request;
+      pending = false;
+      return {
+        impactId: '21',
+        contextId: '7',
+        itemId: '11',
+        resolution: request.resolution.kind,
+        contextItemId: '11',
+        contextRevisionId: '14',
+        dataRevision: 0,
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.openRevisionImpact('21');
+  const opened = store.getSnapshot();
+  assert.equal(
+    opened.phase === 'ready'
+      ? opened.revisionImpact?.impact.impactId
+      : undefined,
+    '21',
+  );
+
+  assert.equal(
+    await store.resolveRevisionImpact({
+      expectedImpactVersion: 1,
+      resolution: { kind: 'use_target' },
+    }),
+    true,
+  );
+  assert.deepEqual(resolution, {
+    expectedImpactVersion: 1,
+    resolution: { kind: 'use_target' },
+  });
+  const resolved = store.getSnapshot();
+  assert.equal(
+    resolved.phase === 'ready' ? resolved.revisionImpact : undefined,
+    undefined,
   );
   store.close();
 });

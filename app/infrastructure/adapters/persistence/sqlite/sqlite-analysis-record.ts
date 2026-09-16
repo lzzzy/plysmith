@@ -32,6 +32,8 @@ import {
   readAnalysisNoteMoves,
 } from './sqlite-analysis-note.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
+import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import {
   requireActiveContext,
   resolveAnchorPosition,
@@ -47,6 +49,9 @@ export function createAnalysisRecord(
   request: PersistAnalysisRecordRequest,
 ): CreateAnalysisRecordResult {
   validateSourceScratch(database, request);
+  if (!inventoryDisplayNameIsAvailable(database, request.displayName)) {
+    throw invalidAnalysisRecord();
+  }
   if (request.targetContextId !== undefined) {
     requireActiveContext(database, request.targetContextId);
     if (
@@ -87,7 +92,13 @@ export function createAnalysisRecord(
       itemId.value,
       request.displayName,
       request.languageTag,
-      fingerprint(recordFingerprintValue(request)),
+      analysisContentFingerprint({
+        displayName: request.displayName,
+        languageTag: request.languageTag,
+        originMode: request.origin.kind,
+        root: request.root,
+        steps: request.steps,
+      }),
       request.occurredAt,
     );
   const revisionId = localId(
@@ -243,7 +254,10 @@ function readAnalysisRecordViewInternal(
   const header = database
     .prepare(
       `SELECT revision.display_name AS displayName,
+              revision.summary_text AS summary,
               revision.language_tag AS languageTag,
+              revision.revision_number AS revisionNumber,
+              item.current_revision_id AS currentRevisionId,
               analysis.origin_mode AS originMode,
               analysis.root_occurrence_id AS rootOccurrenceId,
               analysis_origin.source_item_id AS sourceItemId,
@@ -263,7 +277,10 @@ function readAnalysisRecordViewInternal(
     .get(request.revisionId.value, request.itemId.value) as
     | {
         displayName: string;
+        summary: string | null;
         languageTag: string;
+        revisionNumber: number;
+        currentRevisionId: number;
         originMode: 'initial_position' | 'fen' | 'inventory_anchor';
         rootOccurrenceId: number;
         sourceItemId: number | null;
@@ -346,6 +363,7 @@ function readAnalysisRecordViewInternal(
   const contributions = readContributions(
     database,
     request.itemId.value,
+    request.revisionId.value,
     request.contextId,
   );
   const contextMember =
@@ -360,9 +378,12 @@ function readAnalysisRecordViewInternal(
   return Object.freeze({
     itemId: request.itemId,
     revisionId: request.revisionId,
+    currentRevisionId: localId('item-revision', header.currentRevisionId),
+    revisionNumber: header.revisionNumber,
     rootAnchorId: localId('anchor', rootAnchor.anchorId),
     currentAnchorId: request.anchorId,
     displayName: header.displayName,
+    ...(header.summary === null ? {} : { summary: header.summary }),
     languageTag: header.languageTag,
     origin,
     ...(sourceLine === undefined ? {} : { sourceLine }),
@@ -372,6 +393,7 @@ function readAnalysisRecordViewInternal(
     contributions,
     contextMember,
     readOnlyPreview: request.readOnlyPreview && !contextMember,
+    historical: request.revisionId.value !== header.currentRevisionId,
   });
 }
 
@@ -837,6 +859,7 @@ function resolveRecordCursor(
 function readContributions(
   database: Database.Database,
   itemId: number,
+  revisionId: number,
   contextId: WorkingContextId | undefined,
 ): readonly AnalysisContributionView[] {
   const rows = database
@@ -854,11 +877,39 @@ function readContributions(
            ON anchor.anchor_id = contribution.anchor_id
         WHERE contribution.status = 'active'
           AND (anchor.item_id = ? OR anchor.owner_item_id = ?)
+          AND (
+            anchor.anchor_kind = 'item'
+            OR (anchor.anchor_kind = 'position' AND EXISTS (
+              SELECT 1 FROM chess_occurrence_snapshot AS member
+               WHERE member.revision_id = ? AND member.item_id = ?
+                 AND member.position_id = anchor.position_id
+            ))
+            OR (anchor.anchor_kind = 'occurrence' AND EXISTS (
+              SELECT 1 FROM chess_occurrence_snapshot AS member
+               WHERE member.revision_id = ? AND member.item_id = ?
+                 AND member.occurrence_id = anchor.occurrence_id
+            ))
+            OR (anchor.anchor_kind = 'move_node' AND EXISTS (
+              SELECT 1 FROM chess_move_node_snapshot AS member
+               WHERE member.revision_id = ? AND member.item_id = ?
+                 AND member.move_node_id = anchor.move_node_id
+            ))
+          )
           AND (contribution.scope_kind = 'global'
                OR contribution.context_id = ?)
         ORDER BY contribution.created_at_utc, contribution.contribution_id`,
     )
-    .all(itemId, itemId, contextId?.value ?? null) as {
+    .all(
+      itemId,
+      itemId,
+      revisionId,
+      itemId,
+      revisionId,
+      itemId,
+      revisionId,
+      itemId,
+      contextId?.value ?? null,
+    ) as {
     contributionId: number;
     anchorId: number;
     body: string;
@@ -961,28 +1012,6 @@ function restoreSourceContextResume(
     );
   if (changed.changes !== 1) throw invalidAnalysisRecord();
   return resumeVersion;
-}
-
-function recordFingerprintValue(
-  request: PersistAnalysisRecordRequest,
-): unknown {
-  return {
-    displayName: request.displayName,
-    languageTag: request.languageTag,
-    originMode: request.origin.kind,
-    root: stateFingerprintValue(request.root),
-    steps: request.steps.map((step) => ({
-      move: step.move,
-      after: stateFingerprintValue(step.after),
-    })),
-  };
-}
-
-function stateFingerprintValue(state: ChessState): unknown {
-  return {
-    positionKey: state.position.positionKey,
-    playState: state.playState,
-  };
 }
 
 function fingerprint(value: unknown): Buffer {

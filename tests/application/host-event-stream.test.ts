@@ -134,9 +134,25 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
     revisionId: localId('item-revision', 8),
   });
   stream.publish({
-    kind: 'workspace.context-created',
+    kind: 'inventory.revision-saved',
     occurredAt: '2026-09-08T11:00:00.000Z',
     dataRevision: 7,
+    itemId: localId('inventory-item', 7),
+    revisionId: localId('item-revision', 10),
+  });
+  stream.publish({
+    kind: 'workspace.revision-impact-changed',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 8,
+    contextId,
+    itemId: localId('inventory-item', 7),
+    impactId: localId('revision-impact', 11),
+    status: 'open',
+  });
+  stream.publish({
+    kind: 'workspace.context-created',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 9,
     contextId,
     contextVersion: 1,
   });
@@ -145,6 +161,8 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
   const contribution = await next(subscription);
   const changedContribution = await next(subscription);
   const inventory = await next(subscription);
+  const revision = await next(subscription);
+  const impact = await next(subscription);
   const workspace = await next(subscription);
   assert.deepEqual(scratch.payload, {
     scope: { kind: 'context', contextId },
@@ -154,6 +172,16 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
   assert.deepEqual(inventory.payload, {
     itemId: localId('inventory-item', 7),
     revisionId: localId('item-revision', 8),
+  });
+  assert.deepEqual(revision.payload, {
+    itemId: localId('inventory-item', 7),
+    revisionId: localId('item-revision', 10),
+  });
+  assert.deepEqual(impact.payload, {
+    contextId,
+    itemId: localId('inventory-item', 7),
+    impactId: localId('revision-impact', 11),
+    status: 'open',
   });
   assert.deepEqual(contribution.payload, {
     itemId: localId('inventory-item', 7),
@@ -171,6 +199,8 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
       contribution.kind,
       changedContribution.kind,
       inventory.kind,
+      revision.kind,
+      impact.kind,
       workspace.kind,
     ],
     [
@@ -178,6 +208,8 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
       'analysis.contribution-created',
       'analysis.contribution-changed',
       'inventory.item-created',
+      'inventory.revision-saved',
+      'workspace.revision-impact-changed',
       'workspace.context-created',
     ],
   );

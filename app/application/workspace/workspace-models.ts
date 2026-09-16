@@ -4,6 +4,7 @@ import type {
   InventoryItemId,
   ItemRevisionId,
   PositionId,
+  RevisionImpactId,
   WorkingContextId,
 } from '../../domain/identity/index.ts';
 import type { WorkingContextDraft } from '../../domain/workspace/index.ts';
@@ -14,6 +15,7 @@ export interface WorkingContextSummary extends WorkingContextDraft {
   readonly pinnedOrder?: number;
   readonly contextVersion: number;
   readonly referenceCount: number;
+  readonly pendingRevisionImpactCount: number;
   readonly managementResumeVersion?: number;
   readonly analysisResumeVersion?: number;
   readonly createdAt: string;
@@ -50,9 +52,20 @@ export interface AnalysisResume {
   readonly updatedAt: string;
 }
 
+export interface WorkingContextRevisionImpactSummary {
+  readonly impactId: RevisionImpactId;
+  readonly itemId: InventoryItemId;
+  readonly pinnedRevisionId: ItemRevisionId;
+  readonly targetRevisionId: ItemRevisionId;
+  readonly impactVersion: number;
+  readonly entryCount: number;
+  readonly updatedAt: string;
+}
+
 export interface WorkingContextWorkspace {
   readonly context: WorkingContextSummary;
   readonly references: readonly ContextReferenceSummary[];
+  readonly pendingRevisionImpacts: readonly WorkingContextRevisionImpactSummary[];
   readonly managementResume?: ManagementResume;
   readonly analysisResume?: AnalysisResume;
   readonly dataRevision: number;

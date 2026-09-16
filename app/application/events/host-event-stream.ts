@@ -15,6 +15,10 @@ import type {
 import type {
   AnalysisRecordCreated,
   InventoryChangedPublisher,
+  InventoryRevisionSaved,
+  InventoryRevisionSavedPublisher,
+  RevisionImpactChanged,
+  RevisionImpactChangedPublisher,
 } from '../inventory/index.ts';
 import type {
   WorkspaceChanged,
@@ -27,6 +31,8 @@ export type HostEvent =
   | AnalysisContributionCreatedHostEvent
   | AnalysisContributionChangedHostEvent
   | InventoryItemCreatedHostEvent
+  | InventoryRevisionSavedHostEvent
+  | WorkspaceRevisionImpactChangedHostEvent
   | WorkspaceContextCreatedHostEvent
   | WorkspaceReferenceAddedHostEvent
   | WorkspaceResumeUpdatedHostEvent
@@ -72,6 +78,19 @@ export interface AnalysisContributionChangedHostEvent extends HostEventMetadata 
 export interface InventoryItemCreatedHostEvent extends HostEventMetadata {
   readonly kind: 'inventory.item-created';
   readonly payload: Pick<AnalysisRecordCreated, 'itemId' | 'revisionId'>;
+}
+
+export interface InventoryRevisionSavedHostEvent extends HostEventMetadata {
+  readonly kind: 'inventory.revision-saved';
+  readonly payload: Pick<InventoryRevisionSaved, 'itemId' | 'revisionId'>;
+}
+
+export interface WorkspaceRevisionImpactChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.revision-impact-changed';
+  readonly payload: Pick<
+    RevisionImpactChanged,
+    'contextId' | 'itemId' | 'impactId' | 'status'
+  >;
 }
 
 export interface WorkspaceContextCreatedHostEvent extends HostEventMetadata {
@@ -134,6 +153,8 @@ export class HostEventStream
     AnalysisContributionCreatedPublisher,
     AnalysisContributionChangedPublisher,
     InventoryChangedPublisher,
+    InventoryRevisionSavedPublisher,
+    RevisionImpactChangedPublisher,
     WorkspaceChangedPublisher,
     HostEventSource
 {
@@ -163,6 +184,8 @@ export class HostEventStream
   publish(event: AnalysisContributionCreated): void;
   publish(event: AnalysisContributionChanged): void;
   publish(event: AnalysisRecordCreated): void;
+  publish(event: InventoryRevisionSaved): void;
+  publish(event: RevisionImpactChanged): void;
   publish(event: WorkspaceChanged): void;
   publish(
     event:
@@ -171,6 +194,8 @@ export class HostEventStream
       | AnalysisContributionCreated
       | AnalysisContributionChanged
       | AnalysisRecordCreated
+      | InventoryRevisionSaved
+      | RevisionImpactChanged
       | WorkspaceChanged,
   ): void {
     try {
@@ -289,6 +314,8 @@ type PublishableEvent =
   | AnalysisContributionCreated
   | AnalysisContributionChanged
   | AnalysisRecordCreated
+  | InventoryRevisionSaved
+  | RevisionImpactChanged
   | WorkspaceChanged;
 
 function toHostEvent(
@@ -343,6 +370,26 @@ function toHostEvent(
         payload: Object.freeze({
           itemId: event.itemId,
           revisionId: event.revisionId,
+        }),
+      });
+    case 'inventory.revision-saved':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          itemId: event.itemId,
+          revisionId: event.revisionId,
+        }),
+      });
+    case 'workspace.revision-impact-changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          contextId: event.contextId,
+          itemId: event.itemId,
+          impactId: event.impactId,
+          status: event.status,
         }),
       });
     case 'workspace.context-created':

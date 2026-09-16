@@ -16,6 +16,13 @@ import type {
   DiagnosticSettings,
   ListWorkingContextsResult,
   SearchInventoryResult,
+  AnalysisRecord,
+  InventoryRevisionPreview,
+  ListInventoryRevisionsResult,
+  PendingRevisionImpact,
+  ResolvePendingRevisionImpactResult,
+  SaveInventoryRevisionResult,
+  StartInventoryRevisionResult,
   SetDiagnosticLogLevelResult,
   SetUiLanguageResult,
   SetWorkScopeResumeResult,
@@ -36,6 +43,13 @@ import {
   DiagnosticSettingsSchema,
   ListWorkingContextsResultSchema,
   SearchInventoryResultSchema,
+  AnalysisRecordSchema,
+  InventoryRevisionPreviewSchema,
+  ListInventoryRevisionsResultSchema,
+  PendingRevisionImpactSchema,
+  ResolvePendingRevisionImpactResultSchema,
+  SaveInventoryRevisionResultSchema,
+  StartInventoryRevisionResultSchema,
   SetDiagnosticLogLevelResultSchema,
   SetUiLanguageResultSchema,
   SetWorkScopeResumeResultSchema,
@@ -130,6 +144,42 @@ export function analysisNoteMutationResultDto(
 
 export function searchInventoryResultDto(model: SearchInventoryResult) {
   return checked(SearchInventoryResultSchema, model);
+}
+
+export function startInventoryRevisionResultDto(
+  model: StartInventoryRevisionResult,
+) {
+  return checked(StartInventoryRevisionResultSchema, model);
+}
+
+export function inventoryRevisionPreviewDto(model: InventoryRevisionPreview) {
+  return checked(InventoryRevisionPreviewSchema, model);
+}
+
+export function saveInventoryRevisionResultDto(
+  model: SaveInventoryRevisionResult,
+) {
+  return checked(SaveInventoryRevisionResultSchema, model);
+}
+
+export function analysisRecordDto(model: AnalysisRecord) {
+  return checked(AnalysisRecordSchema, model);
+}
+
+export function listInventoryRevisionsResultDto(
+  model: ListInventoryRevisionsResult,
+) {
+  return checked(ListInventoryRevisionsResultSchema, model);
+}
+
+export function pendingRevisionImpactDto(model: PendingRevisionImpact) {
+  return checked(PendingRevisionImpactSchema, model);
+}
+
+export function resolvePendingRevisionImpactResultDto(
+  model: ResolvePendingRevisionImpactResult,
+) {
+  return checked(ResolvePendingRevisionImpactResultSchema, model);
 }
 
 export function listWorkingContextsResultDto(model: ListWorkingContextsResult) {

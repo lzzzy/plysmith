@@ -223,6 +223,19 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
     }
     if (current === undefined) throw analysisScratchNotFound();
     if (action.kind === 'discard') return undefined;
+    if (
+      current.intent.kind === 'inventory_revision' &&
+      (action.kind === 'prepare_note' || action.kind === 'clear_note')
+    ) {
+      throw invalidAnalysisUpdate();
+    }
+    if (
+      current.intent.kind === 'inventory_revision' &&
+      current.intent.mode === 'metadata' &&
+      action.kind === 'apply_move'
+    ) {
+      throw invalidAnalysisUpdate();
+    }
     try {
       if (action.kind === 'move_cursor') {
         return moveAnalysisCursor(current, action.cursor);

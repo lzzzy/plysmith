@@ -5,6 +5,7 @@ import {
   type AddContextReferenceRequestDto,
   type AddContextReferenceResultDto,
   type AnalysisNoteMutationResultDto,
+  type AnalysisRecordDto,
   type AnalysisWorkspaceDto,
   type CreateAnalysisRecordRequestDto,
   type CreateAnalysisRecordResultDto,
@@ -23,6 +24,13 @@ import {
   type HostRequestDiagnostic,
   type ListWorkingContextsRequestDto,
   type ListWorkingContextsResultDto,
+  type InventoryRevisionPreviewDto,
+  type InventoryRevisionScratchRequestDto,
+  type PendingRevisionImpactDto,
+  type ResolvePendingRevisionImpactRequestDto,
+  type ResolvePendingRevisionImpactResultDto,
+  type SaveInventoryRevisionRequestDto,
+  type SaveInventoryRevisionResultDto,
   type SearchInventoryRequestDto,
   type SearchInventoryResultDto,
   type SetUiLanguageResultDto,
@@ -30,6 +38,8 @@ import {
   type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
+  type StartInventoryRevisionRequestDto,
+  type StartInventoryRevisionResultDto,
   type SystemStatusDto,
   type DeleteAnalysisNoteRequestDto,
   type UpdateAnalysisScratchRequestDto,
@@ -48,6 +58,7 @@ export type ActivityId = 'manage' | 'analyze' | 'settings';
 export type WorkScope = AnalysisWorkspaceDto['scope'];
 export type InventoryItem = SearchInventoryResultDto['items'][number];
 export type WorkingContext = ListWorkingContextsResultDto['contexts'][number];
+type MoveRequest = NonNullable<StartInventoryRevisionRequestDto['firstMove']>;
 export type ApplicationCommand =
   | 'set_language'
   | 'set_diagnostic_log_level'
@@ -62,6 +73,14 @@ export type ApplicationCommand =
   | 'update_analysis_note'
   | 'delete_analysis_note'
   | 'create_analysis_record'
+  | 'start_inventory_revision'
+  | 'prepare_inventory_metadata_revision'
+  | 'preview_inventory_revision'
+  | 'save_inventory_revision'
+  | 'save_managed_inventory_revision'
+  | 'discard_managed_inventory_revision'
+  | 'load_revision_impact'
+  | 'resolve_revision_impact'
   | 'create_context'
   | 'add_context_reference'
   | 'set_resume'
@@ -92,6 +111,26 @@ export interface PlysmithApplicationClient {
   createAnalysisRecord(
     request: CreateAnalysisRecordRequestDto,
   ): Promise<CreateAnalysisRecordResultDto>;
+  startInventoryRevision(
+    itemId: string,
+    request: StartInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto>;
+  previewInventoryRevision(
+    request: InventoryRevisionScratchRequestDto,
+  ): Promise<InventoryRevisionPreviewDto>;
+  saveInventoryRevision(
+    request: SaveInventoryRevisionRequestDto,
+  ): Promise<SaveInventoryRevisionResultDto>;
+  getInventoryRevision(
+    itemId: string,
+    revisionId: string,
+    request: { readonly scopeKind: 'free' },
+  ): Promise<AnalysisRecordDto>;
+  getPendingRevisionImpact(impactId: string): Promise<PendingRevisionImpactDto>;
+  resolvePendingRevisionImpact(
+    impactId: string,
+    request: ResolvePendingRevisionImpactRequestDto,
+  ): Promise<ResolvePendingRevisionImpactResultDto>;
   createAnalysisNote(
     request: CreateAnalysisNoteRequestDto,
   ): Promise<CreateAnalysisNoteResultDto>;
@@ -156,6 +195,20 @@ interface AnalysisFocus {
   readonly anchorId: string;
 }
 
+export interface RevisionImpactDetails {
+  readonly impact: PendingRevisionImpactDto;
+  readonly pinnedRevision: AnalysisRecordDto;
+  readonly targetRevision: AnalysisRecordDto;
+}
+
+export interface ManageInventoryRevisionDraft {
+  readonly itemId: string;
+  readonly scratchId: string;
+  readonly scratchRevision: number;
+  readonly previousRevision: AnalysisRecordDto;
+  readonly preview: InventoryRevisionPreviewDto;
+}
+
 export type PlysmithApplicationState =
   | { readonly phase: 'loading' }
   | { readonly phase: 'unavailable'; readonly errorCode?: string }
@@ -168,6 +221,9 @@ export type PlysmithApplicationState =
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
       readonly analysis: AnalysisWorkspaceDto;
+      readonly inventoryRevisionPreview?: InventoryRevisionPreviewDto;
+      readonly manageInventoryRevisionDraft?: ManageInventoryRevisionDraft;
+      readonly revisionImpact?: RevisionImpactDetails;
       readonly contextWorkspace?: WorkingContextWorkspaceDto;
       readonly activity: ActivityId;
       readonly scope: WorkScope;
@@ -204,6 +260,9 @@ export class PlysmithApplicationStore {
   #pendingUnversionedEvent = false;
   #committedReadKey: string | undefined;
   #freeAnalysisFocus: AnalysisFocus | undefined;
+  #inventoryRevisionPreview: InventoryRevisionPreviewDto | undefined;
+  #manageInventoryRevisionDraft: ManageInventoryRevisionDraft | undefined;
+  #revisionImpact: RevisionImpactDetails | undefined;
 
   constructor(options: PlysmithApplicationStoreOptions) {
     this.#options = options;
@@ -368,6 +427,15 @@ export class PlysmithApplicationStore {
           const selectedInventoryItemId =
             this.#selectedInventoryItemId ??
             workspace?.managementResume?.selectedItemId;
+          if (
+            this.#revisionImpact !== undefined &&
+            !workspace?.pendingRevisionImpacts.some(
+              (impact) =>
+                impact.impactId === this.#revisionImpact?.impact.impactId,
+            )
+          ) {
+            this.#revisionImpact = undefined;
+          }
           this.#setState(
             Object.freeze({
               phase: 'ready',
@@ -378,6 +446,20 @@ export class PlysmithApplicationStore {
               contexts,
               inventory,
               analysis,
+              ...(this.#inventoryRevisionPreview === undefined
+                ? {}
+                : {
+                    inventoryRevisionPreview: this.#inventoryRevisionPreview,
+                  }),
+              ...(this.#manageInventoryRevisionDraft === undefined
+                ? {}
+                : {
+                    manageInventoryRevisionDraft:
+                      this.#manageInventoryRevisionDraft,
+                  }),
+              ...(this.#revisionImpact === undefined
+                ? {}
+                : { revisionImpact: this.#revisionImpact }),
               ...(workspace === undefined
                 ? {}
                 : { contextWorkspace: workspace }),
@@ -457,6 +539,7 @@ export class PlysmithApplicationStore {
     this.#analysisFocus =
       scope.kind === 'free' ? this.#freeAnalysisFocus : undefined;
     this.#selectedInventoryItemId = undefined;
+    this.#revisionImpact = undefined;
     this.#inventoryContextOnly = scope.kind === 'context';
     this.#publishViewState();
     await this.refresh();
@@ -561,6 +644,9 @@ export class PlysmithApplicationStore {
 
   async selectInventoryItem(item: InventoryItem): Promise<void> {
     this.#selectedInventoryItemId = item.itemId;
+    if (this.#revisionImpact?.impact.itemId !== item.itemId) {
+      this.#revisionImpact = undefined;
+    }
     this.#publishViewState();
     if (
       this.#scope.kind !== 'context' ||
@@ -568,6 +654,7 @@ export class PlysmithApplicationStore {
     ) {
       return;
     }
+    if (this.#hasPendingRevisionImpact(item.itemId)) return;
     const expectedResumeVersion =
       this.#readyState()?.contextWorkspace?.managementResume?.resumeVersion ??
       null;
@@ -584,9 +671,11 @@ export class PlysmithApplicationStore {
   }
 
   async openInventoryItem(item: InventoryItem): Promise<void> {
+    if (this.#hasPendingRevisionImpact(item.itemId)) return;
+    const revisionId = this.#effectiveRevisionId(item);
     this.#analysisFocus = Object.freeze({
       itemId: item.itemId,
-      revisionId: item.currentRevisionId,
+      revisionId,
       anchorId: item.rootAnchorId,
     });
     this.#activity = 'analyze';
@@ -610,7 +699,7 @@ export class PlysmithApplicationStore {
           expectedResumeVersion,
           mode: 'analyze',
           itemId: item.itemId,
-          revisionId: item.currentRevisionId,
+          revisionId,
           anchorId: item.rootAnchorId,
         }),
       false,
@@ -645,7 +734,11 @@ export class PlysmithApplicationStore {
       anchorId,
     });
     this.#publishViewState();
-    if (state.scope.kind !== 'context' || record.readOnlyPreview) {
+    if (
+      state.scope.kind !== 'context' ||
+      record.readOnlyPreview ||
+      this.#hasPendingRevisionImpact(record.itemId)
+    ) {
       await this.refresh();
       return;
     }
@@ -742,37 +835,169 @@ export class PlysmithApplicationStore {
     });
   }
 
-  async applyMove(value: string): Promise<void> {
+  async startInventoryRevision(
+    mode: 'truncate_after' | 'replace_move',
+    anchorId: string,
+  ): Promise<void> {
+    await this.#startInventoryRevision(mode, anchorId);
+  }
+
+  async startInventoryMetadataRevision(
+    displayName: string,
+    summary: string | null,
+  ): Promise<void> {
+    const record = this.#readyState()?.analysis.record;
+    if (record === undefined) return;
+    await this.#startInventoryRevision(
+      'metadata',
+      record.currentAnchorId,
+      undefined,
+      { displayName, summary },
+    );
+  }
+
+  async prepareInventoryItemRename(
+    item: InventoryItem,
+    displayName: string,
+    summary: string | null,
+  ): Promise<void> {
     const state = this.#readyState();
-    const scratchRevision = state?.analysis.scratch?.scratchRevision;
-    const scratchId = state?.analysis.scratch?.scratchId;
-    const trimmed = value.trim();
     if (
       state === undefined ||
-      scratchId === undefined ||
-      scratchRevision === undefined ||
-      trimmed === ''
+      this.#manageInventoryRevisionDraft !== undefined ||
+      (state.scope.kind === 'free' && state.analysis.scratch !== undefined) ||
+      this.#hasPendingRevisionImpact(item.itemId)
     )
       return;
-    const coordinates = /^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(trimmed);
+    const scope = Object.freeze({ kind: 'free' as const });
+    const draft = await this.#runCommand(
+      'prepare_inventory_metadata_revision',
+      async (client) => {
+        const previousRevision = await client.getInventoryRevision(
+          item.itemId,
+          item.currentRevisionId,
+          { scopeKind: 'free' },
+        );
+        const started = await client.startInventoryRevision(item.itemId, {
+          scope,
+          baseRevisionId: item.currentRevisionId,
+          anchorId: item.rootAnchorId,
+          mode: 'metadata',
+          expectedScratchId: null,
+          expectedScratchRevision: null,
+          displayName,
+          summary,
+        });
+        try {
+          const preview = await client.previewInventoryRevision({
+            scope,
+            expectedScratchId: started.scratch.scratchId,
+            expectedScratchRevision: started.scratch.scratchRevision,
+          });
+          return Object.freeze({
+            itemId: item.itemId,
+            scratchId: started.scratch.scratchId,
+            scratchRevision: started.scratch.scratchRevision,
+            previousRevision,
+            preview,
+          });
+        } catch (error) {
+          await client
+            .updateAnalysisScratch({
+              scope,
+              expectedScratchId: started.scratch.scratchId,
+              expectedScratchRevision: started.scratch.scratchRevision,
+              action: { kind: 'discard' },
+            })
+            .catch(() => undefined);
+          throw error;
+        }
+      },
+      false,
+    );
+    if (draft === undefined) return;
+    this.#manageInventoryRevisionDraft = draft;
+    this.#publishViewState();
+    this.#finishCommand();
+  }
+
+  async saveManagedInventoryRevision(): Promise<boolean> {
+    const draft = this.#manageInventoryRevisionDraft;
+    if (draft === undefined) return false;
+    const result = await this.#runCommand(
+      'save_managed_inventory_revision',
+      (client) =>
+        client.saveInventoryRevision({
+          scope: { kind: 'free' },
+          expectedScratchId: draft.scratchId,
+          expectedScratchRevision: draft.scratchRevision,
+          previewFingerprint: draft.preview.previewFingerprint,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#manageInventoryRevisionDraft = undefined;
+    this.#announcement = 'inventory.revisionSaved';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  async discardManagedInventoryRevision(): Promise<boolean> {
+    const draft = this.#manageInventoryRevisionDraft;
+    if (draft === undefined) return false;
+    const result = await this.#runCommand(
+      'discard_managed_inventory_revision',
+      (client) =>
+        client.updateAnalysisScratch({
+          scope: { kind: 'free' },
+          expectedScratchId: draft.scratchId,
+          expectedScratchRevision: draft.scratchRevision,
+          action: { kind: 'discard' },
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#manageInventoryRevisionDraft = undefined;
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  async applyMove(value: string): Promise<void> {
+    const state = this.#readyState();
+    const trimmed = value.trim();
+    if (state === undefined || trimmed === '') return;
+    const scratchRevision = state.analysis.scratch?.scratchRevision;
+    const scratchId = state.analysis.scratch?.scratchId;
+    const move = moveRequest(trimmed, state.preferences.uiLocale);
+    if (scratchId === undefined || scratchRevision === undefined) {
+      const record = state.analysis.record;
+      const lineEndAnchorId =
+        record?.steps.at(-1)?.anchorId ?? record?.rootAnchorId;
+      if (
+        record === undefined ||
+        record.historical ||
+        record.readOnlyPreview ||
+        record.revisionId !== record.currentRevisionId ||
+        record.currentAnchorId !== lineEndAnchorId
+      ) {
+        return;
+      }
+      await this.#startInventoryRevision(
+        'extend',
+        record.currentAnchorId,
+        move,
+      );
+      return;
+    }
+    this.#inventoryRevisionPreview = undefined;
     await this.#runCommand('update_scratch', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
         expectedScratchId: scratchId,
         expectedScratchRevision: scratchRevision,
-        action: coordinates
-          ? {
-              kind: 'apply_move',
-              move: { kind: 'coordinates', value: trimmed },
-            }
-          : {
-              kind: 'apply_move',
-              move: {
-                kind: 'notation',
-                value: trimmed,
-                locale: state.preferences.uiLocale,
-              },
-            },
+        action: { kind: 'apply_move', move },
       }),
     );
   }
@@ -801,6 +1026,7 @@ export class PlysmithApplicationStore {
       scratchRevision === undefined
     )
       return;
+    this.#inventoryRevisionPreview = undefined;
     await this.#runCommand('update_scratch', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
@@ -863,6 +1089,7 @@ export class PlysmithApplicationStore {
       scratchRevision === undefined
     )
       return;
+    this.#inventoryRevisionPreview = undefined;
     await this.#runCommand('discard_scratch', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
@@ -871,6 +1098,130 @@ export class PlysmithApplicationStore {
         action: { kind: 'discard' },
       }),
     );
+  }
+
+  async previewInventoryRevision(): Promise<void> {
+    const state = this.#readyState();
+    const scratch = state?.analysis.scratch;
+    if (
+      state === undefined ||
+      scratch === undefined ||
+      scratch.intent.kind !== 'inventory_revision' ||
+      scratch.cursor !== scratch.steps.length
+    ) {
+      return;
+    }
+    const preview = await this.#runCommand(
+      'preview_inventory_revision',
+      (client) =>
+        client.previewInventoryRevision({
+          scope: state.scope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+        }),
+      false,
+    );
+    if (preview === undefined) return;
+    this.#inventoryRevisionPreview = preview;
+    this.#publishViewState();
+    this.#finishCommand();
+  }
+
+  clearInventoryRevisionPreview(): void {
+    this.#inventoryRevisionPreview = undefined;
+    this.#publishViewState();
+  }
+
+  async saveInventoryRevision(): Promise<boolean> {
+    const state = this.#readyState();
+    const scratch = state?.analysis.scratch;
+    const preview = this.#inventoryRevisionPreview;
+    if (
+      state === undefined ||
+      scratch === undefined ||
+      scratch.intent.kind !== 'inventory_revision' ||
+      preview === undefined
+    ) {
+      return false;
+    }
+    const result = await this.#runCommand(
+      'save_inventory_revision',
+      (client) =>
+        client.saveInventoryRevision({
+          scope: state.scope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          previewFingerprint: preview.previewFingerprint,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#inventoryRevisionPreview = undefined;
+    this.#analysisFocus = Object.freeze({
+      itemId: result.itemId,
+      revisionId: result.revisionId,
+      anchorId: result.currentAnchorId,
+    });
+    this.#announcement = 'inventory.revisionSaved';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  async openRevisionImpact(impactId: string): Promise<void> {
+    const state = this.#readyState();
+    if (
+      state?.scope.kind !== 'context' ||
+      !state.contextWorkspace?.pendingRevisionImpacts.some(
+        (impact) => impact.impactId === impactId,
+      )
+    ) {
+      return;
+    }
+    const details = await this.#runCommand(
+      'load_revision_impact',
+      async (client) => {
+        const impact = await client.getPendingRevisionImpact(impactId);
+        const [pinnedRevision, targetRevision] = await Promise.all([
+          client.getInventoryRevision(impact.itemId, impact.pinnedRevisionId, {
+            scopeKind: 'free',
+          }),
+          client.getInventoryRevision(impact.itemId, impact.targetRevisionId, {
+            scopeKind: 'free',
+          }),
+        ]);
+        return Object.freeze({ impact, pinnedRevision, targetRevision });
+      },
+      false,
+    );
+    if (details === undefined) return;
+    this.#revisionImpact = details;
+    this.#publishViewState();
+    this.#finishCommand();
+  }
+
+  closeRevisionImpact(): void {
+    this.#revisionImpact = undefined;
+    this.#publishViewState();
+  }
+
+  async resolveRevisionImpact(
+    request: ResolvePendingRevisionImpactRequestDto,
+  ): Promise<boolean> {
+    const details = this.#revisionImpact;
+    if (details === undefined) return false;
+    const result = await this.#runCommand(
+      'resolve_revision_impact',
+      (client) =>
+        client.resolvePendingRevisionImpact(details.impact.impactId, request),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#revisionImpact = undefined;
+    this.#announcement = 'inventory.revisionImpactResolved';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
   }
 
   async createAnalysisRecord(
@@ -1202,7 +1553,52 @@ export class PlysmithApplicationStore {
     this.#events?.close();
     this.#events = undefined;
     this.#client = undefined;
+    this.#inventoryRevisionPreview = undefined;
+    this.#manageInventoryRevisionDraft = undefined;
+    this.#revisionImpact = undefined;
     this.#listeners.clear();
+  }
+
+  async #startInventoryRevision(
+    mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata',
+    anchorId: string,
+    firstMove?: MoveRequest,
+    metadata?: {
+      readonly displayName: string;
+      readonly summary: string | null;
+    },
+  ): Promise<void> {
+    const state = this.#readyState();
+    const record = state?.analysis.record;
+    if (
+      state === undefined ||
+      record === undefined ||
+      state.analysis.scratch !== undefined ||
+      record.historical ||
+      record.readOnlyPreview ||
+      record.revisionId !== record.currentRevisionId
+    ) {
+      return;
+    }
+    const result = await this.#runCommand(
+      'start_inventory_revision',
+      (client) =>
+        client.startInventoryRevision(record.itemId, {
+          scope: state.scope,
+          baseRevisionId: record.revisionId,
+          anchorId,
+          mode,
+          expectedScratchId: null,
+          expectedScratchRevision: null,
+          ...(metadata === undefined ? {} : metadata),
+          ...(firstMove === undefined ? {} : { firstMove }),
+        }),
+      false,
+    );
+    if (result === undefined) return;
+    this.#inventoryRevisionPreview = undefined;
+    await this.refresh();
+    this.#finishCommand();
   }
 
   async #startScratch(
@@ -1241,6 +1637,31 @@ export class PlysmithApplicationStore {
         ? { contextId: this.#scope.contextId }
         : {}),
     };
+  }
+
+  #effectiveRevisionId(item: InventoryItem): string {
+    const state = this.#readyState();
+    if (state?.scope.kind !== 'context') return item.currentRevisionId;
+    const reference = state.contextWorkspace?.references.find(
+      (candidate) => candidate.itemId === item.itemId,
+    );
+    if (reference !== undefined) return reference.currentRevisionId;
+    return (
+      state.contextWorkspace?.pendingRevisionImpacts.find(
+        (impact) => impact.itemId === item.itemId,
+      )?.pinnedRevisionId ?? item.currentRevisionId
+    );
+  }
+
+  #hasPendingRevisionImpact(itemId: string): boolean {
+    const state = this.#readyState();
+    return (
+      state?.scope.kind === 'context' &&
+      (state.contextWorkspace?.pendingRevisionImpacts.some(
+        (impact) => impact.itemId === itemId,
+      ) ??
+        false)
+    );
   }
 
   #readKey(): string {
@@ -1365,15 +1786,12 @@ export class PlysmithApplicationStore {
   }
 
   #recordHostRequestDiagnostic(event: HostRequestDiagnostic): void {
+    if (event.kind === 'completed') return;
     this.#diagnose({
-      level: event.kind === 'failed' ? 'error' : 'debug',
-      eventCode:
-        event.kind === 'failed'
-          ? 'client.request.failed'
-          : 'client.request.completed',
+      level: 'error',
+      eventCode: 'client.request.failed',
       correlationId: event.correlationId,
-      status: event.kind === 'failed' ? 'failed' : 'succeeded',
-      ...(event.kind === 'completed' ? { statusCode: event.statusCode } : {}),
+      status: 'failed',
       durationMilliseconds: event.durationMilliseconds,
     });
   }
@@ -1458,6 +1876,17 @@ export class PlysmithApplicationStore {
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,
+        ...(this.#inventoryRevisionPreview === undefined
+          ? {}
+          : { inventoryRevisionPreview: this.#inventoryRevisionPreview }),
+        ...(this.#manageInventoryRevisionDraft === undefined
+          ? {}
+          : {
+              manageInventoryRevisionDraft: this.#manageInventoryRevisionDraft,
+            }),
+        ...(this.#revisionImpact === undefined
+          ? {}
+          : { revisionImpact: this.#revisionImpact }),
         ...(state.contextWorkspace === undefined
           ? {}
           : { contextWorkspace: state.contextWorkspace }),
@@ -1508,6 +1937,12 @@ export class PlysmithApplicationStore {
     this.#state = state;
     for (const listener of this.#listeners) listener();
   }
+}
+
+function moveRequest(value: string, locale: UiLocale): MoveRequest {
+  return /^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(value)
+    ? { kind: 'coordinates', value }
+    : { kind: 'notation', value, locale };
 }
 
 function sameDataRevision(

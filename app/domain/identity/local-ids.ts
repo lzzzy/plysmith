@@ -7,6 +7,7 @@ export type LocalIdKind =
   | 'move-node'
   | 'occurrence'
   | 'position'
+  | 'revision-impact'
   | 'working-context';
 
 export interface LocalId<Kind extends LocalIdKind> {
@@ -22,6 +23,7 @@ export type ItemRevisionId = LocalId<'item-revision'>;
 export type MoveNodeId = LocalId<'move-node'>;
 export type OccurrenceId = LocalId<'occurrence'>;
 export type PositionId = LocalId<'position'>;
+export type RevisionImpactId = LocalId<'revision-impact'>;
 export type WorkingContextId = LocalId<'working-context'>;
 
 export function localId<Kind extends LocalIdKind>(

@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import {
   currentAnalysisState,
   type AnalysisScratch,
+  type AnalysisScratchIntent,
   type AnalysisScratchOrigin,
   type AnalysisScratchStep,
 } from '../../../../domain/analysis/index.ts';
@@ -23,6 +24,10 @@ import { invalidAnalysisUpdate } from '../../../../application/analysis/index.ts
 import { ensurePosition, readChessState } from './sqlite-chess-state.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import {
+  assertNoOpenRevisionImpact,
+  releaseObsoleteResumeImpact,
+} from './sqlite-revision-impact-state.ts';
+import {
   requireActiveContext,
   resolveAnchorPosition,
 } from './sqlite-workspace.ts';
@@ -41,6 +46,15 @@ interface ScratchRow {
   readonly cursor: number;
   readonly scratchRevision: number;
   readonly noteBody: string | null;
+  readonly scratchMode: AnalysisScratchIntent['kind'];
+  readonly editMode:
+    'extend' | 'truncate_after' | 'replace_move' | 'metadata' | null;
+  readonly editItemId: number | null;
+  readonly baseRevisionId: number | null;
+  readonly cutAnchorId: number | null;
+  readonly returnAnchorId: number | null;
+  readonly candidateDisplayName: string | null;
+  readonly candidateSummary: string | null;
 }
 
 interface ScratchStepRow {
@@ -75,7 +89,12 @@ export function readContextScratch(
               root_history_knowledge AS rootHistoryKnowledge,
               cursor_index AS cursor,
               scratch_revision AS scratchRevision,
-              note_body AS noteBody
+              note_body AS noteBody,
+              scratch_mode AS scratchMode, edit_mode AS editMode,
+              edit_item_id AS editItemId, base_revision_id AS baseRevisionId,
+              cut_anchor_id AS cutAnchorId, return_anchor_id AS returnAnchorId,
+              candidate_display_name AS candidateDisplayName,
+              candidate_summary_text AS candidateSummary
          FROM analysis_scratch_draft WHERE context_id = ?`,
     )
     .get(contextId.value) as ScratchRow | undefined;
@@ -145,10 +164,12 @@ export function readContextScratch(
     }),
   );
   const origin = mapOrigin(row);
+  const intent = mapIntent(row);
   const scratch: AnalysisScratch = {
     scratchId: row.scratchKey,
     scratchRevision: row.scratchRevision,
     origin,
+    intent,
     root,
     steps,
     cursor: row.cursor,
@@ -173,6 +194,15 @@ export function replaceContextAnalysisScratch(
   >[0],
 ): Awaited<ReturnType<ContextAnalysisWriter['replaceContextAnalysisScratch']>> {
   requireActiveContext(database, request.contextId);
+  const itemId = scratchItemId(request.scratch);
+  if (itemId !== undefined) {
+    assertNoOpenRevisionImpact(database, request.contextId.value, itemId);
+    requireEffectiveContextRevision(
+      database,
+      request.contextId.value,
+      request.scratch,
+    );
+  }
   const current = currentScratchIdentity(database, request.contextId.value);
   assertExpectedScratch(
     request.expectedScratchId,
@@ -186,6 +216,11 @@ export function replaceContextAnalysisScratch(
     throw invalidAnalysisUpdate();
   }
   validateScratchOrigin(database, request.scratch);
+  const intentValues = scratchIntentValues(request.scratch.intent);
+  const replacedPositionIds =
+    current === undefined
+      ? []
+      : readScratchPositionIds(database, current.scratchId);
 
   const rootPositionId = ensurePosition(
     database,
@@ -199,8 +234,11 @@ export function replaceContextAnalysisScratch(
            (scratch_key, context_id, origin_mode, origin_item_id, origin_revision_id,
             origin_anchor_id, root_position_id, root_halfmove_clock,
             root_fullmove_number, root_history_knowledge, cursor_index,
-            scratch_revision, note_body, created_at_utc, updated_at_utc)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            scratch_revision, note_body, scratch_mode, edit_mode, edit_item_id,
+            base_revision_id, cut_anchor_id, return_anchor_id,
+            candidate_display_name, candidate_summary_text,
+            created_at_utc, updated_at_utc)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         request.scratch.scratchId,
@@ -222,6 +260,7 @@ export function replaceContextAnalysisScratch(
         request.scratch.cursor,
         request.scratch.scratchRevision,
         request.scratch.noteDraft?.body ?? null,
+        ...intentValues,
         request.occurredAt,
         request.occurredAt,
       );
@@ -231,7 +270,10 @@ export function replaceContextAnalysisScratch(
       .prepare(
         `UPDATE analysis_scratch_draft
             SET root_position_id = ?, cursor_index = ?, scratch_revision = ?,
-                note_body = ?, updated_at_utc = ?
+                note_body = ?, scratch_mode = ?, edit_mode = ?,
+                edit_item_id = ?, base_revision_id = ?, cut_anchor_id = ?,
+                return_anchor_id = ?, candidate_display_name = ?,
+                candidate_summary_text = ?, updated_at_utc = ?
           WHERE scratch_draft_id = ?`,
       )
       .run(
@@ -239,6 +281,7 @@ export function replaceContextAnalysisScratch(
         request.scratch.cursor,
         request.scratch.scratchRevision,
         request.scratch.noteDraft?.body ?? null,
+        ...intentValues,
         request.occurredAt,
         scratchId,
       );
@@ -258,9 +301,16 @@ export function replaceContextAnalysisScratch(
     request.contextId.value,
     scratchId,
     request.scratch.origin,
+    request.scratch.intent,
     currentPositionId,
     request.occurredAt,
   );
+  releaseObsoleteResumeImpact(
+    database,
+    request.contextId.value,
+    'analysis_resume',
+  );
+  deleteUnreferencedPositions(database, replacedPositionIds);
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   const scratch = readContextScratch(database, request.contextId);
   if (scratch === undefined) throw analysisScratchNotFound();
@@ -305,12 +355,60 @@ export function deleteContextScratch(
     )
     .get(contextId) as { scratchId: number } | undefined;
   if (row === undefined) return;
+  const positionIds = readScratchPositionIds(database, row.scratchId);
   database
     .prepare('DELETE FROM analysis_scratch_step WHERE scratch_draft_id = ?')
     .run(row.scratchId);
   database
     .prepare('DELETE FROM analysis_scratch_draft WHERE scratch_draft_id = ?')
     .run(row.scratchId);
+  deleteUnreferencedPositions(database, positionIds);
+}
+
+function readScratchPositionIds(
+  database: Database.Database,
+  scratchId: number,
+): readonly number[] {
+  const rows = database
+    .prepare(
+      `SELECT root_position_id AS positionId
+         FROM analysis_scratch_draft WHERE scratch_draft_id = ?
+       UNION
+       SELECT before_position_id AS positionId
+         FROM analysis_scratch_step WHERE scratch_draft_id = ?
+       UNION
+       SELECT after_position_id AS positionId
+         FROM analysis_scratch_step WHERE scratch_draft_id = ?`,
+    )
+    .all(scratchId, scratchId, scratchId) as { positionId: number }[];
+  return rows.map((row) => row.positionId);
+}
+
+function deleteUnreferencedPositions(
+  database: Database.Database,
+  positionIds: readonly number[],
+): void {
+  const remove = database.prepare(
+    `DELETE FROM chess_position
+      WHERE position_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM chess_occurrence_snapshot
+           WHERE position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM chess_anchor
+           WHERE position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM analysis_scratch_draft
+           WHERE root_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM analysis_scratch_step
+           WHERE before_position_id = chess_position.position_id
+              OR after_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM workspace_analysis_resume
+           WHERE current_position_id = chess_position.position_id)`,
+  );
+  for (const positionId of new Set(positionIds)) remove.run(positionId);
 }
 
 function writeScratchSteps(
@@ -349,6 +447,7 @@ function upsertScratchResume(
   contextId: number,
   scratchId: number,
   origin: AnalysisScratchOrigin,
+  intent: AnalysisScratchIntent,
   currentPositionId: number,
   occurredAt: string,
 ): number {
@@ -364,7 +463,7 @@ function upsertScratchResume(
       `INSERT INTO workspace_analysis_resume
          (context_id, resume_version, item_id, revision_id, anchor_id,
           mode, current_position_id, analysis_scratch_draft_id, updated_at_utc)
-       VALUES (?, ?, ?, ?, ?, 'analyze', ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(context_id) DO UPDATE SET
          resume_version = excluded.resume_version,
          item_id = excluded.item_id,
@@ -381,6 +480,7 @@ function upsertScratchResume(
       origin.kind === 'inventory_anchor' ? origin.itemId.value : null,
       origin.kind === 'inventory_anchor' ? origin.revisionId.value : null,
       origin.kind === 'inventory_anchor' ? origin.anchorId.value : null,
+      intent.kind === 'inventory_revision' ? 'edit_inventory' : 'analyze',
       currentPositionId,
       scratchId,
       occurredAt,
@@ -402,6 +502,62 @@ function validateScratchOrigin(
   if (positionId === undefined) throw invalidAnalysisUpdate();
   const rootPositionId = ensurePosition(database, scratch.root.position).value;
   if (positionId !== rootPositionId) throw invalidAnalysisUpdate();
+  if (
+    scratch.intent.kind === 'inventory_revision' &&
+    (scratch.origin.itemId.value !== scratch.intent.itemId.value ||
+      scratch.origin.revisionId.value !== scratch.intent.baseRevisionId.value ||
+      scratch.origin.anchorId.value !== scratch.intent.cutAnchorId.value)
+  ) {
+    throw invalidAnalysisUpdate();
+  }
+}
+
+function scratchItemId(scratch: AnalysisScratch): number | undefined {
+  if (scratch.intent.kind === 'inventory_revision') {
+    return scratch.intent.itemId.value;
+  }
+  return scratch.origin.kind === 'inventory_anchor'
+    ? scratch.origin.itemId.value
+    : undefined;
+}
+
+function requireEffectiveContextRevision(
+  database: Database.Database,
+  contextId: number,
+  scratch: AnalysisScratch,
+): void {
+  if (scratch.origin.kind !== 'inventory_anchor') return;
+  const row = database
+    .prepare(
+      `SELECT coalesce(member.pinned_revision_id, item.current_revision_id)
+                AS effectiveRevisionId
+         FROM workspace_context_item AS member
+         JOIN inventory_item AS item ON item.item_id = member.item_id
+        WHERE member.context_id = ? AND member.item_id = ?
+          AND item.lifecycle = 'active'`,
+    )
+    .get(contextId, scratch.origin.itemId.value) as
+    { effectiveRevisionId: number } | undefined;
+  if (row?.effectiveRevisionId !== scratch.origin.revisionId.value) {
+    throw invalidAnalysisUpdate();
+  }
+}
+
+function scratchIntentValues(
+  intent: AnalysisScratchIntent,
+): readonly (string | number | null)[] {
+  return intent.kind === 'exploration'
+    ? ['exploration', null, null, null, null, null, null, null]
+    : [
+        intent.kind,
+        intent.mode,
+        intent.itemId.value,
+        intent.baseRevisionId.value,
+        intent.cutAnchorId.value,
+        intent.returnAnchorId.value,
+        intent.displayName,
+        intent.summary ?? null,
+      ];
 }
 
 function currentScratchIdentity(
@@ -416,6 +572,7 @@ function currentScratchIdentity(
       readonly originItemId: number | null;
       readonly originRevisionId: number | null;
       readonly originAnchorId: number | null;
+      readonly returnAnchorId: number | null;
     }
   | undefined {
   return database
@@ -426,7 +583,8 @@ function currentScratchIdentity(
               root_position_id AS rootPositionId,
               origin_item_id AS originItemId,
               origin_revision_id AS originRevisionId,
-              origin_anchor_id AS originAnchorId
+              origin_anchor_id AS originAnchorId,
+              return_anchor_id AS returnAnchorId
          FROM analysis_scratch_draft WHERE context_id = ?`,
     )
     .get(contextId) as
@@ -438,6 +596,7 @@ function currentScratchIdentity(
         readonly originItemId: number | null;
         readonly originRevisionId: number | null;
         readonly originAnchorId: number | null;
+        readonly returnAnchorId: number | null;
       }
     | undefined;
 }
@@ -448,6 +607,18 @@ function clearScratchResume(
   scratch: NonNullable<ReturnType<typeof currentScratchIdentity>>,
   occurredAt: string,
 ): number {
+  const returnPositionId =
+    scratch.originItemId === null ||
+    scratch.originRevisionId === null ||
+    scratch.returnAnchorId === null
+      ? scratch.rootPositionId
+      : resolveAnchorPosition(
+          database,
+          scratch.originItemId,
+          scratch.originRevisionId,
+          scratch.returnAnchorId,
+        );
+  if (returnPositionId === undefined) throw invalidAnalysisUpdate();
   const changed = database
     .prepare(
       `UPDATE workspace_analysis_resume
@@ -460,8 +631,8 @@ function clearScratchResume(
     .run(
       scratch.originItemId,
       scratch.originRevisionId,
-      scratch.originAnchorId,
-      scratch.rootPositionId,
+      scratch.returnAnchorId ?? scratch.originAnchorId,
+      returnPositionId,
       occurredAt,
       contextId,
       scratch.scratchId,
@@ -508,6 +679,32 @@ function mapOrigin(row: ScratchRow): AnalysisScratchOrigin {
     itemId: localId('inventory-item', row.originItemId),
     revisionId: localId('item-revision', row.originRevisionId),
     anchorId: localId('anchor', row.originAnchorId),
+  });
+}
+
+function mapIntent(row: ScratchRow): AnalysisScratchIntent {
+  if (row.scratchMode === 'exploration') {
+    return Object.freeze({ kind: 'exploration' });
+  }
+  if (
+    row.editMode === null ||
+    row.editItemId === null ||
+    row.baseRevisionId === null ||
+    row.cutAnchorId === null ||
+    row.returnAnchorId === null ||
+    row.candidateDisplayName === null
+  ) {
+    throw invalidAnalysisUpdate();
+  }
+  return Object.freeze({
+    kind: 'inventory_revision',
+    mode: row.editMode,
+    itemId: localId('inventory-item', row.editItemId),
+    baseRevisionId: localId('item-revision', row.baseRevisionId),
+    cutAnchorId: localId('anchor', row.cutAnchorId),
+    returnAnchorId: localId('anchor', row.returnAnchorId),
+    displayName: row.candidateDisplayName,
+    ...(row.candidateSummary === null ? {} : { summary: row.candidateSummary }),
   });
 }
 

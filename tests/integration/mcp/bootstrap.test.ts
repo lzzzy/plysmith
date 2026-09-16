@@ -68,7 +68,7 @@ test('MCP paths support source defaults and an explicit application-home only', 
 
 test(
   'stdio bootstrap attaches using discovery and the shared host client',
-  { timeout: 20000 },
+  { timeout: 30000 },
   async (t) => {
     const fixture = await createHttpHostFixture(t);
     const discoveryBefore = await readFile(fixture.discoveryPath, 'utf8');

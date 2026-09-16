@@ -19,6 +19,19 @@ export type AnalysisScratchOrigin =
       readonly anchorId: AnchorId;
     };
 
+export type AnalysisScratchIntent =
+  | { readonly kind: 'exploration' }
+  | {
+      readonly kind: 'inventory_revision';
+      readonly mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata';
+      readonly itemId: InventoryItemId;
+      readonly baseRevisionId: ItemRevisionId;
+      readonly cutAnchorId: AnchorId;
+      readonly returnAnchorId: AnchorId;
+      readonly displayName: string;
+      readonly summary?: string;
+    };
+
 export interface AnalysisNoteDraft {
   readonly moves: readonly CanonicalMove[];
   readonly body: string;
@@ -30,6 +43,7 @@ export interface AnalysisScratch {
   readonly scratchId: string;
   readonly scratchRevision: number;
   readonly origin: AnalysisScratchOrigin;
+  readonly intent: AnalysisScratchIntent;
   readonly root: ChessState;
   readonly steps: readonly AnalysisScratchStep[];
   readonly cursor: number;
@@ -40,6 +54,7 @@ export function startAnalysisScratch(
   scratchId: string,
   root: ChessState,
   origin: AnalysisScratchOrigin = { kind: 'initial_position' },
+  intent: AnalysisScratchIntent = { kind: 'exploration' },
 ): AnalysisScratch {
   if (scratchId.trim().length === 0) {
     throw new Error('An analysis scratch requires an identifier.');
@@ -48,6 +63,7 @@ export function startAnalysisScratch(
     scratchId,
     scratchRevision: 1,
     origin,
+    intent,
     root,
     steps: [],
     cursor: 0,
@@ -146,6 +162,7 @@ function freezeScratch(input: AnalysisScratch): AnalysisScratch {
     scratchId: input.scratchId,
     scratchRevision: input.scratchRevision,
     origin: freezeOrigin(input.origin),
+    intent: freezeIntent(input.intent),
     root: input.root,
     steps: Object.freeze(
       input.steps.map((step) =>
@@ -170,6 +187,23 @@ function freezeScratch(input: AnalysisScratch): AnalysisScratch {
   });
 }
 
+function freezeIntent(intent: AnalysisScratchIntent): AnalysisScratchIntent {
+  return Object.freeze(
+    intent.kind === 'exploration'
+      ? { kind: intent.kind }
+      : {
+          kind: intent.kind,
+          mode: intent.mode,
+          itemId: intent.itemId,
+          baseRevisionId: intent.baseRevisionId,
+          cutAnchorId: intent.cutAnchorId,
+          returnAnchorId: intent.returnAnchorId,
+          displayName: intent.displayName,
+          ...(intent.summary === undefined ? {} : { summary: intent.summary }),
+        },
+  );
+}
+
 function freezeOrigin(origin: AnalysisScratchOrigin): AnalysisScratchOrigin {
   return Object.freeze(
     origin.kind === 'inventory_anchor'
@@ -190,6 +224,7 @@ function withoutNoteDraft(
     scratchId: scratch.scratchId,
     scratchRevision: scratch.scratchRevision,
     origin: scratch.origin,
+    intent: scratch.intent,
     root: scratch.root,
     steps: scratch.steps,
     cursor: scratch.cursor,

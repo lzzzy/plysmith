@@ -192,6 +192,60 @@ export async function connectMcp(
       if (overrides.searchInventory) return overrides.searchInventory(request);
       throw new Error('searchInventory fixture not configured');
     },
+    async startInventoryRevision(itemId, request) {
+      calls.push({
+        method: 'startInventoryRevision',
+        request: { itemId, ...request },
+      });
+      if (overrides.startInventoryRevision)
+        return overrides.startInventoryRevision(itemId, request);
+      throw new Error('startInventoryRevision fixture not configured');
+    },
+    async previewInventoryRevision(request) {
+      calls.push({ method: 'previewInventoryRevision', request });
+      if (overrides.previewInventoryRevision)
+        return overrides.previewInventoryRevision(request);
+      throw new Error('previewInventoryRevision fixture not configured');
+    },
+    async saveInventoryRevision(request) {
+      calls.push({ method: 'saveInventoryRevision', request });
+      if (overrides.saveInventoryRevision)
+        return overrides.saveInventoryRevision(request);
+      throw new Error('saveInventoryRevision fixture not configured');
+    },
+    async getInventoryRevision(itemId, revisionId, request) {
+      calls.push({
+        method: 'getInventoryRevision',
+        request: { itemId, revisionId, ...request },
+      });
+      if (overrides.getInventoryRevision)
+        return overrides.getInventoryRevision(itemId, revisionId, request);
+      throw new Error('getInventoryRevision fixture not configured');
+    },
+    async listInventoryRevisions(itemId, request) {
+      calls.push({
+        method: 'listInventoryRevisions',
+        request: { itemId, ...request },
+      });
+      if (overrides.listInventoryRevisions)
+        return overrides.listInventoryRevisions(itemId, request);
+      throw new Error('listInventoryRevisions fixture not configured');
+    },
+    async getPendingRevisionImpact(impactId) {
+      calls.push({ method: 'getPendingRevisionImpact', request: impactId });
+      if (overrides.getPendingRevisionImpact)
+        return overrides.getPendingRevisionImpact(impactId);
+      throw new Error('getPendingRevisionImpact fixture not configured');
+    },
+    async resolvePendingRevisionImpact(impactId, request) {
+      calls.push({
+        method: 'resolvePendingRevisionImpact',
+        request: { impactId, ...request },
+      });
+      if (overrides.resolvePendingRevisionImpact)
+        return overrides.resolvePendingRevisionImpact(impactId, request);
+      throw new Error('resolvePendingRevisionImpact fixture not configured');
+    },
     async listWorkingContexts(request) {
       calls.push({ method: 'listWorkingContexts', request });
       if (overrides.listWorkingContexts)

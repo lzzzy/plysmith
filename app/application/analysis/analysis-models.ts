@@ -59,9 +59,12 @@ export interface AnalysisSourceLineView {
 export interface AnalysisRecordView {
   readonly itemId: InventoryItemId;
   readonly revisionId: ItemRevisionId;
+  readonly currentRevisionId: ItemRevisionId;
+  readonly revisionNumber: number;
   readonly rootAnchorId: AnchorId;
   readonly currentAnchorId: AnchorId;
   readonly displayName: string;
+  readonly summary?: string;
   readonly languageTag: string;
   readonly origin: AnalysisScratchOrigin;
   readonly sourceLine?: AnalysisSourceLineView;
@@ -71,6 +74,7 @@ export interface AnalysisRecordView {
   readonly contributions: readonly AnalysisContributionView[];
   readonly contextMember: boolean;
   readonly readOnlyPreview: boolean;
+  readonly historical: boolean;
 }
 
 export interface StoredContextAnalysisWorkspace {

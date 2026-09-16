@@ -1,10 +1,8 @@
 import { createAnalysisRecordDraft } from '../../domain/inventory/index.ts';
 import type { AnalysisScratch } from '../../domain/analysis/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
-import type {
-  AnalysisRecordCreated,
-  InventoryChangedPublisher,
-} from '../inventory/index.ts';
+import type { AnalysisRecordCreated } from '../inventory/inventory-models.ts';
+import type { InventoryChangedPublisher } from '../inventory/inventory-ports.ts';
 import type {
   WorkspaceChanged,
   WorkspaceChangedPublisher,

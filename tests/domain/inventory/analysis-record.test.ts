@@ -12,7 +12,7 @@ import { createAnalysisRecordDraft } from '../../../app/domain/inventory/index.t
 
 const rules = new ChessJsRulesAdapter();
 
-test('an analysis record contains only the confirmed current path', () => {
+test('an analysis record keeps its optional comment separate from its move path', () => {
   let scratch = startAnalysisScratch('scratch-1', rules.initialState());
   scratch = appendAnalysisMove(
     scratch,
@@ -37,6 +37,7 @@ test('an analysis record contains only the confirmed current path', () => {
     ['e4'],
   );
   assert.equal(record.note?.body, 'Dieser Aufbau bleibt flexibel.');
+  assert.deepEqual(record.note?.moves, []);
   assert.ok(Object.isFrozen(record));
 });
 

@@ -269,11 +269,36 @@ const analysisOrigin = Type.Union([
   ),
 ]);
 
+const inventoryRevisionMode = Type.Union([
+  Type.Literal('extend'),
+  Type.Literal('truncate_after'),
+  Type.Literal('replace_move'),
+  Type.Literal('metadata'),
+]);
+
+const analysisScratchIntent = Type.Union([
+  Type.Object({ kind: Type.Literal('exploration') }, objectOptions),
+  Type.Object(
+    {
+      kind: Type.Literal('inventory_revision'),
+      mode: inventoryRevisionMode,
+      itemId: localId,
+      baseRevisionId: localId,
+      cutAnchorId: localId,
+      returnAnchorId: localId,
+      displayName: Type.String({ minLength: 1, maxLength: 200 }),
+      summary: Type.Optional(Type.String({ maxLength: 2_000 })),
+    },
+    objectOptions,
+  ),
+]);
+
 const analysisScratch = Type.Object(
   {
     scratchId: Type.String({ minLength: 1, maxLength: 160 }),
     scratchRevision: preferenceRevision,
     origin: analysisOrigin,
+    intent: analysisScratchIntent,
     root: chessState,
     steps: Type.Array(analysisStep, { maxItems: 1_000 }),
     cursor: Type.Integer({ minimum: 0, maximum: 1_000 }),
@@ -316,13 +341,16 @@ const analysisContribution = Type.Object(
   objectOptions,
 );
 
-const analysisRecord = Type.Object(
+export const AnalysisRecordSchema = Type.Object(
   {
     itemId: localId,
     revisionId: localId,
+    currentRevisionId: localId,
+    revisionNumber: preferenceRevision,
     rootAnchorId: localId,
     currentAnchorId: localId,
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    summary: Type.Optional(Type.String({ maxLength: 2_000 })),
     languageTag,
     origin: analysisOrigin,
     sourceLine: Type.Optional(
@@ -362,6 +390,7 @@ const analysisRecord = Type.Object(
     contributions: Type.Array(analysisContribution),
     contextMember: Type.Boolean(),
     readOnlyPreview: Type.Boolean(),
+    historical: Type.Boolean(),
   },
   objectOptions,
 );
@@ -386,7 +415,7 @@ export const AnalysisWorkspaceSchema = Type.Object(
     contextName: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
     resumeVersion: Type.Optional(preferenceRevision),
     scratch: Type.Optional(analysisScratch),
-    record: Type.Optional(analysisRecord),
+    record: Type.Optional(AnalysisRecordSchema),
     currentState: chessState,
     legalMoves: Type.Array(canonicalMove),
     allowedActions: Type.Array(
@@ -638,6 +667,214 @@ export const SearchInventoryResultSchema = Type.Object(
   objectOptions,
 );
 
+export const StartInventoryRevisionArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    itemId: localId,
+    baseRevisionId: localId,
+    anchorId: localId,
+    mode: inventoryRevisionMode,
+    expectedScratchId: Type.Union([
+      Type.String({ minLength: 1, maxLength: 160 }),
+      Type.Null(),
+    ]),
+    expectedScratchRevision: Type.Union([preferenceRevision, Type.Null()]),
+    displayName: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
+    summary: Type.Optional(
+      Type.Union([Type.String({ maxLength: 2_000 }), Type.Null()]),
+    ),
+    firstMove: Type.Optional(moveInput),
+  },
+  objectOptions,
+);
+
+export const StartInventoryRevisionResultSchema = Type.Object(
+  {
+    scratch: analysisScratch,
+    dataRevision: revision,
+    resumeVersion: Type.Optional(preferenceRevision),
+  },
+  objectOptions,
+);
+
+export const PreviewInventoryRevisionArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    expectedScratchId: Type.String({ minLength: 1, maxLength: 160 }),
+    expectedScratchRevision: preferenceRevision,
+  },
+  objectOptions,
+);
+
+const inventoryRevisionContextImpactSummary = Type.Object(
+  {
+    contextId: localId,
+    contextName: Type.String({ minLength: 1, maxLength: 160 }),
+    referenceCount: revision,
+    contributionCount: revision,
+    managementResumeCount: revision,
+    analysisResumeCount: revision,
+  },
+  objectOptions,
+);
+
+const inventoryRevisionFollowingContextSummary = Type.Object(
+  {
+    contextId: localId,
+    contextName: Type.String({ minLength: 1, maxLength: 160 }),
+  },
+  objectOptions,
+);
+
+export const InventoryRevisionPreviewSchema = Type.Object(
+  {
+    itemId: localId,
+    baseRevisionId: localId,
+    mode: inventoryRevisionMode,
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    summary: Type.Optional(Type.String({ maxLength: 2_000 })),
+    preservedMoveCount: revision,
+    addedSteps: Type.Array(analysisStep, { maxItems: 1_000 }),
+    removedSteps: Type.Array(analysisStep, { maxItems: 1_000 }),
+    historicalGlobalContributionCount: revision,
+    affectedContexts: Type.Array(inventoryRevisionContextImpactSummary),
+    followingContexts: Type.Array(inventoryRevisionFollowingContextSummary),
+    noOp: Type.Boolean(),
+    previewFingerprint: Type.String({ pattern: '^sha256:[a-f0-9]{64}$' }),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
+export const SaveInventoryRevisionArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    expectedScratchId: Type.String({ minLength: 1, maxLength: 160 }),
+    expectedScratchRevision: preferenceRevision,
+    previewFingerprint: Type.String({ pattern: '^sha256:[a-f0-9]{64}$' }),
+  },
+  objectOptions,
+);
+
+export const SaveInventoryRevisionResultSchema = Type.Object(
+  {
+    itemId: localId,
+    revisionId: localId,
+    revisionNumber: preferenceRevision,
+    currentAnchorId: localId,
+    impacts: Type.Array(
+      Type.Object({ impactId: localId, contextId: localId }, objectOptions),
+    ),
+    noOp: Type.Boolean(),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
+export const GetInventoryRevisionArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    itemId: localId,
+    revisionId: localId,
+    anchorId: Type.Optional(localId),
+  },
+  objectOptions,
+);
+
+export const ListInventoryRevisionsArgumentsSchema = Type.Object(
+  {
+    itemId: localId,
+    pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    cursor: Type.Optional(cursor),
+  },
+  objectOptions,
+);
+
+const inventoryRevisionSummary = Type.Object(
+  {
+    itemId: localId,
+    revisionId: localId,
+    revisionNumber: preferenceRevision,
+    baseRevisionId: Type.Optional(localId),
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    summary: Type.Optional(Type.String({ maxLength: 2_000 })),
+    changeKind: Type.Union([Type.Literal('created'), inventoryRevisionMode]),
+    createdAt: timestamp,
+    current: Type.Boolean(),
+  },
+  objectOptions,
+);
+
+export const ListInventoryRevisionsResultSchema = Type.Object(
+  {
+    revisions: Type.Array(inventoryRevisionSummary),
+    nextCursor: Type.Optional(cursor),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
+export const GetPendingRevisionImpactArgumentsSchema = Type.Object(
+  { impactId: localId },
+  objectOptions,
+);
+
+export const PendingRevisionImpactSchema = Type.Object(
+  {
+    impactId: localId,
+    contextId: localId,
+    contextName: Type.String({ minLength: 1, maxLength: 160 }),
+    itemId: localId,
+    pinnedRevisionId: localId,
+    targetRevisionId: localId,
+    targetAnchorId: localId,
+    impactVersion: preferenceRevision,
+    referenceCount: revision,
+    contributionCount: revision,
+    managementResumeAffected: Type.Boolean(),
+    analysisResumeAffected: Type.Boolean(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  },
+  objectOptions,
+);
+
+export const ResolvePendingRevisionImpactArgumentsSchema = Type.Object(
+  {
+    impactId: localId,
+    expectedImpactVersion: preferenceRevision,
+    resolution: Type.Union([
+      Type.Object({ kind: Type.Literal('use_target') }, objectOptions),
+      Type.Object(
+        {
+          kind: Type.Literal('keep_copy'),
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+        },
+        objectOptions,
+      ),
+      Type.Object({ kind: Type.Literal('remove_from_context') }, objectOptions),
+    ]),
+  },
+  objectOptions,
+);
+
+export const ResolvePendingRevisionImpactResultSchema = Type.Object(
+  {
+    impactId: localId,
+    contextId: localId,
+    itemId: localId,
+    resolution: Type.Union([
+      Type.Literal('use_target'),
+      Type.Literal('keep_copy'),
+      Type.Literal('remove_from_context'),
+    ]),
+    contextItemId: Type.Optional(localId),
+    contextRevisionId: Type.Optional(localId),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
 export const ListWorkingContextsArgumentsSchema = Type.Object(
   {
     pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
@@ -657,6 +894,7 @@ const workingContextSummary = Type.Object(
     pinnedOrder: Type.Optional(revision),
     contextVersion: preferenceRevision,
     referenceCount: revision,
+    pendingRevisionImpactCount: revision,
     managementResumeVersion: Type.Optional(preferenceRevision),
     analysisResumeVersion: Type.Optional(preferenceRevision),
     createdAt: timestamp,
@@ -731,10 +969,24 @@ const analysisResume = Type.Object(
   objectOptions,
 );
 
+const workingContextRevisionImpactSummary = Type.Object(
+  {
+    impactId: localId,
+    itemId: localId,
+    pinnedRevisionId: localId,
+    targetRevisionId: localId,
+    impactVersion: preferenceRevision,
+    entryCount: preferenceRevision,
+    updatedAt: timestamp,
+  },
+  objectOptions,
+);
+
 export const WorkingContextWorkspaceSchema = Type.Object(
   {
     context: workingContextSummary,
     references: Type.Array(contextReference),
+    pendingRevisionImpacts: Type.Array(workingContextRevisionImpactSummary),
     managementResume: Type.Optional(managementResume),
     analysisResume: Type.Optional(analysisResume),
     dataRevision: revision,

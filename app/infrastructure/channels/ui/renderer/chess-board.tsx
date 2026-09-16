@@ -19,6 +19,7 @@ interface ChessBoardProps {
   readonly workspace: AnalysisWorkspaceDto;
   readonly locale: UiLocale;
   readonly isBusy: boolean;
+  readonly canMove?: boolean;
   readonly onMove: (
     from: string,
     to: string,
@@ -30,6 +31,7 @@ export function ChessBoard({
   workspace,
   locale,
   isBusy,
+  canMove,
   onMove,
 }: ChessBoardProps) {
   const intl = useIntl();
@@ -38,8 +40,9 @@ export function ChessBoard({
     [workspace.currentState.fen],
   );
   const interactive =
-    workspace.scratch !== undefined &&
-    workspace.allowedActions.includes('apply_move') &&
+    (canMove ??
+      (workspace.scratch !== undefined &&
+        workspace.allowedActions.includes('apply_move'))) &&
     !isBusy;
   const [selectedSquare, setSelectedSquare] = useState<string>();
   const [focusSquare, setFocusSquare] = useState('e2');

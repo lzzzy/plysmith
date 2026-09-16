@@ -210,6 +210,7 @@ test('saving consumes free scratch only after a successful record commit', async
   assert.deepEqual(result, persistedRecord());
   assert.equal(freeSession.read(), undefined);
   assert.equal(stored[1]?.steps.length, 1);
+  assert.deepEqual(stored[1]?.note?.moves, []);
   assert.equal(inventoryEvents.length, 1);
   assert.equal(workspaceEvents.length, 0);
 });

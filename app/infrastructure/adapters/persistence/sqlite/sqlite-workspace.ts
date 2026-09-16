@@ -10,6 +10,7 @@ import type {
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
   WorkingContextSummary,
+  WorkingContextRevisionImpactSummary,
   WorkingContextWorkspace,
 } from '../../../../application/workspace/index.ts';
 import {
@@ -31,6 +32,10 @@ import {
   incrementDataRevision,
   readDataRevision,
 } from './sqlite-store-helpers.ts';
+import {
+  assertNoOpenRevisionImpact,
+  releaseObsoleteResumeImpact,
+} from './sqlite-revision-impact-state.ts';
 
 interface WorkingContextRow {
   readonly contextId: number;
@@ -42,6 +47,7 @@ interface WorkingContextRow {
   readonly pinnedOrder: number | null;
   readonly contextVersion: number;
   readonly referenceCount: number;
+  readonly pendingRevisionImpactCount: number;
   readonly managementResumeVersion: number | null;
   readonly analysisResumeVersion: number | null;
   readonly createdAt: string;
@@ -54,6 +60,16 @@ interface ContextCursor {
   readonly pinOrder: number;
   readonly updatedAt: string;
   readonly contextId: number;
+}
+
+interface WorkingContextRevisionImpactRow {
+  readonly impactId: number;
+  readonly itemId: number;
+  readonly pinnedRevisionId: number;
+  readonly targetRevisionId: number;
+  readonly impactVersion: number;
+  readonly entryCount: number;
+  readonly updatedAt: string;
 }
 
 export function createWorkingContext(
@@ -159,15 +175,22 @@ export function readWorkingContextWorkspace(
     .prepare(
       `SELECT r.reference_id AS referenceId,
               r.item_id AS itemId,
-              i.current_revision_id AS currentRevisionId,
+              coalesce(context_item.pinned_revision_id,
+                       i.current_revision_id) AS currentRevisionId,
               i.item_type AS itemType,
               v.display_name AS displayName,
               r.anchor_id AS anchorId,
               a.anchor_kind AS anchorKind,
               r.created_at_utc AS createdAt
          FROM workspace_context_reference AS r
+         JOIN workspace_context_item AS context_item
+           ON context_item.context_id = r.context_id
+          AND context_item.item_id = r.item_id
          JOIN inventory_item AS i ON i.item_id = r.item_id
-         JOIN item_revision AS v ON v.revision_id = i.current_revision_id
+         JOIN item_revision AS v
+           ON v.item_id = i.item_id
+          AND v.revision_id = coalesce(context_item.pinned_revision_id,
+                                       i.current_revision_id)
          JOIN chess_anchor AS a ON a.anchor_id = r.anchor_id
         WHERE r.context_id = ?
         ORDER BY r.created_at_utc, r.reference_id`,
@@ -175,9 +198,27 @@ export function readWorkingContextWorkspace(
     .all(contextId.value) as ContextReferenceRow[];
   const managementResume = readManagementResume(database, contextId);
   const analysisResume = readAnalysisResume(database, contextId);
+  const pendingRevisionImpacts = database
+    .prepare(
+      `SELECT impact.impact_id AS impactId,
+              impact.item_id AS itemId,
+              impact.pinned_revision_id AS pinnedRevisionId,
+              impact.target_revision_id AS targetRevisionId,
+              impact.impact_version AS impactVersion,
+              (SELECT count(*) FROM workspace_revision_impact_entry AS entry
+                WHERE entry.impact_id = impact.impact_id) AS entryCount,
+              impact.updated_at_utc AS updatedAt
+         FROM workspace_pending_revision_impact AS impact
+        WHERE impact.context_id = ?
+        ORDER BY impact.updated_at_utc, impact.impact_id`,
+    )
+    .all(contextId.value) as WorkingContextRevisionImpactRow[];
   return Object.freeze({
     context,
     references: Object.freeze(references.map(mapContextReference)),
+    pendingRevisionImpacts: Object.freeze(
+      pendingRevisionImpacts.map(mapWorkingContextRevisionImpact),
+    ),
     ...(managementResume === undefined ? {} : { managementResume }),
     ...(analysisResume === undefined ? {} : { analysisResume }),
     dataRevision: readDataRevision(database),
@@ -190,6 +231,11 @@ export function addContextReference(
   occurredAt: string,
 ): AddContextReferenceResult {
   requireActiveContext(database, request.contextId);
+  assertNoOpenRevisionImpact(
+    database,
+    request.contextId.value,
+    request.itemId.value,
+  );
   const currentRevisionId = currentItemRevision(database, request.itemId.value);
   if (
     currentRevisionId === undefined ||
@@ -251,6 +297,13 @@ export function setWorkScopeResume(
 ): SetWorkScopeResumeResult {
   requireActiveContext(database, request.contextId);
   if (request.area === 'manage') {
+    if (request.selectedItemId !== undefined) {
+      assertNoOpenRevisionImpact(
+        database,
+        request.contextId.value,
+        request.selectedItemId.value,
+      );
+    }
     const currentVersion = currentResumeVersion(
       database,
       'workspace_management_resume',
@@ -268,6 +321,11 @@ export function setWorkScopeResume(
         request.selectedAnchorId.value,
       );
     }
+    releaseObsoleteResumeImpact(
+      database,
+      request.contextId.value,
+      'management_resume',
+    );
     const resumeVersion = (currentVersion ?? 0) + 1;
     database
       .prepare(
@@ -313,7 +371,17 @@ export function setWorkScopeResume(
   ) {
     throw invalidResume();
   }
-  requireContextItem(database, request.contextId.value, request.itemId.value);
+  assertNoOpenRevisionImpact(
+    database,
+    request.contextId.value,
+    request.itemId.value,
+  );
+  requireEffectiveContextRevision(
+    database,
+    request.contextId.value,
+    request.itemId.value,
+    request.revisionId.value,
+  );
   const currentPositionId = resolveAnchorPosition(
     database,
     request.itemId.value,
@@ -321,6 +389,11 @@ export function setWorkScopeResume(
     request.anchorId.value,
   );
   if (currentPositionId === undefined) throw invalidResume();
+  releaseObsoleteResumeImpact(
+    database,
+    request.contextId.value,
+    'analysis_resume',
+  );
   const resumeVersion = (currentVersion ?? 0) + 1;
   database
     .prepare(
@@ -476,18 +549,23 @@ function requireContextSelection(
   if (row === undefined) throw contextReferenceNotFound();
 }
 
-function requireContextItem(
+function requireEffectiveContextRevision(
   database: Database.Database,
   contextId: number,
   itemId: number,
+  revisionId: number,
 ): void {
   const row = database
     .prepare(
-      `SELECT 1 FROM workspace_context_item
-        WHERE context_id = ? AND item_id = ?`,
+      `SELECT coalesce(member.pinned_revision_id, item.current_revision_id)
+                AS effectiveRevisionId
+         FROM workspace_context_item AS member
+         JOIN inventory_item AS item ON item.item_id = member.item_id
+        WHERE member.context_id = ? AND member.item_id = ?
+          AND item.lifecycle = 'active'`,
     )
-    .get(contextId, itemId);
-  if (row === undefined) throw contextReferenceNotFound();
+    .get(contextId, itemId) as { effectiveRevisionId: number } | undefined;
+  if (row?.effectiveRevisionId !== revisionId) throw invalidResume();
 }
 
 function currentResumeVersion(
@@ -651,6 +729,7 @@ function mapWorkingContext(row: WorkingContextRow): WorkingContextSummary {
     ...(row.pinnedOrder === null ? {} : { pinnedOrder: row.pinnedOrder }),
     contextVersion: row.contextVersion,
     referenceCount: row.referenceCount,
+    pendingRevisionImpactCount: row.pendingRevisionImpactCount,
     ...(row.managementResumeVersion === null
       ? {}
       : { managementResumeVersion: row.managementResumeVersion }),
@@ -658,6 +737,20 @@ function mapWorkingContext(row: WorkingContextRow): WorkingContextSummary {
       ? {}
       : { analysisResumeVersion: row.analysisResumeVersion }),
     createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
+function mapWorkingContextRevisionImpact(
+  row: WorkingContextRevisionImpactRow,
+): WorkingContextRevisionImpactSummary {
+  return Object.freeze({
+    impactId: localId('revision-impact', row.impactId),
+    itemId: localId('inventory-item', row.itemId),
+    pinnedRevisionId: localId('item-revision', row.pinnedRevisionId),
+    targetRevisionId: localId('item-revision', row.targetRevisionId),
+    impactVersion: row.impactVersion,
+    entryCount: row.entryCount,
     updatedAt: row.updatedAt,
   });
 }
@@ -694,7 +787,9 @@ const workingContextSelect = `
          c.pinned_order AS pinnedOrder,
          c.context_version AS contextVersion,
          (SELECT count(*) FROM workspace_context_reference AS r
-           WHERE r.context_id = c.context_id) AS referenceCount,
+            WHERE r.context_id = c.context_id) AS referenceCount,
+         (SELECT count(*) FROM workspace_pending_revision_impact AS impact
+            WHERE impact.context_id = c.context_id) AS pendingRevisionImpactCount,
          management.resume_version AS managementResumeVersion,
          analysis.resume_version AS analysisResumeVersion,
          c.created_at_utc AS createdAt,

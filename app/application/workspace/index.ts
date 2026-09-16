@@ -30,6 +30,7 @@ export type {
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
   WorkingContextSummary,
+  WorkingContextRevisionImpactSummary,
   WorkingContextWorkspace,
   WorkspaceChanged,
 } from './workspace-models.ts';

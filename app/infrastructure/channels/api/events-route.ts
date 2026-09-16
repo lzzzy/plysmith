@@ -83,6 +83,26 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
           revisionId: String(event.payload.revisionId.value),
         },
       };
+    case 'inventory.revision-saved':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          itemId: String(event.payload.itemId.value),
+          revisionId: String(event.payload.revisionId.value),
+        },
+      };
+    case 'workspace.revision-impact-changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          contextId: String(event.payload.contextId.value),
+          itemId: String(event.payload.itemId.value),
+          impactId: String(event.payload.impactId.value),
+          status: event.payload.status,
+        },
+      };
     case 'analysis.contribution-changed':
       return {
         ...metadata,

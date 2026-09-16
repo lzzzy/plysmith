@@ -17,7 +17,7 @@ import {
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises the explicit twenty-tool allowlist and two fixed resources', async (t) => {
+test('MCP advertises the explicit twenty-seven-tool allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -38,6 +38,13 @@ test('MCP advertises the explicit twenty-tool allowlist and two fixed resources'
       'update_analysis_note',
       'delete_analysis_note',
       'search_inventory',
+      'start_inventory_revision',
+      'preview_inventory_revision',
+      'save_inventory_revision',
+      'get_inventory_revision',
+      'list_inventory_revisions',
+      'get_pending_revision_impact',
+      'resolve_pending_revision_impact',
       'list_working_contexts',
       'get_working_context_workspace',
       'create_working_context',
@@ -281,6 +288,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    pendingRevisionImpactCount: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -353,6 +361,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     getWorkingContextWorkspace: async () => ({
       context,
       references: [],
+      pendingRevisionImpacts: [],
       dataRevision: 5,
     }),
     createWorkingContext: async () => ({ context, dataRevision: 6 }),
@@ -495,6 +504,247 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         area: 'manage',
         expectedResumeVersion: null,
         presentation: 'list',
+      },
+    },
+  ]);
+});
+
+test('inventory revision tools expose preview-bound writes and historical reads once', async (t) => {
+  const timestamp = '2026-09-14T12:00:00.000Z';
+  const state = {
+    position: {
+      ruleSetId: 'standardChess' as const,
+      boardKey:
+        'RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr',
+      sideToMove: 'white' as const,
+      castlingRights: {
+        whiteKingSide: true,
+        whiteQueenSide: true,
+        blackKingSide: true,
+        blackQueenSide: true,
+      },
+      effectiveEnPassantSquare: -1,
+      positionKey: 'standardChess|initial',
+    },
+    playState: {
+      halfmoveClock: 0,
+      fullmoveNumber: 1,
+      historyKnowledge: 'complete' as const,
+    },
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  };
+  const fingerprint = `sha256:${'b'.repeat(64)}`;
+  const { client, calls } = await connectMcp(t, {
+    startInventoryRevision: async () => ({
+      scratch: {
+        scratchId: 'revision-scratch-1',
+        scratchRevision: 1,
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '2',
+          revisionId: '3',
+          anchorId: '5',
+        },
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '2',
+          baseRevisionId: '3',
+          cutAnchorId: '5',
+          returnAnchorId: '5',
+          displayName: 'French Defence',
+        },
+        root: state,
+        steps: [],
+        cursor: 0,
+      },
+      dataRevision: 7,
+    }),
+    previewInventoryRevision: async () => ({
+      itemId: '2',
+      baseRevisionId: '3',
+      mode: 'truncate_after',
+      displayName: 'French Defence',
+      preservedMoveCount: 1,
+      addedSteps: [],
+      removedSteps: [],
+      historicalGlobalContributionCount: 0,
+      affectedContexts: [
+        {
+          contextId: '1',
+          contextName: 'Black repertoire',
+          referenceCount: 1,
+          contributionCount: 0,
+          managementResumeCount: 0,
+          analysisResumeCount: 1,
+        },
+      ],
+      followingContexts: [],
+      noOp: false,
+      previewFingerprint: fingerprint,
+      dataRevision: 7,
+    }),
+    saveInventoryRevision: async () => ({
+      itemId: '2',
+      revisionId: '8',
+      revisionNumber: 2,
+      currentAnchorId: '5',
+      impacts: [{ impactId: '10', contextId: '1' }],
+      noOp: false,
+      dataRevision: 8,
+    }),
+    getInventoryRevision: async () => ({
+      itemId: '2',
+      revisionId: '3',
+      currentRevisionId: '8',
+      revisionNumber: 1,
+      rootAnchorId: '4',
+      currentAnchorId: '5',
+      displayName: 'French Defence',
+      languageTag: 'de-DE',
+      origin: { kind: 'initial_position' },
+      root: state,
+      steps: [],
+      cursor: 0,
+      contributions: [],
+      contextMember: true,
+      readOnlyPreview: true,
+      historical: true,
+    }),
+    listInventoryRevisions: async () => ({
+      revisions: [
+        {
+          itemId: '2',
+          revisionId: '8',
+          revisionNumber: 2,
+          baseRevisionId: '3',
+          displayName: 'French Defence',
+          changeKind: 'truncate_after',
+          createdAt: timestamp,
+          current: true,
+        },
+      ],
+      dataRevision: 8,
+    }),
+    getPendingRevisionImpact: async () => ({
+      impactId: '10',
+      contextId: '1',
+      contextName: 'Black repertoire',
+      itemId: '2',
+      pinnedRevisionId: '3',
+      targetRevisionId: '8',
+      targetAnchorId: '5',
+      impactVersion: 1,
+      referenceCount: 0,
+      contributionCount: 0,
+      managementResumeAffected: false,
+      analysisResumeAffected: true,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }),
+    resolvePendingRevisionImpact: async () => ({
+      impactId: '10',
+      contextId: '1',
+      itemId: '2',
+      resolution: 'use_target',
+      contextItemId: '2',
+      contextRevisionId: '8',
+      dataRevision: 9,
+    }),
+  });
+
+  const scenarios = [
+    [
+      'start_inventory_revision',
+      {
+        scope: { kind: 'free' },
+        itemId: '2',
+        baseRevisionId: '3',
+        anchorId: '5',
+        mode: 'truncate_after',
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+      },
+    ],
+    [
+      'preview_inventory_revision',
+      {
+        scope: { kind: 'free' },
+        expectedScratchId: 'revision-scratch-1',
+        expectedScratchRevision: 1,
+      },
+    ],
+    [
+      'save_inventory_revision',
+      {
+        scope: { kind: 'free' },
+        expectedScratchId: 'revision-scratch-1',
+        expectedScratchRevision: 1,
+        previewFingerprint: fingerprint,
+      },
+    ],
+    [
+      'get_inventory_revision',
+      {
+        scope: { kind: 'context', contextId: '1' },
+        itemId: '2',
+        revisionId: '3',
+        anchorId: '5',
+      },
+    ],
+    ['list_inventory_revisions', { itemId: '2', pageSize: 10 }],
+    ['get_pending_revision_impact', { impactId: '10' }],
+    [
+      'resolve_pending_revision_impact',
+      {
+        impactId: '10',
+        expectedImpactVersion: 1,
+        resolution: { kind: 'use_target' },
+      },
+    ],
+  ] as const;
+
+  for (const [name, arguments_] of scenarios) {
+    const result = await client.callTool({ name, arguments: arguments_ });
+    assert.notEqual(result.isError, true, name);
+  }
+
+  assert.deepEqual(calls, [
+    {
+      method: 'startInventoryRevision',
+      request: {
+        itemId: '2',
+        scope: { kind: 'free' },
+        baseRevisionId: '3',
+        anchorId: '5',
+        mode: 'truncate_after',
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+      },
+    },
+    { method: 'previewInventoryRevision', request: scenarios[1][1] },
+    { method: 'saveInventoryRevision', request: scenarios[2][1] },
+    {
+      method: 'getInventoryRevision',
+      request: {
+        itemId: '2',
+        revisionId: '3',
+        scopeKind: 'context',
+        contextId: '1',
+        anchorId: '5',
+      },
+    },
+    {
+      method: 'listInventoryRevisions',
+      request: { itemId: '2', pageSize: '10' },
+    },
+    { method: 'getPendingRevisionImpact', request: '10' },
+    {
+      method: 'resolvePendingRevisionImpact',
+      request: {
+        impactId: '10',
+        expectedImpactVersion: 1,
+        resolution: { kind: 'use_target' },
       },
     },
   ]);

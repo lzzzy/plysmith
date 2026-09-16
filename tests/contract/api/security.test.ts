@@ -161,6 +161,13 @@ test('browser preflight covers every public use-case route including queries and
     ['/analysis/notes/1', 'DELETE', 'PATCH, DELETE'],
     ['/inventory?pageSize=50', 'GET', 'GET'],
     ['/inventory/analysis-records', 'POST', 'POST'],
+    ['/inventory/items/1/revision-edits', 'POST', 'POST'],
+    ['/inventory/revision-edits/preview', 'POST', 'POST'],
+    ['/inventory/revision-edits/save', 'POST', 'POST'],
+    ['/inventory/items/1/revisions/2?scopeKind=free', 'GET', 'GET'],
+    ['/inventory/items/1/revisions?pageSize=50', 'GET', 'GET'],
+    ['/workspace/revision-impacts/1', 'GET', 'GET'],
+    ['/workspace/revision-impacts/1/resolution', 'POST', 'POST'],
     ['/working-contexts?pageSize=100', 'GET', 'GET, POST'],
     ['/working-contexts', 'POST', 'GET, POST'],
     ['/working-contexts/1', 'GET', 'GET'],
@@ -227,6 +234,9 @@ test('preflight rejects invalid host, origin, method, header and unknown routes'
     '/working-contexts/1/references/extra',
     '/analysis/workspace/extra',
     '/analysis/notes/1/extra',
+    '/inventory/items/1/revision-edits/extra',
+    '/inventory/items/1/revisions/2/extra',
+    '/workspace/revision-impacts/1/resolution/extra',
   ]) {
     const response = await host.inject({
       method: 'OPTIONS',

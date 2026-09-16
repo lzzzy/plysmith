@@ -59,6 +59,31 @@ export type SearchInventoryRequestDto =
   components['schemas']['InventorySearchQuery'];
 export type SearchInventoryResultDto =
   components['schemas']['SearchInventoryResult'];
+export type StartInventoryRevisionRequestDto =
+  components['schemas']['StartInventoryRevisionBody'];
+export type StartInventoryRevisionResultDto =
+  components['schemas']['StartInventoryRevisionResult'];
+export type InventoryRevisionScratchRequestDto =
+  components['schemas']['InventoryRevisionScratchBody'];
+export type InventoryRevisionPreviewDto =
+  components['schemas']['InventoryRevisionPreview'];
+export type SaveInventoryRevisionRequestDto =
+  components['schemas']['SaveInventoryRevisionBody'];
+export type SaveInventoryRevisionResultDto =
+  components['schemas']['SaveInventoryRevisionResult'];
+export type InventoryRevisionReadRequestDto =
+  components['schemas']['InventoryRevisionReadQuery'];
+export type AnalysisRecordDto = components['schemas']['AnalysisRecord'];
+export type ListInventoryRevisionsRequestDto =
+  components['schemas']['PageQuery'];
+export type ListInventoryRevisionsResultDto =
+  components['schemas']['ListInventoryRevisionsResult'];
+export type PendingRevisionImpactDto =
+  components['schemas']['PendingRevisionImpact'];
+export type ResolvePendingRevisionImpactRequestDto =
+  components['schemas']['ResolvePendingRevisionImpactBody'];
+export type ResolvePendingRevisionImpactResultDto =
+  components['schemas']['ResolvePendingRevisionImpactResult'];
 export type ListWorkingContextsRequestDto = components['schemas']['PageQuery'];
 export type ListWorkingContextsResultDto =
   components['schemas']['ListWorkingContextsResult'];
@@ -302,6 +327,134 @@ export class PlysmithHostClient {
       });
       return unwrap<SearchInventoryResultDto>(
         result.data as unknown as SearchInventoryResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async startInventoryRevision(
+    itemId: string,
+    request: StartInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto> {
+    try {
+      const result = await this.#client.POST(
+        '/inventory/items/{itemId}/revision-edits',
+        { params: { path: { itemId } }, body: request },
+      );
+      return unwrap<StartInventoryRevisionResultDto>(
+        result.data as StartInventoryRevisionResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewInventoryRevision(
+    request: InventoryRevisionScratchRequestDto,
+  ): Promise<InventoryRevisionPreviewDto> {
+    try {
+      const result = await this.#client.POST(
+        '/inventory/revision-edits/preview',
+        { body: request },
+      );
+      return unwrap<InventoryRevisionPreviewDto>(
+        result.data as InventoryRevisionPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async saveInventoryRevision(
+    request: SaveInventoryRevisionRequestDto,
+  ): Promise<SaveInventoryRevisionResultDto> {
+    try {
+      const result = await this.#client.POST('/inventory/revision-edits/save', {
+        body: request,
+      });
+      return unwrap<SaveInventoryRevisionResultDto>(
+        result.data as SaveInventoryRevisionResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getInventoryRevision(
+    itemId: string,
+    revisionId: string,
+    request: InventoryRevisionReadRequestDto,
+  ): Promise<AnalysisRecordDto> {
+    try {
+      const result = await this.#client.GET(
+        '/inventory/items/{itemId}/revisions/{revisionId}',
+        {
+          params: {
+            path: { itemId, revisionId },
+            query: request,
+          },
+        },
+      );
+      return unwrap<AnalysisRecordDto>(
+        result.data as AnalysisRecordDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async listInventoryRevisions(
+    itemId: string,
+    request: ListInventoryRevisionsRequestDto,
+  ): Promise<ListInventoryRevisionsResultDto> {
+    try {
+      const result = await this.#client.GET(
+        '/inventory/items/{itemId}/revisions',
+        { params: { path: { itemId }, query: request } },
+      );
+      return unwrap<ListInventoryRevisionsResultDto>(
+        result.data as ListInventoryRevisionsResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getPendingRevisionImpact(
+    impactId: string,
+  ): Promise<PendingRevisionImpactDto> {
+    try {
+      const result = await this.#client.GET(
+        '/workspace/revision-impacts/{impactId}',
+        { params: { path: { impactId } } },
+      );
+      return unwrap<PendingRevisionImpactDto>(
+        result.data as PendingRevisionImpactDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async resolvePendingRevisionImpact(
+    impactId: string,
+    request: ResolvePendingRevisionImpactRequestDto,
+  ): Promise<ResolvePendingRevisionImpactResultDto> {
+    try {
+      const result = await this.#client.POST(
+        '/workspace/revision-impacts/{impactId}/resolution',
+        { params: { path: { impactId } }, body: request },
+      );
+      return unwrap<ResolvePendingRevisionImpactResultDto>(
+        result.data as ResolvePendingRevisionImpactResultDto | undefined,
         result.error,
       );
     } catch (error) {

@@ -19,6 +19,11 @@ export function createAnalysisRecordDraft(input: {
   readonly languageTag: string;
   readonly scratch: AnalysisScratch;
 }): AnalysisRecordDraft {
+  if (input.scratch.intent.kind !== 'exploration') {
+    throw new Error(
+      'An inventory revision scratch cannot create another item.',
+    );
+  }
   requireTrimmedText(input.displayName, 200, 'display name');
   if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.languageTag)) {
     throw new Error('An analysis record requires a BCP-47 language tag.');
@@ -30,9 +35,6 @@ export function createAnalysisRecordDraft(input: {
   const noteDraft = input.scratch.noteDraft;
   if (noteDraft !== undefined) {
     requireTrimmedText(noteDraft.body, 100_000, 'note');
-  }
-  if (noteDraft !== undefined && !sameMoves(currentMoves, noteDraft.moves)) {
-    throw new Error('The note draft must describe the current analysis path.');
   }
 
   return Object.freeze({
@@ -46,31 +48,10 @@ export function createAnalysisRecordDraft(input: {
       : {
           note: Object.freeze({
             body: noteDraft.body,
-            moves: Object.freeze(
-              noteDraft.moves.map((move) => Object.freeze({ ...move })),
-            ),
+            moves: Object.freeze([]),
           }),
         }),
   });
-}
-
-function sameMoves(
-  left: ReturnType<typeof currentAnalysisMoves>,
-  right: ReturnType<typeof currentAnalysisMoves>,
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((move, index) => {
-      const other = right[index];
-      return (
-        other !== undefined &&
-        move.from === other.from &&
-        move.to === other.to &&
-        move.promotion === other.promotion &&
-        move.san === other.san
-      );
-    })
-  );
 }
 
 function requireTrimmedText(value: string, max: number, name: string): void {

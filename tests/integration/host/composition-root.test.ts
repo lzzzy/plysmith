@@ -57,7 +57,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 4,
+      schemaVersion: 5,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');
@@ -256,7 +256,7 @@ test('failed composition releases the owner lease for a corrected restart', asyn
   await runtime.close();
 });
 
-test('configured host diagnostics correlate requests without logging content', async (context) => {
+test('configured host diagnostics keep routine successful reads silent', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const initialized = await initializeConfiguration({
     applicationHome,
@@ -284,6 +284,18 @@ test('configured host diagnostics correlate requests without logging content', a
     },
   });
   assert.equal(response.statusCode, 200);
+  const writeResponse = await runtime.host.inject({
+    method: 'PUT',
+    url: '/preferences/ui-language',
+    headers: {
+      host: '127.0.0.1',
+      authorization: `Bearer ${hostToken}`,
+      'content-type': 'application/json',
+      'x-plysmith-correlation-id': 'desktop-correlation-2',
+    },
+    payload: { uiLocale: 'de-DE', expectedRevision: 1 },
+  });
+  assert.equal(writeResponse.statusCode, 200);
   await runtime.close();
 
   const directory = path.join(applicationHome, 'diagnostics');
@@ -294,11 +306,19 @@ test('configured host diagnostics correlate requests without logging content', a
     .split('\n')
     .map((line) => JSON.parse(line));
   assert.ok(
+    !events.some(
+      (event) =>
+        event.eventCode === 'host.request.completed' &&
+        event.operation === 'GetAnalysisWorkspace',
+    ),
+  );
+  assert.ok(
     events.some(
       (event) =>
         event.eventCode === 'host.request.completed' &&
-        event.operation === 'GetAnalysisWorkspace' &&
-        event.correlationId === 'desktop-correlation-1',
+        event.operation === 'SetUiLanguage' &&
+        event.correlationId === 'desktop-correlation-2' &&
+        event.status === 'succeeded',
     ),
   );
   assert.ok(events.some((event) => event.eventCode === 'host.lifecycle.ready'));

@@ -8,6 +8,7 @@ import {
   type AddContextReferenceRequestDto,
   type AddContextReferenceResultDto,
   type AnalysisWorkspaceDto,
+  type AnalysisRecordDto,
   type AnalysisNoteMutationResultDto,
   type CreateAnalysisRecordRequestDto,
   type CreateAnalysisRecordResultDto,
@@ -24,12 +25,24 @@ import {
   type GetAnalysisWorkspaceRequestDto,
   type ListWorkingContextsRequestDto,
   type ListWorkingContextsResultDto,
+  type ListInventoryRevisionsRequestDto,
+  type ListInventoryRevisionsResultDto,
+  type InventoryRevisionReadRequestDto,
+  type InventoryRevisionScratchRequestDto,
+  type InventoryRevisionPreviewDto,
+  type PendingRevisionImpactDto,
+  type ResolvePendingRevisionImpactRequestDto,
+  type ResolvePendingRevisionImpactResultDto,
+  type SaveInventoryRevisionRequestDto,
+  type SaveInventoryRevisionResultDto,
   type SearchInventoryRequestDto,
   type SearchInventoryResultDto,
   type SetDiagnosticLogLevelRequestDto,
   type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
+  type StartInventoryRevisionRequestDto,
+  type StartInventoryRevisionResultDto,
   type UpdateAnalysisScratchRequestDto,
   type UpdateAnalysisScratchResultDto,
   type UpdateAnalysisNoteRequestDto,
@@ -149,6 +162,63 @@ export class RediscoveringHostClient {
     request: SearchInventoryRequestDto,
   ): Promise<SearchInventoryResultDto> {
     return this.#read((client) => client.searchInventory(request));
+  }
+
+  async startInventoryRevision(
+    itemId: string,
+    request: StartInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto> {
+    return (await this.#currentClient()).startInventoryRevision(
+      itemId,
+      request,
+    );
+  }
+
+  async previewInventoryRevision(
+    request: InventoryRevisionScratchRequestDto,
+  ): Promise<InventoryRevisionPreviewDto> {
+    return this.#read((client) => client.previewInventoryRevision(request));
+  }
+
+  async saveInventoryRevision(
+    request: SaveInventoryRevisionRequestDto,
+  ): Promise<SaveInventoryRevisionResultDto> {
+    return (await this.#currentClient()).saveInventoryRevision(request);
+  }
+
+  async getInventoryRevision(
+    itemId: string,
+    revisionId: string,
+    request: InventoryRevisionReadRequestDto,
+  ): Promise<AnalysisRecordDto> {
+    return this.#read((client) =>
+      client.getInventoryRevision(itemId, revisionId, request),
+    );
+  }
+
+  async listInventoryRevisions(
+    itemId: string,
+    request: ListInventoryRevisionsRequestDto,
+  ): Promise<ListInventoryRevisionsResultDto> {
+    return this.#read((client) =>
+      client.listInventoryRevisions(itemId, request),
+    );
+  }
+
+  async getPendingRevisionImpact(
+    impactId: string,
+  ): Promise<PendingRevisionImpactDto> {
+    return this.#read((client) => client.getPendingRevisionImpact(impactId));
+  }
+
+  async resolvePendingRevisionImpact(
+    impactId: string,
+    request: ResolvePendingRevisionImpactRequestDto,
+  ): Promise<ResolvePendingRevisionImpactResultDto> {
+    return (await this.#currentClient()).resolvePendingRevisionImpact(
+      impactId,
+      request,
+    );
   }
 
   async listWorkingContexts(

@@ -43,6 +43,30 @@ export type SearchInventoryRequest =
   components['schemas']['InventorySearchQuery'];
 export type SearchInventoryResult =
   components['schemas']['SearchInventoryResult'];
+export type StartInventoryRevisionRequest =
+  components['schemas']['StartInventoryRevisionBody'];
+export type StartInventoryRevisionResult =
+  components['schemas']['StartInventoryRevisionResult'];
+export type PreviewInventoryRevisionRequest =
+  components['schemas']['InventoryRevisionScratchBody'];
+export type InventoryRevisionPreview =
+  components['schemas']['InventoryRevisionPreview'];
+export type SaveInventoryRevisionRequest =
+  components['schemas']['SaveInventoryRevisionBody'];
+export type SaveInventoryRevisionResult =
+  components['schemas']['SaveInventoryRevisionResult'];
+export type GetInventoryRevisionRequest =
+  components['schemas']['InventoryRevisionReadQuery'];
+export type AnalysisRecord = components['schemas']['AnalysisRecord'];
+export type ListInventoryRevisionsRequest = components['schemas']['PageQuery'];
+export type ListInventoryRevisionsResult =
+  components['schemas']['ListInventoryRevisionsResult'];
+export type PendingRevisionImpact =
+  components['schemas']['PendingRevisionImpact'];
+export type ResolvePendingRevisionImpactRequest =
+  components['schemas']['ResolvePendingRevisionImpactBody'];
+export type ResolvePendingRevisionImpactResult =
+  components['schemas']['ResolvePendingRevisionImpactResult'];
 export type ListWorkingContextsRequest = components['schemas']['PageQuery'];
 export type ListWorkingContextsResult =
   components['schemas']['ListWorkingContextsResult'];
@@ -111,6 +135,30 @@ export interface HostClient {
   searchInventory(
     request: SearchInventoryRequest,
   ): Promise<SearchInventoryResult>;
+  startInventoryRevision(
+    itemId: string,
+    request: StartInventoryRevisionRequest,
+  ): Promise<StartInventoryRevisionResult>;
+  previewInventoryRevision(
+    request: PreviewInventoryRevisionRequest,
+  ): Promise<InventoryRevisionPreview>;
+  saveInventoryRevision(
+    request: SaveInventoryRevisionRequest,
+  ): Promise<SaveInventoryRevisionResult>;
+  getInventoryRevision(
+    itemId: string,
+    revisionId: string,
+    request: GetInventoryRevisionRequest,
+  ): Promise<AnalysisRecord>;
+  listInventoryRevisions(
+    itemId: string,
+    request: ListInventoryRevisionsRequest,
+  ): Promise<ListInventoryRevisionsResult>;
+  getPendingRevisionImpact(impactId: string): Promise<PendingRevisionImpact>;
+  resolvePendingRevisionImpact(
+    impactId: string,
+    request: ResolvePendingRevisionImpactRequest,
+  ): Promise<ResolvePendingRevisionImpactResult>;
   listWorkingContexts(
     request: ListWorkingContextsRequest,
   ): Promise<ListWorkingContextsResult>;

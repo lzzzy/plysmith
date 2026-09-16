@@ -10,6 +10,30 @@ import {
   occurredAt,
 } from './fixtures.ts';
 
+const initialPosition = {
+  position: {
+    ruleSetId: 'standardChess' as const,
+    boardKey:
+      'RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr',
+    sideToMove: 'white' as const,
+    castlingRights: {
+      whiteKingSide: true,
+      whiteQueenSide: true,
+      blackKingSide: true,
+      blackQueenSide: true,
+    },
+    effectiveEnPassantSquare: -1,
+    positionKey:
+      'standardChess|RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr|white|1|1|1|1|-1',
+  },
+  playState: {
+    halfmoveClock: 0,
+    fullmoveNumber: 1,
+    historyKnowledge: 'complete' as const,
+  },
+  fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+};
+
 test('status includes the application read model and release handshake only', async (t) => {
   const diagnostics: unknown[] = [];
   const { host } = await buildFixture(t, {
@@ -320,6 +344,12 @@ for (const [code, status] of [
   ['diagnostics.invalid_report_request', 400],
   ['diagnostics.invalid_report_target', 400],
   ['diagnostics.report_target_exists', 409],
+  ['inventory.invalid_revision', 400],
+  ['inventory.revision_conflict', 409],
+  ['inventory.preview_conflict', 409],
+  ['workspace.impact_not_found', 404],
+  ['workspace.impact_conflict', 409],
+  ['workspace.invalid_impact_resolution', 400],
   ['unknown.CANARY', 500],
 ] as const) {
   test(`application problem ${code} maps without exposing its message or arbitrary parameters`, async (t) => {
@@ -583,6 +613,328 @@ test('position note routes map exact anchors and optimistic note revisions', asy
   });
   assert.equal(updated.json().contributionVersion, 2);
   assert.equal(deleted.json().contributionVersion, 3);
+});
+
+test('inventory revision write routes preserve scope, identity and preview binding', async (t) => {
+  const received: unknown[] = [];
+  const scratch = {
+    scratchId: 'revision-scratch-1',
+    scratchRevision: 2,
+    origin: {
+      kind: 'inventory_anchor' as const,
+      itemId: localId('inventory-item', 2),
+      revisionId: localId('item-revision', 3),
+      anchorId: localId('anchor', 5),
+    },
+    intent: {
+      kind: 'inventory_revision' as const,
+      mode: 'replace_move' as const,
+      itemId: localId('inventory-item', 2),
+      baseRevisionId: localId('item-revision', 3),
+      cutAnchorId: localId('anchor', 5),
+      returnAnchorId: localId('anchor', 6),
+      displayName: 'French Defence',
+      summary: 'Replace the second move.',
+    },
+    root: initialPosition,
+    steps: [],
+    cursor: 0,
+  };
+  const fingerprint = `sha256:${'a'.repeat(64)}`;
+  const { host } = await buildFixture(t, {
+    startInventoryRevision: {
+      execute: async (request) => {
+        received.push(['start', request]);
+        return { scratch, dataRevision: 7, resumeVersion: 4 };
+      },
+    },
+    previewInventoryRevision: {
+      execute: async (request) => {
+        received.push(['preview', request]);
+        return {
+          itemId: localId('inventory-item', 2),
+          baseRevisionId: localId('item-revision', 3),
+          mode: 'replace_move',
+          displayName: 'French Defence',
+          summary: 'Replace the second move.',
+          preservedMoveCount: 1,
+          addedSteps: [],
+          removedSteps: [],
+          historicalGlobalContributionCount: 1,
+          affectedContexts: [
+            {
+              contextId: localId('working-context', 1),
+              contextName: 'Black repertoire',
+              referenceCount: 1,
+              contributionCount: 2,
+              managementResumeCount: 0,
+              analysisResumeCount: 1,
+            },
+          ],
+          followingContexts: [],
+          noOp: false,
+          previewFingerprint: fingerprint,
+          dataRevision: 7,
+        };
+      },
+    },
+    saveInventoryRevision: {
+      execute: async (request) => {
+        received.push(['save', request]);
+        return {
+          itemId: localId('inventory-item', 2),
+          revisionId: localId('item-revision', 8),
+          revisionNumber: 2,
+          currentAnchorId: localId('anchor', 9),
+          impacts: [
+            {
+              impactId: localId('revision-impact', 10),
+              contextId: localId('working-context', 1),
+            },
+          ],
+          noOp: false,
+          dataRevision: 8,
+        };
+      },
+    },
+  });
+
+  const started = await host.inject({
+    method: 'POST',
+    url: '/inventory/items/2/revision-edits',
+    headers,
+    payload: {
+      scope: { kind: 'context', contextId: '1' },
+      baseRevisionId: '3',
+      anchorId: '5',
+      mode: 'replace_move',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      displayName: 'French Defence',
+      summary: 'Replace the second move.',
+      firstMove: { kind: 'notation', value: 'd4', locale: 'de-DE' },
+    },
+  });
+  const previewed = await host.inject({
+    method: 'POST',
+    url: '/inventory/revision-edits/preview',
+    headers,
+    payload: {
+      scope: { kind: 'context', contextId: '1' },
+      expectedScratchId: 'revision-scratch-1',
+      expectedScratchRevision: 2,
+    },
+  });
+  const saved = await host.inject({
+    method: 'POST',
+    url: '/inventory/revision-edits/save',
+    headers,
+    payload: {
+      scope: { kind: 'context', contextId: '1' },
+      expectedScratchId: 'revision-scratch-1',
+      expectedScratchRevision: 2,
+      previewFingerprint: fingerprint,
+    },
+  });
+
+  assert.equal(started.statusCode, 200);
+  assert.equal(started.json().scratch.intent.itemId, '2');
+  assert.equal(started.json().resumeVersion, 4);
+  assert.equal(previewed.statusCode, 200);
+  assert.equal(previewed.json().affectedContexts[0].contextId, '1');
+  assert.equal(saved.statusCode, 200);
+  assert.deepEqual(saved.json().impacts, [{ impactId: '10', contextId: '1' }]);
+  assert.deepEqual(received, [
+    [
+      'start',
+      {
+        scope: {
+          kind: 'context',
+          contextId: localId('working-context', 1),
+        },
+        itemId: localId('inventory-item', 2),
+        baseRevisionId: localId('item-revision', 3),
+        anchorId: localId('anchor', 5),
+        mode: 'replace_move',
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        displayName: 'French Defence',
+        summary: 'Replace the second move.',
+        firstMove: { kind: 'notation', value: 'd4', locale: 'de-DE' },
+      },
+    ],
+    [
+      'preview',
+      {
+        scope: {
+          kind: 'context',
+          contextId: localId('working-context', 1),
+        },
+        expectedScratchId: 'revision-scratch-1',
+        expectedScratchRevision: 2,
+      },
+    ],
+    [
+      'save',
+      {
+        scope: {
+          kind: 'context',
+          contextId: localId('working-context', 1),
+        },
+        expectedScratchId: 'revision-scratch-1',
+        expectedScratchRevision: 2,
+        previewFingerprint: fingerprint,
+      },
+    ],
+  ]);
+});
+
+test('inventory revision reads and impact routes preserve historical and resolution semantics', async (t) => {
+  const received: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    getInventoryRevision: {
+      execute: async (request) => {
+        received.push(['get-revision', request]);
+        return {
+          itemId: localId('inventory-item', 2),
+          revisionId: localId('item-revision', 3),
+          currentRevisionId: localId('item-revision', 8),
+          revisionNumber: 1,
+          rootAnchorId: localId('anchor', 4),
+          currentAnchorId: localId('anchor', 5),
+          displayName: 'French Defence',
+          summary: 'Historical line.',
+          languageTag: 'de-DE',
+          origin: { kind: 'initial_position' },
+          root: initialPosition,
+          steps: [],
+          cursor: 0,
+          contributions: [],
+          contextMember: true,
+          readOnlyPreview: true,
+          historical: true,
+        };
+      },
+    },
+    listInventoryRevisions: {
+      execute: async (request) => {
+        received.push(['list-revisions', request]);
+        return {
+          revisions: [
+            {
+              itemId: localId('inventory-item', 2),
+              revisionId: localId('item-revision', 8),
+              revisionNumber: 2,
+              baseRevisionId: localId('item-revision', 3),
+              displayName: 'French Defence',
+              changeKind: 'replace_move',
+              createdAt: occurredAt,
+              current: true,
+            },
+          ],
+          nextCursor: 'revision-page-2',
+          dataRevision: 8,
+        };
+      },
+    },
+    getPendingRevisionImpact: {
+      execute: async (request) => {
+        received.push(['get-impact', request]);
+        return {
+          impactId: localId('revision-impact', 10),
+          contextId: localId('working-context', 1),
+          contextName: 'Black repertoire',
+          itemId: localId('inventory-item', 2),
+          pinnedRevisionId: localId('item-revision', 3),
+          targetRevisionId: localId('item-revision', 8),
+          targetAnchorId: localId('anchor', 9),
+          impactVersion: 1,
+          referenceCount: 1,
+          contributionCount: 0,
+          managementResumeAffected: false,
+          analysisResumeAffected: false,
+          createdAt: occurredAt,
+          updatedAt: occurredAt,
+        };
+      },
+    },
+    resolvePendingRevisionImpact: {
+      execute: async (request) => {
+        received.push(['resolve-impact', request]);
+        return {
+          impactId: localId('revision-impact', 10),
+          contextId: localId('working-context', 1),
+          itemId: localId('inventory-item', 2),
+          resolution: 'use_target',
+          contextItemId: localId('inventory-item', 2),
+          contextRevisionId: localId('item-revision', 8),
+          dataRevision: 9,
+        };
+      },
+    },
+  });
+
+  const revision = await host.inject({
+    url: '/inventory/items/2/revisions/3?scopeKind=context&contextId=1&anchorId=5',
+    headers,
+  });
+  const revisions = await host.inject({
+    url: '/inventory/items/2/revisions?pageSize=20&cursor=revision-page-1',
+    headers,
+  });
+  const impact = await host.inject({
+    url: '/workspace/revision-impacts/10',
+    headers,
+  });
+  const resolved = await host.inject({
+    method: 'POST',
+    url: '/workspace/revision-impacts/10/resolution',
+    headers,
+    payload: {
+      expectedImpactVersion: 1,
+      resolution: { kind: 'use_target' },
+    },
+  });
+
+  assert.equal(revision.statusCode, 200);
+  assert.equal(revision.json().historical, true);
+  assert.equal(revision.json().currentRevisionId, '8');
+  assert.equal(revisions.statusCode, 200);
+  assert.equal(revisions.json().nextCursor, 'revision-page-2');
+  assert.equal(impact.statusCode, 200);
+  assert.equal(impact.json().targetAnchorId, '9');
+  assert.equal(resolved.statusCode, 200);
+  assert.deepEqual(received, [
+    [
+      'get-revision',
+      {
+        scope: {
+          kind: 'context',
+          contextId: localId('working-context', 1),
+        },
+        itemId: localId('inventory-item', 2),
+        revisionId: localId('item-revision', 3),
+        anchorId: localId('anchor', 5),
+      },
+    ],
+    [
+      'list-revisions',
+      {
+        itemId: localId('inventory-item', 2),
+        pageSize: 20,
+        cursor: 'revision-page-1',
+      },
+    ],
+    ['get-impact', { impactId: localId('revision-impact', 10) }],
+    [
+      'resolve-impact',
+      {
+        impactId: localId('revision-impact', 10),
+        expectedImpactVersion: 1,
+        resolution: { kind: 'use_target' },
+      },
+    ],
+  ]);
 });
 
 test('iteration-two application problems keep stable status and zero revision sentinels', async (t) => {

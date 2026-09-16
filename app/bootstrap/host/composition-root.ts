@@ -13,7 +13,16 @@ import {
   UpdateAnalysisScratch,
   UpdateAnalysisNote,
 } from '../../application/analysis/index.ts';
-import { SearchInventory } from '../../application/inventory/index.ts';
+import {
+  GetInventoryRevision,
+  GetPendingRevisionImpact,
+  ListInventoryRevisions,
+  PreviewInventoryRevision,
+  ResolvePendingRevisionImpact,
+  SaveInventoryRevision,
+  SearchInventory,
+  StartInventoryRevision,
+} from '../../application/inventory/index.ts';
 import {
   GetUserPreferences,
   SetUiLanguage,
@@ -204,6 +213,39 @@ export async function composeHost(
       events: eventStream,
     });
     const searchInventory = new SearchInventory(persistence);
+    const startInventoryRevision = new StartInventoryRevision({
+      inventory: persistence,
+      contextReader: persistence,
+      contextWriter: persistence,
+      freeSession: freeAnalysisSession,
+      rules,
+      clock,
+      events: eventStream,
+      storeStatus: persistence,
+      scratchId: randomUUID,
+    });
+    const previewInventoryRevision = new PreviewInventoryRevision({
+      inventory: persistence,
+      contextReader: persistence,
+      freeSession: freeAnalysisSession,
+    });
+    const saveInventoryRevision = new SaveInventoryRevision({
+      reader: persistence,
+      writer: persistence,
+      freeSession: freeAnalysisSession,
+      clock,
+      inventoryEvents: eventStream,
+      impactEvents: eventStream,
+      scratchEvents: eventStream,
+    });
+    const getInventoryRevision = new GetInventoryRevision(persistence);
+    const listInventoryRevisions = new ListInventoryRevisions(persistence);
+    const getPendingRevisionImpact = new GetPendingRevisionImpact(persistence);
+    const resolvePendingRevisionImpact = new ResolvePendingRevisionImpact({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
     const listWorkingContexts = new ListWorkingContexts(persistence);
     const getWorkingContextWorkspace = new GetWorkingContextWorkspace(
       persistence,
@@ -243,6 +285,13 @@ export async function composeHost(
       updateAnalysisNote,
       deleteAnalysisNote,
       searchInventory,
+      startInventoryRevision,
+      previewInventoryRevision,
+      saveInventoryRevision,
+      getInventoryRevision,
+      listInventoryRevisions,
+      getPendingRevisionImpact,
+      resolvePendingRevisionImpact,
       listWorkingContexts,
       getWorkingContextWorkspace,
       createWorkingContext,

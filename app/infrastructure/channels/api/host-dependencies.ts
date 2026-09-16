@@ -19,7 +19,16 @@ import type {
   UpdateAnalysisScratchUseCase,
   UpdateAnalysisNoteUseCase,
 } from '../../../application/analysis/index.ts';
-import type { SearchInventoryUseCase } from '../../../application/inventory/index.ts';
+import type {
+  GetInventoryRevisionUseCase,
+  GetPendingRevisionImpactUseCase,
+  ListInventoryRevisionsUseCase,
+  PreviewInventoryRevisionUseCase,
+  ResolvePendingRevisionImpactUseCase,
+  SaveInventoryRevisionUseCase,
+  SearchInventoryUseCase,
+  StartInventoryRevisionUseCase,
+} from '../../../application/inventory/index.ts';
 import type {
   AddContextReferenceUseCase,
   CreateWorkingContextUseCase,
@@ -45,6 +54,13 @@ export interface HostDependencies {
   readonly updateAnalysisNote: UpdateAnalysisNoteUseCase;
   readonly deleteAnalysisNote: DeleteAnalysisNoteUseCase;
   readonly searchInventory: SearchInventoryUseCase;
+  readonly startInventoryRevision: StartInventoryRevisionUseCase;
+  readonly previewInventoryRevision: PreviewInventoryRevisionUseCase;
+  readonly saveInventoryRevision: SaveInventoryRevisionUseCase;
+  readonly getInventoryRevision: GetInventoryRevisionUseCase;
+  readonly listInventoryRevisions: ListInventoryRevisionsUseCase;
+  readonly getPendingRevisionImpact: GetPendingRevisionImpactUseCase;
+  readonly resolvePendingRevisionImpact: ResolvePendingRevisionImpactUseCase;
   readonly listWorkingContexts: ListWorkingContextsUseCase;
   readonly getWorkingContextWorkspace: GetWorkingContextWorkspaceUseCase;
   readonly createWorkingContext: CreateWorkingContextUseCase;
