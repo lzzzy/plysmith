@@ -543,6 +543,13 @@
   font-size: 10px;
 }
 
+.followingContextNote {
+  display: block;
+  margin-top: 2px;
+  color: #754f08;
+  line-height: 1.4;
+}
+
 .contextDetails {
   display: grid;
   min-height: 0;

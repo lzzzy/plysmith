@@ -109,6 +109,7 @@ export function createFixture() {
     deleteAnalysisNote: unavailableUseCase,
     searchInventory: unavailableUseCase,
     startInventoryRevision: unavailableUseCase,
+    promoteAnalysisToInventoryRevision: unavailableUseCase,
     previewInventoryRevision: unavailableUseCase,
     saveInventoryRevision: unavailableUseCase,
     getInventoryRevision: unavailableUseCase,

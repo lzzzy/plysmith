@@ -103,6 +103,7 @@ export function parseAnalysisScratchAction(action: {
     | 'start'
     | 'apply_move'
     | 'move_cursor'
+    | 'remove_last_move'
     | 'prepare_note'
     | 'clear_note'
     | 'discard';
@@ -122,6 +123,13 @@ export function parseAnalysisScratchAction(action: {
         readonly value: string;
         readonly locale: 'de-DE' | 'en-GB';
       };
+  readonly firstMove?:
+    | { readonly kind: 'coordinates'; readonly value: string }
+    | {
+        readonly kind: 'notation';
+        readonly value: string;
+        readonly locale: 'de-DE' | 'en-GB';
+      };
   readonly cursor?: number;
   readonly body?: string;
 }): UpdateAnalysisScratchAction {
@@ -130,7 +138,13 @@ export function parseAnalysisScratchAction(action: {
       const origin = action.origin;
       if (origin === undefined) invalidRequest();
       if (origin.kind !== 'inventory_anchor') {
-        return { kind: 'start', origin };
+        return {
+          kind: 'start',
+          origin,
+          ...(action.firstMove === undefined
+            ? {}
+            : { firstMove: action.firstMove }),
+        };
       }
       return {
         kind: 'start',
@@ -140,6 +154,9 @@ export function parseAnalysisScratchAction(action: {
           revisionId: parseLocalId('item-revision', origin.revisionId),
           anchorId: parseLocalId('anchor', origin.anchorId),
         },
+        ...(action.firstMove === undefined
+          ? {}
+          : { firstMove: action.firstMove }),
       };
     }
     case 'apply_move':
@@ -152,6 +169,7 @@ export function parseAnalysisScratchAction(action: {
       if (action.body === undefined) invalidRequest();
       return { kind: action.kind, body: action.body };
     case 'clear_note':
+    case 'remove_last_move':
     case 'discard':
       return { kind: action.kind };
   }
@@ -344,6 +362,11 @@ export function inventoryRevisionPreviewDto(model: InventoryRevisionPreview) {
     followingContexts: model.followingContexts.map((context) => ({
       contextId: idDto(context.contextId),
       contextName: context.contextName,
+      updatedAutomatically: context.updatedAutomatically,
+      referenceCount: context.referenceCount,
+      contributionCount: context.contributionCount,
+      managementResumeCount: context.managementResumeCount,
+      analysisResumeCount: context.analysisResumeCount,
     })),
     noOp: model.noOp,
     previewFingerprint: model.previewFingerprint,

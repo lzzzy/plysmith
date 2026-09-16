@@ -31,6 +31,7 @@ import {
   type InventoryRevisionScratchRequestDto,
   type InventoryRevisionPreviewDto,
   type PendingRevisionImpactDto,
+  type PromoteAnalysisToInventoryRevisionRequestDto,
   type ResolvePendingRevisionImpactRequestDto,
   type ResolvePendingRevisionImpactResultDto,
   type SaveInventoryRevisionRequestDto,
@@ -178,6 +179,16 @@ export class RediscoveringHostClient {
     request: InventoryRevisionScratchRequestDto,
   ): Promise<InventoryRevisionPreviewDto> {
     return this.#read((client) => client.previewInventoryRevision(request));
+  }
+
+  async promoteAnalysisToInventoryRevision(
+    itemId: string,
+    request: PromoteAnalysisToInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto> {
+    return (await this.#currentClient()).promoteAnalysisToInventoryRevision(
+      itemId,
+      request,
+    );
   }
 
   async saveInventoryRevision(

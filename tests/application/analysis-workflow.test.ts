@@ -131,6 +131,67 @@ test('the free analysis workspace applies localized moves and rejects stale upda
   assert.equal(events.length, 6);
 });
 
+test('an exploration starts with its first move atomically and can take it back', async () => {
+  const freeSession = new FreeAnalysisSession();
+  const update = new UpdateAnalysisScratch({
+    reader: unavailableContext,
+    writer: unavailableContext,
+    freeSession,
+    rules,
+    clock: { now: () => timestamp },
+    events: { publish: () => undefined },
+    storeStatus: {
+      readStoreStatus: async () => ({ schemaVersion: 5, dataRevision: 9 }),
+    },
+    scratchId: () => 'atomic-exploration',
+  });
+  const started = await update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: { kind: 'initial_position' },
+      firstMove: { kind: 'coordinates', value: 'e2e4' },
+    },
+  });
+
+  assert.equal(started.scratch?.scratchRevision, 2);
+  assert.equal(started.scratch?.steps[0]?.move.san, 'e4');
+  const beforeTakeBack = await new GetAnalysisWorkspace({
+    reader: unavailableContext,
+    freeSession,
+    rules,
+    storeStatus: {
+      readStoreStatus: async () => ({ schemaVersion: 5, dataRevision: 9 }),
+    },
+  }).execute({ scope: freeWorkScope() });
+  assert.ok(beforeTakeBack.allowedActions.includes('remove_last_move'));
+
+  const shortened = await update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: 'atomic-exploration',
+    expectedScratchRevision: 2,
+    action: { kind: 'remove_last_move' },
+  });
+
+  assert.equal(shortened.scratch?.scratchRevision, 3);
+  assert.equal(shortened.scratch?.steps.length, 0);
+  assert.equal(shortened.scratch?.cursor, 0);
+  const afterTakeBack = await new GetAnalysisWorkspace({
+    reader: unavailableContext,
+    freeSession,
+    rules,
+    storeStatus: {
+      readStoreStatus: async () => ({ schemaVersion: 5, dataRevision: 9 }),
+    },
+  }).execute({ scope: freeWorkScope() });
+  assert.equal(
+    afterTakeBack.allowedActions.includes('remove_last_move'),
+    false,
+  );
+});
+
 test('saving consumes free scratch only after a successful record commit', async () => {
   const freeSession = new FreeAnalysisSession();
   const update = new UpdateAnalysisScratch({

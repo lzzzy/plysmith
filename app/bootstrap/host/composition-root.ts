@@ -18,6 +18,7 @@ import {
   GetPendingRevisionImpact,
   ListInventoryRevisions,
   PreviewInventoryRevision,
+  PromoteAnalysisToInventoryRevision,
   ResolvePendingRevisionImpact,
   SaveInventoryRevision,
   SearchInventory,
@@ -229,6 +230,16 @@ export async function composeHost(
       contextReader: persistence,
       freeSession: freeAnalysisSession,
     });
+    const promoteAnalysisToInventoryRevision =
+      new PromoteAnalysisToInventoryRevision({
+        inventory: persistence,
+        contextReader: persistence,
+        contextWriter: persistence,
+        freeSession: freeAnalysisSession,
+        clock,
+        events: eventStream,
+        storeStatus: persistence,
+      });
     const saveInventoryRevision = new SaveInventoryRevision({
       reader: persistence,
       writer: persistence,
@@ -286,6 +297,7 @@ export async function composeHost(
       deleteAnalysisNote,
       searchInventory,
       startInventoryRevision,
+      promoteAnalysisToInventoryRevision,
       previewInventoryRevision,
       saveInventoryRevision,
       getInventoryRevision,

@@ -20,11 +20,13 @@ interface ChessBoardProps {
   readonly locale: UiLocale;
   readonly isBusy: boolean;
   readonly canMove?: boolean;
+  readonly undoMove?: Pick<CanonicalMoveDto, 'from' | 'to'>;
   readonly onMove: (
     from: string,
     to: string,
     promotion?: 'queen' | 'rook' | 'bishop' | 'knight',
   ) => void;
+  readonly onTakeBack?: () => void;
 }
 
 export function ChessBoard({
@@ -32,7 +34,9 @@ export function ChessBoard({
   locale,
   isBusy,
   canMove,
+  undoMove,
   onMove,
+  onTakeBack,
 }: ChessBoardProps) {
   const intl = useIntl();
   const board = useMemo(
@@ -57,6 +61,7 @@ export function ChessBoard({
   }, [workspace.currentState.fen]);
 
   const legalSources = new Set(workspace.legalMoves.map((move) => move.from));
+  if (undoMove !== undefined) legalSources.add(undoMove.to);
   const legalTargets = new Set(
     selectedSquare === undefined
       ? []
@@ -64,6 +69,8 @@ export function ChessBoard({
           .filter((move) => move.from === selectedSquare)
           .map((move) => move.to),
   );
+  if (undoMove !== undefined && selectedSquare === undoMove.to)
+    legalTargets.add(undoMove.from);
 
   function activateSquare(square: string) {
     if (!interactive) return;
@@ -73,6 +80,15 @@ export function ChessBoard({
     }
     if (selectedSquare === square) {
       setSelectedSquare(undefined);
+      return;
+    }
+    if (
+      undoMove !== undefined &&
+      selectedSquare === undoMove.to &&
+      square === undoMove.from
+    ) {
+      setSelectedSquare(undefined);
+      onTakeBack?.();
       return;
     }
     const matching = workspace.legalMoves.filter(
@@ -135,6 +151,10 @@ export function ChessBoard({
               const selected = selectedSquare === square;
               const target = legalTargets.has(square);
               const movable = interactive && legalSources.has(square);
+              const lastMove =
+                selectedSquare === undefined &&
+                undoMove !== undefined &&
+                (square === undoMove.from || square === undoMove.to);
               const label = `${square}, ${
                 piece === undefined
                   ? intl.formatMessage({ id: 'analysis.emptySquare' })
@@ -148,10 +168,11 @@ export function ChessBoard({
                     else squareRefs.current.set(square, element);
                   }}
                   type="button"
+                  data-analysis-board-square
                   role="gridcell"
                   aria-label={label}
                   aria-selected={selected}
-                  className={`${styles.square} ${dark ? styles.dark : styles.light} ${selected ? styles.selected : ''} ${target ? styles.target : ''} ${movable ? styles.movable : ''}`}
+                  className={`${styles.square} ${dark ? styles.dark : styles.light} ${lastMove ? styles.lastMove : ''} ${selected ? styles.selected : ''} ${target ? styles.target : ''} ${movable ? styles.movable : ''}`}
                   tabIndex={focusSquare === square ? 0 : -1}
                   onClick={() => activateSquare(square)}
                   onFocus={() => setFocusSquare(square)}

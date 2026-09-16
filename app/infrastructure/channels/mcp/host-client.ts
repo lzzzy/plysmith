@@ -47,6 +47,8 @@ export type StartInventoryRevisionRequest =
   components['schemas']['StartInventoryRevisionBody'];
 export type StartInventoryRevisionResult =
   components['schemas']['StartInventoryRevisionResult'];
+export type PromoteAnalysisToInventoryRevisionRequest =
+  components['schemas']['PromoteAnalysisToInventoryRevisionBody'];
 export type PreviewInventoryRevisionRequest =
   components['schemas']['InventoryRevisionScratchBody'];
 export type InventoryRevisionPreview =
@@ -138,6 +140,10 @@ export interface HostClient {
   startInventoryRevision(
     itemId: string,
     request: StartInventoryRevisionRequest,
+  ): Promise<StartInventoryRevisionResult>;
+  promoteAnalysisToInventoryRevision(
+    itemId: string,
+    request: PromoteAnalysisToInventoryRevisionRequest,
   ): Promise<StartInventoryRevisionResult>;
   previewInventoryRevision(
     request: PreviewInventoryRevisionRequest,

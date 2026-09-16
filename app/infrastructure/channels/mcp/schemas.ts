@@ -423,6 +423,7 @@ export const AnalysisWorkspaceSchema = Type.Object(
         Type.Literal('start_scratch'),
         Type.Literal('apply_move'),
         Type.Literal('move_cursor'),
+        Type.Literal('remove_last_move'),
         Type.Literal('prepare_note'),
         Type.Literal('clear_note'),
         Type.Literal('discard_scratch'),
@@ -482,7 +483,11 @@ export const UpdateAnalysisScratchArgumentsSchema = Type.Object(
     expectedScratchRevision: Type.Union([preferenceRevision, Type.Null()]),
     action: Type.Union([
       Type.Object(
-        { kind: Type.Literal('start'), origin: analysisStartOrigin },
+        {
+          kind: Type.Literal('start'),
+          origin: analysisStartOrigin,
+          firstMove: Type.Optional(moveInput),
+        },
         objectOptions,
       ),
       Type.Object(
@@ -493,6 +498,7 @@ export const UpdateAnalysisScratchArgumentsSchema = Type.Object(
         { kind: Type.Literal('move_cursor'), cursor: revision },
         objectOptions,
       ),
+      Type.Object({ kind: Type.Literal('remove_last_move') }, objectOptions),
       Type.Object(
         {
           kind: Type.Literal('prepare_note'),
@@ -697,6 +703,18 @@ export const StartInventoryRevisionResultSchema = Type.Object(
   objectOptions,
 );
 
+export const PromoteAnalysisToInventoryRevisionArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    itemId: localId,
+    baseRevisionId: localId,
+    anchorId: localId,
+    expectedScratchId: Type.String({ minLength: 1, maxLength: 160 }),
+    expectedScratchRevision: preferenceRevision,
+  },
+  objectOptions,
+);
+
 export const PreviewInventoryRevisionArgumentsSchema = Type.Object(
   {
     scope: workScope,
@@ -722,6 +740,11 @@ const inventoryRevisionFollowingContextSummary = Type.Object(
   {
     contextId: localId,
     contextName: Type.String({ minLength: 1, maxLength: 160 }),
+    updatedAutomatically: Type.Boolean(),
+    referenceCount: revision,
+    contributionCount: revision,
+    managementResumeCount: revision,
+    analysisResumeCount: revision,
   },
   objectOptions,
 );

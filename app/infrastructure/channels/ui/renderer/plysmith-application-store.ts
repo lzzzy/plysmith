@@ -27,6 +27,7 @@ import {
   type InventoryRevisionPreviewDto,
   type InventoryRevisionScratchRequestDto,
   type PendingRevisionImpactDto,
+  type PromoteAnalysisToInventoryRevisionRequestDto,
   type ResolvePendingRevisionImpactRequestDto,
   type ResolvePendingRevisionImpactResultDto,
   type SaveInventoryRevisionRequestDto,
@@ -52,6 +53,7 @@ import type {
   DesktopBootstrap,
   RendererDiagnosticEvent,
 } from '../desktop/contract.ts';
+import { localizeSan } from './chess-display.ts';
 import type { UiLocale } from './messages.ts';
 
 export type ActivityId = 'manage' | 'analyze' | 'settings';
@@ -59,6 +61,7 @@ export type WorkScope = AnalysisWorkspaceDto['scope'];
 export type InventoryItem = SearchInventoryResultDto['items'][number];
 export type WorkingContext = ListWorkingContextsResultDto['contexts'][number];
 type MoveRequest = NonNullable<StartInventoryRevisionRequestDto['firstMove']>;
+type CanonicalMove = AnalysisWorkspaceDto['legalMoves'][number];
 export type ApplicationCommand =
   | 'set_language'
   | 'set_diagnostic_log_level'
@@ -74,8 +77,9 @@ export type ApplicationCommand =
   | 'delete_analysis_note'
   | 'create_analysis_record'
   | 'start_inventory_revision'
+  | 'promote_analysis_to_inventory_revision'
+  | 'remove_last_move'
   | 'prepare_inventory_metadata_revision'
-  | 'preview_inventory_revision'
   | 'save_inventory_revision'
   | 'save_managed_inventory_revision'
   | 'discard_managed_inventory_revision'
@@ -114,6 +118,10 @@ export interface PlysmithApplicationClient {
   startInventoryRevision(
     itemId: string,
     request: StartInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto>;
+  promoteAnalysisToInventoryRevision(
+    itemId: string,
+    request: PromoteAnalysisToInventoryRevisionRequestDto,
   ): Promise<StartInventoryRevisionResultDto>;
   previewInventoryRevision(
     request: InventoryRevisionScratchRequestDto,
@@ -209,6 +217,13 @@ export interface ManageInventoryRevisionDraft {
   readonly preview: InventoryRevisionPreviewDto;
 }
 
+interface BoundInventoryRevisionPreview {
+  readonly scope: WorkScope;
+  readonly scratchId: string;
+  readonly scratchRevision: number;
+  readonly preview: InventoryRevisionPreviewDto;
+}
+
 export type PlysmithApplicationState =
   | { readonly phase: 'loading' }
   | { readonly phase: 'unavailable'; readonly errorCode?: string }
@@ -260,7 +275,7 @@ export class PlysmithApplicationStore {
   #pendingUnversionedEvent = false;
   #committedReadKey: string | undefined;
   #freeAnalysisFocus: AnalysisFocus | undefined;
-  #inventoryRevisionPreview: InventoryRevisionPreviewDto | undefined;
+  #inventoryRevisionPreview: BoundInventoryRevisionPreview | undefined;
   #manageInventoryRevisionDraft: ManageInventoryRevisionDraft | undefined;
   #revisionImpact: RevisionImpactDetails | undefined;
 
@@ -403,6 +418,20 @@ export class PlysmithApplicationStore {
             this.#refreshAgain = true;
             continue;
           }
+          const inventoryRevisionPreview =
+            await this.#loadInventoryRevisionPreview(
+              client,
+              analysis,
+              status.persistence.dataRevision,
+            );
+          if (
+            inventoryRevisionPreview !== undefined &&
+            inventoryRevisionPreview.preview.dataRevision !==
+              status.persistence.dataRevision
+          ) {
+            this.#refreshAgain = true;
+            continue;
+          }
           if (
             lifecycle !== this.#lifecycle ||
             readVersion < this.#committedReadVersion ||
@@ -423,6 +452,7 @@ export class PlysmithApplicationStore {
           this.#committedReadVersion = readVersion;
           this.#committedReadKey = readKey;
           this.#errorCode = undefined;
+          this.#inventoryRevisionPreview = inventoryRevisionPreview;
           this.#acknowledgeEventsThrough(status.persistence.dataRevision);
           const selectedInventoryItemId =
             this.#selectedInventoryItemId ??
@@ -446,10 +476,10 @@ export class PlysmithApplicationStore {
               contexts,
               inventory,
               analysis,
-              ...(this.#inventoryRevisionPreview === undefined
+              ...(inventoryRevisionPreview === undefined
                 ? {}
                 : {
-                    inventoryRevisionPreview: this.#inventoryRevisionPreview,
+                    inventoryRevisionPreview: inventoryRevisionPreview.preview,
                   }),
               ...(this.#manageInventoryRevisionDraft === undefined
                 ? {}
@@ -824,38 +854,6 @@ export class PlysmithApplicationStore {
     await this.#startScratch({ kind: 'fen', fen: fen.trim() });
   }
 
-  async startScratchAtTarget(target: AnalysisFocus): Promise<void> {
-    const record = this.#readyState()?.analysis.record;
-    if (record === undefined || record.readOnlyPreview) return;
-    await this.#startScratch({
-      kind: 'inventory_anchor',
-      itemId: target.itemId,
-      revisionId: target.revisionId,
-      anchorId: target.anchorId,
-    });
-  }
-
-  async startInventoryRevision(
-    mode: 'truncate_after' | 'replace_move',
-    anchorId: string,
-  ): Promise<void> {
-    await this.#startInventoryRevision(mode, anchorId);
-  }
-
-  async startInventoryMetadataRevision(
-    displayName: string,
-    summary: string | null,
-  ): Promise<void> {
-    const record = this.#readyState()?.analysis.record;
-    if (record === undefined) return;
-    await this.#startInventoryRevision(
-      'metadata',
-      record.currentAnchorId,
-      undefined,
-      { displayName, summary },
-    );
-  }
-
   async prepareInventoryItemRename(
     item: InventoryItem,
     displayName: string,
@@ -968,38 +966,8 @@ export class PlysmithApplicationStore {
     const state = this.#readyState();
     const trimmed = value.trim();
     if (state === undefined || trimmed === '') return;
-    const scratchRevision = state.analysis.scratch?.scratchRevision;
-    const scratchId = state.analysis.scratch?.scratchId;
     const move = moveRequest(trimmed, state.preferences.uiLocale);
-    if (scratchId === undefined || scratchRevision === undefined) {
-      const record = state.analysis.record;
-      const lineEndAnchorId =
-        record?.steps.at(-1)?.anchorId ?? record?.rootAnchorId;
-      if (
-        record === undefined ||
-        record.historical ||
-        record.readOnlyPreview ||
-        record.revisionId !== record.currentRevisionId ||
-        record.currentAnchorId !== lineEndAnchorId
-      ) {
-        return;
-      }
-      await this.#startInventoryRevision(
-        'extend',
-        record.currentAnchorId,
-        move,
-      );
-      return;
-    }
-    this.#inventoryRevisionPreview = undefined;
-    await this.#runCommand('update_scratch', (client) =>
-      client.updateAnalysisScratch({
-        scope: state.scope,
-        expectedScratchId: scratchId,
-        expectedScratchRevision: scratchRevision,
-        action: { kind: 'apply_move', move },
-      }),
-    );
+    await this.#applyMoveRequest(move);
   }
 
   async applyBoardMove(
@@ -1013,7 +981,108 @@ export class PlysmithApplicationStore {
         : ({ queen: 'q', rook: 'r', bishop: 'b', knight: 'n' } as const)[
             promotion
           ];
-    await this.applyMove(`${from}${to}${suffix}`);
+    await this.#applyMoveRequest({
+      kind: 'coordinates',
+      value: `${from}${to}${suffix}`,
+    });
+  }
+
+  async takeBackLastMove(): Promise<void> {
+    const state = this.#readyState();
+    if (state === undefined) return;
+    const scratch = state.analysis.scratch;
+    if (scratch !== undefined) {
+      if (scratch.cursor !== scratch.steps.length) return;
+      if (scratch.steps.length > 0) {
+        await this.#updateScratch('remove_last_move', {
+          kind: 'remove_last_move',
+        });
+        return;
+      }
+      if (scratch.intent.kind !== 'inventory_revision') return;
+      const record = state.analysis.record;
+      const preservedMoveCount = this.#visibleInventoryRevisionPreview(
+        state.analysis,
+      )?.preservedMoveCount;
+      if (
+        record === undefined ||
+        preservedMoveCount === undefined ||
+        preservedMoveCount === 0
+      ) {
+        return;
+      }
+      await this.#startInventoryRevision(
+        'truncate_after',
+        anchorBeforeMoveCount(record, preservedMoveCount - 1),
+      );
+      return;
+    }
+
+    const record = state.analysis.record;
+    if (
+      record === undefined ||
+      record.historical ||
+      record.readOnlyPreview ||
+      record.revisionId !== record.currentRevisionId ||
+      record.cursor !== record.steps.length ||
+      record.steps.length === 0
+    ) {
+      return;
+    }
+    await this.#startInventoryRevision(
+      'truncate_after',
+      anchorBeforeMoveCount(record, record.steps.length - 1),
+    );
+  }
+
+  async promoteAnalysisToInventoryRevision(): Promise<void> {
+    const state = this.#readyState();
+    const scratch = state?.analysis.scratch;
+    const record = state?.analysis.record;
+    const origin = scratch?.origin;
+    if (
+      state === undefined ||
+      scratch === undefined ||
+      record === undefined ||
+      scratch.intent.kind !== 'exploration' ||
+      origin?.kind !== 'inventory_anchor' ||
+      origin.itemId !== record.itemId ||
+      origin.revisionId !== record.revisionId ||
+      scratch.cursor !== scratch.steps.length ||
+      scratch.steps.length === 0
+    ) {
+      return;
+    }
+    const outcome = await this.#runCommand(
+      'promote_analysis_to_inventory_revision',
+      async (client) => {
+        const result = await client.promoteAnalysisToInventoryRevision(
+          record.itemId,
+          {
+            scope: state.scope,
+            baseRevisionId: record.revisionId,
+            anchorId: origin.anchorId,
+            expectedScratchId: scratch.scratchId,
+            expectedScratchRevision: scratch.scratchRevision,
+          },
+        );
+        const preview = await client.previewInventoryRevision({
+          scope: state.scope,
+          expectedScratchId: result.scratch.scratchId,
+          expectedScratchRevision: result.scratch.scratchRevision,
+        });
+        return Object.freeze({ result, preview });
+      },
+      false,
+    );
+    if (outcome === undefined) return;
+    this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
+      state.scope,
+      outcome.result.scratch,
+      outcome.preview,
+    );
+    await this.refresh();
+    this.#finishCommand();
   }
 
   async moveAnalysisCursor(cursor: number): Promise<void> {
@@ -1026,7 +1095,6 @@ export class PlysmithApplicationStore {
       scratchRevision === undefined
     )
       return;
-    this.#inventoryRevisionPreview = undefined;
     await this.#runCommand('update_scratch', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
@@ -1100,42 +1168,10 @@ export class PlysmithApplicationStore {
     );
   }
 
-  async previewInventoryRevision(): Promise<void> {
-    const state = this.#readyState();
-    const scratch = state?.analysis.scratch;
-    if (
-      state === undefined ||
-      scratch === undefined ||
-      scratch.intent.kind !== 'inventory_revision' ||
-      scratch.cursor !== scratch.steps.length
-    ) {
-      return;
-    }
-    const preview = await this.#runCommand(
-      'preview_inventory_revision',
-      (client) =>
-        client.previewInventoryRevision({
-          scope: state.scope,
-          expectedScratchId: scratch.scratchId,
-          expectedScratchRevision: scratch.scratchRevision,
-        }),
-      false,
-    );
-    if (preview === undefined) return;
-    this.#inventoryRevisionPreview = preview;
-    this.#publishViewState();
-    this.#finishCommand();
-  }
-
-  clearInventoryRevisionPreview(): void {
-    this.#inventoryRevisionPreview = undefined;
-    this.#publishViewState();
-  }
-
   async saveInventoryRevision(): Promise<boolean> {
     const state = this.#readyState();
     const scratch = state?.analysis.scratch;
-    const preview = this.#inventoryRevisionPreview;
+    const preview = this.#visibleInventoryRevisionPreview(state?.analysis);
     if (
       state === undefined ||
       scratch === undefined ||
@@ -1559,6 +1595,93 @@ export class PlysmithApplicationStore {
     this.#listeners.clear();
   }
 
+  async #applyMoveRequest(move: MoveRequest): Promise<void> {
+    const state = this.#readyState();
+    if (state === undefined) return;
+    const scratch = state.analysis.scratch;
+    if (scratch !== undefined) {
+      if (scratch.cursor !== scratch.steps.length) return;
+      await this.#updateScratch('update_scratch', {
+        kind: 'apply_move',
+        move,
+      });
+      return;
+    }
+
+    const record = state.analysis.record;
+    if (
+      record === undefined ||
+      record.historical ||
+      record.readOnlyPreview ||
+      record.revisionId !== record.currentRevisionId
+    ) {
+      return;
+    }
+    const savedNextStep = record.steps[record.cursor];
+    if (
+      savedNextStep !== undefined &&
+      matchesSavedMove(move, savedNextStep.move, state.preferences.uiLocale)
+    ) {
+      await this.openRecordAnchor(savedNextStep.anchorId);
+      return;
+    }
+    if (record.cursor === record.steps.length) {
+      await this.#startInventoryRevision(
+        'extend',
+        record.currentAnchorId,
+        move,
+      );
+      return;
+    }
+    await this.#startScratch(
+      {
+        kind: 'inventory_anchor',
+        itemId: record.itemId,
+        revisionId: record.revisionId,
+        anchorId: record.currentAnchorId,
+      },
+      move,
+    );
+  }
+
+  async #updateScratch(
+    command: 'update_scratch' | 'remove_last_move',
+    action: UpdateAnalysisScratchRequestDto['action'],
+  ): Promise<void> {
+    const state = this.#readyState();
+    const scratch = state?.analysis.scratch;
+    if (state === undefined || scratch === undefined) return;
+    const outcome = await this.#runCommand(
+      command,
+      async (client) => {
+        const result = await client.updateAnalysisScratch({
+          scope: state.scope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          action,
+        });
+        const preview =
+          result.scratch?.intent.kind === 'inventory_revision'
+            ? await client.previewInventoryRevision({
+                scope: state.scope,
+                expectedScratchId: result.scratch.scratchId,
+                expectedScratchRevision: result.scratch.scratchRevision,
+              })
+            : undefined;
+        return Object.freeze({ result, preview });
+      },
+      false,
+    );
+    if (outcome === undefined) return;
+    this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
+      state.scope,
+      outcome.result.scratch,
+      outcome.preview,
+    );
+    await this.refresh();
+    this.#finishCommand();
+  }
+
   async #startInventoryRevision(
     mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata',
     anchorId: string,
@@ -1570,33 +1693,54 @@ export class PlysmithApplicationStore {
   ): Promise<void> {
     const state = this.#readyState();
     const record = state?.analysis.record;
+    const existingScratch = state?.analysis.scratch;
     if (
       state === undefined ||
       record === undefined ||
-      state.analysis.scratch !== undefined ||
+      (existingScratch !== undefined &&
+        existingScratch.intent.kind !== 'inventory_revision') ||
       record.historical ||
       record.readOnlyPreview ||
       record.revisionId !== record.currentRevisionId
     ) {
       return;
     }
-    const result = await this.#runCommand(
+    const outcome = await this.#runCommand(
       'start_inventory_revision',
-      (client) =>
-        client.startInventoryRevision(record.itemId, {
+      async (client) => {
+        const result = await client.startInventoryRevision(record.itemId, {
           scope: state.scope,
           baseRevisionId: record.revisionId,
           anchorId,
           mode,
-          expectedScratchId: null,
-          expectedScratchRevision: null,
+          expectedScratchId: existingScratch?.scratchId ?? null,
+          expectedScratchRevision: existingScratch?.scratchRevision ?? null,
           ...(metadata === undefined ? {} : metadata),
           ...(firstMove === undefined ? {} : { firstMove }),
-        }),
+        });
+        const preview =
+          mode === 'replace_move' && result.scratch.steps.length === 0
+            ? undefined
+            : await client.previewInventoryRevision({
+                scope: state.scope,
+                expectedScratchId: result.scratch.scratchId,
+                expectedScratchRevision: result.scratch.scratchRevision,
+              });
+        return Object.freeze({ result, preview });
+      },
       false,
     );
-    if (result === undefined) return;
-    this.#inventoryRevisionPreview = undefined;
+    if (outcome === undefined) return;
+    this.#analysisFocus = Object.freeze({
+      itemId: record.itemId,
+      revisionId: record.revisionId,
+      anchorId,
+    });
+    this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
+      state.scope,
+      outcome.result.scratch,
+      outcome.preview,
+    );
     await this.refresh();
     this.#finishCommand();
   }
@@ -1606,6 +1750,7 @@ export class PlysmithApplicationStore {
       UpdateAnalysisScratchRequestDto['action'],
       { kind: 'start' }
     >['origin'],
+    firstMove?: MoveRequest,
   ): Promise<void> {
     const state = this.#readyState();
     if (state === undefined || state.analysis.scratch !== undefined) return;
@@ -1614,9 +1759,62 @@ export class PlysmithApplicationStore {
         scope: state.scope,
         expectedScratchId: null,
         expectedScratchRevision: null,
-        action: { kind: 'start', origin },
+        action: {
+          kind: 'start',
+          origin,
+          ...(firstMove === undefined ? {} : { firstMove }),
+        },
       }),
     );
+  }
+
+  async #loadInventoryRevisionPreview(
+    client: PlysmithApplicationClient,
+    analysis: AnalysisWorkspaceDto,
+    dataRevision: number,
+  ): Promise<BoundInventoryRevisionPreview | undefined> {
+    const scratch = analysis.scratch;
+    if (
+      scratch?.intent.kind !== 'inventory_revision' ||
+      (scratch.intent.mode === 'replace_move' && scratch.steps.length === 0)
+    ) {
+      return undefined;
+    }
+    const existing = this.#inventoryRevisionPreview;
+    if (
+      existing !== undefined &&
+      sameScope(existing.scope, analysis.scope) &&
+      existing.scratchId === scratch.scratchId &&
+      existing.scratchRevision === scratch.scratchRevision &&
+      existing.preview.dataRevision === dataRevision
+    ) {
+      return existing;
+    }
+    const preview = await client.previewInventoryRevision({
+      scope: analysis.scope,
+      expectedScratchId: scratch.scratchId,
+      expectedScratchRevision: scratch.scratchRevision,
+    });
+    return bindInventoryRevisionPreview(analysis.scope, scratch, preview);
+  }
+
+  #visibleInventoryRevisionPreview(
+    analysis: AnalysisWorkspaceDto | undefined,
+  ): InventoryRevisionPreviewDto | undefined {
+    if (analysis === undefined || !sameScope(analysis.scope, this.#scope))
+      return undefined;
+    const scratch = analysis.scratch;
+    const bound = this.#inventoryRevisionPreview;
+    if (
+      scratch === undefined ||
+      bound === undefined ||
+      !sameScope(bound.scope, analysis.scope) ||
+      bound.scratchId !== scratch.scratchId ||
+      bound.scratchRevision !== scratch.scratchRevision
+    ) {
+      return undefined;
+    }
+    return bound.preview;
   }
 
   #analysisRequest(): GetAnalysisWorkspaceRequestDto {
@@ -1866,6 +2064,9 @@ export class PlysmithApplicationStore {
   #publishViewState(): void {
     if (this.#state.phase !== 'ready') return;
     const state = this.#state;
+    const inventoryRevisionPreview = this.#visibleInventoryRevisionPreview(
+      state.analysis,
+    );
     this.#setState(
       Object.freeze({
         phase: 'ready',
@@ -1876,9 +2077,9 @@ export class PlysmithApplicationStore {
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,
-        ...(this.#inventoryRevisionPreview === undefined
+        ...(inventoryRevisionPreview === undefined
           ? {}
-          : { inventoryRevisionPreview: this.#inventoryRevisionPreview }),
+          : { inventoryRevisionPreview }),
         ...(this.#manageInventoryRevisionDraft === undefined
           ? {}
           : {
@@ -1945,6 +2146,39 @@ function moveRequest(value: string, locale: UiLocale): MoveRequest {
     : { kind: 'notation', value, locale };
 }
 
+function matchesSavedMove(
+  request: MoveRequest,
+  saved: CanonicalMove,
+  locale: UiLocale,
+): boolean {
+  if (request.kind === 'notation') {
+    const value = normalizeCastleNotation(request.value.trim());
+    return (
+      value === normalizeCastleNotation(saved.san) ||
+      value === normalizeCastleNotation(localizeSan(saved.san, locale))
+    );
+  }
+  const promotion =
+    saved.promotion === undefined
+      ? ''
+      : ({ queen: 'q', rook: 'r', bishop: 'b', knight: 'n' } as const)[
+          saved.promotion
+        ];
+  return request.value.toLowerCase() === `${saved.from}${saved.to}${promotion}`;
+}
+
+function normalizeCastleNotation(value: string): string {
+  return value.replaceAll('0', 'O');
+}
+
+function anchorBeforeMoveCount(
+  record: AnalysisRecordDto,
+  moveCount: number,
+): string {
+  if (moveCount <= 0) return record.rootAnchorId;
+  return record.steps[moveCount - 1]?.anchorId ?? record.rootAnchorId;
+}
+
 function sameDataRevision(
   status: SystemStatusDto,
   preferences: UserPreferencesDto,
@@ -1976,6 +2210,20 @@ function sameScope(left: WorkScope, right: WorkScope): boolean {
     (left.kind === 'free' ||
       (right.kind === 'context' && left.contextId === right.contextId))
   );
+}
+
+function bindInventoryRevisionPreview(
+  scope: WorkScope,
+  scratch: AnalysisWorkspaceDto['scratch'],
+  preview: InventoryRevisionPreviewDto | undefined,
+): BoundInventoryRevisionPreview | undefined {
+  if (scratch === undefined || preview === undefined) return undefined;
+  return Object.freeze({
+    scope,
+    scratchId: scratch.scratchId,
+    scratchRevision: scratch.scratchRevision,
+    preview,
+  });
 }
 
 function isCurrentOrNewerRead(

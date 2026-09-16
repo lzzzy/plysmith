@@ -65,6 +65,8 @@ interface StoredPath {
 }
 
 interface ScratchPath {
+  readonly intent:
+    { readonly kind: 'exploration' } | { readonly kind: 'inventory_revision' };
   readonly origin:
     | { readonly kind: 'initial_position' }
     | { readonly kind: 'fen' }
@@ -225,18 +227,23 @@ export function analysisPathPresentation(source: {
     });
   }
 
-  const attachedRecord =
+  const recordOriginCursor =
     scratch.origin.kind === 'inventory_anchor' &&
     record !== undefined &&
     scratch.origin.itemId === record.itemId &&
-    scratch.origin.revisionId === record.revisionId &&
-    scratch.origin.anchorId === record.currentAnchorId;
-  const awaitingFirstScratchMove = attachedRecord && scratch.steps.length === 0;
+    scratch.origin.revisionId === record.revisionId
+      ? cursorAtAnchor(record, scratch.origin.anchorId)
+      : undefined;
+  const attachedRecord = recordOriginCursor !== undefined;
+  const awaitingFirstExplorationMove =
+    attachedRecord &&
+    scratch.intent.kind === 'exploration' &&
+    scratch.steps.length === 0;
   const sourcePositionCount = attachedRecord ? sourceEntries.length : 0;
   const storedPrefix = attachedRecord
-    ? awaitingFirstScratchMove
-      ? record.steps
-      : record.steps.slice(0, record.cursor)
+    ? awaitingFirstExplorationMove
+      ? record!.steps
+      : record!.steps.slice(0, recordOriginCursor)
     : [];
   const hasStoredPrefix = storedPrefix.length > 0;
   const storedEntries = storedPrefix.map((step, index) =>
@@ -250,11 +257,11 @@ export function analysisPathPresentation(source: {
       current:
         scratch.cursor === 0 &&
         index ===
-          (awaitingFirstScratchMove
-            ? record!.cursor - 1
+          (awaitingFirstExplorationMove
+            ? recordOriginCursor! - 1
             : storedPrefix.length - 1),
       branchOrigin:
-        !awaitingFirstScratchMove && index === storedPrefix.length - 1,
+        !awaitingFirstExplorationMove && index === storedPrefix.length - 1,
       noteTarget: noteTarget(
         record!.itemId,
         record!.revisionId,
@@ -284,15 +291,17 @@ export function analysisPathPresentation(source: {
     ...scratchEntries,
   ]);
   const scratchOriginPositionIndex = attachedRecord
-    ? sourcePositionCount + record.cursor
+    ? sourcePositionCount + recordOriginCursor
     : 0;
   return Object.freeze({
     entries,
     positions: pathPositions(
-      attachedRecord ? (record.sourceLine?.root ?? record.root) : scratch.root,
+      attachedRecord
+        ? (record!.sourceLine?.root ?? record!.root)
+        : scratch.root,
       entries,
       attachedRecord
-        ? record.sourceLine === undefined
+        ? record!.sourceLine === undefined
           ? recordRootTarget
           : sourceRootTarget
         : undefined,
@@ -305,11 +314,11 @@ export function analysisPathPresentation(source: {
       ? visibleSourceEntries.length
       : undefined,
     rootCurrent:
-      scratch.cursor === 0 && (!attachedRecord || record.cursor === 0),
+      scratch.cursor === 0 && (!attachedRecord || recordOriginCursor === 0),
     sourceDisplayName: attachedRecord
-      ? record.sourceLine?.sourceDisplayName
+      ? record!.sourceLine?.sourceDisplayName
       : undefined,
-    hasSourcePrefix: attachedRecord && record.sourceLine !== undefined,
+    hasSourcePrefix: attachedRecord && record!.sourceLine !== undefined,
     hasStoredPrefix,
     scratchCursor: scratch.cursor,
     scratchLength: scratch.steps.length,
@@ -317,6 +326,17 @@ export function analysisPathPresentation(source: {
     sourceRootTarget: attachedRecord ? sourceRootTarget : undefined,
     recordRootTarget: attachedRecord ? recordRootTarget : undefined,
   });
+}
+
+function cursorAtAnchor(
+  record: StoredPath,
+  anchorId: string,
+): number | undefined {
+  if (record.rootAnchorId === anchorId) return 0;
+  const stepIndex = record.steps.findIndex(
+    (step) => step.anchorId === anchorId,
+  );
+  return stepIndex < 0 ? undefined : stepIndex + 1;
 }
 
 function pathPositions(

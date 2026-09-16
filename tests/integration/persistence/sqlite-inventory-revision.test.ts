@@ -15,6 +15,7 @@ import {
   GetInventoryRevision,
   GetPendingRevisionImpact,
   ListInventoryRevisions,
+  PromoteAnalysisToInventoryRevision,
   PreviewInventoryRevision,
   ResolvePendingRevisionImpact,
   SaveInventoryRevision,
@@ -116,6 +117,15 @@ function useCases(store: SqlitePersistenceAdapter) {
       inventory: store,
       contextReader: store,
       freeSession,
+    }),
+    promoteRevision: new PromoteAnalysisToInventoryRevision({
+      inventory: store,
+      contextReader: store,
+      contextWriter: store,
+      freeSession,
+      clock,
+      events: noEvents,
+      storeStatus: store,
     }),
     saveRevision: new SaveInventoryRevision({
       reader: store,
@@ -220,6 +230,20 @@ async function appendMove(
   });
 }
 
+async function addIndependentContextUse(
+  cases: ReturnType<typeof useCases>,
+  base: Awaited<ReturnType<typeof createFrenchLine>>,
+  displayName: string,
+) {
+  const context = await cases.createContext.execute({ displayName });
+  await cases.addReference.execute({
+    contextId: context.context.contextId,
+    itemId: base.itemId,
+    anchorId: base.rootAnchorId,
+  });
+  return context;
+}
+
 test('publishes an immutable extension with stable prefix anchors', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
@@ -272,6 +296,53 @@ test('publishes an immutable extension with stable prefix anchors', async (t) =>
       [2, true, 'extend'],
       [1, false, 'created'],
     ],
+  );
+});
+
+test('promotes an explored continuation to a revision draft without replaying it', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const first = await createFrenchLine(cases);
+  const cutAnchor = first.steps[1]!.anchorId;
+  const explored = await cases.update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: first.itemId,
+        revisionId: first.revisionId,
+        anchorId: cutAnchor,
+      },
+      firstMove: { kind: 'notation', value: 'Bc4', locale: 'en-GB' },
+    },
+  });
+
+  const promoted = await cases.promoteRevision.execute({
+    scope: freeWorkScope(),
+    itemId: first.itemId,
+    baseRevisionId: first.revisionId,
+    anchorId: cutAnchor,
+    expectedScratchId: explored.scratch!.scratchId,
+    expectedScratchRevision: explored.scratch!.scratchRevision,
+  });
+  const preview = await cases.previewRevision.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: promoted.scratch.scratchId,
+    expectedScratchRevision: promoted.scratch.scratchRevision,
+  });
+
+  assert.equal(promoted.scratch.intent.kind, 'inventory_revision');
+  assert.equal(preview.mode, 'truncate_after');
+  assert.deepEqual(
+    preview.removedSteps.map((step) => step.move.san),
+    ['d4', 'd5'],
+  );
+  assert.deepEqual(
+    preview.addedSteps.map((step) => step.move.san),
+    ['Bc4'],
   );
 });
 
@@ -586,6 +657,7 @@ test('moves an impacted reference to the changed line and keeps surviving refere
     itemId: first.itemId,
     anchorId: replaced,
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig A');
 
   const scope = freeWorkScope();
   const started = await cases.startRevision.execute({
@@ -660,6 +732,7 @@ test('keeps the previous version as a separately named analysis in the context',
     languageTag: 'de-DE',
     noteScope: { kind: 'context', contextId: context.context.contextId },
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig B');
 
   const scope = freeWorkScope();
   const started = await cases.startRevision.execute({
@@ -769,6 +842,7 @@ test('removes an affected analysis and its context content from the context', as
     revisionId: first.revisionId,
     anchorId: replaced,
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig C');
 
   const scope = freeWorkScope();
   const started = await cases.startRevision.execute({
@@ -986,6 +1060,151 @@ test('consumes a context revision scratch and resumes at the new line end', asyn
   );
 });
 
+test('the publishing context follows a truncation without reviewing its own change', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const first = await createFrenchLine(cases);
+  const removed = first.steps.at(-1)!.anchorId;
+  const retained = first.steps.at(-2)!.anchorId;
+  const context = await cases.createContext.execute({ displayName: 'Editor' });
+  await cases.addReference.execute({
+    contextId: context.context.contextId,
+    itemId: first.itemId,
+    anchorId: removed,
+  });
+  await cases.createPositionNote.execute({
+    scope: contextWorkScope(context.context.contextId),
+    itemId: first.itemId,
+    revisionId: first.revisionId,
+    anchorId: removed,
+    body: 'Only relevant to the removed move.',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'context', contextId: context.context.contextId },
+  });
+  await cases.setResume.execute({
+    contextId: context.context.contextId,
+    area: 'analyze',
+    expectedResumeVersion: null,
+    mode: 'analyze',
+    itemId: first.itemId,
+    revisionId: first.revisionId,
+    anchorId: removed,
+  });
+  const scope = contextWorkScope(context.context.contextId);
+  const started = await cases.startRevision.execute({
+    scope,
+    itemId: first.itemId,
+    baseRevisionId: first.revisionId,
+    anchorId: retained,
+    mode: 'truncate_after',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const preview = await cases.previewRevision.execute({
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  });
+
+  assert.equal(preview.affectedContexts.length, 0);
+  assert.deepEqual(
+    preview.followingContexts.map((entry) => entry.contextId),
+    [context.context.contextId],
+  );
+  assert.deepEqual(preview.followingContexts[0], {
+    contextId: context.context.contextId,
+    contextName: 'Editor',
+    updatedAutomatically: true,
+    referenceCount: 1,
+    contributionCount: 1,
+    managementResumeCount: 0,
+    analysisResumeCount: 0,
+  });
+  const saved = await cases.saveRevision.execute({
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  assert.equal(saved.impacts.length, 0);
+  const workspace = await cases.getContext.execute({
+    contextId: context.context.contextId,
+  });
+  assert.equal(workspace.context.pendingRevisionImpactCount, 0);
+  assert.equal(
+    workspace.references[0]?.anchorId.value,
+    saved.currentAnchorId.value,
+  );
+  assert.equal(
+    workspace.analysisResume?.revisionId?.value,
+    saved.revisionId.value,
+  );
+  const current = await cases.getRevision.execute({
+    scope,
+    itemId: first.itemId,
+    revisionId: saved.revisionId,
+    anchorId: saved.currentAnchorId,
+  });
+  assert.equal(current.contributions.length, 0);
+});
+
+test('one sole context follows an externally published truncation automatically', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const first = await createFrenchLine(cases);
+  const removed = first.steps.at(-1)!.anchorId;
+  const retained = first.steps.at(-2)!.anchorId;
+  const context = await cases.createContext.execute({
+    displayName: 'Only use',
+  });
+  await cases.addReference.execute({
+    contextId: context.context.contextId,
+    itemId: first.itemId,
+    anchorId: removed,
+  });
+  const started = await cases.startRevision.execute({
+    scope: freeWorkScope(),
+    itemId: first.itemId,
+    baseRevisionId: first.revisionId,
+    anchorId: retained,
+    mode: 'truncate_after',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const preview = await cases.previewRevision.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  });
+
+  assert.equal(preview.affectedContexts.length, 0);
+  assert.equal(preview.followingContexts.length, 1);
+  assert.deepEqual(preview.followingContexts[0], {
+    contextId: context.context.contextId,
+    contextName: 'Only use',
+    updatedAutomatically: true,
+    referenceCount: 1,
+    contributionCount: 0,
+    managementResumeCount: 0,
+    analysisResumeCount: 0,
+  });
+  const saved = await cases.saveRevision.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  assert.equal(saved.impacts.length, 0);
+  const workspace = await cases.getContext.execute({
+    contextId: context.context.contextId,
+  });
+  assert.equal(workspace.context.pendingRevisionImpactCount, 0);
+  assert.equal(
+    workspace.references[0]?.anchorId.value,
+    saved.currentAnchorId.value,
+  );
+});
+
 test('using the new version discards a competing context revision draft', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
@@ -1009,6 +1228,7 @@ test('using the new version discards a competing context revision draft', async 
     expectedScratchId: null,
     expectedScratchRevision: null,
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig D');
 
   const publisherScope = freeWorkScope();
   const started = await cases.startRevision.execute({
@@ -1116,6 +1336,7 @@ test('rejects context writes while a revision impact is open', async (t) => {
     itemId: first.itemId,
     anchorId: replaced,
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig E');
   const scope = freeWorkScope();
   const started = await cases.startRevision.execute({
     scope,
@@ -1171,6 +1392,7 @@ test('copies a later pinned revision without reviving archived notes', async (t)
     languageTag: 'de-DE',
     noteScope: { kind: 'context', contextId: context.context.contextId },
   });
+  await addIndependentContextUse(cases, first, 'Unabhaengig F');
 
   const secondScratch = await cases.startRevision.execute({
     scope: freeWorkScope(),
@@ -1329,6 +1551,7 @@ test('keeps an unaffected analysis usable while another analysis needs review', 
     revisionId: affected.revisionId,
     anchorId: affectedEnd,
   });
+  await addIndependentContextUse(cases, affected, 'Unabhaengig G');
 
   const revision = await cases.startRevision.execute({
     scope: freeWorkScope(),

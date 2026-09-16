@@ -70,6 +70,7 @@ test('keeps the stored route visible while a noted analysis path remains active'
       ],
     },
     scratch: {
+      intent: { kind: 'exploration' },
       origin: {
         kind: 'inventory_anchor',
         itemId: '3',
@@ -125,6 +126,7 @@ test('keeps the complete stored line visible until a new analysis path has a mov
       ],
     },
     scratch: {
+      intent: { kind: 'exploration' },
       origin: {
         kind: 'inventory_anchor',
         itemId: '3',
@@ -153,6 +155,47 @@ test('keeps the complete stored line visible until a new analysis path has a mov
   );
 });
 
+test('shows only the retained prefix of an empty inventory revision draft', () => {
+  const presentation = analysisPathPresentation({
+    record: {
+      itemId: '3',
+      revisionId: '3',
+      rootAnchorId: '15',
+      currentAnchorId: '17',
+      root: state('white', 1),
+      cursor: 2,
+      contributions: [],
+      steps: [
+        { anchorId: '16', ...step('e4', 'white', 1) },
+        { anchorId: '17', ...step('e6', 'black', 1) },
+        { anchorId: '18', ...step('d4', 'white', 2) },
+      ],
+    },
+    scratch: {
+      intent: { kind: 'inventory_revision' },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '3',
+        revisionId: '3',
+        anchorId: '17',
+      },
+      root: state('white', 2),
+      cursor: 0,
+      steps: [],
+    },
+  });
+
+  assert.deepEqual(
+    presentation.entries.map((entry) => [entry.kind, entry.move.san]),
+    [
+      ['stored', 'e4'],
+      ['stored', 'e6'],
+    ],
+  );
+  assert.equal(presentation.currentPositionIndex, 2);
+  assert.equal(presentation.entries.at(-1)?.current, true);
+});
+
 test('does not attach an unrelated context scratch to the displayed record', () => {
   const presentation = analysisPathPresentation({
     record: {
@@ -166,6 +209,7 @@ test('does not attach an unrelated context scratch to the displayed record', () 
       steps: [{ anchorId: '16', ...step('e4', 'white', 1) }],
     },
     scratch: {
+      intent: { kind: 'exploration' },
       origin: {
         kind: 'inventory_anchor',
         itemId: '1',

@@ -17,7 +17,7 @@ import {
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises the explicit twenty-seven-tool allowlist and two fixed resources', async (t) => {
+test('MCP advertises the explicit twenty-eight-tool allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -40,6 +40,7 @@ test('MCP advertises the explicit twenty-seven-tool allowlist and two fixed reso
       'search_inventory',
       'start_inventory_revision',
       'preview_inventory_revision',
+      'promote_analysis_to_inventory_revision',
       'save_inventory_revision',
       'get_inventory_revision',
       'list_inventory_revisions',
@@ -560,6 +561,31 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       },
       dataRevision: 7,
     }),
+    promoteAnalysisToInventoryRevision: async () => ({
+      scratch: {
+        scratchId: 'revision-scratch-1',
+        scratchRevision: 2,
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '2',
+          revisionId: '3',
+          anchorId: '5',
+        },
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '2',
+          baseRevisionId: '3',
+          cutAnchorId: '5',
+          returnAnchorId: '5',
+          displayName: 'French Defence',
+        },
+        root: state,
+        steps: [],
+        cursor: 0,
+      },
+      dataRevision: 7,
+    }),
     previewInventoryRevision: async () => ({
       itemId: '2',
       baseRevisionId: '3',
@@ -675,6 +701,17 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       },
     ],
     [
+      'promote_analysis_to_inventory_revision',
+      {
+        scope: { kind: 'free' },
+        itemId: '2',
+        baseRevisionId: '3',
+        anchorId: '5',
+        expectedScratchId: 'exploration-scratch-1',
+        expectedScratchRevision: 2,
+      },
+    ],
+    [
       'save_inventory_revision',
       {
         scope: { kind: 'free' },
@@ -723,7 +760,11 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       },
     },
     { method: 'previewInventoryRevision', request: scenarios[1][1] },
-    { method: 'saveInventoryRevision', request: scenarios[2][1] },
+    {
+      method: 'promoteAnalysisToInventoryRevision',
+      request: scenarios[2][1],
+    },
+    { method: 'saveInventoryRevision', request: scenarios[3][1] },
     {
       method: 'getInventoryRevision',
       request: {

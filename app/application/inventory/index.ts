@@ -15,6 +15,10 @@ export {
   type PreviewInventoryRevisionUseCase,
 } from './preview-inventory-revision.ts';
 export {
+  PromoteAnalysisToInventoryRevision,
+  type PromoteAnalysisToInventoryRevisionUseCase,
+} from './promote-analysis-to-inventory-revision.ts';
+export {
   ResolvePendingRevisionImpact,
   type ResolvePendingRevisionImpactUseCase,
 } from './resolve-pending-revision-impact.ts';
@@ -41,6 +45,8 @@ export type {
   ListInventoryRevisionsRequest,
   ListInventoryRevisionsResult,
   PendingRevisionImpact,
+  PromoteAnalysisToInventoryRevisionRequest,
+  PromoteAnalysisToInventoryRevisionResult,
   PreviewInventoryRevisionRequest,
   ResolvePendingRevisionImpactRequest,
   ResolvePendingRevisionImpactResult,

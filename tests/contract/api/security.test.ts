@@ -162,6 +162,7 @@ test('browser preflight covers every public use-case route including queries and
     ['/inventory?pageSize=50', 'GET', 'GET'],
     ['/inventory/analysis-records', 'POST', 'POST'],
     ['/inventory/items/1/revision-edits', 'POST', 'POST'],
+    ['/inventory/items/1/revision-edits/promote-analysis', 'POST', 'POST'],
     ['/inventory/revision-edits/preview', 'POST', 'POST'],
     ['/inventory/revision-edits/save', 'POST', 'POST'],
     ['/inventory/items/1/revisions/2?scopeKind=free', 'GET', 'GET'],

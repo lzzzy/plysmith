@@ -20,8 +20,8 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
-  Scissors,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import { Button, Radio, RadioGroup } from 'react-aria-components';
@@ -29,7 +29,6 @@ import { FormattedDate, FormattedMessage, useIntl } from 'react-intl';
 
 import { ChessBoard } from './chess-board.tsx';
 import { localizeSan } from './chess-display.ts';
-import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import {
   analysisMoveRows,
   analysisNoteMoveRows,
@@ -153,10 +152,11 @@ export function AnalysisView({
   const [recordNoteScope, setRecordNoteScope] = useState<'global' | 'context'>(
     state.scope.kind === 'context' ? 'context' : 'global',
   );
-  const [showInventoryEdit, setShowInventoryEdit] = useState(false);
+  const [showSaveRecord, setShowSaveRecord] = useState(false);
   const [selectedPositionIndex, setSelectedPositionIndex] = useState(
     path.currentPositionIndex,
   );
+  const moveInputRef = useRef<HTMLInputElement>(null);
   const moveListRef = useRef<HTMLOListElement>(null);
   const activePositionIndex = Math.max(
     0,
@@ -187,23 +187,38 @@ export function AnalysisView({
     record.revisionId === record.currentRevisionId &&
     record.currentAnchorId === lineEndAnchorId &&
     atWorkspacePosition;
-  const activeRecordTarget =
-    activePosition?.target !== undefined &&
-    record !== undefined &&
-    activePosition.target.itemId === record.itemId &&
-    activePosition.target.revisionId === record.revisionId
-      ? activePosition.target
-      : undefined;
-  const activeRecordStep = record?.steps.find(
-    (step) => step.anchorId === activeRecordTarget?.anchorId,
-  );
-  const canEditRecord =
+  const canAnalyzeRecord =
     scratch === undefined &&
-    activeRecordTarget !== undefined &&
     record !== undefined &&
     !record.historical &&
     !record.readOnlyPreview &&
-    record.revisionId === record.currentRevisionId;
+    record.revisionId === record.currentRevisionId &&
+    pendingRevisionImpact === undefined &&
+    atWorkspacePosition;
+  const candidateStoredMoveCount =
+    scratch === undefined
+      ? record?.steps.length
+      : revisionScratch !== undefined && revisionScratch.steps.length === 0
+        ? revisionPreview?.preservedMoveCount
+        : undefined;
+  const lastEditableEntry =
+    scratch !== undefined && scratch.steps.length > 0
+      ? scratchEntries.at(-1)
+      : candidateStoredMoveCount === undefined || candidateStoredMoveCount === 0
+        ? undefined
+        : storedEntries.find(
+            (entry) =>
+              entry.anchorId ===
+              record?.steps[candidateStoredMoveCount - 1]?.anchorId,
+          );
+  const canTakeBackLastMove =
+    lastEditableEntry !== undefined &&
+    lastEditableEntry.positionIndex === activePositionIndex &&
+    atWorkspacePosition &&
+    !navigationLocked &&
+    (scratch === undefined
+      ? record?.cursor === record?.steps.length
+      : scratch.cursor === scratch.steps.length);
 
   useEffect(() => {
     setNoteBody(scratch?.noteDraft?.body ?? '');
@@ -217,7 +232,7 @@ export function AnalysisView({
   }, [state.scope]);
 
   useEffect(() => {
-    setShowInventoryEdit(false);
+    setShowSaveRecord(false);
   }, [record?.itemId, record?.revisionId, scratch?.scratchId]);
 
   useEffect(() => {
@@ -242,6 +257,26 @@ export function AnalysisView({
       .querySelector<HTMLElement>('[aria-current="step"]')
       ?.scrollIntoView({ block: 'nearest' });
   }, [activePositionIndex]);
+
+  useEffect(() => {
+    function takeBackWithKeyboard(event: KeyboardEvent) {
+      if (event.key !== 'Backspace' || !canTakeBackLastMove) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
+          (target.tagName === 'BUTTON' &&
+            target.closest('[data-analysis-board-square]') === null))
+      ) {
+        return;
+      }
+      event.preventDefault();
+      void store.takeBackLastMove();
+    }
+    window.addEventListener('keydown', takeBackWithKeyboard);
+    return () => window.removeEventListener('keydown', takeBackWithKeyboard);
+  }, [canTakeBackLastMove, store]);
 
   function selectPathPosition(positionIndex: number) {
     const boundedIndex = Math.max(
@@ -296,7 +331,14 @@ export function AnalysisView({
     ) {
       setRecordTitle('');
       setRecordNoteBody('');
+      setShowSaveRecord(false);
     }
+  }
+
+  function cancelSaveRecord() {
+    setRecordTitle('');
+    setRecordNoteBody('');
+    setShowSaveRecord(false);
   }
 
   async function submitInlineNote(
@@ -434,6 +476,9 @@ export function AnalysisView({
       entry.move.san,
       state.preferences.uiLocale,
     );
+    const isLastEditableMove =
+      lastEditableEntry?.positionIndex === entry.positionIndex &&
+      lastEditableEntry.kind === entry.kind;
     return (
       <div className={styles.moveCell}>
         <Button
@@ -453,18 +498,32 @@ export function AnalysisView({
         >
           {localizedMove}
         </Button>
-        {entry.noteTarget !== undefined &&
-          canChangeNotes &&
-          pathNoteDraft === undefined && (
+        <div className={styles.moveActions}>
+          {entry.noteTarget !== undefined &&
+            canChangeNotes &&
+            pathNoteDraft === undefined && (
+              <Button
+                className={styles.addNoteButton!}
+                aria-label={intl.formatMessage({ id: 'analysis.addNote' })}
+                onPress={() => startCreateNote(entry.noteTarget!)}
+                isDisabled={isBusy}
+              >
+                <MessageSquarePlus aria-hidden="true" size={14} />
+              </Button>
+            )}
+          {isLastEditableMove && (
             <Button
-              className={styles.addNoteButton!}
-              aria-label={intl.formatMessage({ id: 'analysis.addNote' })}
-              onPress={() => startCreateNote(entry.noteTarget!)}
-              isDisabled={isBusy}
+              className={styles.takeBackButton!}
+              aria-label={intl.formatMessage({
+                id: 'analysis.takeBackLastMove',
+              })}
+              onPress={() => void store.takeBackLastMove()}
+              isDisabled={!canTakeBackLastMove}
             >
-              <MessageSquarePlus aria-hidden="true" size={14} />
+              <Undo2 aria-hidden="true" size={14} />
             </Button>
           )}
+        </div>
       </div>
     );
   }
@@ -855,13 +914,17 @@ export function AnalysisView({
           isBusy={isBusy}
           canMove={
             atWorkspacePosition &&
-            (canExtendRecord ||
+            (canAnalyzeRecord ||
               (scratch !== undefined &&
                 state.analysis.allowedActions.includes('apply_move')))
           }
+          {...(canTakeBackLastMove && lastEditableEntry !== undefined
+            ? { undoMove: lastEditableEntry.move }
+            : {})}
           onMove={(from, to, promotion) =>
             void store.applyBoardMove(from, to, promotion)
           }
+          onTakeBack={() => void store.takeBackLastMove()}
         />
 
         <section className={styles.linePanel} aria-labelledby="line-title">
@@ -1014,7 +1077,7 @@ export function AnalysisView({
             {renderMoveRows(visibleScratchEntries, 'scratch')}
           </ol>
 
-          {(scratch !== undefined || canExtendRecord) &&
+          {(scratch !== undefined || canAnalyzeRecord) &&
             revisionIntent?.mode !== 'metadata' &&
             pathNoteDraft === undefined &&
             atWorkspacePosition && (
@@ -1030,6 +1093,7 @@ export function AnalysisView({
                 </label>
                 <div>
                   <input
+                    ref={moveInputRef}
                     id="analysis-move"
                     value={moveInput}
                     onChange={(event) => setMoveInput(event.target.value)}
@@ -1054,82 +1118,6 @@ export function AnalysisView({
             record?.readOnlyPreview !== true &&
             pendingRevisionImpact === undefined && (
               <div className={styles.startActions}>
-                {record !== undefined && (
-                  <Button
-                    className={styles.primaryButton!}
-                    onPress={() => {
-                      if (activePosition?.target !== undefined)
-                        void store.startScratchAtTarget(activePosition.target);
-                    }}
-                    isDisabled={isBusy || activePosition?.target === undefined}
-                  >
-                    <ArrowRight aria-hidden="true" size={16} />
-                    <FormattedMessage id="analysis.exploreFromHere" />
-                  </Button>
-                )}
-                {canEditRecord && (
-                  <Button
-                    className={styles.secondaryButton!}
-                    onPress={() => setShowInventoryEdit((visible) => !visible)}
-                    isDisabled={isBusy}
-                  >
-                    <Pencil aria-hidden="true" size={16} />
-                    <FormattedMessage id="inventory.editRecord" />
-                  </Button>
-                )}
-                {showInventoryEdit && canEditRecord && (
-                  <section className={styles.inventoryEditChoice}>
-                    <strong>
-                      <FormattedMessage id="inventory.editRecordTitle" />
-                    </strong>
-                    <p>
-                      <FormattedMessage id="inventory.editRecordDetail" />
-                    </p>
-                    <InventoryMetadataForm
-                      displayName={record.displayName}
-                      summary={record.summary}
-                      isBusy={isBusy}
-                      onCancel={() => setShowInventoryEdit(false)}
-                      onPrepare={(displayName, summary) =>
-                        void store.startInventoryMetadataRevision(
-                          displayName,
-                          summary,
-                        )
-                      }
-                    />
-                    <span className={styles.panelLabel}>
-                      <FormattedMessage id="inventory.mainLine" />
-                    </span>
-                    <Button
-                      className={styles.dangerButton!}
-                      onPress={() =>
-                        void store.startInventoryRevision(
-                          'truncate_after',
-                          activeRecordTarget.anchorId,
-                        )
-                      }
-                      isDisabled={isBusy}
-                    >
-                      <Scissors aria-hidden="true" size={16} />
-                      <FormattedMessage id="inventory.truncateAfter" />
-                    </Button>
-                    {activeRecordStep !== undefined && (
-                      <Button
-                        className={styles.dangerButton!}
-                        onPress={() =>
-                          void store.startInventoryRevision(
-                            'replace_move',
-                            activeRecordStep.anchorId,
-                          )
-                        }
-                        isDisabled={isBusy}
-                      >
-                        <Pencil aria-hidden="true" size={16} />
-                        <FormattedMessage id="inventory.replaceMove" />
-                      </Button>
-                    )}
-                  </section>
-                )}
                 <Button
                   className={styles.secondaryButton!}
                   onPress={() => void store.startScratchAtInitialPosition()}
@@ -1188,24 +1176,9 @@ export function AnalysisView({
                 )}
               </div>
               {revisionPreview === undefined ? (
-                <>
-                  <p className={styles.revisionHint}>
-                    <FormattedMessage id="inventory.revisionDraftHint" />
-                  </p>
-                  <Button
-                    className={styles.primaryButton!}
-                    onPress={() => void store.previewInventoryRevision()}
-                    isDisabled={
-                      isBusy ||
-                      revisionScratch.cursor !== revisionScratch.steps.length ||
-                      (revisionIntent?.mode === 'replace_move' &&
-                        revisionScratch.steps.length === 0)
-                    }
-                  >
-                    <ArrowRight aria-hidden="true" size={16} />
-                    <FormattedMessage id="inventory.previewRevision" />
-                  </Button>
-                </>
+                <p className={styles.revisionHint}>
+                  <FormattedMessage id="inventory.previewPending" />
+                </p>
               ) : (
                 <div className={styles.revisionPreview}>
                   {record !== undefined && revisionCandidate !== undefined && (
@@ -1250,7 +1223,27 @@ export function AnalysisView({
                         <ul>
                           {revisionPreview.followingContexts.map((context) => (
                             <li key={context.contextId}>
-                              {context.contextName}
+                              <FormattedMessage
+                                id="inventory.followingContextEntry"
+                                values={{
+                                  context: context.contextName,
+                                  references: context.referenceCount,
+                                  notes: context.contributionCount,
+                                  resumes:
+                                    context.managementResumeCount +
+                                    context.analysisResumeCount,
+                                }}
+                              />
+                              {context.contributionCount > 0 && (
+                                <span className={styles.followingContextNote}>
+                                  <FormattedMessage
+                                    id="inventory.followingContextNotesHistorical"
+                                    values={{
+                                      count: context.contributionCount,
+                                    }}
+                                  />
+                                </span>
+                              )}
                             </li>
                           ))}
                         </ul>
@@ -1260,7 +1253,7 @@ export function AnalysisView({
                   <div className={styles.previewActions}>
                     <Button
                       className={styles.secondaryButton!}
-                      onPress={() => store.clearInventoryRevisionPreview()}
+                      onPress={() => moveInputRef.current?.focus()}
                       isDisabled={isBusy}
                     >
                       <ArrowLeft aria-hidden="true" size={16} />
@@ -1299,6 +1292,20 @@ export function AnalysisView({
                   <FormattedMessage id="analysis.keepAnalysis" />
                 </h3>
                 {scratch.origin.kind === 'inventory_anchor' &&
+                  scratch.cursor === scratch.steps.length &&
+                  scratch.steps.length > 0 && (
+                    <Button
+                      className={styles.primaryButton!}
+                      onPress={() =>
+                        void store.promoteAnalysisToInventoryRevision()
+                      }
+                      isDisabled={isBusy}
+                    >
+                      <GitBranch aria-hidden="true" size={16} />
+                      <FormattedMessage id="analysis.replaceMainLine" />
+                    </Button>
+                  )}
+                {scratch.origin.kind === 'inventory_anchor' &&
                   scratch.cursor > 0 && (
                     <div className={styles.saveChoice}>
                       <strong className={styles.saveHeading}>
@@ -1306,7 +1313,10 @@ export function AnalysisView({
                       </strong>
                       <Button
                         className={styles.ochreButton!}
-                        onPress={() => void store.prepareAnalysisNote('')}
+                        onPress={() => {
+                          setShowSaveRecord(false);
+                          void store.prepareAnalysisNote('');
+                        }}
                         isDisabled={isBusy}
                       >
                         <ArrowLeft aria-hidden="true" size={16} />
@@ -1315,11 +1325,19 @@ export function AnalysisView({
                     </div>
                   )}
 
-                {scratch.cursor > 0 && (
+                {scratch.cursor > 0 && !showSaveRecord && (
+                  <Button
+                    className={styles.secondaryButton!}
+                    onPress={() => setShowSaveRecord(true)}
+                    isDisabled={isBusy}
+                  >
+                    <Save aria-hidden="true" size={16} />
+                    <FormattedMessage id="analysis.saveAsRecord" />
+                  </Button>
+                )}
+
+                {scratch.cursor > 0 && showSaveRecord && (
                   <form className={styles.saveForm} onSubmit={saveRecord}>
-                    <strong className={styles.saveHeading}>
-                      <FormattedMessage id="analysis.saveAsRecord" />
-                    </strong>
                     <label htmlFor="analysis-title">
                       <FormattedMessage id="analysis.recordTitle" />
                     </label>
@@ -1327,6 +1345,7 @@ export function AnalysisView({
                       id="analysis-title"
                       value={recordTitle}
                       onChange={(event) => setRecordTitle(event.target.value)}
+                      autoFocus
                       disabled={isBusy}
                     />
                     <label htmlFor="analysis-record-note">
@@ -1376,14 +1395,24 @@ export function AnalysisView({
                         </Radio>
                       </RadioGroup>
                     )}
-                    <button
-                      type="submit"
-                      className={styles.primaryButton}
-                      disabled={isBusy || recordTitle.trim() === ''}
-                    >
-                      <Save aria-hidden="true" size={16} />
-                      <FormattedMessage id="analysis.saveAsAnalysis" />
-                    </button>
+                    <div className={styles.previewActions}>
+                      <Button
+                        className={styles.secondaryButton!}
+                        onPress={cancelSaveRecord}
+                        isDisabled={isBusy}
+                      >
+                        <X aria-hidden="true" size={16} />
+                        <FormattedMessage id="analysis.cancel" />
+                      </Button>
+                      <button
+                        type="submit"
+                        className={styles.primaryButton}
+                        disabled={isBusy || recordTitle.trim() === ''}
+                      >
+                        <Save aria-hidden="true" size={16} />
+                        <FormattedMessage id="analysis.saveAsAnalysis" />
+                      </button>
+                    </div>
                   </form>
                 )}
 

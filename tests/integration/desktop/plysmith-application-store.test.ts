@@ -8,8 +8,10 @@ import type {
   GetAnalysisWorkspaceRequestDto,
   HostConnection,
   HostEvent,
+  InventoryRevisionPreviewDto,
   ListWorkingContextsResultDto,
   SearchInventoryResultDto,
+  StartInventoryRevisionRequestDto,
   UserPreferencesDto,
   WorkingContextWorkspaceDto,
 } from '../../../app/infrastructure/channels/host_client/index.ts';
@@ -124,6 +126,28 @@ function savedLineAnalysis(
   };
 }
 
+function revisionPreview(
+  overrides: Partial<InventoryRevisionPreviewDto> = {},
+): InventoryRevisionPreviewDto {
+  return {
+    itemId: '11',
+    baseRevisionId: '12',
+    mode: 'truncate_after',
+    displayName: 'Französisch',
+    preservedMoveCount: 0,
+    addedSteps: [],
+    removedSteps: [],
+    historicalGlobalContributionCount: 0,
+    affectedContexts: [],
+    followingContexts: [],
+    noOp: false,
+    previewFingerprint:
+      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    dataRevision: 0,
+    ...overrides,
+  };
+}
+
 function diagnosticSettings(
   configuredLevel: DiagnosticSettingsDto['configuredLevel'] = 'off',
   activeLevel: DiagnosticSettingsDto['activeLevel'] = configuredLevel,
@@ -222,6 +246,8 @@ function createClient(
     createAnalysisRecord: async () => assert.fail('no record write expected'),
     startInventoryRevision: async () =>
       assert.fail('no inventory revision write expected'),
+    promoteAnalysisToInventoryRevision: async () =>
+      assert.fail('no analysis promotion expected'),
     previewInventoryRevision: async () =>
       assert.fail('no inventory revision preview expected'),
     saveInventoryRevision: async () =>
@@ -807,86 +833,6 @@ test('derived analysis navigation sends only the exact source anchor focus', asy
         (event as { itemId?: string }).itemId === '11',
     ),
   );
-  store.close();
-});
-
-test('starts a scratch at the locally selected path position', async () => {
-  let scratchRequest:
-    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
-    | undefined;
-  const currentAnalysis: AnalysisWorkspaceDto = {
-    ...analysis(),
-    record: {
-      itemId: '31',
-      revisionId: '32',
-      currentRevisionId: '32',
-      revisionNumber: 1,
-      historical: false,
-      rootAnchorId: '33',
-      currentAnchorId: '34',
-      displayName: 'Abgeleitete Analyse',
-      languageTag: 'de-DE',
-      origin: {
-        kind: 'inventory_anchor',
-        itemId: '11',
-        revisionId: '12',
-        anchorId: '13',
-      },
-      root: initialState,
-      steps: [],
-      cursor: 0,
-      contributions: [],
-      contextMember: false,
-      readOnlyPreview: false,
-    },
-  };
-  const client = createClient({
-    getAnalysisWorkspace: async () => currentAnalysis,
-    updateAnalysisScratch: async (request) => {
-      scratchRequest = request;
-      return {
-        scratch: {
-          scratchId: 'scratch-local-selection',
-          scratchRevision: 1,
-          intent: { kind: 'exploration' },
-          origin:
-            request.action.kind === 'start'
-              ? request.action.origin
-              : {
-                  kind: 'initial_position' as const,
-                },
-          root: initialState,
-          steps: [],
-          cursor: 0,
-        },
-        discarded: false,
-        dataRevision: 0,
-      };
-    },
-  });
-  const store = createReadyStore(client);
-  await store.start();
-
-  await store.startScratchAtTarget({
-    itemId: '11',
-    revisionId: '12',
-    anchorId: '13',
-  });
-
-  assert.deepEqual(scratchRequest, {
-    scope: { kind: 'free' },
-    expectedScratchId: null,
-    expectedScratchRevision: null,
-    action: {
-      kind: 'start',
-      origin: {
-        kind: 'inventory_anchor',
-        itemId: '11',
-        revisionId: '12',
-        anchorId: '13',
-      },
-    },
-  });
   store.close();
 });
 
@@ -1874,7 +1820,6 @@ test('a first move at the saved line end opens and previews an inventory extensi
     firstMove: { kind: 'notation', value: 'e4', locale: 'de-DE' },
   });
 
-  await store.previewInventoryRevision();
   const previewed = store.getSnapshot();
   assert.equal(
     previewed.phase === 'ready'
@@ -1882,13 +1827,6 @@ test('a first move at the saved line end opens and previews an inventory extensi
       : undefined,
     'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   );
-  store.clearInventoryRevisionPreview();
-  const cleared = store.getSnapshot();
-  assert.equal(
-    cleared.phase === 'ready' ? cleared.inventoryRevisionPreview : undefined,
-    undefined,
-  );
-  await store.previewInventoryRevision();
   assert.equal(await store.saveInventoryRevision(), true);
   assert.deepEqual(saveRequest, {
     scope: { kind: 'free' },
@@ -1946,6 +1884,22 @@ test('focusing the saved line end makes the next move an inventory extension', a
         dataRevision: 0,
       };
     },
+    previewInventoryRevision: async () => ({
+      itemId: '11',
+      baseRevisionId: '12',
+      mode: 'extend',
+      displayName: 'Französisch',
+      preservedMoveCount: 1,
+      addedSteps: [],
+      removedSteps: [],
+      historicalGlobalContributionCount: 0,
+      affectedContexts: [],
+      followingContexts: [],
+      noOp: false,
+      previewFingerprint:
+        'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      dataRevision: 0,
+    }),
   });
   const store = createReadyStore(client);
   await store.start();
@@ -1962,6 +1916,485 @@ test('focusing the saved line end makes the next move an inventory extension', a
     expectedScratchRevision: null,
     firstMove: { kind: 'notation', value: 'd5', locale: 'de-DE' },
   });
+  store.close();
+});
+
+test('a resumed inventory revision reloads its preview after cursor navigation', async () => {
+  const step = savedLineAnalysis('14').record!.steps[0]!;
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'resumed-revision-scratch',
+    scratchRevision: 1,
+    intent: {
+      kind: 'inventory_revision',
+      mode: 'extend',
+      itemId: '11',
+      baseRevisionId: '12',
+      cutAnchorId: '14',
+      returnAnchorId: '14',
+      displayName: 'Französisch',
+    },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '14',
+    },
+    root: initialState,
+    steps: [step],
+    cursor: 1,
+  };
+  let current: AnalysisWorkspaceDto = {
+    ...savedLineAnalysis('14'),
+    scratch,
+    allowedActions: ['apply_move', 'move_cursor', 'discard_scratch'],
+  };
+  const previewedScratchRevisions: number[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (request) => {
+      scratch = {
+        ...scratch,
+        scratchRevision: scratch.scratchRevision + 1,
+        cursor:
+          request.action.kind === 'move_cursor'
+            ? request.action.cursor
+            : scratch.cursor,
+      };
+      current = { ...current, scratch };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+    previewInventoryRevision: async (request) => {
+      previewedScratchRevisions.push(request.expectedScratchRevision);
+      return revisionPreview({
+        mode: 'extend',
+        preservedMoveCount: request.expectedScratchRevision,
+      });
+    },
+  });
+  const store = createReadyStore(client);
+
+  await store.start();
+  assert.deepEqual(previewedScratchRevisions, [1]);
+  const resumed = store.getSnapshot();
+  assert.equal(
+    resumed.phase === 'ready'
+      ? resumed.inventoryRevisionPreview?.preservedMoveCount
+      : undefined,
+    1,
+  );
+
+  await store.moveAnalysisCursor(0);
+
+  assert.deepEqual(previewedScratchRevisions, [1, 2]);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.inventoryRevisionPreview?.preservedMoveCount
+      : undefined,
+    2,
+  );
+  store.close();
+});
+
+test('playing the saved next move navigates without creating a scratch', async () => {
+  const analysisRequests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      analysisRequests.push(request);
+      return savedLineAnalysis(request.anchorId === '14' ? '14' : '13');
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.applyBoardMove('e2', 'e4');
+
+  assert.equal(analysisRequests.at(-1)?.anchorId, '14');
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.analysis.record?.currentAnchorId
+      : undefined,
+    '14',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    undefined,
+  );
+  store.close();
+});
+
+test('a different move at an earlier saved position starts one atomic exploration', async () => {
+  let current = savedLineAnalysis('13');
+  let updateRequest:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (request) => {
+      updateRequest = request;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'exploration-scratch',
+        scratchRevision: 1,
+        intent: { kind: 'exploration' },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '13',
+        },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'd2', to: 'd4', san: 'd4' },
+            after: initialState,
+          },
+        ],
+        cursor: 1,
+      };
+      current = {
+        ...current,
+        scratch,
+        allowedActions: [
+          'apply_move',
+          'move_cursor',
+          'remove_last_move',
+          'discard_scratch',
+        ],
+      };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.applyBoardMove('d2', 'd4');
+
+  assert.deepEqual(updateRequest, {
+    scope: { kind: 'free' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      firstMove: { kind: 'coordinates', value: 'd2d4' },
+    },
+  });
+  store.close();
+});
+
+test('taking back the last exploration move uses the dedicated scratch action', async () => {
+  const oneMoveScratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'exploration-scratch',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: { kind: 'initial_position' },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'e2', to: 'e4', san: 'e4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  let current: AnalysisWorkspaceDto = {
+    ...analysis(),
+    scratch: oneMoveScratch,
+    allowedActions: [
+      'apply_move',
+      'move_cursor',
+      'remove_last_move',
+      'discard_scratch',
+    ],
+  };
+  let updateRequest:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (request) => {
+      updateRequest = request;
+      const scratch = {
+        ...oneMoveScratch,
+        scratchRevision: 2,
+        steps: [],
+        cursor: 0,
+      };
+      current = { ...current, scratch };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.takeBackLastMove();
+
+  assert.deepEqual(updateRequest?.action, { kind: 'remove_last_move' });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.analysis.scratch?.steps.length
+      : undefined,
+    0,
+  );
+  store.close();
+});
+
+test('taking back a stored last move creates and previews a truncation draft', async () => {
+  let current = savedLineAnalysis('14');
+  let startRequest:
+    | Parameters<PlysmithApplicationClient['startInventoryRevision']>[1]
+    | undefined;
+  let previewCount = 0;
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      if (current.scratch === undefined && request.anchorId !== undefined)
+        return savedLineAnalysis(request.anchorId === '14' ? '14' : '13');
+      return current;
+    },
+    startInventoryRevision: async (_itemId, request) => {
+      startRequest = request;
+      const record = savedLineAnalysis('13').record!;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'truncate-scratch',
+        scratchRevision: 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Französisch',
+        },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '13',
+        },
+        root: initialState,
+        steps: [],
+        cursor: 0,
+      };
+      current = {
+        ...savedLineAnalysis('13'),
+        record,
+        scratch,
+        allowedActions: ['apply_move', 'discard_scratch'],
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () => {
+      previewCount += 1;
+      return revisionPreview({
+        removedSteps: [savedLineAnalysis('14').record!.steps[0]!],
+      });
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.takeBackLastMove();
+
+  assert.deepEqual(startRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '13',
+    mode: 'truncate_after',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  assert.equal(previewCount, 1);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.inventoryRevisionPreview?.removedSteps.length
+      : undefined,
+    1,
+  );
+  store.close();
+});
+
+test('repeated takeback moves an existing truncation draft to the previous anchor', async () => {
+  const first = savedLineAnalysis('14').record!.steps[0]!;
+  const second = {
+    anchorId: '15',
+    before: initialState,
+    move: { from: 'e7', to: 'e5', san: 'e5' },
+    after: initialState,
+  };
+  const withTwoMoves = (currentAnchorId: '13' | '14' | '15') => ({
+    ...savedLineAnalysis(currentAnchorId === '13' ? '13' : '14'),
+    record: {
+      ...savedLineAnalysis('14').record!,
+      currentAnchorId,
+      cursor: currentAnchorId === '13' ? 0 : currentAnchorId === '14' ? 1 : 2,
+      steps: [first, second],
+    },
+  });
+  let current: AnalysisWorkspaceDto = withTwoMoves('15');
+  const startRequests: StartInventoryRevisionRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    startInventoryRevision: async (_itemId, request) => {
+      startRequests.push(request);
+      const atRoot = request.anchorId === '13';
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'truncate-scratch',
+        scratchRevision: atRoot ? 2 : 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: request.anchorId,
+          returnAnchorId: request.anchorId,
+          displayName: 'Französisch',
+        },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: request.anchorId,
+        },
+        root: initialState,
+        steps: [],
+        cursor: 0,
+      };
+      current = {
+        ...withTwoMoves(atRoot ? '13' : '14'),
+        scratch,
+        allowedActions: ['apply_move', 'discard_scratch'],
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () =>
+      revisionPreview({
+        preservedMoveCount:
+          current.scratch?.origin.kind === 'inventory_anchor' &&
+          current.scratch.origin.anchorId === '14'
+            ? 1
+            : 0,
+      }),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.takeBackLastMove();
+  await store.takeBackLastMove();
+
+  assert.deepEqual(
+    startRequests.map((request) => ({
+      anchorId: request.anchorId,
+      expectedScratchId: request.expectedScratchId,
+      expectedScratchRevision: request.expectedScratchRevision,
+    })),
+    [
+      {
+        anchorId: '14',
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+      },
+      {
+        anchorId: '13',
+        expectedScratchId: 'truncate-scratch',
+        expectedScratchRevision: 1,
+      },
+    ],
+  );
+  store.close();
+});
+
+test('promoting an exploration keeps its moves and opens an automatic revision preview', async () => {
+  const exploration: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'exploration-scratch',
+    scratchRevision: 2,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  let current: AnalysisWorkspaceDto = {
+    ...savedLineAnalysis('13'),
+    scratch: exploration,
+  };
+  let promoteRequest:
+    | Parameters<
+        PlysmithApplicationClient['promoteAnalysisToInventoryRevision']
+      >[1]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    promoteAnalysisToInventoryRevision: async (_itemId, request) => {
+      promoteRequest = request;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        ...exploration,
+        scratchRevision: 3,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Französisch',
+        },
+      };
+      current = { ...current, scratch };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () =>
+      revisionPreview({
+        addedSteps: exploration.steps,
+        removedSteps: savedLineAnalysis('14').record!.steps,
+      }),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.promoteAnalysisToInventoryRevision();
+
+  assert.deepEqual(promoteRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '13',
+    expectedScratchId: 'exploration-scratch',
+    expectedScratchRevision: 2,
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.analysis.scratch?.intent.kind
+      : undefined,
+    'inventory_revision',
+  );
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.inventoryRevisionPreview?.addedSteps[0]?.move.san
+      : undefined,
+    'd4',
+  );
   store.close();
 });
 

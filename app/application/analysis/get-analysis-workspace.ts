@@ -203,6 +203,9 @@ function allowedActions(
     'move_cursor',
     'discard_scratch',
   ];
+  if (scratch.steps.length > 0 && scratch.cursor === scratch.steps.length) {
+    actions.push('remove_last_move');
+  }
   if (scratch.intent.kind === 'inventory_revision') {
     return Object.freeze(actions);
   }

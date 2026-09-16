@@ -24,6 +24,7 @@ import type {
   GetPendingRevisionImpactUseCase,
   ListInventoryRevisionsUseCase,
   PreviewInventoryRevisionUseCase,
+  PromoteAnalysisToInventoryRevisionUseCase,
   ResolvePendingRevisionImpactUseCase,
   SaveInventoryRevisionUseCase,
   SearchInventoryUseCase,
@@ -55,6 +56,7 @@ export interface HostDependencies {
   readonly deleteAnalysisNote: DeleteAnalysisNoteUseCase;
   readonly searchInventory: SearchInventoryUseCase;
   readonly startInventoryRevision: StartInventoryRevisionUseCase;
+  readonly promoteAnalysisToInventoryRevision: PromoteAnalysisToInventoryRevisionUseCase;
   readonly previewInventoryRevision: PreviewInventoryRevisionUseCase;
   readonly saveInventoryRevision: SaveInventoryRevisionUseCase;
   readonly getInventoryRevision: GetInventoryRevisionUseCase;

@@ -99,6 +99,7 @@ export interface AnalysisWorkspace {
     | 'start_scratch'
     | 'apply_move'
     | 'move_cursor'
+    | 'remove_last_move'
     | 'prepare_note'
     | 'clear_note'
     | 'discard_scratch'
@@ -128,9 +129,11 @@ export type UpdateAnalysisScratchAction =
             readonly revisionId: ItemRevisionId;
             readonly anchorId: AnchorId;
           };
+      readonly firstMove?: MoveInput;
     }
   | { readonly kind: 'apply_move'; readonly move: MoveInput }
   | { readonly kind: 'move_cursor'; readonly cursor: number }
+  | { readonly kind: 'remove_last_move' }
   | { readonly kind: 'prepare_note'; readonly body: string }
   | { readonly kind: 'clear_note' }
   | { readonly kind: 'discard' };

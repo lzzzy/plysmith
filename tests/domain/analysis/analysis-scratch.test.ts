@@ -8,6 +8,7 @@ import {
   currentAnalysisState,
   moveAnalysisCursor,
   prepareAnalysisNote,
+  removeLastAnalysisMove,
   startAnalysisScratch,
 } from '../../../app/domain/analysis/index.ts';
 import type {
@@ -50,6 +51,43 @@ test('a move behind the cursor replaces the transient tail', () => {
     ['e4', 'c5'],
   );
   assert.equal(currentAnalysisState(scratch).fen, 'after-c5');
+});
+
+test('removing the last move selects the new line end and clears a note draft', () => {
+  const root = state('root');
+  const first = transition(root, 'e2', 'e4', 'e4', state('after-e4'));
+  const second = transition(first.after, 'e7', 'e5', 'e5', state('after-e5'));
+  let scratch = appendAnalysisMove(
+    appendAnalysisMove(startAnalysisScratch('scratch-1', root), first),
+    second,
+  );
+  scratch = prepareAnalysisNote(scratch, 'Temporary note');
+
+  const shortened = removeLastAnalysisMove(scratch);
+
+  assert.deepEqual(
+    shortened.steps.map(({ move }) => move.san),
+    ['e4'],
+  );
+  assert.equal(shortened.cursor, 1);
+  assert.equal(shortened.noteDraft, undefined);
+  assert.equal(shortened.scratchRevision, scratch.scratchRevision + 1);
+  assert.equal(currentAnalysisState(shortened).fen, 'after-e4');
+});
+
+test('removing a move is limited to the actual line end', () => {
+  const root = state('root');
+  const first = transition(root, 'e2', 'e4', 'e4', state('after-e4'));
+  const second = transition(first.after, 'e7', 'e5', 'e5', state('after-e5'));
+  const complete = appendAnalysisMove(
+    appendAnalysisMove(startAnalysisScratch('scratch-1', root), first),
+    second,
+  );
+
+  assert.throws(() => removeLastAnalysisMove(moveAnalysisCursor(complete, 1)));
+  assert.throws(() =>
+    removeLastAnalysisMove(startAnalysisScratch('empty', root)),
+  );
 });
 
 test('preparing a note copies the current path without consuming scratch', () => {

@@ -959,6 +959,12 @@
                 },
                 {
                   "enum": [
+                    "remove_last_move"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
                     "prepare_note"
                   ],
                   "type": "string"
@@ -2121,6 +2127,11 @@
       "InventoryRevisionFollowingContextSummary": {
         "additionalProperties": false,
         "properties": {
+          "analysisResumeCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "contextId": {
             "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
@@ -2129,11 +2140,34 @@
             "maxLength": 160,
             "minLength": 1,
             "type": "string"
+          },
+          "contributionCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "managementResumeCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "referenceCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updatedAutomatically": {
+            "type": "boolean"
           }
         },
         "required": [
           "contextId",
-          "contextName"
+          "contextName",
+          "updatedAutomatically",
+          "referenceCount",
+          "contributionCount",
+          "managementResumeCount",
+          "analysisResumeCount"
         ],
         "type": "object"
       },
@@ -2851,6 +2885,41 @@
           "correlationId",
           "retryable",
           "parameters"
+        ],
+        "type": "object"
+      },
+      "PromoteAnalysisToInventoryRevisionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "anchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "baseRevisionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
+          "expectedScratchId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "expectedScratchRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/WorkScope"
+          }
+        },
+        "required": [
+          "scope",
+          "baseRevisionId",
+          "anchorId",
+          "expectedScratchId",
+          "expectedScratchRevision"
         ],
         "type": "object"
       },
@@ -3808,6 +3877,69 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "firstMove": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "coordinates"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {
+                            "maxLength": 5,
+                            "minLength": 4,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "notation"
+                            ],
+                            "type": "string"
+                          },
+                          "locale": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "de-DE"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "en-GB"
+                                ],
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "maxLength": 32,
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value",
+                          "locale"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "kind": {
                     "enum": [
                       "start"
@@ -3988,6 +4120,21 @@
                 "required": [
                   "kind",
                   "cursor"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "remove_last_move"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
                 ],
                 "type": "object"
               },
@@ -5313,6 +5460,69 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "firstMove": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "coordinates"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "maxLength": 5,
+                                    "minLength": 4,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "value"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "notation"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "locale": {
+                                    "anyOf": [
+                                      {
+                                        "enum": [
+                                          "de-DE"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      {
+                                        "enum": [
+                                          "en-GB"
+                                        ],
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "value": {
+                                    "maxLength": 32,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "value",
+                                  "locale"
+                                ],
+                                "type": "object"
+                              }
+                            ]
+                          },
                           "kind": {
                             "enum": [
                               "start"
@@ -5493,6 +5703,21 @@
                         "required": [
                           "kind",
                           "cursor"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "remove_last_move"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
                         ],
                         "type": "object"
                       },
@@ -6911,6 +7136,166 @@
                   "baseRevisionId",
                   "anchorId",
                   "mode",
+                  "expectedScratchId",
+                  "expectedScratchRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartInventoryRevisionResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/items/{itemId}/revision-edits/promote-analysis": {
+      "post": {
+        "operationId": "PromoteAnalysisToInventoryRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "anchorId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "baseRevisionId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
+                  "expectedScratchId": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  },
+                  "expectedScratchRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
+                  }
+                },
+                "required": [
+                  "scope",
+                  "baseRevisionId",
+                  "anchorId",
                   "expectedScratchId",
                   "expectedScratchRevision"
                 ],

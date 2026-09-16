@@ -5,6 +5,7 @@ export {
 export {
   inventoryRevisionCandidateSteps,
   planInventoryRevision,
+  promoteAnalysisExplorationToRevision,
   type InventoryRevisionLine,
   type InventoryRevisionLineStep,
   type InventoryRevisionMode,

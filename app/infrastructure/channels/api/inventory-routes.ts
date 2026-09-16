@@ -23,6 +23,7 @@ import {
   ListInventoryRevisionsResultSchema,
   PageQuerySchema,
   problemResponses,
+  PromoteAnalysisToInventoryRevisionBodySchema,
   SaveInventoryRevisionBodySchema,
   SaveInventoryRevisionResultSchema,
   SearchInventoryResultSchema,
@@ -129,6 +130,36 @@ export function registerInventoryRoutes(
       inventoryRevisionPreviewDto(
         await dependencies.previewInventoryRevision.execute({
           scope: parseWorkScope(request.body.scope),
+          expectedScratchId: request.body.expectedScratchId,
+          expectedScratchRevision: request.body.expectedScratchRevision,
+        }),
+      ),
+  );
+
+  api.post(
+    '/inventory/items/:itemId/revision-edits/promote-analysis',
+    {
+      schema: {
+        operationId: 'PromoteAnalysisToInventoryRevision',
+        params: InventoryItemIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        body: PromoteAnalysisToInventoryRevisionBodySchema,
+        response: {
+          200: Type.Ref(StartInventoryRevisionResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      startInventoryRevisionResultDto(
+        await dependencies.promoteAnalysisToInventoryRevision.execute({
+          scope: parseWorkScope(request.body.scope),
+          itemId: parseLocalId('inventory-item', request.params.itemId),
+          baseRevisionId: parseLocalId(
+            'item-revision',
+            request.body.baseRevisionId,
+          ),
+          anchorId: parseLocalId('anchor', request.body.anchorId),
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,
         }),

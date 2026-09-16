@@ -9,6 +9,7 @@ import { localId } from '../../../app/domain/identity/index.ts';
 import {
   inventoryRevisionCandidateSteps,
   planInventoryRevision,
+  promoteAnalysisExplorationToRevision,
   type InventoryRevisionLine,
 } from '../../../app/domain/inventory/index.ts';
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
@@ -88,6 +89,73 @@ test('candidate combines the stable prefix with the transient suffix', () => {
       (step) => step.move.san,
     ),
     ['e4', 'e5', 'Nf3', 'd6'],
+  );
+});
+
+test('an explored continuation can become a truncate revision without replaying moves', () => {
+  const line = openingLine();
+  const cutAnchor = line.steps[1]!.anchorId;
+  const plan = planInventoryRevision({
+    line,
+    mode: 'truncate_after',
+    anchorId: cutAnchor,
+  });
+  let exploration = startAnalysisScratch('exploration', plan.scratchRoot, {
+    kind: 'inventory_anchor',
+    itemId: line.itemId,
+    revisionId: line.revisionId,
+    anchorId: cutAnchor,
+  });
+  const applied = rules.applyMove(exploration.root, [], {
+    kind: 'notation',
+    value: 'Bc4',
+    locale: 'en-GB',
+  });
+  assert.equal(applied.ok, true);
+  if (!applied.ok) throw new Error('Expected a legal move.');
+  exploration = appendAnalysisMove(exploration, applied.value);
+
+  const revision = promoteAnalysisExplorationToRevision({
+    scratch: exploration,
+    plan,
+  });
+
+  assert.equal(revision.scratchId, exploration.scratchId);
+  assert.equal(revision.scratchRevision, exploration.scratchRevision + 1);
+  assert.equal(revision.intent.kind, 'inventory_revision');
+  assert.deepEqual(
+    inventoryRevisionCandidateSteps({ base: line, scratch: revision }).map(
+      (step) => step.move.san,
+    ),
+    ['e4', 'e5', 'Bc4'],
+  );
+});
+
+test('only a complete exploration from the revision cut can be promoted', () => {
+  const line = openingLine();
+  const plan = planInventoryRevision({
+    line,
+    mode: 'truncate_after',
+    anchorId: line.steps[1]!.anchorId,
+  });
+  const wrongOrigin = startAnalysisScratch('wrong-origin', plan.scratchRoot, {
+    kind: 'inventory_anchor',
+    itemId: line.itemId,
+    revisionId: line.revisionId,
+    anchorId: line.rootAnchorId,
+  });
+  const empty = startAnalysisScratch('empty', plan.scratchRoot, {
+    kind: 'inventory_anchor',
+    itemId: line.itemId,
+    revisionId: line.revisionId,
+    anchorId: plan.cutAnchorId,
+  });
+
+  assert.throws(() =>
+    promoteAnalysisExplorationToRevision({ scratch: wrongOrigin, plan }),
+  );
+  assert.throws(() =>
+    promoteAnalysisExplorationToRevision({ scratch: empty, plan }),
   );
 });
 

@@ -104,6 +104,32 @@ export function appendAnalysisMove(
   });
 }
 
+export function removeLastAnalysisMove(
+  scratch: AnalysisScratch,
+): AnalysisScratch {
+  if (scratch.steps.length === 0 || scratch.cursor !== scratch.steps.length) {
+    throw new Error('Only the final analysis move can be removed.');
+  }
+  const steps = scratch.steps.slice(0, -1);
+  return freezeScratch({
+    ...withoutNoteDraft(scratch),
+    scratchRevision: scratch.scratchRevision + 1,
+    steps,
+    cursor: steps.length,
+  });
+}
+
+export function replaceAnalysisScratchIntent(
+  scratch: AnalysisScratch,
+  intent: AnalysisScratchIntent,
+): AnalysisScratch {
+  return freezeScratch({
+    ...withoutNoteDraft(scratch),
+    scratchRevision: scratch.scratchRevision + 1,
+    intent,
+  });
+}
+
 export function moveAnalysisCursor(
   scratch: AnalysisScratch,
   cursor: number,

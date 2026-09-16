@@ -42,6 +42,12 @@ function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
   if (/^\/analysis\/notes\/[^/]+$/.test(pathname)) return ['PATCH', 'DELETE'];
   if (/^\/inventory\/items\/[^/]+\/revision-edits$/.test(pathname))
     return ['POST'];
+  if (
+    /^\/inventory\/items\/[^/]+\/revision-edits\/promote-analysis$/.test(
+      pathname,
+    )
+  )
+    return ['POST'];
   if (/^\/inventory\/items\/[^/]+\/revisions$/.test(pathname)) return ['GET'];
   if (/^\/inventory\/items\/[^/]+\/revisions\/[^/]+$/.test(pathname))
     return ['GET'];

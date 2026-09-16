@@ -205,6 +205,7 @@
   max-height: 42vh;
   margin: 0;
   padding: 8px;
+  overflow-x: hidden;
   overflow-y: auto;
   list-style: none;
 }
@@ -220,9 +221,16 @@
 .moveCell {
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 2px;
+}
+
+.moveActions {
+  display: flex;
+  min-width: 28px;
+  align-items: center;
+  justify-content: flex-end;
 }
 
 .moveButton {
@@ -242,7 +250,8 @@
 }
 
 .addNoteButton,
-.noteIconButton {
+.noteIconButton,
+.takeBackButton {
   display: grid;
   width: 26px;
   height: 26px;
@@ -257,20 +266,23 @@
 }
 
 .addNoteButton[data-hovered],
-.noteIconButton[data-hovered] {
+.noteIconButton[data-hovered],
+.takeBackButton[data-hovered] {
   color: #5c400c;
   background: #fff4d8;
   border-color: #dfbd6f;
 }
 
 .addNoteButton[data-focus-visible],
-.noteIconButton[data-focus-visible] {
+.noteIconButton[data-focus-visible],
+.takeBackButton[data-focus-visible] {
   outline: 2px solid #2f66bd;
   outline-offset: 1px;
 }
 
 .addNoteButton[data-disabled],
-.noteIconButton[data-disabled] {
+.noteIconButton[data-disabled],
+.takeBackButton[data-disabled] {
   color: #a9a39a;
   cursor: default;
 }
@@ -383,6 +395,9 @@
   min-width: 0;
   align-items: center;
   gap: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pathBoundaryButton {
@@ -567,7 +582,6 @@
   border-top: 1px solid #e0e4e9;
 }
 
-.inventoryEditChoice,
 .revisionActions {
   display: grid;
   gap: 8px;
@@ -577,14 +591,12 @@
   border-radius: 5px;
 }
 
-.inventoryEditChoice strong,
 .revisionActions h3 {
   margin: 0;
   color: #493a1c;
   font-size: 13px;
 }
 
-.inventoryEditChoice p,
 .revisionHint,
 .previewSection p {
   margin: 0;
@@ -673,6 +685,13 @@
   margin: 5px 0 0;
   padding-left: 17px;
   font-size: 10px;
+}
+
+.followingContextNote {
+  display: block;
+  margin-top: 2px;
+  color: #754f08;
+  line-height: 1.4;
 }
 
 .previewActions {

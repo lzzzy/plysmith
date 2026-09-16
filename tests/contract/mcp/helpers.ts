@@ -201,6 +201,17 @@ export async function connectMcp(
         return overrides.startInventoryRevision(itemId, request);
       throw new Error('startInventoryRevision fixture not configured');
     },
+    async promoteAnalysisToInventoryRevision(itemId, request) {
+      calls.push({
+        method: 'promoteAnalysisToInventoryRevision',
+        request: { itemId, ...request },
+      });
+      if (overrides.promoteAnalysisToInventoryRevision)
+        return overrides.promoteAnalysisToInventoryRevision(itemId, request);
+      throw new Error(
+        'promoteAnalysisToInventoryRevision fixture not configured',
+      );
+    },
     async previewInventoryRevision(request) {
       calls.push({ method: 'previewInventoryRevision', request });
       if (overrides.previewInventoryRevision)

@@ -72,6 +72,18 @@ export interface StartInventoryRevisionResult {
   readonly resumeVersion?: number;
 }
 
+export interface PromoteAnalysisToInventoryRevisionRequest {
+  readonly scope: WorkScope;
+  readonly itemId: InventoryItemId;
+  readonly baseRevisionId: ItemRevisionId;
+  readonly anchorId: AnchorId;
+  readonly expectedScratchId: string;
+  readonly expectedScratchRevision: number;
+}
+
+export type PromoteAnalysisToInventoryRevisionResult =
+  StartInventoryRevisionResult;
+
 export interface InventoryRevisionContextImpactSummary {
   readonly contextId: WorkingContextId;
   readonly contextName: string;
@@ -84,6 +96,11 @@ export interface InventoryRevisionContextImpactSummary {
 export interface InventoryRevisionFollowingContextSummary {
   readonly contextId: WorkingContextId;
   readonly contextName: string;
+  readonly updatedAutomatically: boolean;
+  readonly referenceCount: number;
+  readonly contributionCount: number;
+  readonly managementResumeCount: number;
+  readonly analysisResumeCount: number;
 }
 
 export interface InventoryRevisionPreview {

@@ -77,6 +77,7 @@ import {
   ListInventoryRevisionsResultSchema,
   PendingRevisionImpactSchema,
   PreviewInventoryRevisionArgumentsSchema,
+  PromoteAnalysisToInventoryRevisionArgumentsSchema,
   ResolvePendingRevisionImpactArgumentsSchema,
   ResolvePendingRevisionImpactResultSchema,
   SaveInventoryRevisionArgumentsSchema,
@@ -360,6 +361,19 @@ export function createMcpServer({
         anyOf: [InventoryRevisionPreviewSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'promote_analysis_to_inventory_revision',
+      title: 'Replace continuation with explored line',
+      description:
+        'Promote the current transient exploration from an inventory anchor into a truncate-after revision draft without replaying its moves.',
+      inputSchema: PromoteAnalysisToInventoryRevisionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [StartInventoryRevisionResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
       _meta: problemMetadata,
     },
     {
@@ -750,6 +764,28 @@ export function createMcpServer({
             `Revision preview affects ${dto.affectedContexts.length} working contexts.`,
           );
         }
+        case 'promote_analysis_to_inventory_revision': {
+          if (
+            !Value.Check(
+              PromoteAnalysisToInventoryRevisionArgumentsSchema,
+              args,
+            )
+          )
+            return toolProblem(localProblem('request.invalid'));
+          const dto = startInventoryRevisionResultDto(
+            await hostClient.promoteAnalysisToInventoryRevision(args.itemId, {
+              scope: args.scope,
+              baseRevisionId: args.baseRevisionId,
+              anchorId: args.anchorId,
+              expectedScratchId: args.expectedScratchId,
+              expectedScratchRevision: args.expectedScratchRevision,
+            }),
+          );
+          return toolResult(
+            dto,
+            `Explored line promoted to inventory revision scratch ${dto.scratch.scratchId}.`,
+          );
+        }
         case 'save_inventory_revision': {
           if (!Value.Check(SaveInventoryRevisionArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -987,6 +1023,8 @@ function inputSchema(name: string) {
       return StartInventoryRevisionArgumentsSchema;
     case 'preview_inventory_revision':
       return PreviewInventoryRevisionArgumentsSchema;
+    case 'promote_analysis_to_inventory_revision':
+      return PromoteAnalysisToInventoryRevisionArgumentsSchema;
     case 'save_inventory_revision':
       return SaveInventoryRevisionArgumentsSchema;
     case 'get_inventory_revision':

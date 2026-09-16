@@ -648,6 +648,12 @@ test('inventory revision write routes preserve scope, identity and preview bindi
         return { scratch, dataRevision: 7, resumeVersion: 4 };
       },
     },
+    promoteAnalysisToInventoryRevision: {
+      execute: async (request) => {
+        received.push(['promote', request]);
+        return { scratch, dataRevision: 7, resumeVersion: 4 };
+      },
+    },
     previewInventoryRevision: {
       execute: async (request) => {
         received.push(['preview', request]);
@@ -725,6 +731,18 @@ test('inventory revision write routes preserve scope, identity and preview bindi
       expectedScratchRevision: 2,
     },
   });
+  const promoted = await host.inject({
+    method: 'POST',
+    url: '/inventory/items/2/revision-edits/promote-analysis',
+    headers,
+    payload: {
+      scope: { kind: 'context', contextId: '1' },
+      baseRevisionId: '3',
+      anchorId: '5',
+      expectedScratchId: 'exploration-scratch-1',
+      expectedScratchRevision: 3,
+    },
+  });
   const saved = await host.inject({
     method: 'POST',
     url: '/inventory/revision-edits/save',
@@ -742,6 +760,8 @@ test('inventory revision write routes preserve scope, identity and preview bindi
   assert.equal(started.json().resumeVersion, 4);
   assert.equal(previewed.statusCode, 200);
   assert.equal(previewed.json().affectedContexts[0].contextId, '1');
+  assert.equal(promoted.statusCode, 200);
+  assert.equal(promoted.json().scratch.intent.kind, 'inventory_revision');
   assert.equal(saved.statusCode, 200);
   assert.deepEqual(saved.json().impacts, [{ impactId: '10', contextId: '1' }]);
   assert.deepEqual(received, [
@@ -772,6 +792,20 @@ test('inventory revision write routes preserve scope, identity and preview bindi
         },
         expectedScratchId: 'revision-scratch-1',
         expectedScratchRevision: 2,
+      },
+    ],
+    [
+      'promote',
+      {
+        scope: {
+          kind: 'context',
+          contextId: localId('working-context', 1),
+        },
+        itemId: localId('inventory-item', 2),
+        baseRevisionId: localId('item-revision', 3),
+        anchorId: localId('anchor', 5),
+        expectedScratchId: 'exploration-scratch-1',
+        expectedScratchRevision: 3,
       },
     ],
     [

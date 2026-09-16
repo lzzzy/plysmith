@@ -33,6 +33,7 @@ export {
   type InventoryRevisionScratchRequestDto,
   type InventoryRevisionPreviewDto,
   type PendingRevisionImpactDto,
+  type PromoteAnalysisToInventoryRevisionRequestDto,
   type ResolvePendingRevisionImpactRequestDto,
   type ResolvePendingRevisionImpactResultDto,
   type SaveInventoryRevisionRequestDto,

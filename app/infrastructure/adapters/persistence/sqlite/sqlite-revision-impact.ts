@@ -45,6 +45,7 @@ export interface RevisionImpactInspection {
   readonly affectedContexts: readonly InventoryRevisionContextImpactSummary[];
   readonly followingContexts: readonly InventoryRevisionFollowingContextSummary[];
   readonly contexts: readonly RevisionImpactContextDraft[];
+  readonly automaticContexts: readonly RevisionImpactContextDraft[];
   readonly fingerprintValue: unknown;
 }
 
@@ -214,7 +215,7 @@ export function inspectRevisionImpact(
     });
     contextRows.set(dependency.contextId, current);
   }
-  const contexts = Object.freeze(
+  const dependencyContexts = Object.freeze(
     [...contextRows]
       .sort(([left], [right]) => left - right)
       .map(([contextId, value]) =>
@@ -254,6 +255,42 @@ export function inspectRevisionImpact(
     number,
     InventoryRevisionContextImpactSummary
   >();
+  const activeContexts = database
+    .prepare(
+      `SELECT item.context_id AS contextId, context.display_name AS contextName
+         FROM workspace_context_item AS item
+         JOIN workspace_working_context AS context
+           ON context.context_id = item.context_id
+        WHERE item.item_id = ? AND context.lifecycle = 'active'
+        ORDER BY item.context_id`,
+    )
+    .all(request.itemId.value) as {
+    contextId: number;
+    contextName: string;
+  }[];
+  const automaticContextIds = new Set<number>();
+  if (request.publishingScratch !== undefined) {
+    automaticContextIds.add(request.publishingScratch.contextId.value);
+  }
+  if (activeContexts.length === 1 && activeContexts[0] !== undefined) {
+    automaticContextIds.add(activeContexts[0].contextId);
+  }
+  for (const existing of existingImpacts) {
+    automaticContextIds.delete(existing.contextId);
+  }
+  const automaticContexts = Object.freeze(
+    dependencyContexts.filter((context) =>
+      automaticContextIds.has(context.contextId.value),
+    ),
+  );
+  const automaticContextById = new Map(
+    automaticContexts.map((context) => [context.contextId.value, context]),
+  );
+  const contexts = Object.freeze(
+    dependencyContexts.filter(
+      (context) => !automaticContextIds.has(context.contextId.value),
+    ),
+  );
   for (const context of contexts) {
     affectedContexts.set(
       context.contextId.value,
@@ -284,19 +321,6 @@ export function inspectRevisionImpact(
       }),
     );
   }
-  const followingContexts = database
-    .prepare(
-      `SELECT item.context_id AS contextId, context.display_name AS contextName
-         FROM workspace_context_item AS item
-         JOIN workspace_working_context AS context
-           ON context.context_id = item.context_id
-        WHERE item.item_id = ? AND context.lifecycle = 'active'
-        ORDER BY item.context_id`,
-    )
-    .all(request.itemId.value) as {
-    contextId: number;
-    contextName: string;
-  }[];
   return Object.freeze({
     historicalGlobalContributionCount: dependencies.filter(
       (dependency) => dependency.kind === 'global_contribution',
@@ -307,18 +331,72 @@ export function inspectRevisionImpact(
       ),
     ),
     followingContexts: Object.freeze(
-      followingContexts
+      activeContexts
         .filter((context) => !affectedContexts.has(context.contextId))
-        .map((context) =>
-          Object.freeze({
+        .map((context) => {
+          const automatic = automaticContextById.get(context.contextId);
+          return Object.freeze({
             contextId: localId('working-context', context.contextId),
             contextName: context.contextName,
-          }),
-        ),
+            updatedAutomatically: automatic !== undefined,
+            referenceCount:
+              automatic === undefined
+                ? 0
+                : countEntries(automatic.entries, 'reference'),
+            contributionCount:
+              automatic === undefined
+                ? 0
+                : countEntries(automatic.entries, 'contribution'),
+            managementResumeCount:
+              automatic === undefined
+                ? 0
+                : countEntries(automatic.entries, 'management_resume'),
+            analysisResumeCount:
+              automatic === undefined
+                ? 0
+                : countEntries(automatic.entries, 'analysis_resume'),
+          });
+        }),
     ),
     contexts,
+    automaticContexts,
     fingerprintValue: Object.freeze(dependencies.map(Object.freeze)),
   });
+}
+
+export function applyAutomaticRevisionFollow(
+  database: Database.Database,
+  request: {
+    readonly itemId: InventoryItemId;
+    readonly targetRevisionId: ItemRevisionId;
+    readonly targetAnchorId: AnchorId;
+    readonly contexts: readonly RevisionImpactContextDraft[];
+    readonly publishingContextId?: WorkingContextId;
+    readonly occurredAt: string;
+  },
+): void {
+  const targetPositionId = resolveAnchorPosition(
+    database,
+    request.itemId.value,
+    request.targetRevisionId.value,
+    request.targetAnchorId.value,
+  );
+  if (targetPositionId === undefined) throw revisionImpactConflict();
+  for (const context of request.contexts) {
+    useTargetEntries(database, {
+      contextId: context.contextId,
+      itemId: request.itemId,
+      targetRevisionId: request.targetRevisionId,
+      targetAnchorId: request.targetAnchorId,
+      targetPositionId,
+      entries: context.entries.filter(
+        (entry) =>
+          entry.kind !== 'analysis_resume' ||
+          request.publishingContextId?.value !== context.contextId.value,
+      ),
+      occurredAt: request.occurredAt,
+    });
+  }
 }
 
 export function persistRevisionImpacts(
@@ -691,7 +769,30 @@ function useTargetRevision(
   targetPositionId: number,
   occurredAt: string,
 ): void {
-  for (const entry of readImpactEntries(database, impact.impactId)) {
+  useTargetEntries(database, {
+    contextId: impact.contextId,
+    itemId: impact.itemId,
+    targetRevisionId: impact.targetRevisionId,
+    targetAnchorId: impact.targetAnchorId,
+    targetPositionId,
+    entries: readImpactEntries(database, impact.impactId),
+    occurredAt,
+  });
+}
+
+function useTargetEntries(
+  database: Database.Database,
+  request: {
+    readonly contextId: WorkingContextId;
+    readonly itemId: InventoryItemId;
+    readonly targetRevisionId: ItemRevisionId;
+    readonly targetAnchorId: AnchorId;
+    readonly targetPositionId: number;
+    readonly entries: readonly StoredImpactEntry[];
+    readonly occurredAt: string;
+  },
+): void {
+  for (const entry of request.entries) {
     if (entry.kind === 'reference') {
       const duplicate = database
         .prepare(
@@ -700,9 +801,9 @@ function useTargetRevision(
               AND reference_id <> ?`,
         )
         .get(
-          impact.contextId.value,
-          impact.itemId.value,
-          impact.targetAnchorId.value,
+          request.contextId.value,
+          request.itemId.value,
+          request.targetAnchorId.value,
           entry.subjectId,
         );
       const result =
@@ -714,10 +815,10 @@ function useTargetRevision(
                   AND anchor_id = ?`,
               )
               .run(
-                impact.targetAnchorId.value,
+                request.targetAnchorId.value,
                 entry.subjectId,
-                impact.contextId.value,
-                impact.itemId.value,
+                request.contextId.value,
+                request.itemId.value,
                 entry.oldAnchorId,
               )
           : database
@@ -728,8 +829,8 @@ function useTargetRevision(
               )
               .run(
                 entry.subjectId,
-                impact.contextId.value,
-                impact.itemId.value,
+                request.contextId.value,
+                request.itemId.value,
                 entry.oldAnchorId,
               );
       if (result.changes !== 1) throw revisionImpactConflict();
@@ -749,9 +850,9 @@ function useTargetRevision(
               AND anchor_id = ? AND status = 'active'`,
         )
         .run(
-          occurredAt,
+          request.occurredAt,
           entry.subjectId,
-          impact.contextId.value,
+          request.contextId.value,
           entry.oldAnchorId,
         );
       if (result.changes !== 1) throw revisionImpactConflict();
@@ -767,10 +868,10 @@ function useTargetRevision(
               AND selected_anchor_id = ?`,
         )
         .run(
-          impact.targetAnchorId.value,
-          occurredAt,
-          impact.contextId.value,
-          impact.itemId.value,
+          request.targetAnchorId.value,
+          request.occurredAt,
+          request.contextId.value,
+          request.itemId.value,
           entry.oldAnchorId,
         );
       if (result.changes !== 1) throw revisionImpactConflict();
@@ -782,7 +883,7 @@ function useTargetRevision(
            FROM workspace_analysis_resume
           WHERE context_id = ? AND item_id = ? AND anchor_id = ?`,
       )
-      .get(impact.contextId.value, impact.itemId.value, entry.oldAnchorId) as
+      .get(request.contextId.value, request.itemId.value, entry.oldAnchorId) as
       { scratchId: number | null } | undefined;
     if (state === undefined) throw revisionImpactConflict();
     const result = database
@@ -795,17 +896,17 @@ function useTargetRevision(
           WHERE context_id = ? AND item_id = ? AND anchor_id = ?`,
       )
       .run(
-        impact.targetRevisionId.value,
-        impact.targetAnchorId.value,
-        targetPositionId,
-        occurredAt,
-        impact.contextId.value,
-        impact.itemId.value,
+        request.targetRevisionId.value,
+        request.targetAnchorId.value,
+        request.targetPositionId,
+        request.occurredAt,
+        request.contextId.value,
+        request.itemId.value,
         entry.oldAnchorId,
       );
     if (result.changes !== 1) throw revisionImpactConflict();
     if (state.scratchId !== null) {
-      deleteContextScratch(database, impact.contextId.value);
+      deleteContextScratch(database, request.contextId.value);
     }
   }
 }

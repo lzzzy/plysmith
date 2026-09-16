@@ -40,6 +40,7 @@ import {
 import { ensurePosition } from './sqlite-chess-state.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
 import {
+  applyAutomaticRevisionFollow,
   inspectRevisionImpact,
   persistRevisionImpacts,
   type RevisionImpactInspection,
@@ -275,6 +276,16 @@ export function saveInventoryRevision(
     candidate.base.itemId.value,
     revisionId.value,
   );
+  applyAutomaticRevisionFollow(database, {
+    itemId: candidate.base.itemId,
+    targetRevisionId: revisionId,
+    targetAnchorId: currentAnchorId,
+    contexts: candidate.impact.automaticContexts,
+    ...(request.scope.kind === 'context'
+      ? { publishingContextId: request.scope.contextId }
+      : {}),
+    occurredAt: request.occurredAt,
+  });
   const impacts = persistRevisionImpacts(database, {
     itemId: candidate.base.itemId,
     pinnedRevisionId: candidate.base.revisionId,

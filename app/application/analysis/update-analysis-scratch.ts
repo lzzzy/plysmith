@@ -4,6 +4,7 @@ import {
   currentAnalysisMoves,
   moveAnalysisCursor,
   prepareAnalysisNote,
+  removeLastAnalysisMove,
   startAnalysisScratch,
   type AnalysisScratch,
 } from '../../domain/analysis/index.ts';
@@ -211,7 +212,7 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
             : record.steps[record.cursor - 1]?.after;
         if (root === undefined) throw invalidAnalysisUpdate();
       }
-      return startAnalysisScratch(
+      let scratch = startAnalysisScratch(
         this.#scratchId(),
         root,
         action.origin.kind === 'initial_position'
@@ -220,6 +221,11 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
             ? { kind: 'fen' }
             : action.origin,
       );
+      if (action.firstMove === undefined) return scratch;
+      const applied = this.#rules.applyMove(scratch.root, [], action.firstMove);
+      if (!applied.ok) throw chessRulesProblem(applied.reason);
+      scratch = appendAnalysisMove(scratch, applied.value);
+      return scratch;
     }
     if (current === undefined) throw analysisScratchNotFound();
     if (action.kind === 'discard') return undefined;
@@ -239,6 +245,9 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
     try {
       if (action.kind === 'move_cursor') {
         return moveAnalysisCursor(current, action.cursor);
+      }
+      if (action.kind === 'remove_last_move') {
+        return removeLastAnalysisMove(current);
       }
       if (action.kind === 'prepare_note') {
         return prepareAnalysisNote(current, action.body);

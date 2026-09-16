@@ -418,6 +418,7 @@ export const AnalysisWorkspaceSchema = Type.Object(
         Type.Literal('start_scratch'),
         Type.Literal('apply_move'),
         Type.Literal('move_cursor'),
+        Type.Literal('remove_last_move'),
         Type.Literal('prepare_note'),
         Type.Literal('clear_note'),
         Type.Literal('discard_scratch'),
@@ -485,7 +486,11 @@ export const UpdateAnalysisScratchBodySchema = Type.Object(
     expectedScratchRevision: Type.Union([positiveRevision, Type.Null()]),
     action: Type.Union([
       Type.Object(
-        { kind: Type.Literal('start'), origin: analysisStartOrigin },
+        {
+          kind: Type.Literal('start'),
+          origin: analysisStartOrigin,
+          firstMove: Type.Optional(moveInput),
+        },
         objectOptions,
       ),
       Type.Object(
@@ -496,6 +501,7 @@ export const UpdateAnalysisScratchBodySchema = Type.Object(
         { kind: Type.Literal('move_cursor'), cursor: revision },
         objectOptions,
       ),
+      Type.Object({ kind: Type.Literal('remove_last_move') }, objectOptions),
       Type.Object(
         {
           kind: Type.Literal('prepare_note'),
@@ -718,6 +724,17 @@ export const StartInventoryRevisionResultSchema = Type.Object(
   { ...objectOptions, $id: 'StartInventoryRevisionResult' },
 );
 
+export const PromoteAnalysisToInventoryRevisionBodySchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    baseRevisionId: localId,
+    anchorId: localId,
+    expectedScratchId: identifier,
+    expectedScratchRevision: positiveRevision,
+  },
+  { ...objectOptions, $id: 'PromoteAnalysisToInventoryRevisionBody' },
+);
+
 export const InventoryRevisionScratchBodySchema = Type.Object(
   {
     scope: Type.Ref(WorkScopeSchema),
@@ -743,6 +760,11 @@ export const InventoryRevisionFollowingContextSummarySchema = Type.Object(
   {
     contextId: localId,
     contextName: Type.String({ minLength: 1, maxLength: 160 }),
+    updatedAutomatically: Type.Boolean(),
+    referenceCount: revision,
+    contributionCount: revision,
+    managementResumeCount: revision,
+    analysisResumeCount: revision,
   },
   { ...objectOptions, $id: 'InventoryRevisionFollowingContextSummary' },
 );
@@ -1338,6 +1360,7 @@ export const apiSchemas = [
   InventoryRevisionReadQuerySchema,
   StartInventoryRevisionBodySchema,
   StartInventoryRevisionResultSchema,
+  PromoteAnalysisToInventoryRevisionBodySchema,
   InventoryRevisionScratchBodySchema,
   InventoryRevisionContextImpactSummarySchema,
   InventoryRevisionFollowingContextSummarySchema,

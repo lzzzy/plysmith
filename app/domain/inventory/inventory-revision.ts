@@ -3,6 +3,7 @@ import type {
   AnalysisScratchIntent,
   AnalysisScratchStep,
 } from '../analysis/index.ts';
+import { replaceAnalysisScratchIntent } from '../analysis/index.ts';
 import type { ChessState } from '../chess_graph/index.ts';
 import type {
   AnchorId,
@@ -145,6 +146,31 @@ export function inventoryRevisionCandidateSteps(input: {
     ...input.base.steps.slice(0, preservedCount),
     ...input.scratch.steps,
   ]);
+}
+
+export function promoteAnalysisExplorationToRevision(input: {
+  readonly scratch: AnalysisScratch;
+  readonly plan: InventoryRevisionPlan;
+}): AnalysisScratch {
+  const { scratch, plan } = input;
+  if (
+    scratch.intent.kind !== 'exploration' ||
+    plan.mode !== 'truncate_after' ||
+    scratch.origin.kind !== 'inventory_anchor' ||
+    scratch.origin.itemId.value !== plan.intent.itemId.value ||
+    scratch.origin.revisionId.value !== plan.intent.baseRevisionId.value ||
+    scratch.origin.anchorId.value !== plan.cutAnchorId.value ||
+    scratch.root.fen !== plan.scratchRoot.fen ||
+    scratch.root.position.positionKey !==
+      plan.scratchRoot.position.positionKey ||
+    scratch.steps.length === 0 ||
+    scratch.cursor !== scratch.steps.length
+  ) {
+    throw new Error(
+      'Only a complete exploration from the revision cut can be promoted.',
+    );
+  }
+  return replaceAnalysisScratchIntent(scratch, plan.intent);
 }
 
 function lineAnchorIndex(

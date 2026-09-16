@@ -63,6 +63,8 @@ export type StartInventoryRevisionRequestDto =
   components['schemas']['StartInventoryRevisionBody'];
 export type StartInventoryRevisionResultDto =
   components['schemas']['StartInventoryRevisionResult'];
+export type PromoteAnalysisToInventoryRevisionRequestDto =
+  components['schemas']['PromoteAnalysisToInventoryRevisionBody'];
 export type InventoryRevisionScratchRequestDto =
   components['schemas']['InventoryRevisionScratchBody'];
 export type InventoryRevisionPreviewDto =
@@ -362,6 +364,24 @@ export class PlysmithHostClient {
       );
       return unwrap<InventoryRevisionPreviewDto>(
         result.data as InventoryRevisionPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async promoteAnalysisToInventoryRevision(
+    itemId: string,
+    request: PromoteAnalysisToInventoryRevisionRequestDto,
+  ): Promise<StartInventoryRevisionResultDto> {
+    try {
+      const result = await this.#client.POST(
+        '/inventory/items/{itemId}/revision-edits/promote-analysis',
+        { params: { path: { itemId } }, body: request },
+      );
+      return unwrap<StartInventoryRevisionResultDto>(
+        result.data as StartInventoryRevisionResultDto | undefined,
         result.error,
       );
     } catch (error) {

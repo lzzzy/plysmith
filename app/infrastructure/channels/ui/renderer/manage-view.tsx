@@ -545,7 +545,27 @@ function ItemInspector({
                   </p>
                   <ul>
                     {renameDraft.preview.followingContexts.map((context) => (
-                      <li key={context.contextId}>{context.contextName}</li>
+                      <li key={context.contextId}>
+                        <FormattedMessage
+                          id="inventory.followingContextEntry"
+                          values={{
+                            context: context.contextName,
+                            references: context.referenceCount,
+                            notes: context.contributionCount,
+                            resumes:
+                              context.managementResumeCount +
+                              context.analysisResumeCount,
+                          }}
+                        />
+                        {context.contributionCount > 0 && (
+                          <span className={styles.followingContextNote}>
+                            <FormattedMessage
+                              id="inventory.followingContextNotesHistorical"
+                              values={{ count: context.contributionCount }}
+                            />
+                          </span>
+                        )}
+                      </li>
                     ))}
                   </ul>
                 </div>
