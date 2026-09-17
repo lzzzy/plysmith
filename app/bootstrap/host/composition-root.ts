@@ -12,6 +12,7 @@ import {
   GetAnalysisWorkspace,
   UpdateAnalysisScratch,
   UpdateAnalysisNote,
+  ValidateAnalysisSetup,
 } from '../../application/analysis/index.ts';
 import {
   GetInventoryRevision,
@@ -172,6 +173,7 @@ export async function composeHost(
       rules,
       storeStatus: persistence,
     });
+    const validateAnalysisSetup = new ValidateAnalysisSetup({ rules });
     const updateAnalysisScratch = new UpdateAnalysisScratch({
       reader: persistence,
       writer: persistence,
@@ -289,6 +291,7 @@ export async function composeHost(
       getUserPreferences,
       setUiLanguage,
       getAnalysisWorkspace,
+      validateAnalysisSetup,
       updateAnalysisScratch,
       createAnalysisRecord,
       createAnalysisNote,

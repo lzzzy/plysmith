@@ -1,14 +1,12 @@
 import type { AnalysisScratchStep } from '../analysis/index.ts';
-import {
-  currentAnalysisMoves,
-  type AnalysisScratch,
-} from '../analysis/index.ts';
+import { type AnalysisScratch } from '../analysis/index.ts';
 import type { ChessState } from '../chess_graph/index.ts';
 
 export interface AnalysisRecordDraft {
   readonly displayName: string;
   readonly languageTag: string;
-  readonly originMode: 'initial_position' | 'fen' | 'inventory_anchor';
+  readonly originMode:
+    'initial_position' | 'fen' | 'position_setup' | 'inventory_anchor';
   readonly root: ChessState;
   readonly steps: readonly AnalysisScratchStep[];
   readonly note?: AnalysisScratch['noteDraft'];
@@ -27,10 +25,6 @@ export function createAnalysisRecordDraft(input: {
   requireTrimmedText(input.displayName, 200, 'display name');
   if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.languageTag)) {
     throw new Error('An analysis record requires a BCP-47 language tag.');
-  }
-  const currentMoves = currentAnalysisMoves(input.scratch);
-  if (currentMoves.length === 0) {
-    throw new Error('An analysis record requires a move path.');
   }
   const noteDraft = input.scratch.noteDraft;
   if (noteDraft !== undefined) {

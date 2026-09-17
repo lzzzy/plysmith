@@ -431,8 +431,7 @@
   font-size: 11px;
 }
 
-.moveEntry,
-.fenForm {
+.moveEntry {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
@@ -440,22 +439,19 @@
 }
 
 .moveEntry label,
-.fenForm label,
 .saveForm label {
   color: #59636f;
   font-size: 11px;
   font-weight: 680;
 }
 
-.moveEntry > div,
-.fenForm > div {
+.moveEntry > div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
 }
 
 .moveEntry input,
-.fenForm input,
 .saveForm input,
 .analysisActions textarea,
 .inlineNoteForm textarea {
@@ -471,22 +467,11 @@
 }
 
 .moveEntry input:focus,
-.fenForm input:focus,
 .saveForm input:focus,
 .analysisActions textarea:focus,
 .inlineNoteForm textarea:focus {
   border-color: #4d78bd;
   box-shadow: 0 0 0 2px rgb(47 102 189 / 14%);
-}
-
-.startActions {
-  display: grid;
-  gap: 8px;
-  padding: 12px 14px 14px;
-}
-
-.fenForm {
-  padding: 8px 0 0;
 }
 
 .primaryButton,

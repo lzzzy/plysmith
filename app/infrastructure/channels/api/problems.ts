@@ -110,6 +110,11 @@ const catalog = {
     'Invalid analysis update',
     'The analysis scratch update is invalid.',
   ],
+  'analysis.invalid_setup': [
+    400,
+    'Invalid analysis setup',
+    'The analysis setup is not a valid supported chess position.',
+  ],
   'analysis.scratch_not_found': [
     404,
     'Analysis scratch not found',
@@ -326,6 +331,7 @@ export function installProblemHandling(
             correlationIdFactory,
           );
         case 'analysis.invalid_update':
+        case 'analysis.invalid_setup':
         case 'analysis.invalid_record':
         case 'analysis.invalid_note':
         case 'chess.invalid_fen':

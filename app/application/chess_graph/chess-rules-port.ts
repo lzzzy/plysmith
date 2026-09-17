@@ -1,4 +1,6 @@
 import type {
+  AnalysisSetup,
+  AnalysisSetupValidation,
   AppliedMove,
   CanonicalMove,
   ChessState,
@@ -27,6 +29,7 @@ export type ChessRulesResult<T> =
 export interface ChessRulesPort {
   initialState(): ChessState;
   parseFen(fen: string): ChessRulesResult<ChessState>;
+  validateSetup(setup: AnalysisSetup): AnalysisSetupValidation;
   applyMove(
     root: ChessState,
     moves: readonly CanonicalMove[],

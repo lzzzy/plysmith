@@ -41,7 +41,7 @@ test('an analysis record keeps its optional comment separate from its move path'
   assert.ok(Object.isFrozen(record));
 });
 
-test('an analysis record accepts a path without a note and rejects invalid metadata', () => {
+test('an analysis record accepts a root-only position and rejects invalid metadata', () => {
   const empty = startAnalysisScratch('scratch-1', rules.initialState());
   const scratch = appendAnalysisMove(
     empty,
@@ -54,18 +54,18 @@ test('an analysis record accepts a path without a note and rejects invalid metad
   });
   assert.equal(record.note, undefined);
 
+  const rootOnly = createAnalysisRecordDraft({
+    displayName: 'Leerer Pfad',
+    languageTag: 'de-DE',
+    scratch: empty,
+  });
+  assert.deepEqual(rootOnly.steps, []);
+
   assert.throws(() =>
     createAnalysisRecordDraft({
       displayName: ' Unsauber',
       languageTag: 'de-DE',
       scratch,
-    }),
-  );
-  assert.throws(() =>
-    createAnalysisRecordDraft({
-      displayName: 'Leerer Pfad',
-      languageTag: 'de-DE',
-      scratch: empty,
     }),
   );
 });

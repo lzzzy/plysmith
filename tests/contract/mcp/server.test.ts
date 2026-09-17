@@ -17,7 +17,7 @@ import {
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises the explicit twenty-eight-tool allowlist and two fixed resources', async (t) => {
+test('MCP advertises the explicit twenty-nine-tool allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -31,6 +31,7 @@ test('MCP advertises the explicit twenty-eight-tool allowlist and two fixed reso
       'create_diagnostic_report',
       'set_ui_language',
       'get_analysis_workspace',
+      'validate_analysis_setup',
       'update_analysis_scratch',
       'create_analysis_record',
       'create_analysis_note',
@@ -311,6 +312,25 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       legalMoves: [],
       allowedActions: ['start_scratch'],
     }),
+    validateAnalysisSetup: async () => ({
+      valid: true,
+      setup: {
+        pieces: [
+          { square: 'e1', color: 'white', role: 'king' },
+          { square: 'e8', color: 'black', role: 'king' },
+        ],
+        sideToMove: 'white',
+        castlingRights: {
+          whiteKingSide: false,
+          whiteQueenSide: false,
+          blackKingSide: false,
+          blackQueenSide: false,
+        },
+        halfmoveClock: 0,
+        fullmoveNumber: 1,
+      },
+      state,
+    }),
     updateAnalysisScratch: async () => ({
       discarded: true,
       dataRevision: 4,
@@ -455,6 +475,15 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         presentation: 'list',
       },
     ],
+    [
+      'validate_analysis_setup',
+      {
+        input: {
+          kind: 'fen',
+          fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        },
+      },
+    ],
   ] as const;
   for (const [name, arguments_] of scenarios) {
     const result = await client.callTool({ name, arguments: arguments_ });
@@ -507,6 +536,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         presentation: 'list',
       },
     },
+    { method: 'validateAnalysisSetup', request: scenarios[13][1] },
   ]);
 });
 
@@ -937,6 +967,31 @@ test('a revision conflict retains all RFC problem fields and is not retried', as
   });
   assert.equal(result.isError, true);
   assertToolData(result, revisionConflict);
+  assert.equal(calls.length, 1);
+});
+
+test('an absent expected scratch is preserved as revision zero', async (t) => {
+  const scratchConflict = {
+    ...revisionConflict,
+    code: 'analysis.scratch_revision_conflict',
+    parameters: { expectedRevision: 0, currentRevision: 1 },
+  };
+  const { client, calls } = await connectMcp(t, {
+    updateAnalysisScratch: async () => {
+      throw { problem: scratchConflict };
+    },
+  });
+  const result = await client.callTool({
+    name: 'update_analysis_scratch',
+    arguments: {
+      scope: { kind: 'free' },
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: { kind: 'start', origin: { kind: 'initial_position' } },
+    },
+  });
+  assert.equal(result.isError, true);
+  assertToolData(result, scratchConflict);
   assert.equal(calls.length, 1);
 });
 

@@ -4,7 +4,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { AxeBuilder } from '@axe-core/playwright';
-import { _electron as electron, type Page } from '@playwright/test';
+import {
+  _electron as electron,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -136,8 +140,39 @@ try {
   await activityNavigation
     .getByRole('button', { name: /Analysieren|Analyse/ })
     .click();
-  await window.getByRole('grid', { name: /Schachbrett|Chess board/ }).waitFor();
+  const analysisBoard = window.getByRole('grid', {
+    name: /Schachbrett|Chess board/,
+  });
+  await analysisBoard.waitFor();
   assert.equal(await window.getByRole('gridcell').count(), 64);
+  assert.equal(
+    await window.evaluate(async () => {
+      const browser = globalThis as unknown as {
+        readonly document: {
+          readonly fonts: {
+            readonly ready: Promise<unknown>;
+            check(font: string, text?: string): boolean;
+            load(font: string, text?: string): Promise<readonly unknown[]>;
+          };
+        };
+      };
+      await browser.document.fonts.ready;
+      await browser.document.fonts.load('32px "Plysmith Chess Symbols"', '♔');
+      return browser.document.fonts.check('32px "Plysmith Chess Symbols"', '♔');
+    }),
+    true,
+  );
+  await verifySquareBoard(analysisBoard);
+  const topLeftSquare = analysisBoard.getByRole('gridcell').first();
+  assert.match((await topLeftSquare.getAttribute('aria-label')) ?? '', /^a8,/);
+  const flipBoardButton = window.getByRole('button', {
+    name: /Brett drehen|Flip board/,
+  });
+  await flipBoardButton.click();
+  assert.match((await topLeftSquare.getAttribute('aria-label')) ?? '', /^h1,/);
+  await verifySquareBoard(analysisBoard);
+  await flipBoardButton.click();
+  assert.match((await topLeftSquare.getAttribute('aria-label')) ?? '', /^a8,/);
   assert.equal(
     await activityNavigation
       .getByRole('button', { name: /Ausspielen|Play out/ })
@@ -191,7 +226,11 @@ try {
     .getByRole('button', { name: /Analysieren|Analyse/ })
     .click();
   await window.setViewportSize({ width: 390, height: 844 });
-  await window.getByRole('grid', { name: /Schachbrett|Chess board/ }).waitFor();
+  const narrowAnalysisBoard = window.getByRole('grid', {
+    name: /Schachbrett|Chess board/,
+  });
+  await narrowAnalysisBoard.waitFor();
+  await verifySquareBoard(narrowAnalysisBoard);
   assert.equal(
     await window.evaluate(() => {
       const browser = globalThis as unknown as {
@@ -261,4 +300,24 @@ async function verifyAccessibility(page: Page, view: string): Promise<void> {
     accessibility.violations.map(({ id }) => id),
     [],
   );
+}
+
+async function verifySquareBoard(board: Locator): Promise<void> {
+  const boardBox = await board.boundingBox();
+  assert.notEqual(boardBox, null);
+  assert.ok(Math.abs(boardBox!.width - boardBox!.height) <= 1);
+
+  const squareSizes = await board.getByRole('gridcell').evaluateAll((cells) =>
+    cells.map((cell) => {
+      const bounds = cell.getBoundingClientRect();
+      return { width: bounds.width, height: bounds.height };
+    }),
+  );
+  assert.equal(squareSizes.length, 64);
+  const first = squareSizes[0]!;
+  for (const square of squareSizes) {
+    assert.ok(Math.abs(square.width - square.height) <= 1);
+    assert.ok(Math.abs(square.width - first.width) <= 1);
+    assert.ok(Math.abs(square.height - first.height) <= 1);
+  }
 }

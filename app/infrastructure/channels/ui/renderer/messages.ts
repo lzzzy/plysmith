@@ -11,6 +11,7 @@ export const messages = {
     'scope.persistentResume': 'Bereichsstand wird gemerkt',
     'manage.eyebrow': 'Bestand und Arbeitskontexte',
     'manage.title': 'Verwalten',
+    'manage.newAnalysis': 'Neue Analyse',
     'manage.resultCount':
       '{count, plural, =0 {Keine Ergebnisse} one {# Ergebnis} other {# Ergebnisse}}',
     'manage.workScope': 'Aktiver Ausschnitt',
@@ -47,6 +48,67 @@ export const messages = {
     'manage.useInContext': 'Im Context verwenden',
     'manage.freeSummary':
       'Der gesamte Bestand ist zugänglich. Der aktuelle Fokus bleibt temporär.',
+    'analysisSetup.eyebrow': 'Bestand',
+    'analysisSetup.title': 'Neue Analyse',
+    'analysisSetup.intro':
+      'Beginnen Sie aus der Grundstellung oder bauen Sie eine beliebige Stellung auf.',
+    'analysisSetup.existingDraft': 'Eine Analyse ist noch nicht abgeschlossen',
+    'analysisSetup.existingDraftDetail':
+      'Setzen Sie den vorhandenen Entwurf fort oder verwerfen Sie ihn bewusst, bevor Sie neu beginnen.',
+    'analysisSetup.continueDraft': 'Vorhandene Analyse fortsetzen',
+    'analysisSetup.discardDraft': 'Entwurf verwerfen und neu beginnen',
+    'analysisSetup.fromInitial': 'Aus Grundstellung beginnen',
+    'analysisSetup.fromInitialDetail':
+      'Startet ein leeres Brettgespräch aus der normalen Anfangsstellung.',
+    'analysisSetup.buildPosition': 'Stellung aufbauen',
+    'analysisSetup.buildPositionDetail':
+      'Figuren frei setzen und anschließend von dieser Stellung aus analysieren.',
+    'analysisSetup.board': 'Aufgebaute Schachstellung',
+    'analysisSetup.white': 'Weiß',
+    'analysisSetup.black': 'Schwarz',
+    'analysisSetup.removePiece': 'Figur entfernen',
+    'analysisSetup.sideToMove': 'Am Zug',
+    'analysisSetup.castling': 'Rochaderechte',
+    'analysisSetup.whiteKingSide': 'Weiß kurz',
+    'analysisSetup.whiteQueenSide': 'Weiß lang',
+    'analysisSetup.blackKingSide': 'Schwarz kurz',
+    'analysisSetup.blackQueenSide': 'Schwarz lang',
+    'analysisSetup.initialPosition': 'Grundstellung',
+    'analysisSetup.clearBoard': 'Brett leeren',
+    'analysisSetup.advanced': 'Erweiterte Stellungsdaten',
+    'analysisSetup.importFen': 'FEN übernehmen',
+    'analysisSetup.enPassant': 'En passant',
+    'analysisSetup.enPassantNone': 'Nicht möglich',
+    'analysisSetup.enPassantCapture':
+      '{side} kann auf {square} en passant schlagen',
+    'analysisSetup.halfmove': 'Halbzugzähler',
+    'analysisSetup.fullmove': 'Zugnummer',
+    'analysisSetup.invalid': 'Diese Stellung kann noch nicht verwendet werden:',
+    'analysisSetup.start': 'Mit dieser Stellung beginnen',
+    'analysisSetup.issue.invalid_square': 'Ein Feld ist ungültig.',
+    'analysisSetup.issue.duplicate_square':
+      'Auf {square} stehen mehrere Figuren.',
+    'analysisSetup.issue.white_king_required': 'Der weiße König fehlt.',
+    'analysisSetup.issue.black_king_required': 'Der schwarze König fehlt.',
+    'analysisSetup.issue.multiple_white_kings':
+      'Es darf nur einen weißen König geben.',
+    'analysisSetup.issue.multiple_black_kings':
+      'Es darf nur einen schwarzen König geben.',
+    'analysisSetup.issue.adjacent_kings':
+      'Die Könige dürfen nicht nebeneinander stehen.',
+    'analysisSetup.issue.pawn_on_back_rank':
+      'Auf der ersten oder achten Reihe darf kein Bauer stehen.',
+    'analysisSetup.issue.invalid_castling_rights':
+      'Die Rochaderechte passen nicht zur Stellung von König und Turm.',
+    'analysisSetup.issue.invalid_en_passant_square':
+      'Das En-passant-Feld passt nicht zu dieser Stellung.',
+    'analysisSetup.issue.invalid_halfmove_clock':
+      'Der Halbzugzähler ist ungültig.',
+    'analysisSetup.issue.invalid_fullmove_number':
+      'Die Zugnummer ist ungültig.',
+    'analysisSetup.issue.invalid_position':
+      'Die Figuren ergeben keine unterstützte Schachstellung.',
+    'analysisSetup.issue.invalid_fen': 'Die FEN ist ungültig.',
     'analysis.eyebrow': 'Brett und Pfad',
     'analysis.untitledWorkspace': 'Eigene Analyse',
     'analysis.savedPosition': 'Gespeicherter Stand',
@@ -60,6 +122,7 @@ export const messages = {
     'analysis.useInContext': 'Im Context verwenden',
     'analysis.board': 'Stellung',
     'analysis.boardLabel': 'Schachbrett',
+    'board.flip': 'Brett drehen',
     'analysis.sideToMove': '{side} am Zug',
     'analysis.emptySquare': 'leeres Feld',
     'analysis.choosePromotion': 'Umwandlungsfigur wählen',
@@ -297,6 +360,7 @@ export const messages = {
     'scope.persistentResume': 'Area position is remembered',
     'manage.eyebrow': 'Inventory and working contexts',
     'manage.title': 'Manage',
+    'manage.newAnalysis': 'New analysis',
     'manage.resultCount':
       '{count, plural, =0 {No results} one {# result} other {# results}}',
     'manage.workScope': 'Active scope',
@@ -333,6 +397,67 @@ export const messages = {
     'manage.useInContext': 'Use in context',
     'manage.freeSummary':
       'All inventory is available. The current focus remains temporary.',
+    'analysisSetup.eyebrow': 'Inventory',
+    'analysisSetup.title': 'New analysis',
+    'analysisSetup.intro':
+      'Begin from the initial position or set up any position on the board.',
+    'analysisSetup.existingDraft': 'An analysis is still in progress',
+    'analysisSetup.existingDraftDetail':
+      'Continue the existing draft or deliberately discard it before starting again.',
+    'analysisSetup.continueDraft': 'Continue existing analysis',
+    'analysisSetup.discardDraft': 'Discard draft and start again',
+    'analysisSetup.fromInitial': 'Begin from initial position',
+    'analysisSetup.fromInitialDetail':
+      'Starts an empty analysis from the standard initial position.',
+    'analysisSetup.buildPosition': 'Set up a position',
+    'analysisSetup.buildPositionDetail':
+      'Place pieces freely, then analyse from that position.',
+    'analysisSetup.board': 'Set-up chess position',
+    'analysisSetup.white': 'White',
+    'analysisSetup.black': 'Black',
+    'analysisSetup.removePiece': 'Remove piece',
+    'analysisSetup.sideToMove': 'Side to move',
+    'analysisSetup.castling': 'Castling rights',
+    'analysisSetup.whiteKingSide': 'White kingside',
+    'analysisSetup.whiteQueenSide': 'White queenside',
+    'analysisSetup.blackKingSide': 'Black kingside',
+    'analysisSetup.blackQueenSide': 'Black queenside',
+    'analysisSetup.initialPosition': 'Initial position',
+    'analysisSetup.clearBoard': 'Clear board',
+    'analysisSetup.advanced': 'Advanced position data',
+    'analysisSetup.importFen': 'Apply FEN',
+    'analysisSetup.enPassant': 'En passant square',
+    'analysisSetup.enPassantNone': 'Not available',
+    'analysisSetup.enPassantCapture':
+      '{side} can capture en passant on {square}',
+    'analysisSetup.halfmove': 'Halfmove clock',
+    'analysisSetup.fullmove': 'Move number',
+    'analysisSetup.invalid': 'This position cannot be used yet:',
+    'analysisSetup.start': 'Begin with this position',
+    'analysisSetup.issue.invalid_square': 'A square is invalid.',
+    'analysisSetup.issue.duplicate_square':
+      'More than one piece occupies {square}.',
+    'analysisSetup.issue.white_king_required': 'The white king is missing.',
+    'analysisSetup.issue.black_king_required': 'The black king is missing.',
+    'analysisSetup.issue.multiple_white_kings':
+      'There may only be one white king.',
+    'analysisSetup.issue.multiple_black_kings':
+      'There may only be one black king.',
+    'analysisSetup.issue.adjacent_kings':
+      'The kings may not stand next to each other.',
+    'analysisSetup.issue.pawn_on_back_rank':
+      'A pawn may not stand on the first or eighth rank.',
+    'analysisSetup.issue.invalid_castling_rights':
+      'The castling rights do not match the king and rook positions.',
+    'analysisSetup.issue.invalid_en_passant_square':
+      'The en passant square does not match this position.',
+    'analysisSetup.issue.invalid_halfmove_clock':
+      'The halfmove clock is invalid.',
+    'analysisSetup.issue.invalid_fullmove_number':
+      'The move number is invalid.',
+    'analysisSetup.issue.invalid_position':
+      'The pieces do not form a supported chess position.',
+    'analysisSetup.issue.invalid_fen': 'The FEN is invalid.',
     'analysis.eyebrow': 'Board and path',
     'analysis.untitledWorkspace': 'Own analysis',
     'analysis.savedPosition': 'Saved position',
@@ -346,6 +471,7 @@ export const messages = {
     'analysis.useInContext': 'Use in context',
     'analysis.board': 'Position',
     'analysis.boardLabel': 'Chess board',
+    'board.flip': 'Flip board',
     'analysis.sideToMove': '{side} to move',
     'analysis.emptySquare': 'empty square',
     'analysis.choosePromotion': 'Choose promotion piece',

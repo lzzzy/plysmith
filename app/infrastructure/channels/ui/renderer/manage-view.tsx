@@ -5,6 +5,7 @@ import {
   BookOpen,
   Boxes,
   FileSearch,
+  FilePlus2,
   FolderPlus,
   Library,
   Pencil,
@@ -23,6 +24,7 @@ import {
   type PlysmithApplicationState,
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
+import { AnalysisSetupDialog } from './analysis-setup-dialog.tsx';
 import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import styles from './manage-view.module.css';
 import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
@@ -43,6 +45,7 @@ export function ManageView({
   const intl = useIntl();
   const [query, setQuery] = useState(state.inventoryQuery);
   const [showCreateContext, setShowCreateContext] = useState(false);
+  const [showCreateAnalysis, setShowCreateAnalysis] = useState(false);
   const visibleItems = state.inventory.items.map((item) =>
     inventoryItemForScope(item, state),
   );
@@ -96,12 +99,22 @@ export function ManageView({
             <FormattedMessage id="manage.title" />
           </h1>
         </div>
-        <span className={styles.inventoryCount}>
-          <FormattedMessage
-            id="manage.resultCount"
-            values={{ count: state.inventory.items.length }}
-          />
-        </span>
+        <div className={styles.headerActions}>
+          <span className={styles.inventoryCount}>
+            <FormattedMessage
+              id="manage.resultCount"
+              values={{ count: state.inventory.items.length }}
+            />
+          </span>
+          <Button
+            className={styles.primaryButton!}
+            isDisabled={state.busyCommand !== undefined}
+            onPress={() => setShowCreateAnalysis(true)}
+          >
+            <FilePlus2 aria-hidden="true" size={16} />
+            <FormattedMessage id="manage.newAnalysis" />
+          </Button>
+        </div>
       </header>
 
       <div
@@ -326,6 +339,13 @@ export function ManageView({
           )}
         </aside>
       </div>
+      <AnalysisSetupDialog
+        isOpen={showCreateAnalysis}
+        hasScratch={state.analysis.scratch !== undefined}
+        isBusy={state.busyCommand !== undefined}
+        store={store}
+        onOpenChange={setShowCreateAnalysis}
+      />
     </main>
   );
 }

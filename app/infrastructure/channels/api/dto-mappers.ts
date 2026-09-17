@@ -30,6 +30,8 @@ import type {
 } from '../../../application/workspace/index.ts';
 import type { AnalysisScratch } from '../../../domain/analysis/index.ts';
 import type {
+  AnalysisSetup,
+  AnalysisSetupValidation,
   CanonicalMove,
   ChessState,
 } from '../../../domain/chess_graph/index.ts';
@@ -110,6 +112,7 @@ export function parseAnalysisScratchAction(action: {
   readonly origin?:
     | { readonly kind: 'initial_position' }
     | { readonly kind: 'fen'; readonly fen: string }
+    | { readonly kind: 'position_setup'; readonly setup: AnalysisSetup }
     | {
         readonly kind: 'inventory_anchor';
         readonly itemId: string;
@@ -247,6 +250,24 @@ export function analysisWorkspaceDto(model: AnalysisWorkspace) {
     currentState: chessStateDto(model.currentState),
     legalMoves: model.legalMoves.map(canonicalMoveDto),
     allowedActions: [...model.allowedActions],
+  };
+}
+
+export function analysisSetupValidationDto(model: AnalysisSetupValidation) {
+  if (!model.valid) {
+    return {
+      valid: false as const,
+      issues: model.issues.map((issue) => ({
+        code: issue.code,
+        ...(issue.field === undefined ? {} : { field: issue.field }),
+        ...(issue.square === undefined ? {} : { square: issue.square }),
+      })),
+    };
+  }
+  return {
+    valid: true as const,
+    setup: analysisSetupDto(model.setup),
+    state: chessStateDto(model.state),
   };
 }
 
@@ -675,6 +696,19 @@ function chessStateDto(model: ChessState) {
       historyKnowledge: model.playState.historyKnowledge,
     },
     fen: model.fen,
+  };
+}
+
+function analysisSetupDto(model: AnalysisSetup) {
+  return {
+    pieces: model.pieces.map((piece) => ({ ...piece })),
+    sideToMove: model.sideToMove,
+    castlingRights: { ...model.castlingRights },
+    ...(model.enPassantSquare === undefined
+      ? {}
+      : { enPassantSquare: model.enPassantSquare }),
+    halfmoveClock: model.halfmoveClock,
+    fullmoveNumber: model.fullmoveNumber,
   };
 }
 

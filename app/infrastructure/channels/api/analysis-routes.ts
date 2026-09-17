@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { HostDependencies } from './host-dependencies.ts';
 import {
   analysisNoteMutationResultDto,
+  analysisSetupValidationDto,
   analysisWorkspaceDto,
   createAnalysisRecordResultDto,
   createAnalysisNoteResultDto,
@@ -29,6 +30,8 @@ import {
   UpdateAnalysisNoteBodySchema,
   UpdateAnalysisScratchBodySchema,
   UpdateAnalysisScratchResultSchema,
+  ValidateAnalysisSetupBodySchema,
+  ValidateAnalysisSetupResultSchema,
 } from './schemas.ts';
 
 export function registerAnalysisRoutes(
@@ -36,6 +39,25 @@ export function registerAnalysisRoutes(
   dependencies: HostDependencies,
 ) {
   const api = host.withTypeProvider<TypeBoxTypeProvider>();
+
+  api.post(
+    '/analysis/setup-validation',
+    {
+      schema: {
+        operationId: 'ValidateAnalysisSetup',
+        querystring: EmptyQuerySchema,
+        body: ValidateAnalysisSetupBodySchema,
+        response: {
+          200: Type.Ref(ValidateAnalysisSetupResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      analysisSetupValidationDto(
+        await dependencies.validateAnalysisSetup.execute(request.body),
+      ),
+  );
 
   api.get(
     '/analysis/workspace',

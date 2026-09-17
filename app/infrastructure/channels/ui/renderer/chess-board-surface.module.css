@@ -1,0 +1,139 @@
+@font-face {
+  font-family: 'Plysmith Chess Symbols';
+  src: url('./assets/fonts/NotoSansSymbols2-Regular.ttf') format('truetype');
+  font-display: block;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.board {
+  container-type: inline-size;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #313741;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgb(31 37 46 / 12%);
+}
+
+.boardRow {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.square {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  outline: none;
+  cursor: default;
+}
+
+.light {
+  background: #e7e3d9;
+}
+
+.dark {
+  background: #778699;
+}
+
+.square:focus-visible {
+  z-index: 2;
+  outline: 3px solid #225faa;
+  outline-offset: -3px;
+}
+
+.piece {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #151a20;
+  font-size: 10cqi;
+  filter: drop-shadow(0 1px 0 rgb(255 255 255 / 38%));
+}
+
+.systemPieceGlyph {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  font-family: 'Segoe UI Symbol', serif;
+  font-size: inherit;
+  font-variant-emoji: text;
+  line-height: 1;
+  place-items: center;
+}
+
+.fallbackPieceGlyph {
+  display: block;
+  width: 88%;
+  height: 88%;
+  overflow: visible;
+}
+
+.fallbackPieceGlyph text {
+  fill: currentcolor;
+  font-family: 'Plysmith Chess Symbols', serif;
+  font-size: 100px;
+  font-variant-emoji: text;
+  text-anchor: middle;
+}
+
+.rankLabel,
+.fileLabel {
+  position: absolute;
+  color: rgb(23 29 36 / 72%);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.rankLabel {
+  top: 4px;
+  left: 5px;
+}
+
+.fileLabel {
+  right: 5px;
+  bottom: 3px;
+}
+
+.orientationButton {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: #44505d;
+  background: #ffffff;
+  border: 1px solid #c7cdd5;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.orientationButton:hover:not([data-disabled]) {
+  background: #f4f6f8;
+}
+
+.orientationButton[data-focus-visible] {
+  outline: 2px solid #225faa;
+  outline-offset: 2px;
+}
+
+.orientationButton[data-disabled] {
+  color: #9ba3ad;
+  background: #eef1f4;
+  cursor: default;
+}

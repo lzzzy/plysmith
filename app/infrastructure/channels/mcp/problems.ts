@@ -30,7 +30,7 @@ export function hostProblem(error: unknown): HostProblem {
             if (
               typeof value !== 'number' ||
               !Number.isSafeInteger(value) ||
-              value < 1
+              value < 0
             ) {
               return localProblem('host.failure');
             }

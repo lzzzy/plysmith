@@ -47,6 +47,8 @@ import {
   type UpdateAnalysisScratchRequestDto,
   type UpdateAnalysisScratchResultDto,
   type UpdateAnalysisNoteRequestDto,
+  type ValidateAnalysisSetupRequestDto,
+  type ValidateAnalysisSetupResultDto,
   type WorkingContextWorkspaceDto,
 } from './host-client.ts';
 import { HostClientProblem, localHostProblem } from './host-client-problem.ts';
@@ -113,6 +115,12 @@ export class RediscoveringHostClient {
     request: GetAnalysisWorkspaceRequestDto,
   ): Promise<AnalysisWorkspaceDto> {
     return this.#read((client) => client.getAnalysisWorkspace(request));
+  }
+
+  async validateAnalysisSetup(
+    request: ValidateAnalysisSetupRequestDto,
+  ): Promise<ValidateAnalysisSetupResultDto> {
+    return this.#read((client) => client.validateAnalysisSetup(request));
   }
 
   async updateAnalysisScratch(

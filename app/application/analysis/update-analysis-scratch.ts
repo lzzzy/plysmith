@@ -30,6 +30,7 @@ import {
   analysisScratchNotFound,
   analysisScratchRevisionConflict,
   chessRulesProblem,
+  invalidAnalysisSetup,
   invalidAnalysisUpdate,
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
@@ -196,6 +197,10 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
         const parsed = this.#rules.parseFen(action.origin.fen);
         if (!parsed.ok) throw chessRulesProblem(parsed.reason);
         root = parsed.value;
+      } else if (action.origin.kind === 'position_setup') {
+        const validated = this.#rules.validateSetup(action.origin.setup);
+        if (!validated.valid) throw invalidAnalysisSetup();
+        root = validated.state;
       } else {
         if (
           record === undefined ||
@@ -219,7 +224,9 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
           ? { kind: 'initial_position' }
           : action.origin.kind === 'fen'
             ? { kind: 'fen' }
-            : action.origin,
+            : action.origin.kind === 'position_setup'
+              ? { kind: 'position_setup' }
+              : action.origin,
       );
       if (action.firstMove === undefined) return scratch;
       const applied = this.#rules.applyMove(scratch.root, [], action.firstMove);

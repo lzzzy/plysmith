@@ -250,6 +250,76 @@ const chessState = Type.Object(
   objectOptions,
 );
 
+const analysisSetup = Type.Object(
+  {
+    pieces: Type.Array(
+      Type.Object(
+        {
+          square: Type.String({ pattern: '^[a-h][1-8]$' }),
+          color: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+          role: Type.Union([
+            Type.Literal('king'),
+            Type.Literal('queen'),
+            Type.Literal('rook'),
+            Type.Literal('bishop'),
+            Type.Literal('knight'),
+            Type.Literal('pawn'),
+          ]),
+        },
+        objectOptions,
+      ),
+      { maxItems: 32 },
+    ),
+    sideToMove: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    castlingRights: Type.Object(
+      {
+        whiteKingSide: Type.Boolean(),
+        whiteQueenSide: Type.Boolean(),
+        blackKingSide: Type.Boolean(),
+        blackQueenSide: Type.Boolean(),
+      },
+      objectOptions,
+    ),
+    enPassantSquare: Type.Optional(Type.String({ pattern: '^[a-h][1-8]$' })),
+    halfmoveClock: revision,
+    fullmoveNumber: preferenceRevision,
+  },
+  objectOptions,
+);
+
+const analysisSetupIssue = Type.Object(
+  {
+    code: Type.Union([
+      Type.Literal('invalid_square'),
+      Type.Literal('duplicate_square'),
+      Type.Literal('white_king_required'),
+      Type.Literal('black_king_required'),
+      Type.Literal('multiple_white_kings'),
+      Type.Literal('multiple_black_kings'),
+      Type.Literal('adjacent_kings'),
+      Type.Literal('pawn_on_back_rank'),
+      Type.Literal('invalid_castling_rights'),
+      Type.Literal('invalid_en_passant_square'),
+      Type.Literal('invalid_halfmove_clock'),
+      Type.Literal('invalid_fullmove_number'),
+      Type.Literal('invalid_position'),
+      Type.Literal('invalid_fen'),
+    ]),
+    field: Type.Optional(
+      Type.Union([
+        Type.Literal('pieces'),
+        Type.Literal('castlingRights'),
+        Type.Literal('enPassantSquare'),
+        Type.Literal('halfmoveClock'),
+        Type.Literal('fullmoveNumber'),
+        Type.Literal('fen'),
+      ]),
+    ),
+    square: Type.Optional(Type.String({ minLength: 1, maxLength: 16 })),
+  },
+  objectOptions,
+);
+
 const analysisStep = Type.Object(
   { before: chessState, move: canonicalMove, after: chessState },
   objectOptions,
@@ -258,6 +328,7 @@ const analysisStep = Type.Object(
 const analysisOrigin = Type.Union([
   Type.Object({ kind: Type.Literal('initial_position') }, objectOptions),
   Type.Object({ kind: Type.Literal('fen') }, objectOptions),
+  Type.Object({ kind: Type.Literal('position_setup') }, objectOptions),
   Type.Object(
     {
       kind: Type.Literal('inventory_anchor'),
@@ -456,6 +527,10 @@ const moveInput = Type.Union([
 const analysisStartOrigin = Type.Union([
   Type.Object({ kind: Type.Literal('initial_position') }, objectOptions),
   Type.Object(
+    { kind: Type.Literal('position_setup'), setup: analysisSetup },
+    objectOptions,
+  ),
+  Type.Object(
     {
       kind: Type.Literal('fen'),
       fen: Type.String({ minLength: 1, maxLength: 128 }),
@@ -468,6 +543,39 @@ const analysisStartOrigin = Type.Union([
       itemId: localId,
       revisionId: localId,
       anchorId: localId,
+    },
+    objectOptions,
+  ),
+]);
+
+export const ValidateAnalysisSetupArgumentsSchema = Type.Object(
+  {
+    input: Type.Union([
+      Type.Object(
+        { kind: Type.Literal('position_setup'), setup: analysisSetup },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('fen'),
+          fen: Type.String({ minLength: 1, maxLength: 128 }),
+        },
+        objectOptions,
+      ),
+    ]),
+  },
+  objectOptions,
+);
+
+export const ValidateAnalysisSetupResultSchema = Type.Union([
+  Type.Object(
+    { valid: Type.Literal(true), setup: analysisSetup, state: chessState },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      valid: Type.Literal(false),
+      issues: Type.Array(analysisSetupIssue, { minItems: 1, maxItems: 64 }),
     },
     objectOptions,
   ),

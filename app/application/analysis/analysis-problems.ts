@@ -8,6 +8,13 @@ export function invalidAnalysisUpdate(): ApplicationProblem {
   );
 }
 
+export function invalidAnalysisSetup(): ApplicationProblem {
+  return new ApplicationProblem(
+    'analysis.invalid_setup',
+    'The analysis setup is invalid.',
+  );
+}
+
 export function analysisScratchNotFound(): ApplicationProblem {
   return new ApplicationProblem(
     'analysis.scratch_not_found',

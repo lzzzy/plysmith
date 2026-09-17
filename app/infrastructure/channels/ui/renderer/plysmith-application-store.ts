@@ -47,6 +47,8 @@ import {
   type UpdateAnalysisScratchResultDto,
   type UpdateAnalysisNoteRequestDto,
   type UserPreferencesDto,
+  type ValidateAnalysisSetupRequestDto,
+  type ValidateAnalysisSetupResultDto,
   type WorkingContextWorkspaceDto,
 } from '../../host_client/index.ts';
 import type {
@@ -66,6 +68,7 @@ export type ApplicationCommand =
   | 'set_language'
   | 'set_diagnostic_log_level'
   | 'create_diagnostic_report'
+  | 'validate_analysis_setup'
   | 'start_scratch'
   | 'update_scratch'
   | 'prepare_note'
@@ -109,6 +112,9 @@ export interface PlysmithApplicationClient {
   getAnalysisWorkspace(
     request: GetAnalysisWorkspaceRequestDto,
   ): Promise<AnalysisWorkspaceDto>;
+  validateAnalysisSetup(
+    request: ValidateAnalysisSetupRequestDto,
+  ): Promise<ValidateAnalysisSetupResultDto>;
   updateAnalysisScratch(
     request: UpdateAnalysisScratchRequestDto,
   ): Promise<UpdateAnalysisScratchResultDto>;
@@ -846,12 +852,33 @@ export class PlysmithApplicationStore {
     );
   }
 
-  async startScratchAtInitialPosition(): Promise<void> {
-    await this.#startScratch({ kind: 'initial_position' });
+  async validateAnalysisSetup(
+    request: ValidateAnalysisSetupRequestDto,
+  ): Promise<ValidateAnalysisSetupResultDto | undefined> {
+    const result = await this.#runCommand(
+      'validate_analysis_setup',
+      (client) => client.validateAnalysisSetup(request),
+      false,
+    );
+    if (result !== undefined) this.#finishCommand();
+    return result;
   }
 
-  async startScratchAtFen(fen: string): Promise<void> {
-    await this.#startScratch({ kind: 'fen', fen: fen.trim() });
+  async startScratchAtInitialPosition(): Promise<boolean> {
+    return this.#startScratch({ kind: 'initial_position' });
+  }
+
+  async startScratchAtFen(fen: string): Promise<boolean> {
+    return this.#startScratch({ kind: 'fen', fen: fen.trim() });
+  }
+
+  async startScratchAtSetup(
+    setup: Extract<
+      ValidateAnalysisSetupRequestDto['input'],
+      { kind: 'position_setup' }
+    >['setup'],
+  ): Promise<boolean> {
+    return this.#startScratch({ kind: 'position_setup', setup });
   }
 
   async prepareInventoryItemRename(
@@ -1147,7 +1174,7 @@ export class PlysmithApplicationStore {
     );
   }
 
-  async discardAnalysisScratch(): Promise<void> {
+  async discardAnalysisScratch(): Promise<boolean> {
     const state = this.#readyState();
     const scratchRevision = state?.analysis.scratch?.scratchRevision;
     const scratchId = state?.analysis.scratch?.scratchId;
@@ -1156,9 +1183,9 @@ export class PlysmithApplicationStore {
       scratchId === undefined ||
       scratchRevision === undefined
     )
-      return;
+      return false;
     this.#inventoryRevisionPreview = undefined;
-    await this.#runCommand('discard_scratch', (client) =>
+    const result = await this.#runCommand('discard_scratch', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
         expectedScratchId: scratchId,
@@ -1166,6 +1193,7 @@ export class PlysmithApplicationStore {
         action: { kind: 'discard' },
       }),
     );
+    return result?.discarded === true;
   }
 
   async saveInventoryRevision(): Promise<boolean> {
@@ -1751,21 +1779,36 @@ export class PlysmithApplicationStore {
       { kind: 'start' }
     >['origin'],
     firstMove?: MoveRequest,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const state = this.#readyState();
-    if (state === undefined || state.analysis.scratch !== undefined) return;
-    await this.#runCommand('start_scratch', (client) =>
-      client.updateAnalysisScratch({
-        scope: state.scope,
-        expectedScratchId: null,
-        expectedScratchRevision: null,
-        action: {
-          kind: 'start',
-          origin,
-          ...(firstMove === undefined ? {} : { firstMove }),
-        },
-      }),
+    if (state === undefined || state.analysis.scratch !== undefined)
+      return false;
+    const result = await this.#runCommand(
+      'start_scratch',
+      (client) =>
+        client.updateAnalysisScratch({
+          scope: state.scope,
+          expectedScratchId: null,
+          expectedScratchRevision: null,
+          action: {
+            kind: 'start',
+            origin,
+            ...(firstMove === undefined ? {} : { firstMove }),
+          },
+        }),
+      false,
     );
+    if (result === undefined) return false;
+    if (result.scratch === undefined) {
+      this.#finishCommand();
+      return false;
+    }
+    this.#analysisFocus = undefined;
+    this.#activity = 'analyze';
+    this.#publishViewState();
+    await this.refresh();
+    this.#finishCommand();
+    return true;
   }
 
   async #loadInventoryRevisionPreview(

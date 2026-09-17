@@ -47,6 +47,8 @@ export {
   type UpdateAnalysisScratchRequestDto,
   type UpdateAnalysisScratchResultDto,
   type UpdateAnalysisNoteRequestDto,
+  type ValidateAnalysisSetupRequestDto,
+  type ValidateAnalysisSetupResultDto,
   type WorkingContextWorkspaceDto,
 } from './host-client.ts';
 export {

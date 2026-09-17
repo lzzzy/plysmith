@@ -6,6 +6,7 @@ import {
   FreeAnalysisSession,
   GetAnalysisWorkspace,
   UpdateAnalysisScratch,
+  ValidateAnalysisSetup,
   type AnalysisRecordWriter,
   type AnalysisScratchChanged,
   type ContextAnalysisReader,
@@ -190,6 +191,80 @@ test('an exploration starts with its first move atomically and can take it back'
     afterTakeBack.allowedActions.includes('remove_last_move'),
     false,
   );
+});
+
+test('a structured position is validated before it becomes an analysis root', async () => {
+  const freeSession = new FreeAnalysisSession();
+  const validate = new ValidateAnalysisSetup({ rules });
+  const update = new UpdateAnalysisScratch({
+    reader: unavailableContext,
+    writer: unavailableContext,
+    freeSession,
+    rules,
+    clock: { now: () => timestamp },
+    events: { publish: () => undefined },
+    storeStatus: {
+      readStoreStatus: async () => ({ schemaVersion: 5, dataRevision: 9 }),
+    },
+    scratchId: () => 'position-setup',
+  });
+  const setup = {
+    pieces: [
+      { square: 'e1', color: 'white' as const, role: 'king' as const },
+      { square: 'd4', color: 'white' as const, role: 'queen' as const },
+      { square: 'e8', color: 'black' as const, role: 'king' as const },
+    ],
+    sideToMove: 'black' as const,
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    halfmoveClock: 0,
+    fullmoveNumber: 12,
+  };
+
+  const validation = await validate.execute({
+    input: { kind: 'position_setup', setup },
+  });
+  assert.equal(validation.valid, true);
+  const started = await update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: { kind: 'start', origin: { kind: 'position_setup', setup } },
+  });
+  assert.equal(started.scratch?.origin.kind, 'position_setup');
+  assert.equal(started.scratch?.root.position.sideToMove, 'black');
+  assert.equal(started.scratch?.root.playState.fullmoveNumber, 12);
+  assert.match(started.scratch?.root.fen ?? '', /^4k3\/8\/8\/8\/3Q4/);
+
+  const invalidSetup = {
+    ...setup,
+    pieces: [{ square: 'e1', color: 'white' as const, role: 'king' as const }],
+  };
+  const invalid = await validate.execute({
+    input: { kind: 'position_setup', setup: invalidSetup },
+  });
+  assert.equal(invalid.valid, false);
+  assert.deepEqual(
+    invalid.valid ? [] : invalid.issues.map((issue) => issue.code),
+    ['black_king_required'],
+  );
+});
+
+test('invalid FEN validation returns a stable issue without starting a scratch', async () => {
+  const freeSession = new FreeAnalysisSession();
+  const validation = await new ValidateAnalysisSetup({ rules }).execute({
+    input: { kind: 'fen', fen: 'not-a-position' },
+  });
+
+  assert.deepEqual(validation, {
+    valid: false,
+    issues: [{ code: 'invalid_fen', field: 'fen' }],
+  });
+  assert.equal(freeSession.read(), undefined);
 });
 
 test('saving consumes free scratch only after a successful record commit', async () => {

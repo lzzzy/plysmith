@@ -143,7 +143,7 @@ CREATE TABLE inventory_analysis_revision (
     revision_id INTEGER PRIMARY KEY CHECK (revision_id > 0),
     item_id INTEGER NOT NULL,
     root_occurrence_id INTEGER NOT NULL,
-    origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'inventory_anchor')),
+    origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'position_setup', 'inventory_anchor')),
     UNIQUE (item_id, revision_id),
     FOREIGN KEY (item_id, revision_id)
         REFERENCES item_revision (item_id, revision_id) ON DELETE RESTRICT,
@@ -270,7 +270,7 @@ CREATE TABLE workspace_management_resume (
 CREATE TABLE analysis_scratch_draft (
     scratch_draft_id INTEGER PRIMARY KEY CHECK (scratch_draft_id > 0),
     context_id INTEGER NOT NULL UNIQUE,
-    origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'inventory_anchor')),
+    origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'position_setup', 'inventory_anchor')),
     origin_item_id INTEGER,
     origin_revision_id INTEGER,
     origin_anchor_id INTEGER,
@@ -284,7 +284,7 @@ CREATE TABLE analysis_scratch_draft (
     created_at_utc TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', created_at_utc) IS created_at_utc),
     updated_at_utc TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at_utc) IS updated_at_utc),
     CHECK (
-        (origin_mode IN ('initial_position', 'fen') AND origin_item_id IS NULL AND origin_revision_id IS NULL AND origin_anchor_id IS NULL) OR
+        (origin_mode IN ('initial_position', 'fen', 'position_setup') AND origin_item_id IS NULL AND origin_revision_id IS NULL AND origin_anchor_id IS NULL) OR
         (origin_mode = 'inventory_anchor' AND origin_item_id IS NOT NULL AND origin_revision_id IS NOT NULL AND origin_anchor_id IS NOT NULL)
     ),
     FOREIGN KEY (context_id) REFERENCES workspace_working_context (context_id) ON DELETE RESTRICT,

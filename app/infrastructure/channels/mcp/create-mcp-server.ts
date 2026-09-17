@@ -42,6 +42,7 @@ import {
   toolProblem,
   toolResult,
   updateAnalysisScratchResultDto,
+  validateAnalysisSetupResultDto,
   workingContextWorkspaceDto,
 } from './responses.ts';
 import {
@@ -95,6 +96,8 @@ import {
   UpdateAnalysisScratchResultSchema,
   UpdateAnalysisNoteArgumentsSchema,
   UserPreferencesSchema,
+  ValidateAnalysisSetupArgumentsSchema,
+  ValidateAnalysisSetupResultSchema,
   WorkingContextWorkspaceSchema,
 } from './schemas.ts';
 
@@ -242,6 +245,19 @@ export function createMcpServer({
       outputSchema: {
         type: 'object',
         anyOf: [AnalysisWorkspaceSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'validate_analysis_setup',
+      title: 'Validate analysis setup',
+      description:
+        'Validate and normalize a structured chess position or FEN without changing application state.',
+      inputSchema: ValidateAnalysisSetupArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ValidateAnalysisSetupResultSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
       _meta: problemMetadata,
@@ -639,6 +655,19 @@ export function createMcpServer({
             `Analysis workspace at revision ${dto.dataRevision}.`,
           );
         }
+        case 'validate_analysis_setup': {
+          if (!Value.Check(ValidateAnalysisSetupArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = validateAnalysisSetupResultDto(
+            await hostClient.validateAnalysisSetup(args),
+          );
+          return toolResult(
+            dto,
+            dto.valid
+              ? 'Analysis setup is valid.'
+              : `Analysis setup has ${dto.issues.length} issue(s).`,
+          );
+        }
         case 'update_analysis_scratch': {
           if (!Value.Check(UpdateAnalysisScratchArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -1005,6 +1034,8 @@ function inputSchema(name: string) {
       return SetUiLanguageArgumentsSchema;
     case 'get_analysis_workspace':
       return GetAnalysisWorkspaceArgumentsSchema;
+    case 'validate_analysis_setup':
+      return ValidateAnalysisSetupArgumentsSchema;
     case 'update_analysis_scratch':
       return UpdateAnalysisScratchArgumentsSchema;
     case 'create_analysis_record':

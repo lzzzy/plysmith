@@ -145,6 +145,12 @@ export async function connectMcp(
         return overrides.getAnalysisWorkspace(request);
       throw new Error('getAnalysisWorkspace fixture not configured');
     },
+    async validateAnalysisSetup(request) {
+      calls.push({ method: 'validateAnalysisSetup', request });
+      if (overrides.validateAnalysisSetup)
+        return overrides.validateAnalysisSetup(request);
+      throw new Error('validateAnalysisSetup fixture not configured');
+    },
     async updateAnalysisScratch(request) {
       calls.push({ method: 'updateAnalysisScratch', request });
       if (overrides.updateAnalysisScratch)

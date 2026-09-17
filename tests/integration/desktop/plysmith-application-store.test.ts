@@ -242,6 +242,8 @@ function createClient(
     createDiagnosticReport: async () =>
       assert.fail('no diagnostic report write expected'),
     getAnalysisWorkspace: async () => analysis(),
+    validateAnalysisSetup: async () =>
+      assert.fail('no analysis setup validation expected'),
     updateAnalysisScratch: async () => assert.fail('no scratch write expected'),
     createAnalysisRecord: async () => assert.fail('no record write expected'),
     startInventoryRevision: async () =>
@@ -1525,6 +1527,231 @@ test('a lost scratch write response is not retried', async () => {
       : undefined,
     'accepted-before-response-loss',
   );
+  store.close();
+});
+
+test('analysis setup validation is read-only and does not refresh the workspace', async () => {
+  let reads = 0;
+  let validationRequest:
+    | Parameters<PlysmithApplicationClient['validateAnalysisSetup']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => {
+      reads += 1;
+      return analysis();
+    },
+    validateAnalysisSetup: async (request) => {
+      validationRequest = request;
+      return {
+        valid: false,
+        issues: [{ code: 'black_king_required', field: 'pieces' }],
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  const result = await store.validateAnalysisSetup({
+    input: {
+      kind: 'position_setup',
+      setup: {
+        pieces: [{ square: 'e1', color: 'white', role: 'king' }],
+        sideToMove: 'white',
+        castlingRights: {
+          whiteKingSide: false,
+          whiteQueenSide: false,
+          blackKingSide: false,
+          blackQueenSide: false,
+        },
+        halfmoveClock: 0,
+        fullmoveNumber: 1,
+      },
+    },
+  });
+
+  assert.equal(result?.valid, false);
+  assert.equal(reads, 1);
+  assert.deepEqual(validationRequest, {
+    input: {
+      kind: 'position_setup',
+      setup: {
+        pieces: [{ square: 'e1', color: 'white', role: 'king' }],
+        sideToMove: 'white',
+        castlingRights: {
+          whiteKingSide: false,
+          whiteQueenSide: false,
+          blackKingSide: false,
+          blackQueenSide: false,
+        },
+        halfmoveClock: 0,
+        fullmoveNumber: 1,
+      },
+    },
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.busyCommand : undefined,
+    undefined,
+  );
+  store.close();
+});
+
+test('a custom position starts one new analysis and opens the analysis activity', async () => {
+  let current = analysis();
+  let request:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const setup = {
+    pieces: [
+      { square: 'e1', color: 'white', role: 'king' },
+      { square: 'a1', color: 'white', role: 'rook' },
+      { square: 'e8', color: 'black', role: 'king' },
+    ],
+    sideToMove: 'black',
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    halfmoveClock: 0,
+    fullmoveNumber: 12,
+  } as const;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (input) => {
+      request = input;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'setup-scratch',
+        scratchRevision: 1,
+        intent: { kind: 'exploration' },
+        origin: { kind: 'position_setup' },
+        root: {
+          ...initialState,
+          fen: '4k3/8/8/8/8/8/8/R3K3 b - - 0 12',
+          playState: {
+            halfmoveClock: 0,
+            fullmoveNumber: 12,
+            historyKnowledge: 'unknown',
+          },
+        },
+        steps: [],
+        cursor: 0,
+      };
+      current = { ...analysis(), scratch };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.equal(await store.startScratchAtSetup(setup), true);
+  assert.deepEqual(request, {
+    scope: { kind: 'free' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: { kind: 'start', origin: { kind: 'position_setup', setup } },
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'analyze',
+  );
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.analysis.scratch?.scratchId
+      : undefined,
+    'setup-scratch',
+  );
+  store.close();
+});
+
+test('starting from the initial position clears a previous item focus before refreshing', async () => {
+  const item: SearchInventoryResultDto['items'][number] = {
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Previous analysis',
+    languageTag: 'en-GB',
+    contextIds: [],
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  let scratch: AnalysisWorkspaceDto['scratch'];
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    searchInventory: async () => ({ items: [item], dataRevision: 0 }),
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      if (scratch !== undefined) {
+        return {
+          ...analysis(),
+          scratch,
+          legalMoves: [{ from: 'e2', to: 'e4', san: 'e4' }],
+          allowedActions: ['apply_move', 'discard_scratch'],
+        };
+      }
+      return request.itemId === undefined ? analysis() : savedAnalysis();
+    },
+    updateAnalysisScratch: async () => {
+      scratch = {
+        scratchId: 'initial-position-scratch',
+        scratchRevision: 1,
+        intent: { kind: 'exploration' },
+        origin: { kind: 'initial_position' },
+        root: initialState,
+        steps: [],
+        cursor: 0,
+      };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.openInventoryItem(item);
+  store.setActivity('manage');
+
+  assert.equal(await store.startScratchAtInitialPosition(), true);
+
+  const snapshot = store.getSnapshot();
+  assert.equal(requests.at(-1)?.itemId, undefined);
+  assert.equal(snapshot.phase, 'ready');
+  if (snapshot.phase === 'ready') {
+    assert.equal(snapshot.activity, 'analyze');
+    assert.equal(snapshot.refreshing, false);
+    assert.equal(snapshot.busyCommand, undefined);
+    assert.deepEqual(snapshot.analysis.legalMoves, [
+      { from: 'e2', to: 'e4', san: 'e4' },
+    ]);
+  }
+  store.close();
+});
+
+test('starting a new analysis never overwrites an existing draft', async () => {
+  const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'existing-scratch',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: { kind: 'initial_position' },
+    root: initialState,
+    steps: [],
+    cursor: 0,
+  };
+  let writes = 0;
+  const client = createClient({
+    getAnalysisWorkspace: async () => ({ ...analysis(), scratch }),
+    updateAnalysisScratch: async () => {
+      writes += 1;
+      return assert.fail('existing scratch must not be replaced');
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.equal(await store.startScratchAtInitialPosition(), false);
+  assert.equal(writes, 0);
   store.close();
 });
 

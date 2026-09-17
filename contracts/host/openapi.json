@@ -379,6 +379,21 @@
           {
             "additionalProperties": false,
             "properties": {
+              "kind": {
+                "enum": [
+                  "position_setup"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
               "anchorId": {
                 "pattern": "^[1-9]\\d{0,15}$",
                 "type": "string"
@@ -808,6 +823,293 @@
             "type": "object"
           }
         ]
+      },
+      "AnalysisSetup": {
+        "additionalProperties": false,
+        "properties": {
+          "castlingRights": {
+            "additionalProperties": false,
+            "properties": {
+              "blackKingSide": {
+                "type": "boolean"
+              },
+              "blackQueenSide": {
+                "type": "boolean"
+              },
+              "whiteKingSide": {
+                "type": "boolean"
+              },
+              "whiteQueenSide": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "whiteKingSide",
+              "whiteQueenSide",
+              "blackKingSide",
+              "blackQueenSide"
+            ],
+            "type": "object"
+          },
+          "enPassantSquare": {
+            "pattern": "^[a-h][1-8]$",
+            "type": "string"
+          },
+          "fullmoveNumber": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "halfmoveClock": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pieces": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSetupPiece"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "sideToMove": {
+            "anyOf": [
+              {
+                "enum": [
+                  "white"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "black"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "pieces",
+          "sideToMove",
+          "castlingRights",
+          "halfmoveClock",
+          "fullmoveNumber"
+        ],
+        "type": "object"
+      },
+      "AnalysisSetupIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "invalid_square"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "duplicate_square"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "white_king_required"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "black_king_required"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "multiple_white_kings"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "multiple_black_kings"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "adjacent_kings"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "pawn_on_back_rank"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_castling_rights"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_en_passant_square"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_halfmove_clock"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_fullmove_number"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_position"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid_fen"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "field": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pieces"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "castlingRights"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "enPassantSquare"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "halfmoveClock"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "fullmoveNumber"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "fen"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "square": {
+            "maxLength": 16,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "AnalysisSetupPiece": {
+        "additionalProperties": false,
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "enum": [
+                  "white"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "black"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "king"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "queen"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "rook"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "bishop"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "knight"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "pawn"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "square": {
+            "pattern": "^[a-h][1-8]$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "square",
+          "color",
+          "role"
+        ],
+        "type": "object"
       },
       "AnalysisSourceLine": {
         "additionalProperties": false,
@@ -3987,6 +4289,25 @@
                       {
                         "additionalProperties": false,
                         "properties": {
+                          "kind": {
+                            "enum": [
+                              "position_setup"
+                            ],
+                            "type": "string"
+                          },
+                          "setup": {
+                            "$ref": "#/components/schemas/AnalysisSetup"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "setup"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
                           "anchorId": {
                             "pattern": "^[1-9]\\d{0,15}$",
                             "type": "string"
@@ -4294,6 +4615,110 @@
           "updatedAt"
         ],
         "type": "object"
+      },
+      "ValidateAnalysisSetupBody": {
+        "additionalProperties": false,
+        "properties": {
+          "input": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "position_setup"
+                    ],
+                    "type": "string"
+                  },
+                  "setup": {
+                    "$ref": "#/components/schemas/AnalysisSetup"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "setup"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "fen": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "fen"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "fen"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "type": "object"
+      },
+      "ValidateAnalysisSetupResult": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "setup": {
+                "$ref": "#/components/schemas/AnalysisSetup"
+              },
+              "state": {
+                "$ref": "#/components/schemas/ChessState"
+              },
+              "valid": {
+                "enum": [
+                  true
+                ],
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "valid",
+              "setup",
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "issues": {
+                "items": {
+                  "$ref": "#/components/schemas/AnalysisSetupIssue"
+                },
+                "maxItems": 64,
+                "minItems": 1,
+                "type": "array"
+              },
+              "valid": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "valid",
+              "issues"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "WorkingContextRevisionImpactSummary": {
         "additionalProperties": false,
@@ -5570,6 +5995,25 @@
                               {
                                 "additionalProperties": false,
                                 "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "position_setup"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "setup": {
+                                    "$ref": "#/components/schemas/AnalysisSetup"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "setup"
+                                ],
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
                                   "anchorId": {
                                     "pattern": "^[1-9]\\d{0,15}$",
                                     "type": "string"
@@ -5820,6 +6264,173 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UpdateAnalysisScratchResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/setup-validation": {
+      "post": {
+        "operationId": "ValidateAnalysisSetup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "input": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "position_setup"
+                            ],
+                            "type": "string"
+                          },
+                          "setup": {
+                            "$ref": "#/components/schemas/AnalysisSetup"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "setup"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "fen": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "fen"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "fen"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "input"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateAnalysisSetupResult"
                 }
               }
             },

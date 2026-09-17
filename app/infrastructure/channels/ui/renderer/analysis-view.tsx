@@ -13,7 +13,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CornerDownLeft,
-  FilePlus2,
   GitBranch,
   MessageSquarePlus,
   Pencil,
@@ -138,7 +137,6 @@ export function AnalysisView({
     ? path.sourceRootTarget
     : path.recordRootTarget;
   const [moveInput, setMoveInput] = useState('');
-  const [fen, setFen] = useState('');
   const [noteBody, setNoteBody] = useState(scratch?.noteDraft?.body ?? '');
   const [noteEditor, setNoteEditor] = useState<NoteEditor>();
   const [recordTitle, setRecordTitle] = useState('');
@@ -267,7 +265,7 @@ export function AnalysisView({
         (target.isContentEditable ||
           ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) ||
           (target.tagName === 'BUTTON' &&
-            target.closest('[data-analysis-board-square]') === null))
+            target.closest('[data-analysis-board]') === null))
       ) {
         return;
       }
@@ -311,12 +309,6 @@ export function AnalysisView({
     if (!atWorkspacePosition || moveInput.trim() === '') return;
     await store.applyMove(moveInput);
     setMoveInput('');
-  }
-
-  async function startFromFen(event: FormEvent) {
-    event.preventDefault();
-    if (fen.trim() === '') return;
-    await store.startScratchAtFen(fen);
   }
 
   async function saveRecord(event: FormEvent) {
@@ -1112,42 +1104,6 @@ export function AnalysisView({
                   </button>
                 </div>
               </form>
-            )}
-
-          {scratch === undefined &&
-            record?.readOnlyPreview !== true &&
-            pendingRevisionImpact === undefined && (
-              <div className={styles.startActions}>
-                <Button
-                  className={styles.secondaryButton!}
-                  onPress={() => void store.startScratchAtInitialPosition()}
-                  isDisabled={isBusy}
-                >
-                  <FilePlus2 aria-hidden="true" size={16} />
-                  <FormattedMessage id="analysis.fromInitial" />
-                </Button>
-                <form className={styles.fenForm} onSubmit={startFromFen}>
-                  <label htmlFor="analysis-fen">FEN</label>
-                  <div>
-                    <input
-                      id="analysis-fen"
-                      value={fen}
-                      onChange={(event) => setFen(event.target.value)}
-                      placeholder={intl.formatMessage({
-                        id: 'analysis.fenPlaceholder',
-                      })}
-                      disabled={isBusy}
-                    />
-                    <button
-                      type="submit"
-                      className={styles.smallButton}
-                      disabled={isBusy || fen.trim() === ''}
-                    >
-                      <FormattedMessage id="analysis.start" />
-                    </button>
-                  </div>
-                </form>
-              </div>
             )}
 
           {revisionScratch !== undefined && pathNoteDraft === undefined && (

@@ -18,6 +18,7 @@ import type {
   GetAnalysisWorkspaceUseCase,
   UpdateAnalysisScratchUseCase,
   UpdateAnalysisNoteUseCase,
+  ValidateAnalysisSetupUseCase,
 } from '../../../application/analysis/index.ts';
 import type {
   GetInventoryRevisionUseCase,
@@ -48,6 +49,7 @@ export interface HostDependencies {
   readonly getUserPreferences: GetUserPreferencesUseCase;
   readonly setUiLanguage: SetUiLanguageUseCase;
   readonly getAnalysisWorkspace: GetAnalysisWorkspaceUseCase;
+  readonly validateAnalysisSetup: ValidateAnalysisSetupUseCase;
   readonly updateAnalysisScratch: UpdateAnalysisScratchUseCase;
   readonly createAnalysisRecord: CreateAnalysisRecordUseCase;
   readonly createAnalysisNote: CreateAnalysisNoteUseCase;

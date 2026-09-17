@@ -19,6 +19,10 @@ export type UiLocale = UserPreferences['uiLocale'];
 export type GetAnalysisWorkspaceRequest =
   components['schemas']['GetAnalysisWorkspaceQuery'];
 export type AnalysisWorkspace = components['schemas']['AnalysisWorkspace'];
+export type ValidateAnalysisSetupRequest =
+  components['schemas']['ValidateAnalysisSetupBody'];
+export type ValidateAnalysisSetupResult =
+  components['schemas']['ValidateAnalysisSetupResult'];
 export type UpdateAnalysisScratchRequest =
   components['schemas']['UpdateAnalysisScratchBody'];
 export type UpdateAnalysisScratchResult =
@@ -114,6 +118,9 @@ export interface HostClient {
   getAnalysisWorkspace(
     request: GetAnalysisWorkspaceRequest,
   ): Promise<AnalysisWorkspace>;
+  validateAnalysisSetup(
+    request: ValidateAnalysisSetupRequest,
+  ): Promise<ValidateAnalysisSetupResult>;
   updateAnalysisScratch(
     request: UpdateAnalysisScratchRequest,
   ): Promise<UpdateAnalysisScratchResult>;

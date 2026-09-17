@@ -70,6 +70,7 @@ interface ScratchPath {
   readonly origin:
     | { readonly kind: 'initial_position' }
     | { readonly kind: 'fen' }
+    | { readonly kind: 'position_setup' }
     | {
         readonly kind: 'inventory_anchor';
         readonly itemId: string;

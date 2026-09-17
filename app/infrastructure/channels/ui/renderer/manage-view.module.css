@@ -33,6 +33,12 @@
   font-size: 12px;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .impactBadge {
   display: grid;
   width: 20px;

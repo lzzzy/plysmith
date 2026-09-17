@@ -101,6 +101,7 @@ export function createFixture() {
       },
     }),
     getAnalysisWorkspace: unavailableUseCase,
+    validateAnalysisSetup: unavailableUseCase,
     updateAnalysisScratch: unavailableUseCase,
     createAnalysisRecord: unavailableUseCase,
     createAnalysisNote: unavailableUseCase,

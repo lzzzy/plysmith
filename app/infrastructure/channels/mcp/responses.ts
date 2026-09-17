@@ -29,6 +29,7 @@ import type {
   SystemStatus,
   UpdateAnalysisScratchResult,
   UserPreferences,
+  ValidateAnalysisSetupResult,
   WorkingContextWorkspace,
 } from './host-client.ts';
 import {
@@ -56,6 +57,7 @@ import {
   SystemStatusSchema,
   UpdateAnalysisScratchResultSchema,
   UserPreferencesSchema,
+  ValidateAnalysisSetupResultSchema,
   WorkingContextWorkspaceSchema,
 } from './schemas.ts';
 
@@ -118,6 +120,12 @@ export function createDiagnosticReportResultDto(
 
 export function analysisWorkspaceDto(model: AnalysisWorkspace) {
   return checked(AnalysisWorkspaceSchema, model);
+}
+
+export function validateAnalysisSetupResultDto(
+  model: ValidateAnalysisSetupResult,
+) {
+  return checked(ValidateAnalysisSetupResultSchema, model);
 }
 
 export function updateAnalysisScratchResultDto(

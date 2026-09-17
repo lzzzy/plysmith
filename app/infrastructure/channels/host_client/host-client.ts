@@ -35,6 +35,10 @@ export type CreateDiagnosticReportResultDto =
 export type GetAnalysisWorkspaceRequestDto =
   components['schemas']['GetAnalysisWorkspaceQuery'];
 export type AnalysisWorkspaceDto = components['schemas']['AnalysisWorkspace'];
+export type ValidateAnalysisSetupRequestDto =
+  components['schemas']['ValidateAnalysisSetupBody'];
+export type ValidateAnalysisSetupResultDto =
+  components['schemas']['ValidateAnalysisSetupResult'];
 export type UpdateAnalysisScratchRequestDto =
   components['schemas']['UpdateAnalysisScratchBody'];
 export type UpdateAnalysisScratchResultDto =
@@ -207,6 +211,22 @@ export class PlysmithHostClient {
       });
       return unwrap<AnalysisWorkspaceDto>(
         result.data as unknown as AnalysisWorkspaceDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async validateAnalysisSetup(
+    request: ValidateAnalysisSetupRequestDto,
+  ): Promise<ValidateAnalysisSetupResultDto> {
+    try {
+      const result = await this.#client.POST('/analysis/setup-validation', {
+        body: request,
+      });
+      return unwrap<ValidateAnalysisSetupResultDto>(
+        result.data as unknown as ValidateAnalysisSetupResultDto | undefined,
         result.error,
       );
     } catch (error) {

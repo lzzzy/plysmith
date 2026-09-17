@@ -5,6 +5,8 @@ import type {
   AnalysisScratchStep,
 } from '../../domain/analysis/index.ts';
 import type {
+  AnalysisSetup,
+  AnalysisSetupValidation,
   CanonicalMove,
   ChessState,
 } from '../../domain/chess_graph/index.ts';
@@ -123,6 +125,7 @@ export type UpdateAnalysisScratchAction =
       readonly origin:
         | { readonly kind: 'initial_position' }
         | { readonly kind: 'fen'; readonly fen: string }
+        | { readonly kind: 'position_setup'; readonly setup: AnalysisSetup }
         | {
             readonly kind: 'inventory_anchor';
             readonly itemId: InventoryItemId;
@@ -144,6 +147,14 @@ export interface UpdateAnalysisScratchRequest {
   readonly expectedScratchRevision: number | null;
   readonly action: UpdateAnalysisScratchAction;
 }
+
+export interface ValidateAnalysisSetupRequest {
+  readonly input:
+    | { readonly kind: 'position_setup'; readonly setup: AnalysisSetup }
+    | { readonly kind: 'fen'; readonly fen: string };
+}
+
+export type ValidateAnalysisSetupResult = AnalysisSetupValidation;
 
 export interface UpdateAnalysisScratchResult {
   readonly scratch?: AnalysisScratch;

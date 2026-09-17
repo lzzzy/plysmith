@@ -20,6 +20,7 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/diagnostics/reports': ['POST'],
   '/events': ['GET'],
   '/analysis/workspace': ['GET'],
+  '/analysis/setup-validation': ['POST'],
   '/analysis/scratch': ['PUT'],
   '/analysis/notes': ['POST'],
   '/analysis/position-notes': ['POST'],

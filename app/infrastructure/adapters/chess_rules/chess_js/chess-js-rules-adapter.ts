@@ -7,8 +7,13 @@ import type {
   MoveInput,
 } from '../../../../application/chess_graph/index.ts';
 import {
+  normalizeAnalysisSetup,
   createChessState,
   createPosition,
+  type AnalysisSetup,
+  type AnalysisSetupIssue,
+  type AnalysisSetupPiece,
+  type AnalysisSetupValidation,
   type AppliedMove,
   type CanonicalMove,
   type ChessState,
@@ -48,6 +53,28 @@ export class ChessJsRulesAdapter implements ChessRulesPort {
       return success(stateFromChess(new Chess(fen), 'unknown'));
     } catch {
       return failure('invalid_fen');
+    }
+  }
+
+  validateSetup(setup: AnalysisSetup): AnalysisSetupValidation {
+    const issues = validateAnalysisSetup(setup);
+    if (issues.length > 0) {
+      return Object.freeze({ valid: false, issues: Object.freeze(issues) });
+    }
+    const normalized = normalizeAnalysisSetup(setup);
+    try {
+      const state = stateFromChess(
+        new Chess(fenFromSetup(normalized)),
+        'unknown',
+      );
+      return Object.freeze({ valid: true, setup: normalized, state });
+    } catch {
+      return Object.freeze({
+        valid: false,
+        issues: Object.freeze([
+          Object.freeze({ code: 'invalid_position', field: 'pieces' }),
+        ]),
+      });
     }
   }
 
@@ -97,6 +124,227 @@ export class ChessJsRulesAdapter implements ChessRulesPort {
       ),
     );
   }
+}
+
+function validateAnalysisSetup(
+  setup: AnalysisSetup,
+): readonly AnalysisSetupIssue[] {
+  const issues: AnalysisSetupIssue[] = [];
+  const bySquare = new Map<string, AnalysisSetupPiece>();
+  for (const piece of setup.pieces) {
+    if (!/^[a-h][1-8]$/.test(piece.square)) {
+      issues.push(
+        Object.freeze({
+          code: 'invalid_square',
+          field: 'pieces',
+          square: piece.square,
+        }),
+      );
+      continue;
+    }
+    if (bySquare.has(piece.square)) {
+      issues.push(
+        Object.freeze({
+          code: 'duplicate_square',
+          field: 'pieces',
+          square: piece.square,
+        }),
+      );
+      continue;
+    }
+    bySquare.set(piece.square, piece);
+    if (piece.role === 'pawn' && /[18]$/.test(piece.square)) {
+      issues.push(
+        Object.freeze({
+          code: 'pawn_on_back_rank',
+          field: 'pieces',
+          square: piece.square,
+        }),
+      );
+    }
+  }
+
+  const whiteKings = setup.pieces.filter(
+    (piece) => piece.color === 'white' && piece.role === 'king',
+  );
+  const blackKings = setup.pieces.filter(
+    (piece) => piece.color === 'black' && piece.role === 'king',
+  );
+  requireKingCount(whiteKings, 'white', issues);
+  requireKingCount(blackKings, 'black', issues);
+  if (
+    whiteKings.length === 1 &&
+    blackKings.length === 1 &&
+    kingsAreAdjacent(whiteKings[0]!.square, blackKings[0]!.square)
+  ) {
+    issues.push(Object.freeze({ code: 'adjacent_kings', field: 'pieces' }));
+  }
+
+  if (!castlingRightsAreConsistent(setup, bySquare)) {
+    issues.push(
+      Object.freeze({
+        code: 'invalid_castling_rights',
+        field: 'castlingRights',
+      }),
+    );
+  }
+  if (!enPassantIsConsistent(setup, bySquare)) {
+    issues.push(
+      Object.freeze({
+        code: 'invalid_en_passant_square',
+        field: 'enPassantSquare',
+        ...(setup.enPassantSquare === undefined
+          ? {}
+          : { square: setup.enPassantSquare }),
+      }),
+    );
+  }
+  if (!Number.isSafeInteger(setup.halfmoveClock) || setup.halfmoveClock < 0) {
+    issues.push(
+      Object.freeze({
+        code: 'invalid_halfmove_clock',
+        field: 'halfmoveClock',
+      }),
+    );
+  }
+  if (!Number.isSafeInteger(setup.fullmoveNumber) || setup.fullmoveNumber < 1) {
+    issues.push(
+      Object.freeze({
+        code: 'invalid_fullmove_number',
+        field: 'fullmoveNumber',
+      }),
+    );
+  }
+  return issues;
+}
+
+function requireKingCount(
+  kings: readonly AnalysisSetupPiece[],
+  color: 'white' | 'black',
+  issues: AnalysisSetupIssue[],
+): void {
+  if (kings.length === 0) {
+    issues.push(
+      Object.freeze({ code: `${color}_king_required`, field: 'pieces' }),
+    );
+  } else if (kings.length > 1) {
+    issues.push(
+      Object.freeze({ code: `multiple_${color}_kings`, field: 'pieces' }),
+    );
+  }
+}
+
+function kingsAreAdjacent(whiteSquare: string, blackSquare: string): boolean {
+  return (
+    Math.abs(files.indexOf(whiteSquare[0]!) - files.indexOf(blackSquare[0]!)) <=
+      1 && Math.abs(Number(whiteSquare[1]) - Number(blackSquare[1])) <= 1
+  );
+}
+
+function castlingRightsAreConsistent(
+  setup: AnalysisSetup,
+  bySquare: ReadonlyMap<string, AnalysisSetupPiece>,
+): boolean {
+  const rights = setup.castlingRights;
+  return (
+    (!rights.whiteKingSide ||
+      (hasPiece(bySquare, 'e1', 'white', 'king') &&
+        hasPiece(bySquare, 'h1', 'white', 'rook'))) &&
+    (!rights.whiteQueenSide ||
+      (hasPiece(bySquare, 'e1', 'white', 'king') &&
+        hasPiece(bySquare, 'a1', 'white', 'rook'))) &&
+    (!rights.blackKingSide ||
+      (hasPiece(bySquare, 'e8', 'black', 'king') &&
+        hasPiece(bySquare, 'h8', 'black', 'rook'))) &&
+    (!rights.blackQueenSide ||
+      (hasPiece(bySquare, 'e8', 'black', 'king') &&
+        hasPiece(bySquare, 'a8', 'black', 'rook')))
+  );
+}
+
+function enPassantIsConsistent(
+  setup: AnalysisSetup,
+  bySquare: ReadonlyMap<string, AnalysisSetupPiece>,
+): boolean {
+  const target = setup.enPassantSquare;
+  if (target === undefined) return true;
+  if (!/^[a-h][1-8]$/.test(target)) return false;
+  const fileIndex = files.indexOf(target[0]!);
+  const targetRank = Number(target[1]);
+  const movingColor = setup.sideToMove;
+  const expectedRank = movingColor === 'white' ? 6 : 3;
+  if (targetRank !== expectedRank) return false;
+  const pawnRank = movingColor === 'white' ? 5 : 4;
+  const movedPawnColor = movingColor === 'white' ? 'black' : 'white';
+  if (!hasPiece(bySquare, `${target[0]}${pawnRank}`, movedPawnColor, 'pawn')) {
+    return false;
+  }
+  return [-1, 1].some((offset) => {
+    const file = files[fileIndex + offset];
+    return (
+      file !== undefined &&
+      hasPiece(bySquare, `${file}${pawnRank}`, movingColor, 'pawn')
+    );
+  });
+}
+
+function hasPiece(
+  bySquare: ReadonlyMap<string, AnalysisSetupPiece>,
+  square: string,
+  color: AnalysisSetupPiece['color'],
+  role: AnalysisSetupPiece['role'],
+): boolean {
+  const piece = bySquare.get(square);
+  return piece?.color === color && piece.role === role;
+}
+
+function fenFromSetup(setup: AnalysisSetup): string {
+  const pieces = new Map(setup.pieces.map((piece) => [piece.square, piece]));
+  const ranks: string[] = [];
+  for (let rank = 8; rank >= 1; rank -= 1) {
+    let empty = 0;
+    let row = '';
+    for (const file of files) {
+      const piece = pieces.get(`${file}${rank}`);
+      if (piece === undefined) {
+        empty += 1;
+        continue;
+      }
+      if (empty > 0) {
+        row += String(empty);
+        empty = 0;
+      }
+      row += fenSymbol(piece);
+    }
+    if (empty > 0) row += String(empty);
+    ranks.push(row);
+  }
+  const castling = [
+    setup.castlingRights.whiteKingSide ? 'K' : '',
+    setup.castlingRights.whiteQueenSide ? 'Q' : '',
+    setup.castlingRights.blackKingSide ? 'k' : '',
+    setup.castlingRights.blackQueenSide ? 'q' : '',
+  ].join('');
+  return [
+    ranks.join('/'),
+    setup.sideToMove === 'white' ? 'w' : 'b',
+    castling.length === 0 ? '-' : castling,
+    setup.enPassantSquare ?? '-',
+    setup.halfmoveClock,
+    setup.fullmoveNumber,
+  ].join(' ');
+}
+
+function fenSymbol(piece: AnalysisSetupPiece): string {
+  const symbol = {
+    king: 'k',
+    queen: 'q',
+    rook: 'r',
+    bishop: 'b',
+    knight: 'n',
+    pawn: 'p',
+  }[piece.role];
+  return piece.color === 'white' ? symbol.toUpperCase() : symbol;
 }
 
 function replayLine(

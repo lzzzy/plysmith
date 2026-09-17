@@ -49,6 +49,7 @@ export async function generateHostContract(
       }),
     },
     getAnalysisWorkspace: unavailableUseCase,
+    validateAnalysisSetup: unavailableUseCase,
     updateAnalysisScratch: unavailableUseCase,
     createAnalysisRecord: unavailableUseCase,
     createAnalysisNote: unavailableUseCase,

@@ -72,3 +72,69 @@ test('illegal and malformed moves are distinguished without leaking library erro
     reason: 'invalid_fen',
   });
 });
+
+test('a structured setup becomes one canonical state with unknown history', () => {
+  const rules = new ChessJsRulesAdapter();
+  const result = rules.validateSetup({
+    pieces: [
+      { square: 'e8', color: 'black', role: 'king' },
+      { square: 'e1', color: 'white', role: 'king' },
+      { square: 'a1', color: 'white', role: 'rook' },
+    ],
+    sideToMove: 'black',
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: true,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    halfmoveClock: 7,
+    fullmoveNumber: 12,
+  });
+
+  assert.equal(result.valid, true);
+  if (!result.valid) return;
+  assert.deepEqual(
+    result.setup.pieces.map((piece) => piece.square),
+    ['a1', 'e1', 'e8'],
+  );
+  assert.equal(result.state.fen, '4k3/8/8/8/8/8/8/R3K3 b Q - 7 12');
+  assert.equal(result.state.playState.historyKnowledge, 'unknown');
+});
+
+test('structured setup problems are stable and field related', () => {
+  const rules = new ChessJsRulesAdapter();
+  const result = rules.validateSetup({
+    pieces: [
+      { square: 'e1', color: 'white', role: 'king' },
+      { square: 'e8', color: 'black', role: 'king' },
+      { square: 'e2', color: 'white', role: 'pawn' },
+      { square: 'e2', color: 'black', role: 'pawn' },
+      { square: 'a8', color: 'white', role: 'pawn' },
+    ],
+    sideToMove: 'white',
+    castlingRights: {
+      whiteKingSide: true,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    enPassantSquare: 'e3',
+    halfmoveClock: -1,
+    fullmoveNumber: 0,
+  });
+
+  assert.equal(result.valid, false);
+  if (result.valid) return;
+  assert.deepEqual(
+    result.issues.map((issue) => issue.code),
+    [
+      'duplicate_square',
+      'pawn_on_back_rank',
+      'invalid_castling_rights',
+      'invalid_en_passant_square',
+      'invalid_halfmove_clock',
+      'invalid_fullmove_number',
+    ],
+  );
+});

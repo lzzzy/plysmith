@@ -64,6 +64,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/analysis/setup-validation": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["ValidateAnalysisSetup"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/analysis/workspace": {
         readonly parameters: {
             readonly query?: never;
@@ -507,6 +523,9 @@ export interface components {
             /** @enum {string} */
             readonly kind: "fen";
         } | {
+            /** @enum {string} */
+            readonly kind: "position_setup";
+        } | {
             readonly anchorId: string;
             readonly itemId: string;
             /** @enum {string} */
@@ -590,6 +609,29 @@ export interface components {
             readonly mode: components["schemas"]["InventoryRevisionMode"];
             readonly returnAnchorId: string;
             readonly summary?: string;
+        };
+        readonly AnalysisSetup: {
+            readonly castlingRights: {
+                readonly blackKingSide: boolean;
+                readonly blackQueenSide: boolean;
+                readonly whiteKingSide: boolean;
+                readonly whiteQueenSide: boolean;
+            };
+            readonly enPassantSquare?: string;
+            readonly fullmoveNumber: number;
+            readonly halfmoveClock: number;
+            readonly pieces: readonly components["schemas"]["AnalysisSetupPiece"][];
+            readonly sideToMove: "white" | "black";
+        };
+        readonly AnalysisSetupIssue: {
+            readonly code: "invalid_square" | "duplicate_square" | "white_king_required" | "black_king_required" | "multiple_white_kings" | "multiple_black_kings" | "adjacent_kings" | "pawn_on_back_rank" | "invalid_castling_rights" | "invalid_en_passant_square" | "invalid_halfmove_clock" | "invalid_fullmove_number" | "invalid_position" | "invalid_fen";
+            readonly field?: "pieces" | "castlingRights" | "enPassantSquare" | "halfmoveClock" | "fullmoveNumber" | "fen";
+            readonly square?: string;
+        };
+        readonly AnalysisSetupPiece: {
+            readonly color: "white" | "black";
+            readonly role: "king" | "queen" | "rook" | "bishop" | "knight" | "pawn";
+            readonly square: string;
         };
         readonly AnalysisSourceLine: {
             readonly contributions: readonly components["schemas"]["AnalysisContribution"][];
@@ -1125,6 +1167,10 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "fen";
                 } | {
+                    /** @enum {string} */
+                    readonly kind: "position_setup";
+                    readonly setup: components["schemas"]["AnalysisSetup"];
+                } | {
                     readonly anchorId: string;
                     readonly itemId: string;
                     /** @enum {string} */
@@ -1177,6 +1223,27 @@ export interface components {
             readonly preferenceRevision: number;
             readonly uiLocale: "de-DE" | "en-GB";
             readonly updatedAt: string;
+        };
+        readonly ValidateAnalysisSetupBody: {
+            readonly input: {
+                /** @enum {string} */
+                readonly kind: "position_setup";
+                readonly setup: components["schemas"]["AnalysisSetup"];
+            } | {
+                readonly fen: string;
+                /** @enum {string} */
+                readonly kind: "fen";
+            };
+        };
+        readonly ValidateAnalysisSetupResult: {
+            readonly setup: components["schemas"]["AnalysisSetup"];
+            readonly state: components["schemas"]["ChessState"];
+            /** @enum {boolean} */
+            readonly valid: true;
+        } | {
+            readonly issues: readonly components["schemas"]["AnalysisSetupIssue"][];
+            /** @enum {boolean} */
+            readonly valid: false;
         };
         readonly WorkingContextRevisionImpactSummary: {
             readonly entryCount: number;
@@ -1763,6 +1830,10 @@ export interface operations {
                             /** @enum {string} */
                             readonly kind: "fen";
                         } | {
+                            /** @enum {string} */
+                            readonly kind: "position_setup";
+                            readonly setup: components["schemas"]["AnalysisSetup"];
+                        } | {
                             readonly anchorId: string;
                             readonly itemId: string;
                             /** @enum {string} */
@@ -1814,6 +1885,121 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["UpdateAnalysisScratchResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly ValidateAnalysisSetup: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly input: {
+                        /** @enum {string} */
+                        readonly kind: "position_setup";
+                        readonly setup: components["schemas"]["AnalysisSetup"];
+                    } | {
+                        readonly fen: string;
+                        /** @enum {string} */
+                        readonly kind: "fen";
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ValidateAnalysisSetupResult"];
                 };
             };
             /** @description A safe, stable Plysmith problem. */

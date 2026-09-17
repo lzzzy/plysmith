@@ -26,6 +26,10 @@ export {
   UpdateAnalysisScratch,
   type UpdateAnalysisScratchUseCase,
 } from './update-analysis-scratch.ts';
+export {
+  ValidateAnalysisSetup,
+  type ValidateAnalysisSetupUseCase,
+} from './validate-analysis-setup.ts';
 export { FreeAnalysisSession } from './free-analysis-session.ts';
 export type {
   AnalysisContributionView,
@@ -55,6 +59,8 @@ export type {
   UpdateAnalysisScratchRequest,
   UpdateAnalysisScratchResult,
   UpdateAnalysisNoteRequest,
+  ValidateAnalysisSetupRequest,
+  ValidateAnalysisSetupResult,
 } from './analysis-models.ts';
 export type {
   AnalysisClock,
@@ -73,5 +79,6 @@ export {
   chessRulesProblem,
   invalidAnalysisRecord,
   invalidAnalysisNote,
+  invalidAnalysisSetup,
   invalidAnalysisUpdate,
 } from './analysis-problems.ts';

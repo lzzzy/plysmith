@@ -270,6 +270,60 @@ test('persists analysis, note, context reference and resume as one recoverable w
   }
 });
 
+test('persists a root-only analysis created from a structured position', async (t) => {
+  const fixture = storeFixture(t);
+  const store = fixture.open();
+  const workspace = workspaceUseCases(store);
+  const context = await workspace.create.execute({
+    displayName: 'Stellungsanalyse',
+    purpose: 'Eine frei aufgebaute Stellung untersuchen.',
+  });
+  const scope = contextWorkScope(context.context.contextId);
+  const analysis = analysisUseCases(store);
+  const setup = {
+    pieces: [
+      { square: 'e1', color: 'white' as const, role: 'king' as const },
+      { square: 'a1', color: 'white' as const, role: 'rook' as const },
+      { square: 'e8', color: 'black' as const, role: 'king' as const },
+    ],
+    sideToMove: 'white' as const,
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+    halfmoveClock: 0,
+    fullmoveNumber: 1,
+  };
+  const started = await analysis.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: { kind: 'start', origin: { kind: 'position_setup', setup } },
+  });
+  const saved = await analysis.create.execute({
+    scope,
+    expectedScratchId: started.scratch?.scratchId ?? '',
+    expectedScratchRevision: started.scratch?.scratchRevision ?? -1,
+    displayName: 'Turmendspiel Ausgangsstellung',
+    languageTag: 'de-DE',
+    targetContextId: context.context.contextId,
+  });
+
+  const current = await analysis.get.execute({ scope });
+  assert.equal(current.record?.steps.length, 0);
+  assert.equal(current.record?.root.position.sideToMove, 'white');
+  assert.match(current.record?.root.fen ?? '', /^4k3\/8\/8\/8\/8\/8\/8\/R3K3/);
+
+  await store.close();
+  const reopened = fixture.open();
+  const afterRestart = await analysisUseCases(reopened).get.execute({ scope });
+  assert.equal(afterRestart.record?.itemId.value, saved.itemId.value);
+  assert.equal(afterRestart.record?.steps.length, 0);
+  assert.equal(afterRestart.record?.origin.kind, 'position_setup');
+});
+
 test('navigates inner record anchors independently from every referencing context', async (t) => {
   const store = storeFixture(t).open();
   const workspace = workspaceUseCases(store);

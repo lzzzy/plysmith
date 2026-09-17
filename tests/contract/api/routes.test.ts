@@ -344,6 +344,7 @@ for (const [code, status] of [
   ['diagnostics.invalid_report_request', 400],
   ['diagnostics.invalid_report_target', 400],
   ['diagnostics.report_target_exists', 409],
+  ['analysis.invalid_setup', 400],
   ['inventory.invalid_revision', 400],
   ['inventory.revision_conflict', 409],
   ['inventory.preview_conflict', 409],
@@ -462,6 +463,34 @@ test('analysis query rejects inconsistent scopes and incomplete previews before 
     assert.equal(response.json().code, 'request.invalid');
   }
   assert.equal(calls, 0);
+});
+
+test('analysis setup validation is read-only and returns stable issues', async (t) => {
+  let received: unknown;
+  const { host } = await buildFixture(t, {
+    validateAnalysisSetup: {
+      execute: async (request) => {
+        received = request;
+        return {
+          valid: false as const,
+          issues: [{ code: 'invalid_fen' as const, field: 'fen' as const }],
+        };
+      },
+    },
+  });
+  const response = await host.inject({
+    method: 'POST',
+    url: '/analysis/setup-validation',
+    headers,
+    payload: { input: { kind: 'fen', fen: 'invalid' } },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(received, { input: { kind: 'fen', fen: 'invalid' } });
+  assert.deepEqual(response.json(), {
+    valid: false,
+    issues: [{ code: 'invalid_fen', field: 'fen' }],
+  });
 });
 
 test('analysis note route maps explicit source and visibility ids without transport leakage', async (t) => {
