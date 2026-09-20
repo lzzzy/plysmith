@@ -141,9 +141,17 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
     revisionId: localId('item-revision', 10),
   });
   stream.publish({
-    kind: 'workspace.revision-impact-changed',
+    kind: 'playout.changed',
     occurredAt: '2026-09-08T11:00:00.000Z',
     dataRevision: 8,
+    scope: { kind: 'context', contextId },
+    draftId: localId('playout-draft', 12),
+    draftRevision: 3,
+  });
+  stream.publish({
+    kind: 'workspace.revision-impact-changed',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 9,
     contextId,
     itemId: localId('inventory-item', 7),
     impactId: localId('revision-impact', 11),
@@ -152,9 +160,16 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
   stream.publish({
     kind: 'workspace.context-created',
     occurredAt: '2026-09-08T11:00:00.000Z',
-    dataRevision: 9,
+    dataRevision: 10,
     contextId,
     contextVersion: 1,
+  });
+  stream.publish({
+    kind: 'workspace.item-removed',
+    occurredAt: '2026-09-08T11:00:00.000Z',
+    dataRevision: 11,
+    contextId,
+    itemId: localId('inventory-item', 7),
   });
 
   const scratch = await next(subscription);
@@ -162,8 +177,10 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
   const changedContribution = await next(subscription);
   const inventory = await next(subscription);
   const revision = await next(subscription);
+  const playout = await next(subscription);
   const impact = await next(subscription);
   const workspace = await next(subscription);
+  const removed = await next(subscription);
   assert.deepEqual(scratch.payload, {
     scope: { kind: 'context', contextId },
     scratchId: 'scratch-2',
@@ -176,6 +193,11 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
   assert.deepEqual(revision.payload, {
     itemId: localId('inventory-item', 7),
     revisionId: localId('item-revision', 10),
+  });
+  assert.deepEqual(playout.payload, {
+    scope: { kind: 'context', contextId },
+    draftId: localId('playout-draft', 12),
+    draftRevision: 3,
   });
   assert.deepEqual(impact.payload, {
     contextId,
@@ -193,6 +215,10 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
     changeKind: 'updated',
   });
   assert.deepEqual(workspace.payload, { contextId, contextVersion: 1 });
+  assert.deepEqual(removed.payload, {
+    contextId,
+    itemId: localId('inventory-item', 7),
+  });
   assert.deepEqual(
     [
       scratch.kind,
@@ -200,8 +226,10 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
       changedContribution.kind,
       inventory.kind,
       revision.kind,
+      playout.kind,
       impact.kind,
       workspace.kind,
+      removed.kind,
     ],
     [
       'analysis.scratch-changed',
@@ -209,8 +237,10 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
       'analysis.contribution-changed',
       'inventory.item-created',
       'inventory.revision-saved',
+      'playout.changed',
       'workspace.revision-impact-changed',
       'workspace.context-created',
+      'workspace.item-removed',
     ],
   );
   subscription.close();

@@ -44,6 +44,17 @@ async function attach(t: TestContext, applicationHome: string) {
   return { client, stderr: () => stderr };
 }
 
+function expectedPlayoutTool(name: string, expectedDraftRevision: number) {
+  return {
+    name,
+    arguments: {
+      scope: { kind: 'free' as const },
+      draftId: '1',
+      expectedDraftRevision,
+    },
+  };
+}
+
 test('MCP paths support source defaults and an explicit application-home only', () => {
   assert.equal(parseApplicationHome([]), path.resolve('.'));
   assert.equal(
@@ -133,6 +144,194 @@ test(
       ['host.json'],
     );
     assert.equal((await fetch(`${fixture.endpoint}status`)).status, 200);
+  },
+);
+
+test(
+  'stdio carries the complete non-sensitive playout lifecycle through the host contract',
+  { timeout: 60000 },
+  async (t) => {
+    const root = {
+      position: {
+        ruleSetId: 'standardChess',
+        boardKey:
+          'rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR',
+        sideToMove: 'white' as const,
+        castlingRights: {
+          whiteKingSide: true,
+          whiteQueenSide: true,
+          blackKingSide: true,
+          blackQueenSide: true,
+        },
+        effectiveEnPassantSquare: -1,
+        positionKey: 'standardChess|initial',
+      },
+      playState: {
+        halfmoveClock: 0,
+        fullmoveNumber: 1,
+        historyKnowledge: 'complete' as const,
+      },
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+    };
+    let draftRevision = 1;
+    let status:
+      | { readonly kind: 'active' }
+      | { readonly kind: 'paused' }
+      | {
+          readonly kind: 'stopped';
+          readonly outcome: { readonly kind: 'unfinished' };
+        } = { kind: 'active' };
+    const playout = () => ({
+      draft: {
+        draftId: '1',
+        draftRevision,
+        decisionGeneration: 0,
+        origin: { kind: 'initial_position' as const },
+        root,
+        playerSide: 'white' as const,
+        policy: {
+          capability: 'best_move' as const,
+          providerInstanceId: 'engine-main',
+          providerFingerprint: 'sha256:engine-main',
+          providerType: 'stockfish-uci',
+          providerDisplayName: 'Stockfish',
+        },
+        steps: [],
+        status,
+      },
+      legalMoves: [{ from: 'e2', to: 'e4', san: 'e4' }],
+      dataRevision: draftRevision,
+    });
+    const fixture = await createHttpHostFixture(t, {
+      routeResponse: ({ method, url }) => {
+        if (method === 'GET' && url === '/playout/providers') {
+          return {
+            body: {
+              providers: [
+                {
+                  instanceId: 'engine-main',
+                  providerType: 'stockfish-uci',
+                  displayName: 'Stockfish',
+                  fingerprint: 'sha256:engine-main',
+                  capabilities: ['best_move'],
+                  status: 'available',
+                },
+              ],
+            },
+          };
+        }
+        if (method === 'GET' && url?.startsWith('/playout?'))
+          return { body: playout() };
+        if (method === 'POST' && url === '/playout') {
+          draftRevision = 1;
+          status = { kind: 'active' };
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/moves') {
+          draftRevision = 2;
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/pause') {
+          draftRevision = 3;
+          status = { kind: 'paused' };
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/resume') {
+          draftRevision = 4;
+          status = { kind: 'active' };
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/retry') {
+          draftRevision = 5;
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/stop') {
+          draftRevision = 6;
+          status = { kind: 'stopped', outcome: { kind: 'unfinished' } };
+          return { body: playout() };
+        }
+        if (method === 'POST' && url === '/playout/complete') {
+          return {
+            body: {
+              itemId: '1',
+              revisionId: '1',
+              rootAnchorId: '1',
+              dataRevision: 7,
+            },
+          };
+        }
+        if (method === 'DELETE' && url === '/playout')
+          return { body: { dataRevision: 9 } };
+        return undefined;
+      },
+    });
+    const { client } = await attach(t, fixture.applicationHome);
+    const scope = { kind: 'free' as const };
+    const start = {
+      scope,
+      start: { kind: 'initial_position' as const },
+      providerInstanceId: 'engine-main',
+      opening: { kind: 'provider_move' as const },
+    };
+
+    const providers = await client.callTool({
+      name: 'list_move_policy_providers',
+    });
+    assert.equal(providers.isError, undefined);
+    assert.doesNotMatch(
+      JSON.stringify(providers),
+      /executable|arguments|hashMb/,
+    );
+    for (const request of [
+      { name: 'start_playout', arguments: start },
+      { name: 'get_playout', arguments: { scope } },
+      {
+        name: 'submit_playout_move',
+        arguments: {
+          scope,
+          draftId: '1',
+          expectedDraftRevision: 1,
+          move: { kind: 'coordinates', value: 'e2e4' },
+        },
+      },
+      expectedPlayoutTool('pause_playout', 2),
+      expectedPlayoutTool('resume_playout', 3),
+      expectedPlayoutTool('retry_playout', 4),
+      expectedPlayoutTool('stop_playout', 5),
+      {
+        name: 'complete_playout',
+        arguments: {
+          scope,
+          draftId: '1',
+          expectedDraftRevision: 6,
+          completionId: 'completion-1',
+          displayName: 'MCP practice game',
+          languageTag: 'en-GB',
+        },
+      },
+      { name: 'start_playout', arguments: start },
+      expectedPlayoutTool('discard_playout', 1),
+    ]) {
+      const result = await client.callTool(request);
+      assert.notEqual(result.isError, true, request.name);
+    }
+
+    assert.deepEqual(
+      fixture.requests.slice(1).map(({ method, url }) => ({ method, url })),
+      [
+        { method: 'GET', url: '/playout/providers' },
+        { method: 'POST', url: '/playout' },
+        { method: 'GET', url: '/playout?scopeKind=free' },
+        { method: 'POST', url: '/playout/moves' },
+        { method: 'POST', url: '/playout/pause' },
+        { method: 'POST', url: '/playout/resume' },
+        { method: 'POST', url: '/playout/retry' },
+        { method: 'POST', url: '/playout/stop' },
+        { method: 'POST', url: '/playout/complete' },
+        { method: 'POST', url: '/playout' },
+        { method: 'DELETE', url: '/playout' },
+      ],
+    );
   },
 );
 

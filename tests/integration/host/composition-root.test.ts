@@ -9,13 +9,48 @@ import {
   formatHostStartupFailure,
   parseHostPaths,
 } from '../../../app/bootstrap/host/main.ts';
-import { initializeConfiguration } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
+import {
+  fileSha256,
+  initializeConfiguration,
+} from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
 
 const defaultsDirectory = path.resolve('configuration', 'defaults');
 const hostToken = 'composition-root-test-token';
 
 test('composition root wires the real store and use cases without listening', async (context) => {
   const applicationHome = await createApplicationHome(context);
+  const initialized = await initializeConfiguration({
+    applicationHome,
+    defaultsDirectory,
+  });
+  const centralPath = path.join(initialized.activeDirectory, 'plysmith.json');
+  const central = JSON.parse(await readFile(centralPath, 'utf8'));
+  central.bindings.playoutEngines = ['uci-test'];
+  await writeFile(centralPath, `${JSON.stringify(central)}\n`, 'utf8');
+  await writeFile(
+    path.join(initialized.activeDirectory, 'uci-test.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      provider: 'stockfish-uci',
+      enabled: true,
+      displayName: 'UCI-Testanbieter',
+      stockfish: {
+        executablePath: process.execPath,
+        executableSha256: await fileSha256(process.execPath),
+        arguments: [
+          path.resolve('tests', 'fixtures', 'uci', 'fake-uci-engine.mjs'),
+        ],
+        threads: 1,
+        hashMb: 16,
+        moveTimeMs: 10,
+        startupTimeoutMs: 2_000,
+        moveTimeoutMs: 2_000,
+        stopTimeoutMs: 1_000,
+        maxOutputBytes: 32_768,
+      },
+    })}\n`,
+    'utf8',
+  );
   const runtime = await composeHost({
     applicationHome,
     defaultsDirectory,
@@ -57,7 +92,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 5,
+      schemaVersion: 6,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');
@@ -65,6 +100,73 @@ test('composition root wires the real store and use cases without listening', as
       status.json().contractFingerprint,
       runtime.contractFingerprint,
     );
+
+    const providers = await runtime.host.inject({
+      url: '/playout/providers',
+      headers,
+    });
+    assert.equal(providers.statusCode, 200);
+    assert.deepEqual(providers.json().providers, [
+      {
+        instanceId: 'uci-test',
+        providerType: 'stockfish-uci',
+        displayName: 'UCI-Testanbieter',
+        fingerprint: providers.json().providers[0].fingerprint,
+        capabilities: ['best_move'],
+        status: 'available',
+      },
+    ]);
+
+    const startedPlayout = await runtime.host.inject({
+      method: 'POST',
+      url: '/playout',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        start: { kind: 'initial_position' },
+        providerInstanceId: 'uci-test',
+        opening: {
+          kind: 'user_move',
+          move: { kind: 'notation', value: 'e4', locale: 'de-DE' },
+        },
+      },
+    });
+    assert.equal(startedPlayout.statusCode, 200);
+    assert.equal(startedPlayout.json().draft.status.kind, 'active');
+    assert.deepEqual(
+      startedPlayout
+        .json()
+        .draft.steps.map((step: { move: { san: string } }) => step.move.san),
+      ['e4', 'e5'],
+    );
+
+    const stoppedPlayout = await runtime.host.inject({
+      method: 'POST',
+      url: '/playout/stop',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        draftId: startedPlayout.json().draft.draftId,
+        expectedDraftRevision: startedPlayout.json().draft.draftRevision,
+      },
+    });
+    assert.equal(stoppedPlayout.statusCode, 200);
+    assert.equal(stoppedPlayout.json().draft.status.kind, 'stopped');
+
+    const completedPlayout = await runtime.host.inject({
+      method: 'POST',
+      url: '/playout/complete',
+      headers,
+      payload: {
+        scope: { kind: 'free' },
+        draftId: stoppedPlayout.json().draft.draftId,
+        expectedDraftRevision: stoppedPlayout.json().draft.draftRevision,
+        completionId: 'composition-playout-completion',
+        displayName: 'Ausgespielte Testpartie',
+        languageTag: 'de-DE',
+      },
+    });
+    assert.equal(completedPlayout.statusCode, 200);
 
     const diagnosticSettings = await runtime.host.inject({
       url: '/diagnostics/settings',

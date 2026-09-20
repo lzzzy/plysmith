@@ -5,6 +5,7 @@ export const desktopBootstrapChannel = 'plysmith:desktop-bootstrap';
 export const desktopDiagnosticsChannel = 'plysmith:desktop-diagnostics';
 export const desktopDiagnosticReportDestinationChannel =
   'plysmith:diagnostic-report-destination';
+export const desktopEngineExecutableChannel = 'plysmith:engine-executable';
 
 const rendererEventCodes = new Set([
   'renderer.lifecycle.starting',
@@ -53,6 +54,7 @@ export interface PlysmithDesktopApi {
   chooseDiagnosticReportDestination(
     suggestedFileName: string,
   ): Promise<string | undefined>;
+  chooseEngineExecutable(): Promise<string | undefined>;
   recordDiagnostic(event: RendererDiagnosticEvent): void;
 }
 

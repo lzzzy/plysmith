@@ -4,6 +4,7 @@ import {
   PlysmithHostClient,
   type AddContextReferenceRequestDto,
   type AddContextReferenceResultDto,
+  type RemoveContextItemResultDto,
   type AnalysisNoteMutationResultDto,
   type AnalysisRecordDto,
   type AnalysisWorkspaceDto,
@@ -27,6 +28,17 @@ import {
   type InventoryRevisionPreviewDto,
   type InventoryRevisionScratchRequestDto,
   type PendingRevisionImpactDto,
+  type CompletePlayoutRequestDto,
+  type CompletePlayoutResultDto,
+  type ExpectedPlayoutRequestDto,
+  type ListMovePolicyProvidersResultDto,
+  type PlayoutDto,
+  type StartPlayoutRequestDto,
+  type SubmitPlayoutMoveRequestDto,
+  type EngineProviderConfigurationInputDto,
+  type EngineProviderConfigurationDto,
+  type EngineProviderConfigurationPreviewDto,
+  type ListEngineProviderConfigurationsResultDto,
   type PromoteAnalysisToInventoryRevisionRequestDto,
   type ResolvePendingRevisionImpactRequestDto,
   type ResolvePendingRevisionImpactResultDto,
@@ -56,9 +68,10 @@ import type {
   RendererDiagnosticEvent,
 } from '../desktop/contract.ts';
 import { localizeSan } from './chess-display.ts';
+import { analysisPathPresentation } from './analysis-path-presentation.ts';
 import type { UiLocale } from './messages.ts';
 
-export type ActivityId = 'manage' | 'analyze' | 'settings';
+export type ActivityId = 'manage' | 'analyze' | 'playout' | 'settings';
 export type WorkScope = AnalysisWorkspaceDto['scope'];
 export type InventoryItem = SearchInventoryResultDto['items'][number];
 export type WorkingContext = ListWorkingContextsResultDto['contexts'][number];
@@ -90,9 +103,22 @@ export type ApplicationCommand =
   | 'resolve_revision_impact'
   | 'create_context'
   | 'add_context_reference'
+  | 'remove_context_item'
   | 'set_resume'
   | 'load_more_inventory'
-  | 'load_more_contexts';
+  | 'load_more_contexts'
+  | 'prepare_playout'
+  | 'start_playout'
+  | 'submit_playout_move'
+  | 'retry_playout'
+  | 'pause_playout'
+  | 'resume_playout'
+  | 'stop_playout'
+  | 'complete_playout'
+  | 'discard_playout'
+  | 'preview_engine_provider'
+  | 'save_engine_provider'
+  | 'disable_engine_provider';
 
 export interface PlysmithApplicationClient {
   getSystemStatus(): Promise<SystemStatusDto>;
@@ -175,10 +201,46 @@ export interface PlysmithApplicationClient {
     contextId: string,
     request: AddContextReferenceRequestDto,
   ): Promise<AddContextReferenceResultDto>;
+  removeContextItem(
+    contextId: string,
+    itemId: string,
+  ): Promise<RemoveContextItemResultDto>;
   setWorkScopeResume(
     contextId: string,
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto>;
+  listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto>;
+  getPlayout(request: {
+    readonly scopeKind: 'free' | 'context';
+    readonly contextId?: string;
+  }): Promise<PlayoutDto | null>;
+  startPlayout(request: StartPlayoutRequestDto): Promise<PlayoutDto>;
+  submitPlayoutMove(request: SubmitPlayoutMoveRequestDto): Promise<PlayoutDto>;
+  retryPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
+  pausePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
+  resumePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
+  stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
+  completePlayout(
+    request: CompletePlayoutRequestDto,
+  ): Promise<CompletePlayoutResultDto>;
+  discardPlayout(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<{ readonly dataRevision: number }>;
+  getEngineProviderConfigurations(): Promise<ListEngineProviderConfigurationsResultDto>;
+  previewEngineProviderConfiguration(
+    request: EngineProviderConfigurationInputDto,
+  ): Promise<EngineProviderConfigurationPreviewDto>;
+  saveEngineProviderConfiguration(
+    instanceId: string,
+    request: {
+      readonly input: EngineProviderConfigurationInputDto;
+      readonly expectedConfigurationRevision: string | null;
+    },
+  ): Promise<EngineProviderConfigurationDto>;
+  disableEngineProviderConfiguration(
+    instanceId: string,
+    request: { readonly expectedConfigurationRevision: string },
+  ): Promise<EngineProviderConfigurationDto>;
 }
 
 export interface HostEventSubscription {
@@ -191,6 +253,7 @@ export interface PlysmithApplicationStoreOptions {
   readonly chooseDiagnosticReportDestination?: (
     suggestedFileName: string,
   ) => Promise<string | undefined>;
+  readonly chooseEngineExecutable?: () => Promise<string | undefined>;
   readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
@@ -207,6 +270,13 @@ interface AnalysisFocus {
   readonly itemId: string;
   readonly revisionId: string;
   readonly anchorId: string;
+}
+
+export interface PlayoutStartSelection {
+  readonly title: string;
+  readonly start: StartPlayoutRequestDto['start'];
+  readonly workspace: AnalysisWorkspaceDto;
+  readonly sourcePath?: NonNullable<PlayoutDto['draft']['sourcePath']>;
 }
 
 export interface RevisionImpactDetails {
@@ -242,6 +312,13 @@ export type PlysmithApplicationState =
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
       readonly analysis: AnalysisWorkspaceDto;
+      readonly playoutProviders: ListMovePolicyProvidersResultDto;
+      readonly engineProviders: ListEngineProviderConfigurationsResultDto;
+      readonly playout: PlayoutDto | null;
+      readonly playoutStart?: PlayoutStartSelection;
+      readonly pendingPlayoutStart?: PlayoutStartSelection;
+      readonly completedPlayout?: CompletePlayoutResultDto;
+      readonly completedPlayoutView?: PlayoutDto;
       readonly inventoryRevisionPreview?: InventoryRevisionPreviewDto;
       readonly manageInventoryRevisionDraft?: ManageInventoryRevisionDraft;
       readonly revisionImpact?: RevisionImpactDetails;
@@ -284,6 +361,10 @@ export class PlysmithApplicationStore {
   #inventoryRevisionPreview: BoundInventoryRevisionPreview | undefined;
   #manageInventoryRevisionDraft: ManageInventoryRevisionDraft | undefined;
   #revisionImpact: RevisionImpactDetails | undefined;
+  #playoutStart: PlayoutStartSelection | undefined;
+  #pendingPlayoutStart: PlayoutStartSelection | undefined;
+  #completedPlayout: CompletePlayoutResultDto | undefined;
+  #completedPlayoutView: PlayoutDto | undefined;
 
   constructor(options: PlysmithApplicationStoreOptions) {
     this.#options = options;
@@ -392,6 +473,9 @@ export class PlysmithApplicationStore {
             inventory,
             analysis,
             workspace,
+            playoutProviders,
+            playout,
+            engineProviders,
           ] = await Promise.all([
             client.getSystemStatus(),
             client.getUserPreferences(),
@@ -403,6 +487,9 @@ export class PlysmithApplicationStore {
             contextId === undefined
               ? Promise.resolve(undefined)
               : client.getWorkingContextWorkspace(contextId),
+            client.listMovePolicyProviders(),
+            client.getPlayout(this.#playoutRequest()),
+            client.getEngineProviderConfigurations(),
           ]);
           if (
             !sameDataRevision(
@@ -412,6 +499,7 @@ export class PlysmithApplicationStore {
               inventory,
               analysis,
               workspace,
+              playout,
             )
           ) {
             this.#diagnose({
@@ -482,6 +570,21 @@ export class PlysmithApplicationStore {
               contexts,
               inventory,
               analysis,
+              playoutProviders,
+              playout,
+              engineProviders,
+              ...(this.#playoutStart === undefined
+                ? {}
+                : { playoutStart: this.#playoutStart }),
+              ...(this.#pendingPlayoutStart === undefined
+                ? {}
+                : { pendingPlayoutStart: this.#pendingPlayoutStart }),
+              ...(this.#completedPlayout === undefined
+                ? {}
+                : { completedPlayout: this.#completedPlayout }),
+              ...(this.#completedPlayoutView === undefined
+                ? {}
+                : { completedPlayoutView: this.#completedPlayoutView }),
               ...(inventoryRevisionPreview === undefined
                 ? {}
                 : {
@@ -557,6 +660,285 @@ export class PlysmithApplicationStore {
     if (returningToContextAnalysis) this.#analysisFocus = undefined;
     this.#publishViewState();
     if (returningToContextAnalysis) void this.refresh();
+    if (activity === 'playout') void this.#prepareDefaultPlayout();
+  }
+
+  openPlayoutFromCurrentAnalysis(): void {
+    const state = this.#readyState();
+    if (state === undefined) return;
+    const record = state.analysis.record;
+    const start: StartPlayoutRequestDto['start'] =
+      record !== undefined && state.analysis.scratch === undefined
+        ? {
+            kind: 'inventory_anchor',
+            itemId: record.itemId,
+            revisionId: record.revisionId,
+            anchorId: record.currentAnchorId,
+          }
+        : { kind: 'fen', fen: state.analysis.currentState.fen };
+    const selection = Object.freeze({
+      title: record?.displayName ?? 'Neue Partie',
+      start,
+      workspace: state.analysis,
+      ...playoutSourcePath(
+        record?.displayName ?? 'Neue Partie',
+        state.analysis,
+      ),
+    });
+    this.#openPreparedPlayout(selection);
+  }
+
+  async openPlayoutFromInventoryItem(item: InventoryItem): Promise<void> {
+    const revisionId = this.#effectiveRevisionId(item);
+    const start: StartPlayoutRequestDto['start'] = {
+      kind: 'inventory_anchor',
+      itemId: item.itemId,
+      revisionId,
+      anchorId: item.rootAnchorId,
+    };
+    const workspace = await this.#runCommand(
+      'prepare_playout',
+      (client) =>
+        client.getAnalysisWorkspace({
+          scopeKind: this.#scope.kind,
+          ...(this.#scope.kind === 'context'
+            ? { contextId: this.#scope.contextId }
+            : {}),
+          itemId: item.itemId,
+          revisionId,
+          anchorId: item.rootAnchorId,
+        }),
+      false,
+    );
+    if (workspace === undefined) return;
+    const selection = Object.freeze({
+      title: item.displayName,
+      start,
+      workspace,
+      ...playoutSourcePath(item.displayName, workspace),
+    });
+    this.#openPreparedPlayout(selection);
+    this.#finishCommand();
+  }
+
+  cancelPendingPlayoutStart(): void {
+    if (this.#pendingPlayoutStart === undefined) return;
+    this.#pendingPlayoutStart = undefined;
+    this.#publishViewState();
+  }
+
+  async discardPlayoutAndOpenPending(): Promise<void> {
+    const pending = this.#pendingPlayoutStart;
+    const request = this.#expectedPlayout();
+    if (pending === undefined || request === undefined) return;
+    const result = await this.#runCommand('discard_playout', (client) =>
+      client.discardPlayout(request),
+    );
+    if (result === undefined) return;
+    this.#pendingPlayoutStart = undefined;
+    this.#playoutStart = pending;
+    this.#completedPlayout = undefined;
+    this.#completedPlayoutView = undefined;
+    this.#activity = 'playout';
+    this.#finishCommand();
+  }
+
+  #openPreparedPlayout(selection: PlayoutStartSelection): void {
+    const state = this.#readyState();
+    if (state?.playout !== null && state?.playout !== undefined) {
+      this.#pendingPlayoutStart = selection;
+      this.#publishViewState();
+      return;
+    }
+    this.#pendingPlayoutStart = undefined;
+    this.#playoutStart = selection;
+    this.#completedPlayout = undefined;
+    this.#completedPlayoutView = undefined;
+    this.#activity = 'playout';
+    this.#publishViewState();
+  }
+
+  async #prepareDefaultPlayout(): Promise<void> {
+    const state = this.#readyState();
+    if (
+      state === undefined ||
+      state.playout !== null ||
+      this.#playoutStart !== undefined ||
+      this.#completedPlayout !== undefined ||
+      this.#pendingPlayoutStart !== undefined
+    ) {
+      return;
+    }
+    const scope = this.#scope;
+    const workspace = await this.#runCommand(
+      'prepare_playout',
+      (client) =>
+        client.getAnalysisWorkspace({
+          scopeKind: scope.kind,
+          ...(scope.kind === 'context' ? { contextId: scope.contextId } : {}),
+          mode: 'initial_position',
+        }),
+      false,
+    );
+    if (workspace === undefined) return;
+    if (!sameScope(scope, this.#scope)) {
+      this.#finishCommand();
+      return;
+    }
+    this.#playoutStart = Object.freeze({
+      title: 'Grundstellung',
+      start: { kind: 'initial_position' as const },
+      workspace,
+    });
+    this.#finishCommand();
+  }
+
+  async letProviderStartPlayout(providerInstanceId: string): Promise<boolean> {
+    return this.#startPlayout(providerInstanceId, { kind: 'provider_move' });
+  }
+
+  async startPlayoutWithMove(
+    providerInstanceId: string,
+    from: string,
+    to: string,
+    promotion?: 'queen' | 'rook' | 'bishop' | 'knight',
+  ): Promise<boolean> {
+    const suffix = promotionLetter(promotion);
+    return this.#startPlayout(providerInstanceId, {
+      kind: 'user_move',
+      move: { kind: 'coordinates', value: `${from}${to}${suffix}` },
+    });
+  }
+
+  async #startPlayout(
+    providerInstanceId: string,
+    opening: StartPlayoutRequestDto['opening'],
+  ): Promise<boolean> {
+    const start = this.#playoutStart;
+    if (start === undefined) return false;
+    const result = await this.#runCommand('start_playout', (client) =>
+      client.startPlayout({
+        scope: this.#scope,
+        start: start.start,
+        ...(start.sourcePath === undefined
+          ? {}
+          : {
+              sourcePath: {
+                displayName: start.sourcePath.displayName,
+                rootFen: start.sourcePath.root.fen,
+                moves: start.sourcePath.steps.map((step) => ({
+                  kind: 'coordinates' as const,
+                  value: `${step.move.from}${step.move.to}${promotionLetter(step.move.promotion)}`,
+                })),
+              },
+            }),
+        providerInstanceId,
+        opening,
+      }),
+    );
+    if (result === undefined) return false;
+    this.#playoutStart = undefined;
+    this.#completedPlayout = undefined;
+    this.#completedPlayoutView = undefined;
+    this.#finishCommand();
+    return true;
+  }
+
+  async submitPlayoutMove(
+    from: string,
+    to: string,
+    promotion?: 'queen' | 'rook' | 'bishop' | 'knight',
+  ): Promise<void> {
+    const request = this.#expectedPlayout();
+    if (request === undefined) return;
+    const suffix = promotionLetter(promotion);
+    await this.#runCommand('submit_playout_move', (client) =>
+      client.submitPlayoutMove({
+        ...request,
+        move: { kind: 'coordinates', value: `${from}${to}${suffix}` },
+      }),
+    );
+  }
+
+  async retryPlayout(): Promise<void> {
+    await this.#runPlayoutCommand('retry_playout', (client, request) =>
+      client.retryPlayout(request),
+    );
+  }
+
+  async pausePlayout(): Promise<void> {
+    await this.#runPlayoutCommand('pause_playout', (client, request) =>
+      client.pausePlayout(request),
+    );
+  }
+
+  async resumePlayout(): Promise<void> {
+    await this.#runPlayoutCommand('resume_playout', (client, request) =>
+      client.resumePlayout(request),
+    );
+  }
+
+  async stopPlayout(): Promise<void> {
+    await this.#runPlayoutCommand('stop_playout', (client, request) =>
+      client.stopPlayout(request),
+    );
+  }
+
+  async discardPlayout(): Promise<void> {
+    const request = this.#expectedPlayout();
+    if (request === undefined) return;
+    const result = await this.#runCommand('discard_playout', (client) =>
+      client.discardPlayout(request),
+    );
+    if (result !== undefined) {
+      this.#playoutStart = undefined;
+      this.#completedPlayout = undefined;
+      this.#completedPlayoutView = undefined;
+      this.#finishCommand();
+      if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
+    }
+  }
+
+  async completePlayout(
+    displayName: string,
+    addToContext: boolean,
+  ): Promise<boolean> {
+    const request = this.#expectedPlayout();
+    const completedPlayoutView = this.#readyState()?.playout ?? undefined;
+    if (request === undefined || completedPlayoutView === undefined)
+      return false;
+    const result = await this.#runCommand('complete_playout', (client) =>
+      client.completePlayout({
+        ...request,
+        completionId: crypto.randomUUID(),
+        displayName: displayName.trim(),
+        languageTag: this.#readyState()?.preferences.uiLocale ?? 'de-DE',
+        ...(addToContext && this.#scope.kind === 'context'
+          ? { targetContextId: this.#scope.contextId }
+          : {}),
+      }),
+    );
+    if (result === undefined) return false;
+    this.#completedPlayout = result;
+    this.#completedPlayoutView = completedPlayoutView;
+    this.#playoutStart = undefined;
+    this.#finishCommand();
+    return true;
+  }
+
+  async openCompletedPlayout(): Promise<void> {
+    const completed = this.#completedPlayout;
+    if (completed === undefined) return;
+    this.#analysisFocus = Object.freeze({
+      itemId: completed.itemId,
+      revisionId: completed.revisionId,
+      anchorId: completed.rootAnchorId,
+    });
+    this.#activity = 'analyze';
+    this.#completedPlayout = undefined;
+    this.#completedPlayoutView = undefined;
+    this.#publishViewState();
+    await this.refresh();
   }
 
   async setScope(scope: WorkScope): Promise<void> {
@@ -576,9 +958,14 @@ export class PlysmithApplicationStore {
       scope.kind === 'free' ? this.#freeAnalysisFocus : undefined;
     this.#selectedInventoryItemId = undefined;
     this.#revisionImpact = undefined;
+    this.#playoutStart = undefined;
+    this.#pendingPlayoutStart = undefined;
+    this.#completedPlayout = undefined;
+    this.#completedPlayoutView = undefined;
     this.#inventoryContextOnly = scope.kind === 'context';
     this.#publishViewState();
     await this.refresh();
+    if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
   }
 
   async searchInventory(query: string): Promise<void> {
@@ -706,8 +1093,8 @@ export class PlysmithApplicationStore {
     );
   }
 
-  async openInventoryItem(item: InventoryItem): Promise<void> {
-    if (this.#hasPendingRevisionImpact(item.itemId)) return;
+  async openInventoryItem(item: InventoryItem): Promise<boolean> {
+    if (this.#hasPendingRevisionImpact(item.itemId)) return false;
     const revisionId = this.#effectiveRevisionId(item);
     this.#analysisFocus = Object.freeze({
       itemId: item.itemId,
@@ -721,7 +1108,7 @@ export class PlysmithApplicationStore {
       !item.contextIds.includes(this.#scope.contextId)
     ) {
       await this.refresh();
-      return;
+      return true;
     }
     const expectedResumeVersion =
       this.#readyState()?.contextWorkspace?.analysisResume?.resumeVersion ??
@@ -740,10 +1127,11 @@ export class PlysmithApplicationStore {
         }),
       false,
     );
-    if (result === undefined) return;
+    if (result === undefined) return false;
     this.#analysisFocus = undefined;
     await this.refresh();
     this.#finishCommand();
+    return true;
   }
 
   async openCurrentRecordWithoutContext(): Promise<void> {
@@ -836,6 +1224,17 @@ export class PlysmithApplicationStore {
         anchorId: item.rootAnchorId,
       }),
     );
+  }
+
+  async removeInventoryItemFromCurrentContext(
+    item: InventoryItem,
+  ): Promise<boolean> {
+    if (this.#scope.kind !== 'context') return false;
+    const contextId = this.#scope.contextId;
+    const result = await this.#runCommand('remove_context_item', (client) =>
+      client.removeContextItem(contextId, item.itemId),
+    );
+    return result !== undefined;
   }
 
   async addCurrentRecordToContext(): Promise<void> {
@@ -1194,6 +1593,13 @@ export class PlysmithApplicationStore {
       }),
     );
     return result?.discarded === true;
+  }
+
+  async discardAnalysisScratchAndOpenInventoryItem(
+    item: InventoryItem,
+  ): Promise<boolean> {
+    if (!(await this.discardAnalysisScratch())) return false;
+    return this.openInventoryItem(item);
   }
 
   async saveInventoryRevision(): Promise<boolean> {
@@ -1605,6 +2011,66 @@ export class PlysmithApplicationStore {
     return true;
   }
 
+  async chooseEngineExecutable(): Promise<string | undefined> {
+    if (this.#busyCommand !== undefined) return undefined;
+    try {
+      return await this.#options.chooseEngineExecutable?.();
+    } catch {
+      this.#setReadyError('configuration.engine_picker_unavailable');
+      return undefined;
+    }
+  }
+
+  async previewEngineProviderConfiguration(
+    input: EngineProviderConfigurationInputDto,
+  ): Promise<EngineProviderConfigurationPreviewDto | undefined> {
+    const result = await this.#runCommand(
+      'preview_engine_provider',
+      (client) => client.previewEngineProviderConfiguration(input),
+      false,
+    );
+    if (result !== undefined) this.#finishCommand();
+    return result;
+  }
+
+  async saveEngineProviderConfiguration(
+    input: EngineProviderConfigurationInputDto,
+    expectedConfigurationRevision: string | null,
+  ): Promise<boolean> {
+    const result = await this.#runCommand(
+      'save_engine_provider',
+      (client) =>
+        client.saveEngineProviderConfiguration(input.instanceId, {
+          input,
+          expectedConfigurationRevision,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#announcement = 'engines.savedPendingRestart';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  async disableEngineProviderConfiguration(
+    provider: EngineProviderConfigurationDto,
+  ): Promise<boolean> {
+    const result = await this.#runCommand(
+      'disable_engine_provider',
+      (client) =>
+        client.disableEngineProviderConfiguration(provider.instanceId, {
+          expectedConfigurationRevision: provider.configurationRevision,
+        }),
+      false,
+    );
+    if (result === undefined) return false;
+    this.#announcement = 'engines.savedPendingRestart';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
   clearAnnouncement(): void {
     this.#announcement = undefined;
     this.#publishViewState();
@@ -1637,6 +2103,13 @@ export class PlysmithApplicationStore {
     }
 
     const record = state.analysis.record;
+    if (
+      record === undefined &&
+      state.analysis.allowedActions.includes('start_scratch')
+    ) {
+      await this.#startScratch({ kind: 'initial_position' }, move);
+      return;
+    }
     if (
       record === undefined ||
       record.historical ||
@@ -1870,6 +2343,41 @@ export class PlysmithApplicationStore {
     };
   }
 
+  #playoutRequest(): {
+    readonly scopeKind: 'free' | 'context';
+    readonly contextId?: string;
+  } {
+    return {
+      scopeKind: this.#scope.kind,
+      ...(this.#scope.kind === 'context'
+        ? { contextId: this.#scope.contextId }
+        : {}),
+    };
+  }
+
+  #expectedPlayout(): ExpectedPlayoutRequestDto | undefined {
+    const playout = this.#readyState()?.playout;
+    if (playout === null || playout === undefined) return undefined;
+    return {
+      scope: this.#scope,
+      draftId: playout.draft.draftId,
+      expectedDraftRevision: playout.draft.draftRevision,
+    };
+  }
+
+  async #runPlayoutCommand(
+    command:
+      'retry_playout' | 'pause_playout' | 'resume_playout' | 'stop_playout',
+    action: (
+      client: PlysmithApplicationClient,
+      request: ExpectedPlayoutRequestDto,
+    ) => Promise<PlayoutDto>,
+  ): Promise<void> {
+    const request = this.#expectedPlayout();
+    if (request === undefined) return;
+    await this.#runCommand(command, (client) => action(client, request));
+  }
+
   #inventoryRequest(): SearchInventoryRequestDto {
     return {
       pageSize: '50',
@@ -2054,12 +2562,23 @@ export class PlysmithApplicationStore {
       (state.analysis.scratch?.scratchId !== event.payload.scratchId ||
         state.analysis.scratch?.scratchRevision !==
           event.payload.scratchRevision);
+    const playoutEventNeedsRefresh =
+      event.kind === 'playout.changed' &&
+      state !== undefined &&
+      sameScope(state.scope, event.payload.scope) &&
+      (state.playout?.draft.draftId !== event.payload.draftId ||
+        state.playout.draft.draftRevision !== event.payload.draftRevision);
     if (event.kind === 'host.replay-gap') {
+      void this.refresh();
+      return;
+    }
+    if (playoutEventNeedsRefresh && this.#busyCommand !== undefined) {
       void this.refresh();
       return;
     }
     if (
       !scratchEventNeedsRefresh &&
+      !playoutEventNeedsRefresh &&
       state !== undefined &&
       state.status.persistence.dataRevision >= event.dataRevision
     ) {
@@ -2120,6 +2639,21 @@ export class PlysmithApplicationStore {
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,
+        playoutProviders: state.playoutProviders,
+        engineProviders: state.engineProviders,
+        playout: state.playout,
+        ...(this.#playoutStart === undefined
+          ? {}
+          : { playoutStart: this.#playoutStart }),
+        ...(this.#pendingPlayoutStart === undefined
+          ? {}
+          : { pendingPlayoutStart: this.#pendingPlayoutStart }),
+        ...(this.#completedPlayout === undefined
+          ? {}
+          : { completedPlayout: this.#completedPlayout }),
+        ...(this.#completedPlayoutView === undefined
+          ? {}
+          : { completedPlayoutView: this.#completedPlayoutView }),
         ...(inventoryRevisionPreview === undefined
           ? {}
           : { inventoryRevisionPreview }),
@@ -2183,10 +2717,47 @@ export class PlysmithApplicationStore {
   }
 }
 
+function playoutSourcePath(
+  displayName: string,
+  workspace: AnalysisWorkspaceDto,
+): { readonly sourcePath?: NonNullable<PlayoutDto['draft']['sourcePath']> } {
+  if (workspace.record === undefined && workspace.scratch === undefined)
+    return {};
+  const path = analysisPathPresentation({
+    ...(workspace.record === undefined ? {} : { record: workspace.record }),
+    ...(workspace.scratch === undefined ? {} : { scratch: workspace.scratch }),
+  });
+  const root = path.positions[0]?.state;
+  if (root === undefined) return {};
+  return {
+    sourcePath: Object.freeze({
+      displayName,
+      root,
+      steps: Object.freeze(
+        path.entries.slice(0, path.currentPositionIndex).map((entry) =>
+          Object.freeze({
+            before: entry.before,
+            move: Object.freeze({ ...entry.move }),
+            after: entry.after,
+          }),
+        ),
+      ),
+    }),
+  };
+}
+
 function moveRequest(value: string, locale: UiLocale): MoveRequest {
   return /^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(value)
     ? { kind: 'coordinates', value }
     : { kind: 'notation', value, locale };
+}
+
+function promotionLetter(
+  promotion?: 'queen' | 'rook' | 'bishop' | 'knight',
+): string {
+  return promotion === undefined
+    ? ''
+    : { queen: 'q', rook: 'r', bishop: 'b', knight: 'n' }[promotion];
 }
 
 function matchesSavedMove(
@@ -2229,6 +2800,7 @@ function sameDataRevision(
   inventory: SearchInventoryResultDto,
   analysis: AnalysisWorkspaceDto,
   workspace: WorkingContextWorkspaceDto | undefined,
+  playout: PlayoutDto | null,
 ): boolean {
   const revisions = [
     status.persistence.dataRevision,
@@ -2236,6 +2808,7 @@ function sameDataRevision(
     contexts.dataRevision,
     inventory.dataRevision,
     analysis.dataRevision,
+    ...(playout === null ? [] : [playout.dataRevision]),
     ...(workspace === undefined ? [] : [workspace.dataRevision]),
   ];
   return revisions.every((revision) => revision === revisions[0]);

@@ -49,6 +49,55 @@ test('status includes the application read model and release handshake only', as
   assert.deepEqual(diagnostics, []);
 });
 
+test('engine provider mutation routes bind concrete instance id paths', async (t) => {
+  const { host } = await buildFixture(t);
+  for (const method of ['PUT', 'DELETE'] as const) {
+    const response = await host.inject({
+      method,
+      url: '/engine-providers/configurations/stockfish-main',
+      headers,
+      payload: {},
+    });
+    assert.equal(response.statusCode, 400, method);
+    assert.notEqual(response.json().code, 'request.not_found', method);
+  }
+});
+
+test('context item removal binds both local ids and returns the removed relationship', async (t) => {
+  const received: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    removeContextItem: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          contextId: request.contextId,
+          itemId: request.itemId,
+          dataRevision: 6,
+        };
+      },
+    },
+  });
+
+  const response = await host.inject({
+    method: 'DELETE',
+    url: '/working-contexts/2/items/7',
+    headers,
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    contextId: '2',
+    itemId: '7',
+    dataRevision: 6,
+  });
+  assert.deepEqual(received, [
+    {
+      contextId: localId('working-context', 2),
+      itemId: localId('inventory-item', 7),
+    },
+  ]);
+});
+
 test('real application use cases preserve success, no-op and stale-write semantics', async (t) => {
   const { host, published } = await buildFixture(t);
   const initial = await host.inject({ url: '/preferences', headers });
@@ -859,6 +908,7 @@ test('inventory revision reads and impact routes preserve historical and resolut
       execute: async (request) => {
         received.push(['get-revision', request]);
         return {
+          itemType: 'analysis' as const,
           itemId: localId('inventory-item', 2),
           revisionId: localId('item-revision', 3),
           currentRevisionId: localId('item-revision', 8),

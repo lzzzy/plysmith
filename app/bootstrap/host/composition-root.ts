@@ -30,6 +30,23 @@ import {
   SetUiLanguage,
 } from '../../application/preferences/index.ts';
 import {
+  CompletePlayout,
+  DiscardPlayout,
+  GetPlayout,
+  ListMovePolicyProviders,
+  PausePlayout,
+  ResumePlayout,
+  RetryPlayoutPolicyMove,
+  StartPlayout,
+  StopPlayout,
+  SubmitPlayoutMove,
+  type MovePolicyProvider,
+  DisableEngineProviderConfiguration,
+  GetEngineProviderConfigurations,
+  PreviewEngineProviderConfiguration,
+  SaveEngineProviderConfiguration,
+} from '../../application/playout/index.ts';
+import {
   CreateDiagnosticReport,
   GetDiagnosticReportManifest,
   GetDiagnosticSettings,
@@ -41,12 +58,20 @@ import {
   CreateWorkingContext,
   GetWorkingContextWorkspace,
   ListWorkingContexts,
+  RemoveContextItem,
   SetWorkScopeResume,
 } from '../../application/workspace/index.ts';
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
+  ConfiguredMovePolicyRegistry,
+  StockfishUciMovePolicyAdapter,
+  UnavailableMovePolicyProvider,
+} from '../../infrastructure/adapters/engine/index.ts';
+import { LineProcessSupervisor } from '../../infrastructure/adapters/process/index.ts';
+import {
   initializeConfiguration,
   FileDiagnosticSettingsRepository,
+  FileEngineProviderConfigurationRepository,
   loadConfiguration,
 } from '../../infrastructure/adapters/configuration/filesystem/index.ts';
 import {
@@ -166,6 +191,59 @@ export async function composeHost(
       events: eventStream,
     });
     const rules = new ChessJsRulesAdapter();
+    const movePolicies = new ConfiguredMovePolicyRegistry(
+      configuration.playoutEngines.map((engine): MovePolicyProvider => {
+        if (engine.provider === 'unknown') {
+          return new UnavailableMovePolicyProvider({
+            instanceId: engine.instanceId,
+            providerType: engine.provider,
+            displayName: engine.instanceId,
+            problemCode: engine.problemCode,
+          });
+        }
+        const settings = engine.configuration;
+        return new StockfishUciMovePolicyAdapter(
+          {
+            instanceId: engine.instanceId,
+            displayName: settings.displayName,
+            enabled: settings.enabled,
+            executablePath: settings.stockfish.executablePath,
+            executableSha256: settings.stockfish.executableSha256,
+            arguments: settings.stockfish.arguments,
+            threads: settings.stockfish.threads,
+            hashMb: settings.stockfish.hashMb,
+            moveTimeMs: settings.stockfish.moveTimeMs,
+            startupTimeoutMs: settings.stockfish.startupTimeoutMs,
+            moveTimeoutMs: settings.stockfish.moveTimeoutMs,
+            stopTimeoutMs: settings.stockfish.stopTimeoutMs,
+            maxOutputBytes: settings.stockfish.maxOutputBytes,
+          },
+          new LineProcessSupervisor(),
+        );
+      }),
+    );
+    const engineProviderConfigurations =
+      new FileEngineProviderConfigurationRepository(options.applicationHome);
+    const activeEngineFingerprints = new Map(
+      movePolicies
+        .list()
+        .map(
+          (provider) => [provider.instanceId, provider.fingerprint] as const,
+        ),
+    );
+    const getEngineProviderConfigurations = new GetEngineProviderConfigurations(
+      {
+        repository: engineProviderConfigurations,
+        activeFingerprints: activeEngineFingerprints,
+      },
+    );
+    const previewEngineProviderConfiguration =
+      new PreviewEngineProviderConfiguration(engineProviderConfigurations);
+    const saveEngineProviderConfiguration = new SaveEngineProviderConfiguration(
+      engineProviderConfigurations,
+    );
+    const disableEngineProviderConfiguration =
+      new DisableEngineProviderConfiguration(engineProviderConfigurations);
     const freeAnalysisSession = new FreeAnalysisSession();
     const getAnalysisWorkspace = new GetAnalysisWorkspace({
       reader: persistence,
@@ -273,11 +351,39 @@ export async function composeHost(
       clock,
       events: eventStream,
     });
+    const removeContextItem = new RemoveContextItem({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
     const setWorkScopeResume = new SetWorkScopeResume({
       writer: persistence,
       clock,
       events: eventStream,
     });
+    const playoutDependencies = {
+      reader: persistence,
+      writer: persistence,
+      rules,
+      policies: movePolicies,
+      clock,
+      events: eventStream,
+    };
+    const listMovePolicyProviders = new ListMovePolicyProviders(movePolicies);
+    const getPlayout = new GetPlayout(persistence, rules);
+    const startPlayout = new StartPlayout({
+      ...playoutDependencies,
+      analysis: persistence,
+    });
+    const submitPlayoutMove = new SubmitPlayoutMove(playoutDependencies);
+    const retryPlayoutPolicyMove = new RetryPlayoutPolicyMove(
+      playoutDependencies,
+    );
+    const pausePlayout = new PausePlayout(playoutDependencies);
+    const resumePlayout = new ResumePlayout(playoutDependencies);
+    const stopPlayout = new StopPlayout(playoutDependencies);
+    const completePlayout = new CompletePlayout(playoutDependencies);
+    const discardPlayout = new DiscardPlayout(playoutDependencies);
     const hostToken =
       options.hostToken ?? randomBytes(32).toString('base64url');
     const correlationIdFactory = options.correlationIdFactory ?? randomUUID;
@@ -311,7 +417,22 @@ export async function composeHost(
       getWorkingContextWorkspace,
       createWorkingContext,
       addContextReference,
+      removeContextItem,
       setWorkScopeResume,
+      listMovePolicyProviders,
+      getPlayout,
+      startPlayout,
+      submitPlayoutMove,
+      retryPlayoutPolicyMove,
+      pausePlayout,
+      resumePlayout,
+      stopPlayout,
+      completePlayout,
+      discardPlayout,
+      getEngineProviderConfigurations,
+      previewEngineProviderConfiguration,
+      saveEngineProviderConfiguration,
+      disableEngineProviderConfiguration,
       events: eventStream,
       security: { hostToken },
       productRelease,

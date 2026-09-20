@@ -5,6 +5,7 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 import type {
   AddContextReferenceResult,
+  RemoveContextItemResult,
   AnalysisNoteMutationResult,
   AnalysisWorkspace,
   HostProblem,
@@ -34,6 +35,7 @@ import type {
 } from './host-client.ts';
 import {
   AddContextReferenceResultSchema,
+  RemoveContextItemResultSchema,
   AnalysisNoteMutationResultSchema,
   AnalysisWorkspaceSchema,
   CreateAnalysisRecordResultSchema,
@@ -206,6 +208,10 @@ export function createWorkingContextResultDto(
 
 export function addContextReferenceResultDto(model: AddContextReferenceResult) {
   return checked(AddContextReferenceResultSchema, model);
+}
+
+export function removeContextItemResultDto(model: RemoveContextItemResult) {
+  return checked(RemoveContextItemResultSchema, model);
 }
 
 export function setWorkScopeResumeResultDto(model: SetWorkScopeResumeResult) {

@@ -3,6 +3,11 @@ export {
   type AnalysisRecordDraft,
 } from './analysis-record.ts';
 export {
+  createGameRecordDraft,
+  type GameProviderProvenance,
+  type GameRecordDraft,
+} from './game-record.ts';
+export {
   inventoryRevisionCandidateSteps,
   planInventoryRevision,
   promoteAnalysisExplorationToRevision,

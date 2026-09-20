@@ -11,8 +11,11 @@ import {
 import {
   PlysmithConfigurationSchema,
   SqliteProviderConfigurationSchema,
+  StockfishUciProviderConfigurationSchema,
   type PlysmithConfiguration,
+  type StockfishUciProviderConfiguration,
 } from './configuration-schema.ts';
+import { fileSha256 } from './file-sha256.ts';
 
 export interface RuntimeConfiguration {
   readonly central: PlysmithConfiguration;
@@ -21,7 +24,22 @@ export interface RuntimeConfiguration {
     readonly provider: 'sqlite';
     readonly databasePath: string;
   };
+  readonly playoutEngines: readonly RuntimePlayoutEngineConfiguration[];
 }
+
+export type RuntimePlayoutEngineConfiguration =
+  | {
+      readonly instanceId: string;
+      readonly provider: 'stockfish-uci';
+      readonly status: 'available' | 'disabled';
+      readonly configuration: StockfishUciProviderConfiguration;
+    }
+  | {
+      readonly instanceId: string;
+      readonly provider: 'unknown';
+      readonly status: 'unavailable';
+      readonly problemCode: 'configuration.provider_invalid';
+    };
 
 export async function loadConfiguration(
   applicationHome: string,
@@ -41,6 +59,12 @@ export async function loadConfiguration(
     throw new ConfigurationProblem('configuration.persistence_invalid');
   }
 
+  const playoutEngines = await Promise.all(
+    central.bindings.playoutEngines.map((playoutInstanceId) =>
+      loadPlayoutEngine(activeDirectory, playoutInstanceId),
+    ),
+  );
+
   return Object.freeze({
     central,
     persistence: Object.freeze({
@@ -51,6 +75,7 @@ export async function loadConfiguration(
         persistence.sqlite.databasePath,
       ),
     }),
+    playoutEngines: Object.freeze(playoutEngines),
   });
 }
 
@@ -93,6 +118,53 @@ async function readDocument<T extends TSchema>(
   }
 
   return candidate as Static<T>;
+}
+
+async function loadPlayoutEngine(
+  activeDirectory: string,
+  instanceId: string,
+): Promise<RuntimePlayoutEngineConfiguration> {
+  try {
+    const configuration = await readDocument(
+      path.join(activeDirectory, `${instanceId}.json`),
+      StockfishUciProviderConfigurationSchema,
+      'configuration.central_invalid',
+      'configuration.central_invalid',
+    );
+    if (!path.isAbsolute(configuration.stockfish.executablePath)) {
+      return unavailableEngine(instanceId);
+    }
+    if (
+      (await fileSha256(configuration.stockfish.executablePath)) !==
+      configuration.stockfish.executableSha256
+    ) {
+      return unavailableEngine(instanceId);
+    }
+    Object.freeze(configuration.stockfish.arguments);
+    Object.freeze(configuration.stockfish);
+    Object.freeze(configuration);
+    return Object.freeze({
+      instanceId,
+      provider: 'stockfish-uci' as const,
+      status: configuration.enabled
+        ? ('available' as const)
+        : ('disabled' as const),
+      configuration,
+    });
+  } catch {
+    return unavailableEngine(instanceId);
+  }
+}
+
+function unavailableEngine(
+  instanceId: string,
+): RuntimePlayoutEngineConfiguration {
+  return Object.freeze({
+    instanceId,
+    provider: 'unknown' as const,
+    status: 'unavailable' as const,
+    problemCode: 'configuration.provider_invalid' as const,
+  });
 }
 
 function resolveManagedDatabasePath(

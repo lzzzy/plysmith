@@ -94,6 +94,17 @@ export interface AddContextReferenceResult {
   readonly dataRevision: number;
 }
 
+export interface RemoveContextItemRequest {
+  readonly contextId: WorkingContextId;
+  readonly itemId: InventoryItemId;
+}
+
+export interface RemoveContextItemResult {
+  readonly contextId: WorkingContextId;
+  readonly itemId: InventoryItemId;
+  readonly dataRevision: number;
+}
+
 export type SetWorkScopeResumeRequest =
   | {
       readonly contextId: WorkingContextId;
@@ -139,6 +150,13 @@ export type WorkspaceChanged =
       readonly dataRevision: number;
       readonly contextId: WorkingContextId;
       readonly referenceId: ContextReferenceId;
+    }
+  | {
+      readonly kind: 'workspace.item-removed';
+      readonly occurredAt: string;
+      readonly dataRevision: number;
+      readonly contextId: WorkingContextId;
+      readonly itemId: InventoryItemId;
     }
   | {
       readonly kind: 'workspace.resume-updated';

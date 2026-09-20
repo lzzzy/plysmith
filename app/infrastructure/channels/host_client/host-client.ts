@@ -103,10 +103,37 @@ export type AddContextReferenceRequestDto =
   components['schemas']['AddContextReferenceBody'];
 export type AddContextReferenceResultDto =
   components['schemas']['AddContextReferenceResult'];
+export type RemoveContextItemResultDto =
+  components['schemas']['RemoveContextItemResult'];
 export type SetWorkScopeResumeRequestDto =
   components['schemas']['SetWorkScopeResumeBody'];
 export type SetWorkScopeResumeResultDto =
   components['schemas']['SetWorkScopeResumeResult'];
+export type MovePolicyProviderDto = components['schemas']['MovePolicyProvider'];
+export type ListMovePolicyProvidersResultDto =
+  components['schemas']['ListMovePolicyProvidersResult'];
+export type PlayoutDto = components['schemas']['PlayoutResult'];
+export type StartPlayoutRequestDto = components['schemas']['StartPlayoutBody'];
+export type ExpectedPlayoutRequestDto =
+  components['schemas']['ExpectedPlayoutBody'];
+export type SubmitPlayoutMoveRequestDto =
+  components['schemas']['SubmitPlayoutMoveBody'];
+export type CompletePlayoutRequestDto =
+  components['schemas']['CompletePlayoutBody'];
+export type CompletePlayoutResultDto =
+  components['schemas']['CompletePlayoutResult'];
+export type DiscardPlayoutResultDto =
+  components['schemas']['DiscardPlayoutResult'];
+export type EngineProviderConfigurationInputDto =
+  components['schemas']['EngineProviderConfigurationInput'];
+export type EngineProviderConfigurationDto =
+  components['schemas']['EngineProviderConfiguration'];
+export type ListEngineProviderConfigurationsResultDto =
+  components['schemas']['ListEngineProviderConfigurationsResult'];
+export type EngineProviderConfigurationPreviewDto =
+  components['schemas']['EngineProviderConfigurationPreview'];
+export type SaveEngineProviderConfigurationRequestDto =
+  components['schemas']['SaveEngineProviderConfigurationBody'];
 
 export type PlysmithHostClientOptions = HostFetchOptions;
 
@@ -568,6 +595,24 @@ export class PlysmithHostClient {
     }
   }
 
+  async removeContextItem(
+    contextId: string,
+    itemId: string,
+  ): Promise<RemoveContextItemResultDto> {
+    try {
+      const result = await this.#client.DELETE(
+        '/working-contexts/{contextId}/items/{itemId}',
+        { params: { path: { contextId, itemId } } },
+      );
+      return unwrap<RemoveContextItemResultDto>(
+        result.data as RemoveContextItemResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
   async setWorkScopeResume(
     contextId: string,
     request: SetWorkScopeResumeRequestDto,
@@ -579,6 +624,186 @@ export class PlysmithHostClient {
       );
       return unwrap<SetWorkScopeResumeResultDto>(
         result.data as unknown as SetWorkScopeResumeResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto> {
+    try {
+      const result = await this.#client.GET('/playout/providers');
+      return unwrap<ListMovePolicyProvidersResultDto>(
+        result.data as unknown as ListMovePolicyProvidersResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getPlayout(request: {
+    readonly scopeKind: 'free' | 'context';
+    readonly contextId?: string;
+  }): Promise<PlayoutDto | null> {
+    try {
+      const result = await this.#client.GET('/playout', {
+        params: { query: request },
+      });
+      return unwrap<PlayoutDto | null>(
+        result.data as unknown as PlayoutDto | null | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async startPlayout(request: StartPlayoutRequestDto): Promise<PlayoutDto> {
+    try {
+      const result = await this.#client.POST('/playout', { body: request });
+      return unwrap<PlayoutDto>(
+        result.data as unknown as PlayoutDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async submitPlayoutMove(
+    request: SubmitPlayoutMoveRequestDto,
+  ): Promise<PlayoutDto> {
+    try {
+      const result = await this.#client.POST('/playout/moves', {
+        body: request,
+      });
+      return unwrap<PlayoutDto>(
+        result.data as unknown as PlayoutDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async retryPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return this.#playoutCommand('/playout/retry', request);
+  }
+
+  async pausePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return this.#playoutCommand('/playout/pause', request);
+  }
+
+  async resumePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return this.#playoutCommand('/playout/resume', request);
+  }
+
+  async stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return this.#playoutCommand('/playout/stop', request);
+  }
+
+  async completePlayout(
+    request: CompletePlayoutRequestDto,
+  ): Promise<CompletePlayoutResultDto> {
+    try {
+      const result = await this.#client.POST('/playout/complete', {
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async discardPlayout(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<DiscardPlayoutResultDto> {
+    try {
+      const result = await this.#client.DELETE('/playout', { body: request });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getEngineProviderConfigurations(): Promise<ListEngineProviderConfigurationsResultDto> {
+    try {
+      const result = await this.#client.GET('/engine-providers/configurations');
+      return unwrap<ListEngineProviderConfigurationsResultDto>(
+        result.data as unknown as
+          ListEngineProviderConfigurationsResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewEngineProviderConfiguration(
+    request: EngineProviderConfigurationInputDto,
+  ): Promise<EngineProviderConfigurationPreviewDto> {
+    try {
+      const result = await this.#client.POST(
+        '/engine-providers/configuration-preview',
+        { body: request },
+      );
+      return unwrap<EngineProviderConfigurationPreviewDto>(
+        result.data as unknown as
+          EngineProviderConfigurationPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async saveEngineProviderConfiguration(
+    instanceId: string,
+    request: SaveEngineProviderConfigurationRequestDto,
+  ): Promise<EngineProviderConfigurationDto> {
+    try {
+      const result = await this.#client.PUT(
+        '/engine-providers/configurations/{instanceId}',
+        { params: { path: { instanceId } }, body: request },
+      );
+      return unwrap<EngineProviderConfigurationDto>(
+        result.data as unknown as EngineProviderConfigurationDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async disableEngineProviderConfiguration(
+    instanceId: string,
+    request: { readonly expectedConfigurationRevision: string },
+  ): Promise<EngineProviderConfigurationDto> {
+    try {
+      const result = await this.#client.DELETE(
+        '/engine-providers/configurations/{instanceId}',
+        { params: { path: { instanceId } }, body: request },
+      );
+      return unwrap<EngineProviderConfigurationDto>(
+        result.data as unknown as EngineProviderConfigurationDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async #playoutCommand(
+    path:
+      '/playout/retry' | '/playout/pause' | '/playout/resume' | '/playout/stop',
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<PlayoutDto> {
+    try {
+      const result = await this.#client.POST(path, { body: request });
+      return unwrap<PlayoutDto>(
+        result.data as unknown as PlayoutDto | undefined,
         result.error,
       );
     } catch (error) {

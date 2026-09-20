@@ -24,6 +24,10 @@ import type {
   WorkspaceChanged,
   WorkspaceChangedPublisher,
 } from '../workspace/index.ts';
+import type {
+  PlayoutChanged,
+  PlayoutChangedPublisher,
+} from '../playout/index.ts';
 
 export type HostEvent =
   | PreferenceUiLanguageChangedHostEvent
@@ -32,9 +36,11 @@ export type HostEvent =
   | AnalysisContributionChangedHostEvent
   | InventoryItemCreatedHostEvent
   | InventoryRevisionSavedHostEvent
+  | PlayoutChangedHostEvent
   | WorkspaceRevisionImpactChangedHostEvent
   | WorkspaceContextCreatedHostEvent
   | WorkspaceReferenceAddedHostEvent
+  | WorkspaceItemRemovedHostEvent
   | WorkspaceResumeUpdatedHostEvent
   | ReplayGapHostEvent;
 
@@ -85,6 +91,11 @@ export interface InventoryRevisionSavedHostEvent extends HostEventMetadata {
   readonly payload: Pick<InventoryRevisionSaved, 'itemId' | 'revisionId'>;
 }
 
+export interface PlayoutChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'playout.changed';
+  readonly payload: Pick<PlayoutChanged, 'scope' | 'draftId' | 'draftRevision'>;
+}
+
 export interface WorkspaceRevisionImpactChangedHostEvent extends HostEventMetadata {
   readonly kind: 'workspace.revision-impact-changed';
   readonly payload: Pick<
@@ -106,6 +117,14 @@ export interface WorkspaceReferenceAddedHostEvent extends HostEventMetadata {
   readonly payload: Pick<
     Extract<WorkspaceChanged, { kind: 'workspace.reference-added' }>,
     'contextId' | 'referenceId'
+  >;
+}
+
+export interface WorkspaceItemRemovedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.item-removed';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.item-removed' }>,
+    'contextId' | 'itemId'
   >;
 }
 
@@ -154,6 +173,7 @@ export class HostEventStream
     AnalysisContributionChangedPublisher,
     InventoryChangedPublisher,
     InventoryRevisionSavedPublisher,
+    PlayoutChangedPublisher,
     RevisionImpactChangedPublisher,
     WorkspaceChangedPublisher,
     HostEventSource
@@ -185,6 +205,7 @@ export class HostEventStream
   publish(event: AnalysisContributionChanged): void;
   publish(event: AnalysisRecordCreated): void;
   publish(event: InventoryRevisionSaved): void;
+  publish(event: PlayoutChanged): void;
   publish(event: RevisionImpactChanged): void;
   publish(event: WorkspaceChanged): void;
   publish(
@@ -195,6 +216,7 @@ export class HostEventStream
       | AnalysisContributionChanged
       | AnalysisRecordCreated
       | InventoryRevisionSaved
+      | PlayoutChanged
       | RevisionImpactChanged
       | WorkspaceChanged,
   ): void {
@@ -315,6 +337,7 @@ type PublishableEvent =
   | AnalysisContributionChanged
   | AnalysisRecordCreated
   | InventoryRevisionSaved
+  | PlayoutChanged
   | RevisionImpactChanged
   | WorkspaceChanged;
 
@@ -381,6 +404,16 @@ function toHostEvent(
           revisionId: event.revisionId,
         }),
       });
+    case 'playout.changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          scope: event.scope,
+          draftId: event.draftId,
+          draftRevision: event.draftRevision,
+        }),
+      });
     case 'workspace.revision-impact-changed':
       return Object.freeze({
         ...metadata,
@@ -408,6 +441,15 @@ function toHostEvent(
         payload: Object.freeze({
           contextId: event.contextId,
           referenceId: event.referenceId,
+        }),
+      });
+    case 'workspace.item-removed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          contextId: event.contextId,
+          itemId: event.itemId,
         }),
       });
     case 'workspace.resume-updated':

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   PlysmithConfigurationSchema,
   SqliteProviderConfigurationSchema,
+  StockfishUciProviderConfigurationSchema,
 } from '../app/infrastructure/adapters/configuration/filesystem/configuration-schema.ts';
 
 const defaultOutputDirectory = path.resolve('configuration', 'schemas');
@@ -23,6 +24,11 @@ export async function generateConfigurationSchemas(
       outputDirectory,
       'sqlite-provider.schema.json',
       SqliteProviderConfigurationSchema,
+    ),
+    writeSchema(
+      outputDirectory,
+      'stockfish-uci-provider.schema.json',
+      StockfishUciProviderConfigurationSchema,
     ),
   ]);
 }

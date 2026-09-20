@@ -412,8 +412,31 @@ const analysisContribution = Type.Object(
   objectOptions,
 );
 
+const analysisGameOutcome = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('win'),
+      winner: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('draw'),
+      reason: Type.Union([
+        Type.Literal('stalemate'),
+        Type.Literal('insufficient_material'),
+        Type.Literal('seventy_five_move'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
+]);
+
 export const AnalysisRecordSchema = Type.Object(
   {
+    itemType: Type.Union([Type.Literal('analysis'), Type.Literal('game')]),
     itemId: localId,
     revisionId: localId,
     currentRevisionId: localId,
@@ -423,6 +446,37 @@ export const AnalysisRecordSchema = Type.Object(
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
     summary: Type.Optional(Type.String({ maxLength: 2_000 })),
     languageTag,
+    game: Type.Optional(
+      Type.Object(
+        {
+          playerSide: Type.Union([
+            Type.Literal('white'),
+            Type.Literal('black'),
+          ]),
+          outcome: analysisGameOutcome,
+          policy: Type.Object(
+            {
+              capability: Type.Literal('best_move'),
+              providerInstanceId: Type.String({
+                minLength: 1,
+                maxLength: 160,
+              }),
+              providerFingerprint: Type.String({
+                minLength: 1,
+                maxLength: 160,
+              }),
+              providerType: Type.String({ minLength: 1, maxLength: 160 }),
+              providerDisplayName: Type.String({
+                minLength: 1,
+                maxLength: 160,
+              }),
+            },
+            objectOptions,
+          ),
+        },
+        objectOptions,
+      ),
+    ),
     origin: analysisOrigin,
     sourceLine: Type.Optional(
       Type.Object(
@@ -469,6 +523,9 @@ export const AnalysisRecordSchema = Type.Object(
 export const GetAnalysisWorkspaceArgumentsSchema = Type.Object(
   {
     scope: workScope,
+    mode: Type.Optional(
+      Type.Union([Type.Literal('current'), Type.Literal('initial_position')]),
+    ),
     preview: Type.Optional(
       Type.Object(
         { itemId: localId, revisionId: localId, anchorId: localId },
@@ -1150,6 +1207,16 @@ export const AddContextReferenceResultSchema = Type.Object(
   objectOptions,
 );
 
+export const RemoveContextItemArgumentsSchema = Type.Object(
+  { contextId: localId, itemId: localId },
+  objectOptions,
+);
+
+export const RemoveContextItemResultSchema = Type.Object(
+  { contextId: localId, itemId: localId, dataRevision: revision },
+  objectOptions,
+);
+
 export const SetWorkScopeResumeArgumentsSchema = Type.Object(
   {
     contextId: localId,
@@ -1192,3 +1259,226 @@ export const SetWorkScopeResumeResultSchema = Type.Union([
     objectOptions,
   ),
 ]);
+
+export const ListMovePolicyProvidersResultSchema = Type.Object(
+  {
+    providers: Type.Array(
+      Type.Object(
+        {
+          instanceId: Type.String({ minLength: 1, maxLength: 160 }),
+          providerType: Type.String({ minLength: 1, maxLength: 160 }),
+          displayName: Type.String({ minLength: 1, maxLength: 160 }),
+          fingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+          capabilities: Type.Array(Type.Literal('best_move'), {
+            maxItems: 1,
+            uniqueItems: true,
+          }),
+          status: Type.Union([
+            Type.Literal('available'),
+            Type.Literal('disabled'),
+            Type.Literal('unavailable'),
+          ]),
+          problemCode: Type.Optional(
+            Type.String({ minLength: 1, maxLength: 160 }),
+          ),
+        },
+        objectOptions,
+      ),
+      { maxItems: 32 },
+    ),
+  },
+  objectOptions,
+);
+
+const playoutOutcome = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('win'),
+      winner: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('draw'),
+      reason: Type.Union([
+        Type.Literal('stalemate'),
+        Type.Literal('insufficient_material'),
+        Type.Literal('seventy_five_move'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
+]);
+
+const playoutStatus = Type.Union([
+  Type.Object({ kind: Type.Literal('active') }, objectOptions),
+  Type.Object(
+    { kind: Type.Literal('awaiting_policy'), decisionId: preferenceRevision },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('paused') }, objectOptions),
+  Type.Object(
+    { kind: Type.Literal('stopped'), outcome: playoutOutcome },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('terminal'),
+      reason: Type.Union([
+        Type.Literal('checkmate'),
+        Type.Literal('stalemate'),
+        Type.Literal('insufficient_material'),
+        Type.Literal('seventy_five_move'),
+      ]),
+      outcome: playoutOutcome,
+    },
+    objectOptions,
+  ),
+]);
+
+export const PlayoutResultSchema = Type.Object(
+  {
+    draft: Type.Object(
+      {
+        draftId: localId,
+        draftRevision: preferenceRevision,
+        decisionGeneration: revision,
+        origin: analysisOrigin,
+        sourcePath: Type.Optional(
+          Type.Object(
+            {
+              displayName: Type.String({ minLength: 1, maxLength: 200 }),
+              root: chessState,
+              steps: Type.Array(
+                Type.Object(
+                  {
+                    before: chessState,
+                    move: canonicalMove,
+                    after: chessState,
+                  },
+                  objectOptions,
+                ),
+                { maxItems: 1_000 },
+              ),
+            },
+            objectOptions,
+          ),
+        ),
+        root: chessState,
+        playerSide: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+        policy: Type.Object(
+          {
+            capability: Type.Literal('best_move'),
+            providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),
+            providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+            providerType: Type.String({ minLength: 1, maxLength: 160 }),
+            providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
+          },
+          objectOptions,
+        ),
+        steps: Type.Array(
+          Type.Object(
+            {
+              before: chessState,
+              move: canonicalMove,
+              after: chessState,
+              actor: Type.Union([
+                Type.Literal('user'),
+                Type.Literal('provider'),
+              ]),
+              decisionId: Type.Optional(preferenceRevision),
+            },
+            objectOptions,
+          ),
+          { maxItems: 1_000 },
+        ),
+        status: playoutStatus,
+      },
+      objectOptions,
+    ),
+    legalMoves: Type.Array(canonicalMove),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
+export const GetPlayoutArgumentsSchema = Type.Object(
+  { scope: workScope },
+  objectOptions,
+);
+
+export const GetPlayoutResultSchema = Type.Object(
+  { playout: Type.Optional(PlayoutResultSchema) },
+  objectOptions,
+);
+
+export const StartPlayoutArgumentsSchema = Type.Object(
+  {
+    scope: workScope,
+    start: analysisStartOrigin,
+    sourcePath: Type.Optional(
+      Type.Object(
+        {
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+          rootFen: Type.String({ minLength: 1, maxLength: 128 }),
+          moves: Type.Array(moveInput, { maxItems: 1_000 }),
+        },
+        objectOptions,
+      ),
+    ),
+    providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),
+    opening: Type.Union([
+      Type.Object(
+        { kind: Type.Literal('user_move'), move: moveInput },
+        objectOptions,
+      ),
+      Type.Object({ kind: Type.Literal('provider_move') }, objectOptions),
+    ]),
+  },
+  objectOptions,
+);
+
+const expectedPlayoutFields = {
+  scope: workScope,
+  draftId: localId,
+  expectedDraftRevision: preferenceRevision,
+};
+
+export const ExpectedPlayoutArgumentsSchema = Type.Object(
+  expectedPlayoutFields,
+  objectOptions,
+);
+
+export const SubmitPlayoutMoveArgumentsSchema = Type.Object(
+  { ...expectedPlayoutFields, move: moveInput },
+  objectOptions,
+);
+
+export const CompletePlayoutArgumentsSchema = Type.Object(
+  {
+    ...expectedPlayoutFields,
+    completionId: Type.String({ minLength: 1, maxLength: 160 }),
+    displayName: Type.String({ minLength: 1, maxLength: 200 }),
+    languageTag,
+    targetContextId: Type.Optional(localId),
+  },
+  objectOptions,
+);
+
+export const CompletePlayoutResultSchema = Type.Object(
+  {
+    itemId: localId,
+    revisionId: localId,
+    rootAnchorId: localId,
+    contextReferenceId: Type.Optional(localId),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+
+export const DiscardPlayoutResultSchema = Type.Object(
+  { dataRevision: revision },
+  objectOptions,
+);

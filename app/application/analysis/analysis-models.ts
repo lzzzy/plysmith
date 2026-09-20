@@ -19,6 +19,10 @@ import type {
   WorkingContextId,
 } from '../../domain/identity/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
+import type {
+  MovePolicyBinding,
+  PlayoutOutcome,
+} from '../../domain/playout/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
 
 export interface AnalysisContributionView {
@@ -59,6 +63,7 @@ export interface AnalysisSourceLineView {
 }
 
 export interface AnalysisRecordView {
+  readonly itemType: 'analysis' | 'game';
   readonly itemId: InventoryItemId;
   readonly revisionId: ItemRevisionId;
   readonly currentRevisionId: ItemRevisionId;
@@ -68,6 +73,11 @@ export interface AnalysisRecordView {
   readonly displayName: string;
   readonly summary?: string;
   readonly languageTag: string;
+  readonly game?: {
+    readonly playerSide: 'white' | 'black';
+    readonly outcome: PlayoutOutcome;
+    readonly policy: MovePolicyBinding;
+  };
   readonly origin: AnalysisScratchOrigin;
   readonly sourceLine?: AnalysisSourceLineView;
   readonly root: ChessState;
@@ -112,6 +122,7 @@ export interface AnalysisWorkspace {
 
 export interface GetAnalysisWorkspaceRequest {
   readonly scope: WorkScope;
+  readonly mode?: 'current' | 'initial_position';
   readonly preview?: {
     readonly itemId: InventoryItemId;
     readonly revisionId: ItemRevisionId;

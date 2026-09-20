@@ -17,7 +17,7 @@ import {
   systemStatus,
 } from './helpers.ts';
 
-test('MCP advertises the explicit twenty-nine-tool allowlist and two fixed resources', async (t) => {
+test('MCP advertises the explicit playout-capable allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -51,7 +51,18 @@ test('MCP advertises the explicit twenty-nine-tool allowlist and two fixed resou
       'get_working_context_workspace',
       'create_working_context',
       'add_context_reference',
+      'remove_context_item',
       'set_work_scope_resume',
+      'list_move_policy_providers',
+      'get_playout',
+      'start_playout',
+      'submit_playout_move',
+      'retry_playout',
+      'pause_playout',
+      'resume_playout',
+      'stop_playout',
+      'complete_playout',
+      'discard_playout',
     ],
   );
   assert.deepEqual(client.getServerCapabilities(), {
@@ -100,6 +111,48 @@ test('MCP advertises the explicit twenty-nine-tool allowlist and two fixed resou
     ],
   );
   assert.deepEqual(calls, []);
+});
+
+test('playout discovery and empty scoped read expose no engine configuration', async (t) => {
+  const { client, calls } = await connectMcp(t, {
+    listMovePolicyProviders: async () => ({
+      providers: [
+        {
+          instanceId: 'stockfish-main',
+          providerType: 'stockfish-uci',
+          displayName: 'Stockfish',
+          fingerprint: 'sha256:provider',
+          capabilities: ['best_move'],
+          status: 'available',
+        },
+      ],
+    }),
+  });
+  const providers = await client.callTool({
+    name: 'list_move_policy_providers',
+  });
+  assertToolData(providers, {
+    providers: [
+      {
+        instanceId: 'stockfish-main',
+        providerType: 'stockfish-uci',
+        displayName: 'Stockfish',
+        fingerprint: 'sha256:provider',
+        capabilities: ['best_move'],
+        status: 'available',
+      },
+    ],
+  });
+  const playout = await client.callTool({
+    name: 'get_playout',
+    arguments: { scope: { kind: 'free' } },
+  });
+  assertToolData(playout, {});
+  assert.deepEqual(calls, [
+    { method: 'listMovePolicyProviders' },
+    { method: 'getPlayout', request: { scopeKind: 'free' } },
+  ]);
+  assert.doesNotMatch(JSON.stringify(providers), /executable|arguments|hashMb/);
 });
 
 for (const [name, uri, expected, method] of [
@@ -387,6 +440,11 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     }),
     createWorkingContext: async () => ({ context, dataRevision: 6 }),
     addContextReference: async () => ({ reference, dataRevision: 7 }),
+    removeContextItem: async () => ({
+      contextId: '1',
+      itemId: '1',
+      dataRevision: 8,
+    }),
     setWorkScopeResume: async () => ({
       area: 'manage',
       resume: {
@@ -466,6 +524,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       { displayName: 'Mein Repertoire', purpose: 'Eröffnungen ausbauen' },
     ],
     ['add_context_reference', { contextId: '1', itemId: '1', anchorId: '1' }],
+    ['remove_context_item', { contextId: '1', itemId: '1' }],
     [
       'set_work_scope_resume',
       {
@@ -528,6 +587,10 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       request: { contextId: '1', itemId: '1', anchorId: '1' },
     },
     {
+      method: 'removeContextItem',
+      request: { contextId: '1', itemId: '1' },
+    },
+    {
       method: 'setWorkScopeResume',
       request: {
         contextId: '1',
@@ -536,7 +599,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         presentation: 'list',
       },
     },
-    { method: 'validateAnalysisSetup', request: scenarios[13][1] },
+    { method: 'validateAnalysisSetup', request: scenarios[14][1] },
   ]);
 });
 
@@ -650,6 +713,7 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       dataRevision: 8,
     }),
     getInventoryRevision: async () => ({
+      itemType: 'analysis' as const,
       itemId: '2',
       revisionId: '3',
       currentRevisionId: '8',

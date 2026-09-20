@@ -43,6 +43,23 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
   async execute(
     request: GetAnalysisWorkspaceRequest,
   ): Promise<AnalysisWorkspace> {
+    if (request.mode === 'initial_position') {
+      if (request.scope.kind === 'free') {
+        const status = await this.#storeStatus.readStoreStatus();
+        return this.#build({ dataRevision: status.dataRevision }, request);
+      }
+      const stored = await this.#reader.readContextAnalysisWorkspace(
+        request.scope.contextId,
+      );
+      if (stored === undefined) throw workingContextNotFound();
+      return this.#build(
+        {
+          dataRevision: stored.dataRevision,
+          contextName: stored.contextName,
+        },
+        request,
+      );
+    }
     if (request.scope.kind === 'free') {
       const status = await this.#storeStatus.readStoreStatus();
       const scratch = this.#freeSession.read();

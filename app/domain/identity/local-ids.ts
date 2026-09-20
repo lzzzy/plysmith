@@ -7,6 +7,7 @@ export type LocalIdKind =
   | 'move-node'
   | 'occurrence'
   | 'position'
+  | 'playout-draft'
   | 'revision-impact'
   | 'working-context';
 
@@ -23,6 +24,7 @@ export type ItemRevisionId = LocalId<'item-revision'>;
 export type MoveNodeId = LocalId<'move-node'>;
 export type OccurrenceId = LocalId<'occurrence'>;
 export type PositionId = LocalId<'position'>;
+export type PlayoutDraftId = LocalId<'playout-draft'>;
 export type RevisionImpactId = LocalId<'revision-impact'>;
 export type WorkingContextId = LocalId<'working-context'>;
 

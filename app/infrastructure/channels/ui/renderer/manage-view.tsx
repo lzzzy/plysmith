@@ -9,6 +9,7 @@ import {
   FolderPlus,
   Library,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Save,
@@ -448,6 +449,9 @@ function ItemInspector({
     contextId !== undefined && item.contextIds.includes(contextId);
   const isBusy = state.busyCommand !== undefined;
   const [showRename, setShowRename] = useState(false);
+  const [showRemove, setShowRemove] = useState(false);
+  const [showScratchDecision, setShowScratchDecision] = useState(false);
+  const hasOpenAnalysisDraft = state.analysis.scratch !== undefined;
   const renameDraft =
     state.manageInventoryRevisionDraft?.itemId === item.itemId
       ? state.manageInventoryRevisionDraft
@@ -470,7 +474,11 @@ function ItemInspector({
           ],
         };
 
-  useEffect(() => setShowRename(false), [item.itemId, item.currentRevisionId]);
+  useEffect(() => {
+    setShowRename(false);
+    setShowRemove(false);
+    setShowScratchDecision(false);
+  }, [item.itemId, item.currentRevisionId]);
 
   return (
     <div className={styles.inspectorBody}>
@@ -619,17 +627,111 @@ function ItemInspector({
             </div>
           </section>
         )}
-      {revisionImpact === undefined &&
-      !showRename &&
-      renameDraft === undefined ? (
+      {revisionImpact === undefined && showScratchDecision ? (
+        <section className={styles.scratchDecision}>
+          <div>
+            <strong>
+              <FormattedMessage id="manage.openAnalysisDraftTitle" />
+            </strong>
+            <p>
+              <FormattedMessage id="manage.openAnalysisDraftDetail" />
+            </p>
+          </div>
+          <div className={styles.scratchDecisionActions}>
+            <Button
+              className={styles.primaryButton!}
+              onPress={() => {
+                setShowScratchDecision(false);
+                store.setActivity('analyze');
+              }}
+              isDisabled={isBusy}
+            >
+              <ArrowRight aria-hidden="true" size={16} />
+              <FormattedMessage id="manage.continueAnalysisDraft" />
+            </Button>
+            <Button
+              className={styles.destructiveButton!}
+              onPress={async () => {
+                if (
+                  await store.discardAnalysisScratchAndOpenInventoryItem(item)
+                ) {
+                  setShowScratchDecision(false);
+                }
+              }}
+              isDisabled={isBusy}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+              <FormattedMessage id="manage.discardDraftAndOpenAnalysis" />
+            </Button>
+            <Button
+              className={styles.secondaryButton!}
+              onPress={() => setShowScratchDecision(false)}
+              isDisabled={isBusy}
+            >
+              <X aria-hidden="true" size={16} />
+              <FormattedMessage id="action.cancel" />
+            </Button>
+          </div>
+        </section>
+      ) : revisionImpact === undefined && showRemove ? (
+        <section className={styles.removeConfirmation}>
+          <div>
+            <strong>
+              <FormattedMessage id="manage.removeFromContextTitle" />
+            </strong>
+            <p>
+              <FormattedMessage id="manage.removeFromContextDetail" />
+            </p>
+          </div>
+          <div className={styles.removeConfirmationActions}>
+            <Button
+              className={styles.secondaryButton!}
+              onPress={() => setShowRemove(false)}
+              isDisabled={isBusy}
+            >
+              <X aria-hidden="true" size={16} />
+              <FormattedMessage id="action.cancel" />
+            </Button>
+            <Button
+              className={styles.destructiveButton!}
+              onPress={async () => {
+                if (await store.removeInventoryItemFromCurrentContext(item)) {
+                  setShowRemove(false);
+                }
+              }}
+              isDisabled={isBusy}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+              <FormattedMessage id="manage.removeFromContext" />
+            </Button>
+          </div>
+        </section>
+      ) : revisionImpact === undefined &&
+        !showRename &&
+        renameDraft === undefined &&
+        !showScratchDecision ? (
         <div className={styles.inspectorActions}>
           <Button
             className={styles.primaryButton!}
-            onPress={() => void store.openInventoryItem(item)}
+            onPress={() => {
+              if (hasOpenAnalysisDraft) {
+                setShowScratchDecision(true);
+                return;
+              }
+              void store.openInventoryItem(item);
+            }}
             isDisabled={isBusy}
           >
             <ArrowRight aria-hidden="true" size={16} />
             <FormattedMessage id="manage.openAnalysis" />
+          </Button>
+          <Button
+            className={styles.secondaryButton!}
+            onPress={() => void store.openPlayoutFromInventoryItem(item)}
+            isDisabled={isBusy}
+          >
+            <Play aria-hidden="true" size={16} />
+            <FormattedMessage id="manage.playOut" />
           </Button>
           <Button
             className={styles.secondaryButton!}
@@ -647,6 +749,19 @@ function ItemInspector({
             >
               <Plus aria-hidden="true" size={16} />
               <FormattedMessage id="manage.useInContext" />
+            </Button>
+          )}
+          {contextId !== undefined && isContextMember && (
+            <Button
+              className={styles.secondaryButton!}
+              onPress={() => {
+                setShowRename(false);
+                setShowRemove(true);
+              }}
+              isDisabled={isBusy}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+              <FormattedMessage id="manage.removeFromContext" />
             </Button>
           )}
         </div>

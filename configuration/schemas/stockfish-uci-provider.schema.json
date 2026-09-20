@@ -1,0 +1,99 @@
+{
+  "$id": "https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/stockfish-uci-provider.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "displayName": {
+      "maxLength": 160,
+      "minLength": 1,
+      "type": "string"
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "provider": {
+      "const": "stockfish-uci",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    },
+    "stockfish": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "items": {
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "executablePath": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "executableSha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        "hashMb": {
+          "maximum": 65536,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maxOutputBytes": {
+          "maximum": 16777216,
+          "minimum": 1024,
+          "type": "integer"
+        },
+        "moveTimeMs": {
+          "maximum": 600000,
+          "minimum": 10,
+          "type": "integer"
+        },
+        "moveTimeoutMs": {
+          "maximum": 660000,
+          "minimum": 100,
+          "type": "integer"
+        },
+        "startupTimeoutMs": {
+          "maximum": 60000,
+          "minimum": 100,
+          "type": "integer"
+        },
+        "stopTimeoutMs": {
+          "maximum": 30000,
+          "minimum": 100,
+          "type": "integer"
+        },
+        "threads": {
+          "maximum": 256,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "executablePath",
+        "executableSha256",
+        "arguments",
+        "threads",
+        "hashMb",
+        "moveTimeMs",
+        "startupTimeoutMs",
+        "moveTimeoutMs",
+        "stopTimeoutMs",
+        "maxOutputBytes"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "provider",
+    "enabled",
+    "displayName",
+    "stockfish"
+  ],
+  "type": "object"
+}

@@ -105,6 +105,87 @@ export const SetDiagnosticLogLevelResultSchema = Type.Object(
   { ...objectOptions, $id: 'SetDiagnosticLogLevelResult' },
 );
 
+export const EngineProviderConfigurationInputSchema = Type.Object(
+  {
+    instanceId: Type.String({ pattern: '^[a-z0-9][a-z0-9-]*$', maxLength: 80 }),
+    providerType: Type.Literal('stockfish-uci'),
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    enabled: Type.Boolean(),
+    executablePath: Type.String({ minLength: 1, maxLength: 1_024 }),
+    arguments: Type.Array(Type.String({ maxLength: 1_024 }), { maxItems: 32 }),
+    threads: Type.Integer({ minimum: 1, maximum: 256 }),
+    hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
+    moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
+    startupTimeoutMs: Type.Integer({ minimum: 100, maximum: 60_000 }),
+    moveTimeoutMs: Type.Integer({ minimum: 100, maximum: 660_000 }),
+    stopTimeoutMs: Type.Integer({ minimum: 100, maximum: 30_000 }),
+    maxOutputBytes: Type.Integer({ minimum: 1_024, maximum: 16_777_216 }),
+  },
+  { ...objectOptions, $id: 'EngineProviderConfigurationInput' },
+);
+
+export const EngineProviderConfigurationSchema = Type.Intersect(
+  [
+    Type.Ref(EngineProviderConfigurationInputSchema),
+    Type.Object(
+      {
+        configurationRevision,
+        effectiveFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+        restartRequired: Type.Boolean(),
+      },
+      objectOptions,
+    ),
+  ],
+  { $id: 'EngineProviderConfiguration' },
+);
+
+export const ListEngineProviderConfigurationsResultSchema = Type.Object(
+  { providers: Type.Array(Type.Ref(EngineProviderConfigurationSchema)) },
+  { ...objectOptions, $id: 'ListEngineProviderConfigurationsResult' },
+);
+
+export const PreviewEngineProviderConfigurationBodySchema = Type.Ref(
+  EngineProviderConfigurationInputSchema,
+  { $id: 'PreviewEngineProviderConfigurationBody' },
+);
+
+export const EngineProviderConfigurationPreviewSchema = Type.Object(
+  {
+    valid: Type.Boolean(),
+    issues: Type.Array(
+      Type.Union([
+        Type.Literal('executable_not_found'),
+        Type.Literal('configuration_invalid'),
+      ]),
+      { uniqueItems: true },
+    ),
+  },
+  { ...objectOptions, $id: 'EngineProviderConfigurationPreview' },
+);
+
+export const SaveEngineProviderConfigurationBodySchema = Type.Object(
+  {
+    input: Type.Ref(EngineProviderConfigurationInputSchema),
+    expectedConfigurationRevision: Type.Union([
+      configurationRevision,
+      Type.Null(),
+    ]),
+  },
+  { ...objectOptions, $id: 'SaveEngineProviderConfigurationBody' },
+);
+
+export const EngineProviderInstanceParamsSchema = Type.Object(
+  {
+    instanceId: Type.String({ pattern: '^[a-z0-9][a-z0-9-]*$', maxLength: 80 }),
+  },
+  { ...objectOptions, $id: 'EngineProviderInstanceParams' },
+);
+
+export const DisableEngineProviderConfigurationBodySchema = Type.Object(
+  { expectedConfigurationRevision: configurationRevision },
+  { ...objectOptions, $id: 'DisableEngineProviderConfigurationBody' },
+);
+
 const diagnosticReportIncludedCategory = Type.Union([
   Type.Literal('product_identity'),
   Type.Literal('runtime_environment'),
@@ -495,8 +576,31 @@ export const AnalysisSourceLineSchema = Type.Object(
   { ...objectOptions, $id: 'AnalysisSourceLine' },
 );
 
+const analysisRecordGameOutcome = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('win'),
+      winner: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('draw'),
+      reason: Type.Union([
+        Type.Literal('stalemate'),
+        Type.Literal('insufficient_material'),
+        Type.Literal('seventy_five_move'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
+]);
+
 export const AnalysisRecordSchema = Type.Object(
   {
+    itemType: Type.Union([Type.Literal('analysis'), Type.Literal('game')]),
     itemId: localId,
     revisionId: localId,
     currentRevisionId: localId,
@@ -506,6 +610,34 @@ export const AnalysisRecordSchema = Type.Object(
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
     summary: Type.Optional(Type.String({ maxLength: 2_000 })),
     languageTag,
+    game: Type.Optional(
+      Type.Object(
+        {
+          playerSide: Type.Union([
+            Type.Literal('white'),
+            Type.Literal('black'),
+          ]),
+          outcome: analysisRecordGameOutcome,
+          policy: Type.Object(
+            {
+              capability: Type.Literal('best_move'),
+              providerInstanceId: identifier,
+              providerFingerprint: Type.String({
+                minLength: 1,
+                maxLength: 160,
+              }),
+              providerType: identifier,
+              providerDisplayName: Type.String({
+                minLength: 1,
+                maxLength: 160,
+              }),
+            },
+            objectOptions,
+          ),
+        },
+        objectOptions,
+      ),
+    ),
     origin: Type.Ref(AnalysisOriginSchema),
     sourceLine: Type.Optional(Type.Ref(AnalysisSourceLineSchema)),
     root: Type.Ref(ChessStateSchema),
@@ -550,6 +682,9 @@ export const GetAnalysisWorkspaceQuerySchema = Type.Object(
   {
     scopeKind: Type.Union([Type.Literal('free'), Type.Literal('context')]),
     contextId: Type.Optional(localId),
+    mode: Type.Optional(
+      Type.Union([Type.Literal('current'), Type.Literal('initial_position')]),
+    ),
     itemId: Type.Optional(localId),
     revisionId: Type.Optional(localId),
     anchorId: Type.Optional(localId),
@@ -678,6 +813,232 @@ export const CreateAnalysisRecordResultSchema = Type.Object(
     dataRevision: revision,
   },
   { ...objectOptions, $id: 'CreateAnalysisRecordResult' },
+);
+
+export const MovePolicyProviderSchema = Type.Object(
+  {
+    instanceId: identifier,
+    providerType: identifier,
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    fingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+    capabilities: Type.Array(Type.Literal('best_move'), {
+      maxItems: 1,
+      uniqueItems: true,
+    }),
+    status: Type.Union([
+      Type.Literal('available'),
+      Type.Literal('disabled'),
+      Type.Literal('unavailable'),
+    ]),
+    problemCode: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
+  },
+  { ...objectOptions, $id: 'MovePolicyProvider' },
+);
+
+export const ListMovePolicyProvidersResultSchema = Type.Object(
+  {
+    providers: Type.Array(Type.Ref(MovePolicyProviderSchema), { maxItems: 32 }),
+  },
+  { ...objectOptions, $id: 'ListMovePolicyProvidersResult' },
+);
+
+const playoutOutcome = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('win'),
+      winner: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('draw'),
+      reason: Type.Union([
+        Type.Literal('stalemate'),
+        Type.Literal('insufficient_material'),
+        Type.Literal('seventy_five_move'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
+]);
+
+const terminalReason = Type.Union([
+  Type.Literal('checkmate'),
+  Type.Literal('stalemate'),
+  Type.Literal('insufficient_material'),
+  Type.Literal('seventy_five_move'),
+]);
+
+export const PlayoutStatusSchema = Type.Union(
+  [
+    Type.Object({ kind: Type.Literal('active') }, objectOptions),
+    Type.Object(
+      { kind: Type.Literal('awaiting_policy'), decisionId: positiveRevision },
+      objectOptions,
+    ),
+    Type.Object({ kind: Type.Literal('paused') }, objectOptions),
+    Type.Object(
+      { kind: Type.Literal('stopped'), outcome: playoutOutcome },
+      objectOptions,
+    ),
+    Type.Object(
+      {
+        kind: Type.Literal('terminal'),
+        reason: terminalReason,
+        outcome: playoutOutcome,
+      },
+      objectOptions,
+    ),
+  ],
+  { $id: 'PlayoutStatus' },
+);
+
+export const PlayoutStepSchema = Type.Object(
+  {
+    before: Type.Ref(ChessStateSchema),
+    move: Type.Ref(CanonicalMoveSchema),
+    after: Type.Ref(ChessStateSchema),
+    actor: Type.Union([Type.Literal('user'), Type.Literal('provider')]),
+    decisionId: Type.Optional(positiveRevision),
+  },
+  { ...objectOptions, $id: 'PlayoutStep' },
+);
+
+export const PlayoutSourcePathSchema = Type.Object(
+  {
+    displayName: Type.String({ minLength: 1, maxLength: 200 }),
+    root: Type.Ref(ChessStateSchema),
+    steps: Type.Array(
+      Type.Object(
+        {
+          before: Type.Ref(ChessStateSchema),
+          move: Type.Ref(CanonicalMoveSchema),
+          after: Type.Ref(ChessStateSchema),
+        },
+        objectOptions,
+      ),
+      { maxItems: 1_000 },
+    ),
+  },
+  { ...objectOptions, $id: 'PlayoutSourcePath' },
+);
+
+export const PlayoutDraftSchema = Type.Object(
+  {
+    draftId: localId,
+    draftRevision: positiveRevision,
+    decisionGeneration: revision,
+    origin: Type.Ref(AnalysisOriginSchema),
+    sourcePath: Type.Optional(Type.Ref(PlayoutSourcePathSchema)),
+    root: Type.Ref(ChessStateSchema),
+    playerSide: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    policy: Type.Object(
+      {
+        capability: Type.Literal('best_move'),
+        providerInstanceId: identifier,
+        providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+        providerType: identifier,
+        providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
+      },
+      objectOptions,
+    ),
+    steps: Type.Array(Type.Ref(PlayoutStepSchema), { maxItems: 1_000 }),
+    status: Type.Ref(PlayoutStatusSchema),
+  },
+  { ...objectOptions, $id: 'PlayoutDraft' },
+);
+
+export const PlayoutResultSchema = Type.Object(
+  {
+    draft: Type.Ref(PlayoutDraftSchema),
+    legalMoves: Type.Array(Type.Ref(CanonicalMoveSchema)),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'PlayoutResult' },
+);
+
+export const GetPlayoutQuerySchema = Type.Object(
+  {
+    scopeKind: Type.Union([Type.Literal('free'), Type.Literal('context')]),
+    contextId: Type.Optional(localId),
+  },
+  { ...objectOptions, $id: 'GetPlayoutQuery' },
+);
+
+export const GetPlayoutResultSchema = Type.Union(
+  [Type.Ref(PlayoutResultSchema), Type.Null()],
+  { $id: 'GetPlayoutResult' },
+);
+
+export const StartPlayoutBodySchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    start: analysisStartOrigin,
+    sourcePath: Type.Optional(
+      Type.Object(
+        {
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+          rootFen: Type.String({ minLength: 1, maxLength: 128 }),
+          moves: Type.Array(moveInput, { maxItems: 1_000 }),
+        },
+        objectOptions,
+      ),
+    ),
+    providerInstanceId: identifier,
+    opening: Type.Union([
+      Type.Object(
+        { kind: Type.Literal('user_move'), move: moveInput },
+        objectOptions,
+      ),
+      Type.Object({ kind: Type.Literal('provider_move') }, objectOptions),
+    ]),
+  },
+  { ...objectOptions, $id: 'StartPlayoutBody' },
+);
+
+const expectedPlayoutFields = {
+  scope: Type.Ref(WorkScopeSchema),
+  draftId: localId,
+  expectedDraftRevision: positiveRevision,
+};
+
+export const ExpectedPlayoutBodySchema = Type.Object(expectedPlayoutFields, {
+  ...objectOptions,
+  $id: 'ExpectedPlayoutBody',
+});
+
+export const SubmitPlayoutMoveBodySchema = Type.Object(
+  { ...expectedPlayoutFields, move: moveInput },
+  { ...objectOptions, $id: 'SubmitPlayoutMoveBody' },
+);
+
+export const CompletePlayoutBodySchema = Type.Object(
+  {
+    ...expectedPlayoutFields,
+    completionId: identifier,
+    displayName: Type.String({ minLength: 1, maxLength: 200 }),
+    languageTag,
+    targetContextId: Type.Optional(localId),
+  },
+  { ...objectOptions, $id: 'CompletePlayoutBody' },
+);
+
+export const CompletePlayoutResultSchema = Type.Object(
+  {
+    itemId: localId,
+    revisionId: localId,
+    rootAnchorId: localId,
+    contextReferenceId: Type.Optional(localId),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'CompletePlayoutResult' },
+);
+
+export const DiscardPlayoutResultSchema = Type.Object(
+  { dataRevision: revision },
+  { ...objectOptions, $id: 'DiscardPlayoutResult' },
 );
 
 export const CreateAnalysisNoteBodySchema = Type.Object(
@@ -1038,6 +1399,11 @@ export const ContextIdParamsSchema = Type.Object(
   { ...objectOptions, $id: 'ContextIdParams' },
 );
 
+export const ContextItemParamsSchema = Type.Object(
+  { contextId: localId, itemId: localId },
+  { ...objectOptions, $id: 'ContextItemParams' },
+);
+
 export const WorkingContextSummarySchema = Type.Object(
   {
     contextId: localId,
@@ -1172,6 +1538,11 @@ export const AddContextReferenceResultSchema = Type.Object(
     dataRevision: revision,
   },
   { ...objectOptions, $id: 'AddContextReferenceResult' },
+);
+
+export const RemoveContextItemResultSchema = Type.Object(
+  { contextId: localId, itemId: localId, dataRevision: revision },
+  { ...objectOptions, $id: 'RemoveContextItemResult' },
 );
 
 export const SetWorkScopeResumeBodySchema = Type.Union(
@@ -1341,6 +1712,22 @@ export const InventoryRevisionSavedEventSchema = Type.Object(
   { ...objectOptions, $id: 'InventoryRevisionSavedEvent' },
 );
 
+export const PlayoutChangedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('playout.changed'),
+    payload: Type.Object(
+      {
+        scope: Type.Ref(WorkScopeSchema),
+        draftId: localId,
+        draftRevision: positiveRevision,
+      },
+      objectOptions,
+    ),
+  },
+  { ...objectOptions, $id: 'PlayoutChangedEvent' },
+);
+
 export const WorkspaceRevisionImpactChangedEventSchema = Type.Object(
   {
     ...eventMetadata,
@@ -1380,6 +1767,18 @@ export const WorkspaceReferenceAddedEventSchema = Type.Object(
     ),
   },
   { ...objectOptions, $id: 'WorkspaceReferenceAddedEvent' },
+);
+
+export const WorkspaceItemRemovedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('workspace.item-removed'),
+    payload: Type.Object(
+      { contextId: localId, itemId: localId },
+      objectOptions,
+    ),
+  },
+  { ...objectOptions, $id: 'WorkspaceItemRemovedEvent' },
 );
 
 export const WorkspaceResumeUpdatedEventSchema = Type.Object(
@@ -1423,9 +1822,11 @@ export const HostEventSchema = Type.Union(
     Type.Ref(AnalysisContributionChangedEventSchema),
     Type.Ref(InventoryItemCreatedEventSchema),
     Type.Ref(InventoryRevisionSavedEventSchema),
+    Type.Ref(PlayoutChangedEventSchema),
     Type.Ref(WorkspaceRevisionImpactChangedEventSchema),
     Type.Ref(WorkspaceContextCreatedEventSchema),
     Type.Ref(WorkspaceReferenceAddedEventSchema),
+    Type.Ref(WorkspaceItemRemovedEventSchema),
     Type.Ref(WorkspaceResumeUpdatedEventSchema),
     Type.Ref(ReplayGapEventSchema),
   ],
@@ -1446,6 +1847,14 @@ export const apiSchemas = [
   DiagnosticSettingsSchema,
   SetDiagnosticLogLevelBodySchema,
   SetDiagnosticLogLevelResultSchema,
+  EngineProviderConfigurationInputSchema,
+  EngineProviderConfigurationSchema,
+  ListEngineProviderConfigurationsResultSchema,
+  PreviewEngineProviderConfigurationBodySchema,
+  EngineProviderConfigurationPreviewSchema,
+  SaveEngineProviderConfigurationBodySchema,
+  EngineProviderInstanceParamsSchema,
+  DisableEngineProviderConfigurationBodySchema,
   DiagnosticReportManifestSchema,
   CreateDiagnosticReportBodySchema,
   CreateDiagnosticReportResultSchema,
@@ -1473,6 +1882,21 @@ export const apiSchemas = [
   UpdateAnalysisScratchResultSchema,
   CreateAnalysisRecordBodySchema,
   CreateAnalysisRecordResultSchema,
+  MovePolicyProviderSchema,
+  ListMovePolicyProvidersResultSchema,
+  PlayoutStatusSchema,
+  PlayoutStepSchema,
+  PlayoutSourcePathSchema,
+  PlayoutDraftSchema,
+  PlayoutResultSchema,
+  GetPlayoutQuerySchema,
+  GetPlayoutResultSchema,
+  StartPlayoutBodySchema,
+  ExpectedPlayoutBodySchema,
+  SubmitPlayoutMoveBodySchema,
+  CompletePlayoutBodySchema,
+  CompletePlayoutResultSchema,
+  DiscardPlayoutResultSchema,
   CreateAnalysisNoteBodySchema,
   CreateAnalysisNoteResultSchema,
   ContributionIdParamsSchema,
@@ -1503,6 +1927,7 @@ export const apiSchemas = [
   ResolvePendingRevisionImpactResultSchema,
   PageQuerySchema,
   ContextIdParamsSchema,
+  ContextItemParamsSchema,
   WorkingContextSummarySchema,
   ListWorkingContextsResultSchema,
   ContextReferenceSummarySchema,
@@ -1514,6 +1939,7 @@ export const apiSchemas = [
   CreateWorkingContextResultSchema,
   AddContextReferenceBodySchema,
   AddContextReferenceResultSchema,
+  RemoveContextItemResultSchema,
   SetWorkScopeResumeBodySchema,
   SetWorkScopeResumeResultSchema,
   ProblemDetailsSchema,
@@ -1523,9 +1949,11 @@ export const apiSchemas = [
   AnalysisContributionChangedEventSchema,
   InventoryItemCreatedEventSchema,
   InventoryRevisionSavedEventSchema,
+  PlayoutChangedEventSchema,
   WorkspaceRevisionImpactChangedEventSchema,
   WorkspaceContextCreatedEventSchema,
   WorkspaceReferenceAddedEventSchema,
+  WorkspaceItemRemovedEventSchema,
   WorkspaceResumeUpdatedEventSchema,
   ReplayGapEventSchema,
   HostEventSchema,

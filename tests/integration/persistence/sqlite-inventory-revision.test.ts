@@ -25,6 +25,7 @@ import {
   AddContextReference,
   CreateWorkingContext,
   GetWorkingContextWorkspace,
+  RemoveContextItem,
   SetWorkScopeResume,
 } from '../../../app/application/workspace/index.ts';
 import type { AnchorId } from '../../../app/domain/identity/index.ts';
@@ -150,6 +151,11 @@ function useCases(store: SqlitePersistenceAdapter) {
       events: noEvents,
     }),
     addReference: new AddContextReference({
+      writer: store,
+      clock,
+      events: noEvents,
+    }),
+    removeItem: new RemoveContextItem({
       writer: store,
       clock,
       events: noEvents,
@@ -1365,6 +1371,13 @@ test('rejects context writes while a revision impact is open', async (t) => {
       contextId: context.context.contextId,
       itemId: first.itemId,
       anchorId: first.rootAnchorId,
+    }),
+    { problemCode: 'workspace.impact_conflict' },
+  );
+  await assert.rejects(
+    cases.removeItem.execute({
+      contextId: context.context.contextId,
+      itemId: first.itemId,
     }),
     { problemCode: 'workspace.impact_conflict' },
   );

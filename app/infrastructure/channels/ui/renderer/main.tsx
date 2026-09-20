@@ -14,6 +14,7 @@ const store = new PlysmithApplicationStore({
   getBootstrap: () => window.plysmithDesktop.getBootstrap(),
   chooseDiagnosticReportDestination: (suggestedFileName) =>
     window.plysmithDesktop.chooseDiagnosticReportDestination(suggestedFileName),
+  chooseEngineExecutable: () => window.plysmithDesktop.chooseEngineExecutable(),
   recordDiagnostic: (event) => window.plysmithDesktop.recordDiagnostic(event),
 });
 

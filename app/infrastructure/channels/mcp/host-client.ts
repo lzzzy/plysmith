@@ -86,10 +86,26 @@ export type AddContextReferenceRequest =
   components['schemas']['AddContextReferenceBody'];
 export type AddContextReferenceResult =
   components['schemas']['AddContextReferenceResult'];
+export type RemoveContextItemResult =
+  components['schemas']['RemoveContextItemResult'];
 export type SetWorkScopeResumeRequest =
   components['schemas']['SetWorkScopeResumeBody'];
 export type SetWorkScopeResumeResult =
   components['schemas']['SetWorkScopeResumeResult'];
+export type ListMovePolicyProvidersResult =
+  components['schemas']['ListMovePolicyProvidersResult'];
+export type Playout = components['schemas']['PlayoutResult'];
+export type StartPlayoutRequest = components['schemas']['StartPlayoutBody'];
+export type ExpectedPlayoutRequest =
+  components['schemas']['ExpectedPlayoutBody'];
+export type SubmitPlayoutMoveRequest =
+  components['schemas']['SubmitPlayoutMoveBody'];
+export type CompletePlayoutRequest =
+  components['schemas']['CompletePlayoutBody'];
+export type CompletePlayoutResult =
+  components['schemas']['CompletePlayoutResult'];
+export type DiscardPlayoutResult =
+  components['schemas']['DiscardPlayoutResult'];
 
 /** Safe RFC 9457 DTO from the host; text must already be redacted. */
 export type HostProblem = components['schemas']['ProblemDetails'];
@@ -185,8 +201,29 @@ export interface HostClient {
     contextId: string,
     request: AddContextReferenceRequest,
   ): Promise<AddContextReferenceResult>;
+  removeContextItem(
+    contextId: string,
+    itemId: string,
+  ): Promise<RemoveContextItemResult>;
   setWorkScopeResume(
     contextId: string,
     request: SetWorkScopeResumeRequest,
   ): Promise<SetWorkScopeResumeResult>;
+  listMovePolicyProviders(): Promise<ListMovePolicyProvidersResult>;
+  getPlayout(request: {
+    readonly scopeKind: 'free' | 'context';
+    readonly contextId?: string;
+  }): Promise<Playout | null>;
+  startPlayout(request: StartPlayoutRequest): Promise<Playout>;
+  submitPlayoutMove(request: SubmitPlayoutMoveRequest): Promise<Playout>;
+  retryPlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
+  pausePlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
+  resumePlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
+  stopPlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
+  completePlayout(
+    request: CompletePlayoutRequest,
+  ): Promise<CompletePlayoutResult>;
+  discardPlayout(
+    request: ExpectedPlayoutRequest,
+  ): Promise<DiscardPlayoutResult>;
 }

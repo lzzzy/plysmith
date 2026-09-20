@@ -36,9 +36,23 @@ import type {
   CreateWorkingContextUseCase,
   GetWorkingContextWorkspaceUseCase,
   ListWorkingContextsUseCase,
+  RemoveContextItemUseCase,
   SetWorkScopeResumeUseCase,
 } from '../../../application/workspace/index.ts';
 import type { DiagnosticSink } from '../../../../contracts/diagnostics/index.ts';
+import type {
+  CompletePlayoutUseCase,
+  DiscardPlayoutUseCase,
+  ExpectedPlayoutUseCase,
+  GetPlayoutUseCase,
+  ListMovePolicyProvidersUseCase,
+  StartPlayoutUseCase,
+  SubmitPlayoutMoveUseCase,
+  DisableEngineProviderConfigurationUseCase,
+  GetEngineProviderConfigurationsUseCase,
+  PreviewEngineProviderConfigurationUseCase,
+  SaveEngineProviderConfigurationUseCase,
+} from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
   readonly getSystemStatus: GetSystemStatusUseCase;
@@ -69,7 +83,22 @@ export interface HostDependencies {
   readonly getWorkingContextWorkspace: GetWorkingContextWorkspaceUseCase;
   readonly createWorkingContext: CreateWorkingContextUseCase;
   readonly addContextReference: AddContextReferenceUseCase;
+  readonly removeContextItem: RemoveContextItemUseCase;
   readonly setWorkScopeResume: SetWorkScopeResumeUseCase;
+  readonly listMovePolicyProviders: ListMovePolicyProvidersUseCase;
+  readonly getPlayout: GetPlayoutUseCase;
+  readonly startPlayout: StartPlayoutUseCase;
+  readonly submitPlayoutMove: SubmitPlayoutMoveUseCase;
+  readonly retryPlayoutPolicyMove: ExpectedPlayoutUseCase;
+  readonly pausePlayout: ExpectedPlayoutUseCase;
+  readonly resumePlayout: ExpectedPlayoutUseCase;
+  readonly stopPlayout: ExpectedPlayoutUseCase;
+  readonly completePlayout: CompletePlayoutUseCase;
+  readonly discardPlayout: DiscardPlayoutUseCase;
+  readonly getEngineProviderConfigurations: GetEngineProviderConfigurationsUseCase;
+  readonly previewEngineProviderConfiguration: PreviewEngineProviderConfigurationUseCase;
+  readonly saveEngineProviderConfiguration: SaveEngineProviderConfigurationUseCase;
+  readonly disableEngineProviderConfiguration: DisableEngineProviderConfigurationUseCase;
   readonly events: HostEventSource;
   readonly security: { readonly hostToken: string };
   readonly productRelease: string;

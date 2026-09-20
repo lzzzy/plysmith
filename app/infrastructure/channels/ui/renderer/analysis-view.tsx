@@ -16,6 +16,7 @@ import {
   GitBranch,
   MessageSquarePlus,
   Pencil,
+  Play,
   RefreshCw,
   RotateCcw,
   Save,
@@ -76,6 +77,23 @@ export function AnalysisView({
   const intl = useIntl();
   const scratch = state.analysis.scratch;
   const record = state.analysis.record;
+  const gameResult =
+    record?.game === undefined
+      ? undefined
+      : record.game.outcome.kind === 'win'
+        ? intl.formatMessage(
+            { id: 'playout.result.win' },
+            {
+              side: intl.formatMessage({
+                id: `side.${record.game.outcome.winner}`,
+              }),
+            },
+          )
+        : record.game.outcome.kind === 'draw'
+          ? intl.formatMessage({
+              id: `playout.result.draw.${record.game.outcome.reason}`,
+            })
+          : intl.formatMessage({ id: 'playout.result.unfinished' });
   const pendingRevisionImpact =
     record === undefined
       ? undefined
@@ -192,6 +210,11 @@ export function AnalysisView({
     !record.readOnlyPreview &&
     record.revisionId === record.currentRevisionId &&
     pendingRevisionImpact === undefined &&
+    atWorkspacePosition;
+  const canStartAnalysisPath =
+    scratch === undefined &&
+    record === undefined &&
+    state.analysis.allowedActions.includes('start_scratch') &&
     atWorkspacePosition;
   const candidateStoredMoveCount =
     scratch === undefined
@@ -820,16 +843,49 @@ export function AnalysisView({
               <FormattedMessage id="analysis.untitledWorkspace" />
             )}
           </h1>
-        </div>
-        <div className={styles.headerStatus}>
-          {scratch === undefined ? (
-            <FormattedMessage id="analysis.savedPosition" />
-          ) : (
-            <FormattedMessage
-              id="analysis.scratchRevision"
-              values={{ revision: scratch.scratchRevision }}
-            />
+          {record?.game !== undefined && gameResult !== undefined && (
+            <p
+              className={styles.gameMetadata}
+              title={record.game.policy.providerFingerprint}
+            >
+              <FormattedMessage
+                id="playout.recordMetadata"
+                values={{
+                  player: intl.formatMessage({
+                    id: `side.${record.game.playerSide}`,
+                  }),
+                  result: gameResult,
+                  provider: record.game.policy.providerDisplayName,
+                  providerType: record.game.policy.providerType,
+                  policy: intl.formatMessage({
+                    id: `playout.policy.${record.game.policy.capability}`,
+                  }),
+                }}
+              />
+            </p>
           )}
+        </div>
+        <div className={styles.headerActions}>
+          {(record !== undefined || scratch !== undefined) && (
+            <span className={styles.headerStatus}>
+              {scratch === undefined ? (
+                <FormattedMessage id="analysis.savedPosition" />
+              ) : (
+                <FormattedMessage
+                  id="analysis.scratchRevision"
+                  values={{ revision: scratch.scratchRevision }}
+                />
+              )}
+            </span>
+          )}
+          <Button
+            className={styles.secondaryButton!}
+            isDisabled={isBusy || !atWorkspacePosition}
+            onPress={() => store.openPlayoutFromCurrentAnalysis()}
+          >
+            <Play aria-hidden="true" size={15} />
+            <FormattedMessage id="playout.fromHere" />
+          </Button>
         </div>
       </header>
 
@@ -906,7 +962,8 @@ export function AnalysisView({
           isBusy={isBusy}
           canMove={
             atWorkspacePosition &&
-            (canAnalyzeRecord ||
+            (canStartAnalysisPath ||
+              canAnalyzeRecord ||
               (scratch !== undefined &&
                 state.analysis.allowedActions.includes('apply_move')))
           }
@@ -1069,7 +1126,9 @@ export function AnalysisView({
             {renderMoveRows(visibleScratchEntries, 'scratch')}
           </ol>
 
-          {(scratch !== undefined || canAnalyzeRecord) &&
+          {(scratch !== undefined ||
+            canAnalyzeRecord ||
+            canStartAnalysisPath) &&
             revisionIntent?.mode !== 'metadata' &&
             pathNoteDraft === undefined &&
             atWorkspacePosition && (

@@ -21,7 +21,15 @@ import {
   type ContextAnalysisWriter,
 } from '../../../../application/analysis/index.ts';
 import { invalidAnalysisUpdate } from '../../../../application/analysis/index.ts';
-import { ensurePosition, readChessState } from './sqlite-chess-state.ts';
+import {
+  deleteUnreferencedPositions,
+  ensurePosition,
+  readChessState,
+} from './sqlite-chess-state.ts';
+import {
+  deleteContextScratch,
+  readScratchPositionIds,
+} from './sqlite-context-scratch.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import {
   assertNoOpenRevisionImpact,
@@ -342,73 +350,6 @@ export function discardContextAnalysisScratch(
     dataRevision: incrementDataRevision(database, request.occurredAt),
     resumeVersion,
   });
-}
-
-export function deleteContextScratch(
-  database: Database.Database,
-  contextId: number,
-): void {
-  const row = database
-    .prepare(
-      `SELECT scratch_draft_id AS scratchId
-         FROM analysis_scratch_draft WHERE context_id = ?`,
-    )
-    .get(contextId) as { scratchId: number } | undefined;
-  if (row === undefined) return;
-  const positionIds = readScratchPositionIds(database, row.scratchId);
-  database
-    .prepare('DELETE FROM analysis_scratch_step WHERE scratch_draft_id = ?')
-    .run(row.scratchId);
-  database
-    .prepare('DELETE FROM analysis_scratch_draft WHERE scratch_draft_id = ?')
-    .run(row.scratchId);
-  deleteUnreferencedPositions(database, positionIds);
-}
-
-function readScratchPositionIds(
-  database: Database.Database,
-  scratchId: number,
-): readonly number[] {
-  const rows = database
-    .prepare(
-      `SELECT root_position_id AS positionId
-         FROM analysis_scratch_draft WHERE scratch_draft_id = ?
-       UNION
-       SELECT before_position_id AS positionId
-         FROM analysis_scratch_step WHERE scratch_draft_id = ?
-       UNION
-       SELECT after_position_id AS positionId
-         FROM analysis_scratch_step WHERE scratch_draft_id = ?`,
-    )
-    .all(scratchId, scratchId, scratchId) as { positionId: number }[];
-  return rows.map((row) => row.positionId);
-}
-
-function deleteUnreferencedPositions(
-  database: Database.Database,
-  positionIds: readonly number[],
-): void {
-  const remove = database.prepare(
-    `DELETE FROM chess_position
-      WHERE position_id = ?
-        AND NOT EXISTS (
-          SELECT 1 FROM chess_occurrence_snapshot
-           WHERE position_id = chess_position.position_id)
-        AND NOT EXISTS (
-          SELECT 1 FROM chess_anchor
-           WHERE position_id = chess_position.position_id)
-        AND NOT EXISTS (
-          SELECT 1 FROM analysis_scratch_draft
-           WHERE root_position_id = chess_position.position_id)
-        AND NOT EXISTS (
-          SELECT 1 FROM analysis_scratch_step
-           WHERE before_position_id = chess_position.position_id
-              OR after_position_id = chess_position.position_id)
-        AND NOT EXISTS (
-          SELECT 1 FROM workspace_analysis_resume
-           WHERE current_position_id = chess_position.position_id)`,
-  );
-  for (const positionId of new Set(positionIds)) remove.run(positionId);
 }
 
 function writeScratchSteps(

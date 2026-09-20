@@ -57,7 +57,7 @@ preferencesStoreContract(
   'SQLite preferences port contract',
   async (t) => storeFixture(t).open(),
   false,
-  5,
+  6,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -80,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     dataRevision: 1,
   });
 });
@@ -176,7 +176,7 @@ test('close drains accepted commands and rejects new work', async (t) => {
   assert.equal((await fixture.open().readUserPreferences()).uiLocale, 'en-GB');
 });
 
-test('the current schema contains the strict iteration 2 tables and a healthy FTS projection', async (t) => {
+test('the current schema contains all strict tables and a healthy FTS projection', async (t) => {
   const fixture = storeFixture(t);
   const store = fixture.open();
   await store.close();
@@ -199,8 +199,14 @@ test('the current schema contains the strict iteration 2 tables and a healthy FT
       { name: 'chess_position', strict: 1 },
       { name: 'inventory_analysis_origin', strict: 1 },
       { name: 'inventory_analysis_revision', strict: 1 },
+      { name: 'inventory_game_origin', strict: 1 },
+      { name: 'inventory_game_revision', strict: 1 },
       { name: 'inventory_item', strict: 1 },
       { name: 'item_revision', strict: 1 },
+      { name: 'playout_completion_receipt', strict: 1 },
+      { name: 'playout_draft', strict: 1 },
+      { name: 'playout_ply', strict: 1 },
+      { name: 'playout_source_ply', strict: 1 },
       { name: 'preference_state', strict: 1 },
       { name: 'runtime_schema_migration', strict: 1 },
       { name: 'runtime_store_state', strict: 1 },
@@ -238,6 +244,7 @@ test('the current schema contains the strict iteration 2 tables and a healthy FT
         { migrationId: 3, size: 32 },
         { migrationId: 4, size: 32 },
         { migrationId: 5, size: 32 },
+        { migrationId: 6, size: 32 },
       ],
     );
     assert.throws(() =>
@@ -330,7 +337,7 @@ test('upgrades a valid schema 1 store once without changing its committed data',
 
   const upgraded = fixture.open();
   assert.deepEqual(await upgraded.readStoreStatus(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     dataRevision: 7,
   });
   assert.deepEqual(await upgraded.readUserPreferences(), {
@@ -343,7 +350,7 @@ test('upgrades a valid schema 1 store once without changing its committed data',
 
   const reopened = fixture.open();
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     dataRevision: 7,
   });
   const inspection = new Database(fixture.databasePath, {
@@ -363,6 +370,7 @@ test('upgrades a valid schema 1 store once without changing its committed data',
         { migrationId: 3 },
         { migrationId: 4 },
         { migrationId: 5 },
+        { migrationId: 6 },
       ],
     );
   } finally {
@@ -489,7 +497,7 @@ test('upgrades a populated schema 4 store without losing workspace state', async
 
   const upgraded = fixture.open();
   assert.deepEqual(await upgraded.readStoreStatus(), {
-    schemaVersion: 5,
+    schemaVersion: 6,
     dataRevision: 9,
   });
   const workspace = await upgraded.readWorkingContextWorkspace({
@@ -551,7 +559,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 6',
+    'UPDATE runtime_store_state SET schema_version = 7',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

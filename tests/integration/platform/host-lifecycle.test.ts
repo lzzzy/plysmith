@@ -85,6 +85,51 @@ test('recovers a lease when its host PID has been reused by another process', as
   await lease.release();
 });
 
+test('recovers a reused PID whose process start time requires the Windows CIM fallback', async (context) => {
+  const inaccessiblePid = Number.parseInt(
+    (
+      await runPowerShell(
+        `
+        $candidate = Get-Process -Name svchost -ErrorAction SilentlyContinue |
+          Where-Object {
+            try { return $null -eq $_.StartTime } catch { return $true }
+          } |
+          Where-Object {
+            $process = Get-CimInstance Win32_Process -Filter (
+              'ProcessId = {0}' -f $_.Id) -ErrorAction SilentlyContinue
+            return $null -ne $process -and $null -ne $process.CreationDate
+          } |
+          Select-Object -First 1
+        if ($null -ne $candidate) { [Console]::Out.Write($candidate.Id) }
+      `,
+        {},
+      )
+    ).trim(),
+    10,
+  );
+  if (!Number.isSafeInteger(inaccessiblePid)) {
+    context.skip('No protected process with a CIM creation time is available.');
+    return;
+  }
+  const applicationHome = await createApplicationHome(context);
+  const runtimeDirectory = path.join(applicationHome, 'runtime');
+  const leasePath = path.join(runtimeDirectory, 'host-owner.json');
+  await mkdir(runtimeDirectory, { recursive: true });
+  await writeFile(
+    leasePath,
+    `${JSON.stringify({
+      ownerId: 'crashed-host',
+      pid: inaccessiblePid,
+      processStartedAtUtc: '2000-01-01T00:00:00.0000000Z',
+    })}\n`,
+    'utf8',
+  );
+
+  const lease = await acquireHostOwnerLease(applicationHome);
+  assert.equal(lease.pid, process.pid);
+  await lease.release();
+});
+
 test('keeps an unverifiable lease fail-safe while its PID still exists', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');

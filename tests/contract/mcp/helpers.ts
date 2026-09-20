@@ -290,6 +290,15 @@ export async function connectMcp(
         return overrides.addContextReference(contextId, request);
       throw new Error('addContextReference fixture not configured');
     },
+    async removeContextItem(contextId, itemId) {
+      calls.push({
+        method: 'removeContextItem',
+        request: { contextId, itemId },
+      });
+      if (overrides.removeContextItem)
+        return overrides.removeContextItem(contextId, itemId);
+      throw new Error('removeContextItem fixture not configured');
+    },
     async setWorkScopeResume(contextId, request) {
       calls.push({
         method: 'setWorkScopeResume',
@@ -298,6 +307,58 @@ export async function connectMcp(
       if (overrides.setWorkScopeResume)
         return overrides.setWorkScopeResume(contextId, request);
       throw new Error('setWorkScopeResume fixture not configured');
+    },
+    async listMovePolicyProviders() {
+      calls.push({ method: 'listMovePolicyProviders' });
+      if (overrides.listMovePolicyProviders)
+        return overrides.listMovePolicyProviders();
+      return { providers: [] };
+    },
+    async getPlayout(request) {
+      calls.push({ method: 'getPlayout', request });
+      if (overrides.getPlayout) return overrides.getPlayout(request);
+      return null;
+    },
+    async startPlayout(request) {
+      calls.push({ method: 'startPlayout', request });
+      if (overrides.startPlayout) return overrides.startPlayout(request);
+      throw new Error('startPlayout fixture not configured');
+    },
+    async submitPlayoutMove(request) {
+      calls.push({ method: 'submitPlayoutMove', request });
+      if (overrides.submitPlayoutMove)
+        return overrides.submitPlayoutMove(request);
+      throw new Error('submitPlayoutMove fixture not configured');
+    },
+    async retryPlayout(request) {
+      calls.push({ method: 'retryPlayout', request });
+      if (overrides.retryPlayout) return overrides.retryPlayout(request);
+      throw new Error('retryPlayout fixture not configured');
+    },
+    async pausePlayout(request) {
+      calls.push({ method: 'pausePlayout', request });
+      if (overrides.pausePlayout) return overrides.pausePlayout(request);
+      throw new Error('pausePlayout fixture not configured');
+    },
+    async resumePlayout(request) {
+      calls.push({ method: 'resumePlayout', request });
+      if (overrides.resumePlayout) return overrides.resumePlayout(request);
+      throw new Error('resumePlayout fixture not configured');
+    },
+    async stopPlayout(request) {
+      calls.push({ method: 'stopPlayout', request });
+      if (overrides.stopPlayout) return overrides.stopPlayout(request);
+      throw new Error('stopPlayout fixture not configured');
+    },
+    async completePlayout(request) {
+      calls.push({ method: 'completePlayout', request });
+      if (overrides.completePlayout) return overrides.completePlayout(request);
+      throw new Error('completePlayout fixture not configured');
+    },
+    async discardPlayout(request) {
+      calls.push({ method: 'discardPlayout', request });
+      if (overrides.discardPlayout) return overrides.discardPlayout(request);
+      throw new Error('discardPlayout fixture not configured');
     },
   };
   const server = createMcpServer({ hostClient, productRelease });

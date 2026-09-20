@@ -10,6 +10,7 @@ import type {
   HostEvent,
   InventoryRevisionPreviewDto,
   ListWorkingContextsResultDto,
+  PlayoutDto,
   SearchInventoryResultDto,
   StartInventoryRevisionRequestDto,
   UserPreferencesDto,
@@ -83,6 +84,7 @@ function savedAnalysis(dataRevision = 0): AnalysisWorkspaceDto {
   return {
     ...analysis(dataRevision),
     record: {
+      itemType: 'analysis',
       itemId: '11',
       revisionId: '12',
       currentRevisionId: '12',
@@ -228,6 +230,72 @@ function scratchChangedEvent(
   };
 }
 
+function playout(
+  draftRevision: number,
+  dataRevision: number,
+  steps: readonly {
+    readonly actor: 'user' | 'provider';
+    readonly san: string;
+  }[],
+  statusKind: 'active' | 'awaiting_policy' | 'stopped' = 'active',
+): PlayoutDto {
+  return {
+    dataRevision,
+    draft: {
+      draftId: '41',
+      draftRevision,
+      decisionGeneration: 1,
+      origin: { kind: 'initial_position' },
+      root: initialState,
+      playerSide: 'white',
+      policy: {
+        capability: 'best_move',
+        providerInstanceId: 'engine-main',
+        providerFingerprint: 'engine-main:v1',
+        providerType: 'test-engine',
+        providerDisplayName: 'Test engine',
+      },
+      status:
+        statusKind === 'awaiting_policy'
+          ? { kind: 'awaiting_policy', decisionId: 1 }
+          : statusKind === 'stopped'
+            ? { kind: 'stopped', outcome: { kind: 'unfinished' } }
+            : { kind: 'active' },
+      steps: steps.map((step, index) => ({
+        actor: step.actor,
+        before: initialState,
+        after: initialState,
+        move:
+          index === 0
+            ? { from: 'e2', to: 'e4', san: step.san }
+            : { from: 'e7', to: 'e5', san: step.san },
+        ...(step.actor === 'provider' ? { decisionId: 1 } : {}),
+      })),
+    },
+    legalMoves: [],
+  };
+}
+
+function playoutChangedEvent(
+  draftRevision: number,
+  dataRevision: number,
+): HostEvent {
+  return {
+    kind: 'playout.changed',
+    eventId: `playout-event-${draftRevision}`,
+    sequence: dataRevision + 1,
+    dataRevision,
+    occurredAt: '2026-09-11T18:00:00.000Z',
+    subscriptionRevision: 1,
+    correlationId: `playout-correlation-${draftRevision}`,
+    payload: {
+      scope: { kind: 'free' },
+      draftId: '41',
+      draftRevision,
+    },
+  };
+}
+
 function createClient(
   overrides: Partial<PlysmithApplicationClient> = {},
 ): PlysmithApplicationClient {
@@ -270,7 +338,26 @@ function createClient(
       assert.fail('no context workspace read expected'),
     createWorkingContext: async () => assert.fail('no context write expected'),
     addContextReference: async () => assert.fail('no reference write expected'),
+    removeContextItem: async () =>
+      assert.fail('no context item removal expected'),
     setWorkScopeResume: async () => assert.fail('no resume write expected'),
+    listMovePolicyProviders: async () => ({ providers: [] }),
+    getPlayout: async () => null,
+    startPlayout: async () => assert.fail('no playout start expected'),
+    submitPlayoutMove: async () => assert.fail('no playout move expected'),
+    retryPlayout: async () => assert.fail('no playout retry expected'),
+    pausePlayout: async () => assert.fail('no playout pause expected'),
+    resumePlayout: async () => assert.fail('no playout resume expected'),
+    stopPlayout: async () => assert.fail('no playout stop expected'),
+    completePlayout: async () => assert.fail('no playout completion expected'),
+    discardPlayout: async () => assert.fail('no playout discard expected'),
+    getEngineProviderConfigurations: async () => ({ providers: [] }),
+    previewEngineProviderConfiguration: async () =>
+      assert.fail('no engine preview expected'),
+    saveEngineProviderConfiguration: async () =>
+      assert.fail('no engine settings write expected'),
+    disableEngineProviderConfiguration: async () =>
+      assert.fail('no engine settings write expected'),
     ...overrides,
   };
 }
@@ -485,6 +572,313 @@ test('a free scratch event refreshes despite an unchanged data revision', async 
   store.close();
 });
 
+test('a committed playout move refreshes while its policy command is still running', async () => {
+  let dataRevision = 0;
+  let currentPlayout = playout(1, 0, []);
+  let emit: (event: HostEvent) => void = () => undefined;
+  let markCommandStarted: (() => void) | undefined;
+  const commandStarted = new Promise<void>((resolve) => {
+    markCommandStarted = resolve;
+  });
+  let releaseCommand: ((result: PlayoutDto) => void) | undefined;
+  const commandResult = new Promise<PlayoutDto>((resolve) => {
+    releaseCommand = resolve;
+  });
+  const client = createClient({
+    getSystemStatus: async () => status(dataRevision),
+    getUserPreferences: async () => preferences(dataRevision),
+    getAnalysisWorkspace: async () => analysis(dataRevision),
+    searchInventory: async () => inventory(dataRevision),
+    listWorkingContexts: async () => contexts(dataRevision),
+    getPlayout: async () => currentPlayout,
+    submitPlayoutMove: async () => {
+      markCommandStarted?.();
+      return commandResult;
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: (_connection, onChange) => {
+      emit = onChange;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  await store.start();
+
+  const submit = store.submitPlayoutMove('e2', 'e4');
+  await commandStarted;
+  dataRevision = 1;
+  currentPlayout = playout(
+    2,
+    dataRevision,
+    [{ actor: 'user', san: 'e4' }],
+    'awaiting_policy',
+  );
+  emit(playoutChangedEvent(2, dataRevision));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  let snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.playout?.draft.steps.length : -1,
+    1,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.busyCommand : undefined,
+    'submit_playout_move',
+  );
+
+  dataRevision = 2;
+  currentPlayout = playout(3, dataRevision, [
+    { actor: 'user', san: 'e4' },
+    { actor: 'provider', san: 'e5' },
+  ]);
+  releaseCommand?.(currentPlayout);
+  await submit;
+  snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.playout?.draft.steps.length : -1,
+    2,
+  );
+  store.close();
+});
+
+test('starting from the current position sends the first user move without a side choice', async () => {
+  const blackToMove = {
+    ...initialState,
+    position: {
+      ...initialState.position,
+      sideToMove: 'black' as const,
+      positionKey:
+        'standardChess|RNBQKBNRPPPPPPPP................................pppppppprnbqkbnr|black|1|1|1|1|-1',
+    },
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1',
+  };
+  let request:
+    Parameters<PlysmithApplicationClient['startPlayout']>[0] | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => ({
+      ...analysis(),
+      currentState: blackToMove,
+    }),
+    startPlayout: async (input) => {
+      request = input;
+      return {
+        ...playout(1, 0, []),
+        draft: {
+          ...playout(1, 0, []).draft,
+          root: blackToMove,
+          playerSide: 'black',
+        },
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  store.openPlayoutFromCurrentAnalysis();
+  assert.equal(
+    await store.startPlayoutWithMove('engine-main', 'a7', 'a6'),
+    true,
+  );
+  assert.deepEqual(request, {
+    scope: { kind: 'free' },
+    start: { kind: 'fen', fen: blackToMove.fen },
+    providerInstanceId: 'engine-main',
+    opening: {
+      kind: 'user_move',
+      move: { kind: 'coordinates', value: 'a7a6' },
+    },
+  });
+  store.close();
+});
+
+test('letting the provider move first binds the opening without a side choice', async () => {
+  let request:
+    Parameters<PlysmithApplicationClient['startPlayout']>[0] | undefined;
+  const client = createClient({
+    startPlayout: async (input) => {
+      request = input;
+      return playout(2, 1, [{ actor: 'provider', san: 'e5' }]);
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  store.openPlayoutFromCurrentAnalysis();
+  assert.equal(await store.letProviderStartPlayout('engine-main'), true);
+  assert.deepEqual(request, {
+    scope: { kind: 'free' },
+    start: { kind: 'fen', fen: initialState.fen },
+    providerInstanceId: 'engine-main',
+    opening: { kind: 'provider_move' },
+  });
+  store.close();
+});
+
+test('opening Ausspielen directly prepares the authoritative initial position', async () => {
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return analysis();
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  requests.length = 0;
+
+  store.setActivity('playout');
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(requests, [{ scopeKind: 'free', mode: 'initial_position' }]);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'playout',
+  );
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.playoutStart?.start : undefined,
+    { kind: 'initial_position' },
+  );
+  store.close();
+});
+
+test('starting from an analysis sends its visible path as separate source context', async () => {
+  let request:
+    Parameters<PlysmithApplicationClient['startPlayout']>[0] | undefined;
+  const workspace = savedLineAnalysis('14');
+  const client = createClient({
+    getAnalysisWorkspace: async () => workspace,
+    startPlayout: async (input) => {
+      request = input;
+      return playout(1, 0, []);
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  store.openPlayoutFromCurrentAnalysis();
+  assert.equal(await store.letProviderStartPlayout('engine-main'), true);
+  assert.deepEqual(request?.sourcePath, {
+    displayName: 'Französisch',
+    rootFen: initialState.fen,
+    moves: [{ kind: 'coordinates', value: 'e2e4' }],
+  });
+  store.close();
+});
+
+test('a new playout intent keeps the analysis open until the running game is explicitly discarded', async () => {
+  let currentPlayout: PlayoutDto | null = playout(3, 0, []);
+  let discarded:
+    Parameters<PlysmithApplicationClient['discardPlayout']>[0] | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => savedAnalysis(),
+    getPlayout: async () => currentPlayout,
+    discardPlayout: async (request) => {
+      discarded = request;
+      currentPlayout = null;
+      return { dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  store.setActivity('analyze');
+
+  store.openPlayoutFromCurrentAnalysis();
+  let snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'analyze',
+  );
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.pendingPlayoutStart?.title
+      : undefined,
+    'Französisch',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.playoutStart : undefined,
+    undefined,
+  );
+
+  store.cancelPendingPlayoutStart();
+  snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.pendingPlayoutStart : undefined,
+    undefined,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'analyze',
+  );
+
+  store.openPlayoutFromCurrentAnalysis();
+  await store.discardPlayoutAndOpenPending();
+  snapshot = store.getSnapshot();
+  assert.deepEqual(discarded, {
+    scope: { kind: 'free' },
+    draftId: '41',
+    expectedDraftRevision: 3,
+  });
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'playout',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.playoutStart?.title : undefined,
+    'Französisch',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.pendingPlayoutStart : undefined,
+    undefined,
+  );
+  store.close();
+});
+
+test('a saved playout keeps its board and move list visible until it is opened as analysis', async () => {
+  const stoppedPlayout = playout(
+    3,
+    0,
+    [
+      { actor: 'user', san: 'e4' },
+      { actor: 'provider', san: 'e5' },
+    ],
+    'stopped',
+  );
+  let currentPlayout: PlayoutDto | null = stoppedPlayout;
+  const client = createClient({
+    getPlayout: async () => currentPlayout,
+    completePlayout: async (request) => {
+      assert.equal(request.displayName, 'Trainingspartie');
+      currentPlayout = null;
+      return {
+        itemId: '51',
+        revisionId: '52',
+        rootAnchorId: '53',
+        dataRevision: 0,
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.equal(await store.completePlayout('Trainingspartie', false), true);
+
+  const snapshot = store.getSnapshot();
+  assert.equal(snapshot.phase === 'ready' ? snapshot.playout : undefined, null);
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.completedPlayoutView : undefined,
+    stoppedPlayout,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.completedPlayout?.itemId : undefined,
+    '51',
+  );
+  store.close();
+});
+
 test('language command is sent once and reconciled through authoritative reads', async () => {
   let dataRevision = 0;
   let currentPreferences = preferences();
@@ -618,6 +1012,74 @@ test('diagnostic report requires a chosen destination and sends one write', asyn
     'diagnostics.reportCreated',
   );
   assert.equal(JSON.stringify(snapshot).includes('Users\\\\test'), false);
+  store.close();
+});
+
+test('engine settings are previewed and saved once with a visible restart boundary', async () => {
+  const input = {
+    instanceId: 'stockfish-main',
+    providerType: 'stockfish-uci' as const,
+    displayName: 'Stockfish',
+    enabled: true,
+    executablePath: 'C:\\Engines\\stockfish.exe',
+    arguments: [] as readonly string[],
+    threads: 2,
+    hashMb: 128,
+    moveTimeMs: 500,
+    startupTimeoutMs: 5_000,
+    moveTimeoutMs: 10_000,
+    stopTimeoutMs: 1_000,
+    maxOutputBytes: 1_048_576,
+  };
+  let providers: Awaited<
+    ReturnType<PlysmithApplicationClient['getEngineProviderConfigurations']>
+  > = { providers: [] };
+  const writes: unknown[] = [];
+  const client = createClient({
+    getEngineProviderConfigurations: async () => providers,
+    previewEngineProviderConfiguration: async (request) => {
+      assert.deepEqual(request, input);
+      return { valid: true, issues: [] };
+    },
+    saveEngineProviderConfiguration: async (instanceId, request) => {
+      writes.push({ instanceId, request });
+      const saved = {
+        ...input,
+        arguments: [...input.arguments],
+        configurationRevision: `sha256:${'b'.repeat(64)}`,
+        effectiveFingerprint: `sha256:${'c'.repeat(64)}`,
+        restartRequired: true,
+      };
+      providers = { providers: [saved] };
+      return saved;
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.deepEqual(await store.previewEngineProviderConfiguration(input), {
+    valid: true,
+    issues: [],
+  });
+  assert.equal(await store.saveEngineProviderConfiguration(input, null), true);
+
+  assert.deepEqual(writes, [
+    {
+      instanceId: 'stockfish-main',
+      request: { input, expectedConfigurationRevision: null },
+    },
+  ]);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.engineProviders.providers[0]?.restartRequired
+      : false,
+    true,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.announcement : undefined,
+    'engines.savedPendingRestart',
+  );
   store.close();
 });
 
@@ -772,6 +1234,7 @@ test('derived analysis navigation sends only the exact source anchor focus', asy
   const currentAnalysis: AnalysisWorkspaceDto = {
     ...analysis(),
     record: {
+      itemType: 'analysis',
       itemId: '31',
       revisionId: '32',
       currentRevisionId: '32',
@@ -919,6 +1382,215 @@ test('opening a context member sets its analysis resume exactly once', async () 
     snapshot.phase === 'ready' ? snapshot.activity : undefined,
     'analyze',
   );
+  store.close();
+});
+
+test('discarding an open draft happens before opening another context analysis', async () => {
+  const item: SearchInventoryResultDto['items'][number] = {
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Caro-Kann Idee',
+    languageTag: 'de-DE',
+    contextIds: ['7'],
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  const context: WorkingContextWorkspaceDto['context'] = {
+    contextId: '7',
+    displayName: 'Repertoire',
+    lifecycle: 'active',
+    contextVersion: 1,
+    referenceCount: 1,
+    pendingRevisionImpactCount: 0,
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  const contextWorkspace: WorkingContextWorkspaceDto = {
+    context,
+    references: [],
+    pendingRevisionImpacts: [],
+    dataRevision: 0,
+  };
+  let scratch: AnalysisWorkspaceDto['scratch'] = {
+    scratchId: 'scratch-1',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: { kind: 'position_setup' },
+    root: initialState,
+    steps: [],
+    cursor: 0,
+  };
+  const calls: string[] = [];
+  let resumeRequest:
+    Parameters<PlysmithApplicationClient['setWorkScopeResume']>[1] | undefined;
+  const client = createClient({
+    listWorkingContexts: async () => ({ contexts: [context], dataRevision: 0 }),
+    searchInventory: async () => ({ items: [item], dataRevision: 0 }),
+    getWorkingContextWorkspace: async () => contextWorkspace,
+    getAnalysisWorkspace: async (request) => {
+      calls.push(`analysis:${request.itemId ?? 'draft'}`);
+      if (scratch !== undefined) {
+        return {
+          ...analysis(),
+          scope: { kind: 'context', contextId: '7' },
+          contextName: 'Repertoire',
+          scratch,
+          allowedActions: ['apply_move', 'discard_scratch'],
+        };
+      }
+      return {
+        ...savedAnalysis(),
+        scope: { kind: 'context', contextId: '7' },
+        contextName: 'Repertoire',
+        record: {
+          ...savedAnalysis().record!,
+          contextMember: true,
+          readOnlyPreview: false,
+        },
+      };
+    },
+    updateAnalysisScratch: async (request) => {
+      calls.push(`scratch:${request.action.kind}`);
+      scratch = undefined;
+      return { discarded: true, dataRevision: 1 };
+    },
+    setWorkScopeResume: async (_contextId, request) => {
+      calls.push('resume');
+      resumeRequest = request;
+      return {
+        area: 'analyze',
+        dataRevision: 1,
+        resume: {
+          resumeVersion: 1,
+          mode: 'analyze',
+          itemId: item.itemId,
+          revisionId: item.currentRevisionId,
+          anchorId: item.rootAnchorId,
+          currentPositionId: '21',
+          updatedAt: '2026-09-11T18:00:00.000Z',
+        },
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+
+  assert.equal(
+    await store.discardAnalysisScratchAndOpenInventoryItem(item),
+    true,
+  );
+  assert.deepEqual(calls.slice(-4), [
+    'scratch:discard',
+    'analysis:draft',
+    'resume',
+    'analysis:draft',
+  ]);
+  assert.deepEqual(resumeRequest, {
+    area: 'analyze',
+    expectedResumeVersion: null,
+    mode: 'analyze',
+    itemId: item.itemId,
+    revisionId: item.currentRevisionId,
+    anchorId: item.rootAnchorId,
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'analyze',
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    undefined,
+  );
+  store.close();
+});
+
+test('removing a context member keeps it in inventory and refreshes its membership', async () => {
+  let removed = false;
+  const calls: unknown[] = [];
+  const item: SearchInventoryResultDto['items'][number] = {
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Caro-Kann Idee',
+    languageTag: 'de-DE',
+    contextIds: ['7'],
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  const context: WorkingContextWorkspaceDto['context'] = {
+    contextId: '7',
+    displayName: 'Repertoire',
+    lifecycle: 'active',
+    contextVersion: 1,
+    referenceCount: 1,
+    pendingRevisionImpactCount: 0,
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  const client = createClient({
+    getSystemStatus: async () => status(removed ? 1 : 0),
+    getUserPreferences: async () => preferences(removed ? 1 : 0),
+    listWorkingContexts: async () => ({
+      contexts: [
+        {
+          ...context,
+          referenceCount: removed ? 0 : 1,
+        },
+      ],
+      dataRevision: removed ? 1 : 0,
+    }),
+    searchInventory: async () => ({
+      items: [
+        {
+          ...item,
+          contextIds: removed ? [] : ['7'],
+        },
+      ],
+      dataRevision: removed ? 1 : 0,
+    }),
+    getWorkingContextWorkspace: async () => ({
+      context: {
+        ...context,
+        referenceCount: removed ? 0 : 1,
+      },
+      references: [],
+      pendingRevisionImpacts: [],
+      dataRevision: removed ? 1 : 0,
+    }),
+    getAnalysisWorkspace: async (request) => ({
+      ...analysis(removed ? 1 : 0),
+      scope:
+        request.scopeKind === 'context'
+          ? { kind: 'context', contextId: request.contextId! }
+          : { kind: 'free' },
+    }),
+    removeContextItem: async (contextId, itemId) => {
+      calls.push({ contextId, itemId });
+      removed = true;
+      return { contextId, itemId, dataRevision: 1 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+
+  assert.equal(await store.removeInventoryItemFromCurrentContext(item), true);
+
+  assert.deepEqual(calls, [{ contextId: '7', itemId: '11' }]);
+  const snapshot = store.getSnapshot();
+  assert.equal(snapshot.phase, 'ready');
+  if (snapshot.phase === 'ready') {
+    assert.equal(snapshot.inventory.items[0]?.itemId, '11');
+    assert.deepEqual(snapshot.inventory.items[0]?.contextIds, []);
+    assert.equal(snapshot.contextWorkspace?.context.referenceCount, 0);
+  }
   store.close();
 });
 
@@ -1726,6 +2398,77 @@ test('starting from the initial position clears a previous item focus before ref
       { from: 'e2', to: 'e4', san: 'e4' },
     ]);
   }
+  store.close();
+});
+
+test('the first board move in an empty analysis starts one atomic analysis path', async () => {
+  let current: AnalysisWorkspaceDto = {
+    ...analysis(),
+    legalMoves: [{ from: 'e2', to: 'e4', san: 'e4' }],
+  };
+  let request:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (input) => {
+      request = input;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'first-move-scratch',
+        scratchRevision: 1,
+        intent: { kind: 'exploration' },
+        origin: { kind: 'initial_position' },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'e2', to: 'e4', san: 'e4' },
+            after: {
+              ...initialState,
+              fen: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+            },
+          },
+        ],
+        cursor: 1,
+      };
+      current = {
+        ...analysis(),
+        scratch,
+        currentState: scratch.steps[0]!.after,
+        allowedActions: [
+          'apply_move',
+          'move_cursor',
+          'discard_scratch',
+          'remove_last_move',
+          'prepare_note',
+          'create_analysis_record',
+        ],
+      };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.applyBoardMove('e2', 'e4');
+
+  assert.deepEqual(request, {
+    scope: { kind: 'free' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: { kind: 'initial_position' },
+      firstMove: { kind: 'coordinates', value: 'e2e4' },
+    },
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready'
+      ? snapshot.analysis.scratch?.steps[0]?.move.san
+      : undefined,
+    'e4',
+  );
   store.close();
 });
 

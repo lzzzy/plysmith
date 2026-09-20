@@ -20,6 +20,7 @@ import {
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
 import { SettingsView } from './settings-view.tsx';
+import { PlayoutReplacementDialog, PlayoutView } from './playout-view.tsx';
 import styles from './application-shell.module.css';
 
 export function PlysmithApplication({
@@ -88,10 +89,12 @@ function ApplicationFrame({
             icon={<BarChart3 aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('analyze')}
           />
-          <Button className={styles.disabledActivity!} isDisabled>
-            <Activity aria-hidden="true" size={19} />
-            <FormattedMessage id="activity.playout" />
-          </Button>
+          <ActivityButton
+            activity="playout"
+            current={state.activity}
+            icon={<Activity aria-hidden="true" size={19} />}
+            onPress={() => store.setActivity('playout')}
+          />
           <Button className={styles.disabledActivity!} isDisabled>
             <Radio aria-hidden="true" size={19} />
             <FormattedMessage id="activity.live" />
@@ -175,9 +178,13 @@ function ApplicationFrame({
         {state.activity === 'analyze' && (
           <AnalysisView state={state} store={store} />
         )}
+        {state.activity === 'playout' && (
+          <PlayoutView state={state} store={store} />
+        )}
         {state.activity === 'settings' && (
           <SettingsView state={state} store={store} />
         )}
+        <PlayoutReplacementDialog state={state} store={store} />
       </div>
     </div>
   );
@@ -189,7 +196,7 @@ function ActivityButton({
   icon,
   onPress,
 }: {
-  readonly activity: Extract<ActivityId, 'manage' | 'analyze'>;
+  readonly activity: Extract<ActivityId, 'manage' | 'analyze' | 'playout'>;
   readonly current: ActivityId;
   readonly icon: ReactNode;
   readonly onPress: () => void;

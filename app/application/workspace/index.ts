@@ -7,6 +7,10 @@ export {
   type CreateWorkingContextUseCase,
 } from './create-working-context.ts';
 export {
+  RemoveContextItem,
+  type RemoveContextItemUseCase,
+} from './remove-context-item.ts';
+export {
   GetWorkingContextWorkspace,
   type GetWorkingContextWorkspaceUseCase,
 } from './get-working-context-workspace.ts';
@@ -27,6 +31,8 @@ export type {
   CreateWorkingContextRequest,
   CreateWorkingContextResult,
   ManagementResume,
+  RemoveContextItemRequest,
+  RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
   WorkingContextSummary,

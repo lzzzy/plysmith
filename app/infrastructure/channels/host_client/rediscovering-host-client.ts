@@ -7,6 +7,7 @@ import {
   type UserPreferencesDto,
   type AddContextReferenceRequestDto,
   type AddContextReferenceResultDto,
+  type RemoveContextItemResultDto,
   type AnalysisWorkspaceDto,
   type AnalysisRecordDto,
   type AnalysisNoteMutationResultDto,
@@ -50,6 +51,19 @@ import {
   type ValidateAnalysisSetupRequestDto,
   type ValidateAnalysisSetupResultDto,
   type WorkingContextWorkspaceDto,
+  type CompletePlayoutRequestDto,
+  type CompletePlayoutResultDto,
+  type DiscardPlayoutResultDto,
+  type ExpectedPlayoutRequestDto,
+  type ListMovePolicyProvidersResultDto,
+  type PlayoutDto,
+  type StartPlayoutRequestDto,
+  type SubmitPlayoutMoveRequestDto,
+  type EngineProviderConfigurationInputDto,
+  type EngineProviderConfigurationDto,
+  type ListEngineProviderConfigurationsResultDto,
+  type EngineProviderConfigurationPreviewDto,
+  type SaveEngineProviderConfigurationRequestDto,
 } from './host-client.ts';
 import { HostClientProblem, localHostProblem } from './host-client-problem.ts';
 import type { HostConnection } from './host-fetch.ts';
@@ -268,11 +282,99 @@ export class RediscoveringHostClient {
     );
   }
 
+  async removeContextItem(
+    contextId: string,
+    itemId: string,
+  ): Promise<RemoveContextItemResultDto> {
+    return (await this.#currentClient()).removeContextItem(contextId, itemId);
+  }
+
   async setWorkScopeResume(
     contextId: string,
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto> {
     return (await this.#currentClient()).setWorkScopeResume(contextId, request);
+  }
+
+  async listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto> {
+    return this.#read((client) => client.listMovePolicyProviders());
+  }
+
+  async getPlayout(request: {
+    readonly scopeKind: 'free' | 'context';
+    readonly contextId?: string;
+  }): Promise<PlayoutDto | null> {
+    return this.#read((client) => client.getPlayout(request));
+  }
+
+  async startPlayout(request: StartPlayoutRequestDto): Promise<PlayoutDto> {
+    return (await this.#currentClient()).startPlayout(request);
+  }
+
+  async submitPlayoutMove(
+    request: SubmitPlayoutMoveRequestDto,
+  ): Promise<PlayoutDto> {
+    return (await this.#currentClient()).submitPlayoutMove(request);
+  }
+
+  async retryPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return (await this.#currentClient()).retryPlayout(request);
+  }
+
+  async pausePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return (await this.#currentClient()).pausePlayout(request);
+  }
+
+  async resumePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return (await this.#currentClient()).resumePlayout(request);
+  }
+
+  async stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
+    return (await this.#currentClient()).stopPlayout(request);
+  }
+
+  async completePlayout(
+    request: CompletePlayoutRequestDto,
+  ): Promise<CompletePlayoutResultDto> {
+    return (await this.#currentClient()).completePlayout(request);
+  }
+
+  async discardPlayout(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<DiscardPlayoutResultDto> {
+    return (await this.#currentClient()).discardPlayout(request);
+  }
+
+  async getEngineProviderConfigurations(): Promise<ListEngineProviderConfigurationsResultDto> {
+    return this.#read((client) => client.getEngineProviderConfigurations());
+  }
+
+  async previewEngineProviderConfiguration(
+    request: EngineProviderConfigurationInputDto,
+  ): Promise<EngineProviderConfigurationPreviewDto> {
+    return this.#read((client) =>
+      client.previewEngineProviderConfiguration(request),
+    );
+  }
+
+  async saveEngineProviderConfiguration(
+    instanceId: string,
+    request: SaveEngineProviderConfigurationRequestDto,
+  ): Promise<EngineProviderConfigurationDto> {
+    return (await this.#currentClient()).saveEngineProviderConfiguration(
+      instanceId,
+      request,
+    );
+  }
+
+  async disableEngineProviderConfiguration(
+    instanceId: string,
+    request: { readonly expectedConfigurationRevision: string },
+  ): Promise<EngineProviderConfigurationDto> {
+    return (await this.#currentClient()).disableEngineProviderConfiguration(
+      instanceId,
+      request,
+    );
   }
 
   async #read<T>(operation: (client: PlysmithHostClient) => Promise<T>) {

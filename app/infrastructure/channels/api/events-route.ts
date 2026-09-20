@@ -92,6 +92,22 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
           revisionId: String(event.payload.revisionId.value),
         },
       };
+    case 'playout.changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          scope:
+            event.payload.scope.kind === 'free'
+              ? { kind: 'free' }
+              : {
+                  kind: 'context',
+                  contextId: String(event.payload.scope.contextId.value),
+                },
+          draftId: String(event.payload.draftId.value),
+          draftRevision: event.payload.draftRevision,
+        },
+      };
     case 'workspace.revision-impact-changed':
       return {
         ...metadata,
@@ -129,6 +145,15 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
         payload: {
           contextId: String(event.payload.contextId.value),
           referenceId: String(event.payload.referenceId.value),
+        },
+      };
+    case 'workspace.item-removed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          contextId: String(event.payload.contextId.value),
+          itemId: String(event.payload.itemId.value),
         },
       };
     case 'workspace.resume-updated':

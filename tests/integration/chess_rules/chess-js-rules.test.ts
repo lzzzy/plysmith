@@ -2,6 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
+import type { CanonicalMove } from '../../../app/domain/chess_graph/index.ts';
+
+test('terminal status is derived from the rules rather than an engine', () => {
+  const rules = new ChessJsRulesAdapter();
+  const root = rules.initialState();
+  const moves: CanonicalMove[] = [];
+  for (const value of ['f2f3', 'e7e5', 'g2g4', 'd8h4']) {
+    const applied = rules.applyMove(root, moves, {
+      kind: 'coordinates',
+      value,
+    });
+    assert.equal(applied.ok, true);
+    if (!applied.ok) throw new Error('Expected a legal move.');
+    moves.push(applied.value.move);
+  }
+
+  assert.deepEqual(rules.gameStatus(root, moves), {
+    ok: true,
+    value: { kind: 'terminal', reason: 'checkmate', winner: 'black' },
+  });
+});
 
 test('initial position is canonical and uses a1-to-h8 board order', () => {
   const rules = new ChessJsRulesAdapter();

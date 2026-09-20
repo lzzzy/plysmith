@@ -14,6 +14,7 @@ import type { HostClient } from './host-client.ts';
 import { hostProblem, localProblem } from './problems.ts';
 import {
   addContextReferenceResultDto,
+  removeContextItemResultDto,
   analysisNoteMutationResultDto,
   analysisWorkspaceDto,
   createAnalysisRecordResultDto,
@@ -48,6 +49,8 @@ import {
 import {
   AddContextReferenceArgumentsSchema,
   AddContextReferenceResultSchema,
+  RemoveContextItemArgumentsSchema,
+  RemoveContextItemResultSchema,
   AnalysisWorkspaceSchema,
   AnalysisNoteMutationResultSchema,
   CreateAnalysisRecordArgumentsSchema,
@@ -99,6 +102,16 @@ import {
   ValidateAnalysisSetupArgumentsSchema,
   ValidateAnalysisSetupResultSchema,
   WorkingContextWorkspaceSchema,
+  ListMovePolicyProvidersResultSchema,
+  PlayoutResultSchema,
+  GetPlayoutArgumentsSchema,
+  GetPlayoutResultSchema,
+  StartPlayoutArgumentsSchema,
+  ExpectedPlayoutArgumentsSchema,
+  SubmitPlayoutMoveArgumentsSchema,
+  CompletePlayoutArgumentsSchema,
+  CompletePlayoutResultSchema,
+  DiscardPlayoutResultSchema,
 } from './schemas.ts';
 
 export interface McpServerOptions {
@@ -510,6 +523,19 @@ export function createMcpServer({
       _meta: problemMetadata,
     },
     {
+      name: 'remove_context_item',
+      title: 'Remove item from context',
+      description:
+        'Remove an inventory item and its context-specific content from a working context without deleting the inventory item.',
+      inputSchema: RemoveContextItemArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [RemoveContextItemResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
       name: 'set_work_scope_resume',
       title: 'Set work-scope resume',
       description:
@@ -523,6 +549,98 @@ export function createMcpServer({
       _meta: problemMetadata,
     },
   ];
+  tools.push(
+    {
+      name: 'list_move_policy_providers',
+      title: 'List playout providers',
+      description:
+        'List engine-neutral move-policy providers available for playout.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ListMovePolicyProvidersResultSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_playout',
+      title: 'Get playout',
+      description:
+        'Read the current playout draft for a free or working-context scope.',
+      inputSchema: GetPlayoutArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [GetPlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'start_playout',
+      title: 'Start playout',
+      description:
+        'Start a playout from an explicit position or inventory anchor with either the first user move or the provider moving first. The selected move-policy provider remains bound to the game.',
+      inputSchema: StartPlayoutArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [PlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'submit_playout_move',
+      title: 'Submit playout move',
+      description: 'Submit one legal user move to the current playout draft.',
+      inputSchema: SubmitPlayoutMoveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [PlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    ...(['retry', 'pause', 'resume', 'stop'] as const).map(
+      (operation): Tool => ({
+        name: `${operation}_playout`,
+        title: `${operation[0]!.toUpperCase()}${operation.slice(1)} playout`,
+        description: `${operation[0]!.toUpperCase()}${operation.slice(1)} the current playout draft using its current revision.`,
+        inputSchema: ExpectedPlayoutArgumentsSchema,
+        outputSchema: {
+          type: 'object',
+          anyOf: [PlayoutResultSchema, HostProblemSchema],
+        },
+        annotations: writeAnnotations,
+        _meta: problemMetadata,
+      }),
+    ),
+    {
+      name: 'complete_playout',
+      title: 'Complete playout',
+      description: 'Store a stopped or terminal playout once as a game record.',
+      inputSchema: CompletePlayoutArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [CompletePlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'discard_playout',
+      title: 'Discard playout',
+      description:
+        'Discard the current transient playout draft without creating a game record.',
+      inputSchema: ExpectedPlayoutArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DiscardPlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+  );
   const resources: Resource[] = [
     {
       name: 'system_status',
@@ -635,12 +753,15 @@ export function createMcpServer({
         case 'get_analysis_workspace': {
           if (!Value.Check(GetAnalysisWorkspaceArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
+          if (args.mode === 'initial_position' && args.preview !== undefined)
+            return toolProblem(localProblem('request.invalid'));
           const dto = analysisWorkspaceDto(
             await hostClient.getAnalysisWorkspace({
               scopeKind: args.scope.kind,
               ...(args.scope.kind === 'context'
                 ? { contextId: args.scope.contextId }
                 : {}),
+              ...(args.mode === undefined ? {} : { mode: args.mode }),
               ...(args.preview === undefined
                 ? {}
                 : {
@@ -938,6 +1059,14 @@ export function createMcpServer({
             `Context reference ${dto.reference.referenceId} added.`,
           );
         }
+        case 'remove_context_item': {
+          if (!Value.Check(RemoveContextItemArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = removeContextItemResultDto(
+            await hostClient.removeContextItem(args.contextId, args.itemId),
+          );
+          return toolResult(dto, `Item ${dto.itemId} removed from context.`);
+        }
         case 'set_work_scope_resume': {
           if (!Value.Check(SetWorkScopeResumeArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -951,6 +1080,77 @@ export function createMcpServer({
             dto,
             `${dto.area} resume revision ${dto.resume.resumeVersion}.`,
           );
+        }
+        case 'list_move_policy_providers': {
+          const dto = await hostClient.listMovePolicyProviders();
+          return toolResult(
+            {
+              providers: dto.providers.map((provider) => ({
+                ...provider,
+                capabilities: [...provider.capabilities],
+              })),
+            },
+            `${dto.providers.length} playout provider(s).`,
+          );
+        }
+        case 'get_playout': {
+          if (!Value.Check(GetPlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const playout = await hostClient.getPlayout({
+            scopeKind: args.scope.kind,
+            ...(args.scope.kind === 'context'
+              ? { contextId: args.scope.contextId }
+              : {}),
+          });
+          return toolResult(
+            playout === null ? {} : { playout },
+            playout === null
+              ? 'No playout draft exists in this scope.'
+              : `Playout draft revision ${playout.draft.draftRevision}.`,
+          );
+        }
+        case 'start_playout': {
+          if (!Value.Check(StartPlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.startPlayout(args);
+          return toolResult(dto, `Playout draft ${dto.draft.draftId} started.`);
+        }
+        case 'submit_playout_move': {
+          if (!Value.Check(SubmitPlayoutMoveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.submitPlayoutMove(args);
+          return toolResult(
+            dto,
+            `Playout advanced to revision ${dto.draft.draftRevision}.`,
+          );
+        }
+        case 'retry_playout':
+        case 'pause_playout':
+        case 'resume_playout':
+        case 'stop_playout': {
+          if (!Value.Check(ExpectedPlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto =
+            params.name === 'retry_playout'
+              ? await hostClient.retryPlayout(args)
+              : params.name === 'pause_playout'
+                ? await hostClient.pausePlayout(args)
+                : params.name === 'resume_playout'
+                  ? await hostClient.resumePlayout(args)
+                  : await hostClient.stopPlayout(args);
+          return toolResult(dto, `Playout is ${dto.draft.status.kind}.`);
+        }
+        case 'complete_playout': {
+          if (!Value.Check(CompletePlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.completePlayout(args);
+          return toolResult(dto, `Game record ${dto.itemId} created.`);
+        }
+        case 'discard_playout': {
+          if (!Value.Check(ExpectedPlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.discardPlayout(args);
+          return toolResult(dto, 'Playout draft discarded.');
         }
       }
       throw new McpError(ErrorCode.InvalidParams, 'Unknown tool');
@@ -1025,6 +1225,7 @@ function inputSchema(name: string) {
     case 'get_user_preferences':
     case 'get_diagnostic_settings':
     case 'get_diagnostic_report_manifest':
+    case 'list_move_policy_providers':
       return EmptyArgumentsSchema;
     case 'set_diagnostic_log_level':
       return SetDiagnosticLogLevelArgumentsSchema;
@@ -1074,8 +1275,24 @@ function inputSchema(name: string) {
       return CreateWorkingContextArgumentsSchema;
     case 'add_context_reference':
       return AddContextReferenceArgumentsSchema;
+    case 'remove_context_item':
+      return RemoveContextItemArgumentsSchema;
     case 'set_work_scope_resume':
       return SetWorkScopeResumeArgumentsSchema;
+    case 'get_playout':
+      return GetPlayoutArgumentsSchema;
+    case 'start_playout':
+      return StartPlayoutArgumentsSchema;
+    case 'submit_playout_move':
+      return SubmitPlayoutMoveArgumentsSchema;
+    case 'retry_playout':
+    case 'pause_playout':
+    case 'resume_playout':
+    case 'stop_playout':
+    case 'discard_playout':
+      return ExpectedPlayoutArgumentsSchema;
+    case 'complete_playout':
+      return CompletePlayoutArgumentsSchema;
     default:
       throw new McpError(ErrorCode.InvalidParams, 'Unknown tool');
   }

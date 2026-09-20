@@ -188,8 +188,44 @@ test('SSE converts local identifiers in iteration-two refresh hints to wire ids'
       contributionId: localId('contribution', 11),
     },
   };
+  const playoutEvent = {
+    eventId: 'generation:7',
+    sequence: 7,
+    kind: 'playout.changed' as const,
+    dataRevision: 8,
+    occurredAt: '2026-09-08T12:00:03.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'test-correlation',
+    payload: {
+      scope: {
+        kind: 'context' as const,
+        contextId: localId('working-context', 2),
+      },
+      draftId: localId('playout-draft', 12),
+      draftRevision: 3,
+    },
+  };
+  const removedEvent = {
+    eventId: 'generation:8',
+    sequence: 8,
+    kind: 'workspace.item-removed' as const,
+    dataRevision: 9,
+    occurredAt: '2026-09-08T12:00:04.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'test-correlation',
+    payload: {
+      contextId: localId('working-context', 2),
+      itemId: localId('inventory-item', 3),
+    },
+  };
   const { host } = await buildFixture(t, {
-    events: finiteSource([event, noteEvent, createdNoteEvent]),
+    events: finiteSource([
+      event,
+      noteEvent,
+      createdNoteEvent,
+      playoutEvent,
+      removedEvent,
+    ]),
   });
   const response = await host.inject({ url: '/events', headers });
   assert.equal(response.statusCode, 200);
@@ -199,5 +235,10 @@ test('SSE converts local identifiers in iteration-two refresh hints to wire ids'
   assert.ok(response.body.includes('"changeKind":"deleted"'));
   assert.ok(response.body.includes('"contributionId":"11"'));
   assert.ok(response.body.includes('"kind":"analysis.contribution-created"'));
+  assert.ok(response.body.includes('"kind":"playout.changed"'));
+  assert.ok(response.body.includes('"draftId":"12"'));
+  assert.ok(response.body.includes('"draftRevision":3'));
+  assert.ok(response.body.includes('"kind":"workspace.item-removed"'));
+  assert.ok(response.body.includes('"itemId":"3"'));
   assert.ok(!response.body.includes('"value"'));
 });

@@ -9,6 +9,7 @@ import {
   pendingRevisionImpactDto,
   parseLocalId,
   parseResumeRequest,
+  removeContextItemResultDto,
   resolvePendingRevisionImpactResultDto,
   setWorkScopeResumeResultDto,
   workingContextWorkspaceDto,
@@ -17,6 +18,7 @@ import {
   AddContextReferenceBodySchema,
   AddContextReferenceResultSchema,
   ContextIdParamsSchema,
+  ContextItemParamsSchema,
   CreateWorkingContextBodySchema,
   CreateWorkingContextResultSchema,
   EmptyQuerySchema,
@@ -26,6 +28,7 @@ import {
   problemResponses,
   SetWorkScopeResumeBodySchema,
   SetWorkScopeResumeResultSchema,
+  RemoveContextItemResultSchema,
   ResolvePendingRevisionImpactBodySchema,
   ResolvePendingRevisionImpactResultSchema,
   RevisionImpactIdParamsSchema,
@@ -110,6 +113,28 @@ export function registerWorkspaceRoutes(
           ...(request.body.nextStep === undefined
             ? {}
             : { nextStep: request.body.nextStep }),
+        }),
+      ),
+  );
+
+  api.delete(
+    '/working-contexts/:contextId/items/:itemId',
+    {
+      schema: {
+        operationId: 'RemoveContextItem',
+        params: ContextItemParamsSchema,
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(RemoveContextItemResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      removeContextItemResultDto(
+        await dependencies.removeContextItem.execute({
+          contextId: parseLocalId('working-context', request.params.contextId),
+          itemId: parseLocalId('inventory-item', request.params.itemId),
         }),
       ),
   );

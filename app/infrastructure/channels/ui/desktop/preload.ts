@@ -4,6 +4,7 @@ import {
   desktopBootstrapChannel,
   desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
+  desktopEngineExecutableChannel,
   type DesktopBootstrap,
   type PlysmithDesktopApi,
   type RendererDiagnosticEvent,
@@ -22,6 +23,10 @@ const api: PlysmithDesktopApi = Object.freeze({
       suggestedFileName,
     );
     return typeof destination === 'string' ? destination : undefined;
+  },
+  async chooseEngineExecutable(): Promise<string | undefined> {
+    const executable = await ipcRenderer.invoke(desktopEngineExecutableChannel);
+    return typeof executable === 'string' ? executable : undefined;
   },
   recordDiagnostic(event: RendererDiagnosticEvent): void {
     ipcRenderer.send(desktopDiagnosticsChannel, event);

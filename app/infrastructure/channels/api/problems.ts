@@ -105,6 +105,16 @@ const catalog = {
     'Diagnostic report target exists',
     'Choose a new file name for the diagnostic report.',
   ],
+  'configuration.engine_invalid': [
+    400,
+    'Invalid engine configuration',
+    'The engine provider configuration is invalid.',
+  ],
+  'configuration.engine_conflict': [
+    409,
+    'Engine configuration conflict',
+    'Read the current engine provider configuration before saving again.',
+  ],
   'analysis.invalid_update': [
     400,
     'Invalid analysis update',
@@ -290,6 +300,7 @@ export function installProblemHandling(
         case 'diagnostics.invalid_configuration_revision':
         case 'diagnostics.invalid_report_request':
         case 'diagnostics.invalid_report_target':
+        case 'configuration.engine_invalid':
           return replyWithProblem(
             request,
             reply,
@@ -321,6 +332,7 @@ export function installProblemHandling(
         }
         case 'diagnostics.configuration_conflict':
         case 'diagnostics.report_target_exists':
+        case 'configuration.engine_conflict':
         case 'inventory.revision_conflict':
         case 'inventory.preview_conflict':
         case 'workspace.impact_conflict':

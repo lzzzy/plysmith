@@ -44,4 +44,12 @@ export type {
   UpdateAnalysisScratchResult,
   UpdateAnalysisNoteRequest,
   WorkingContextWorkspace,
+  ListMovePolicyProvidersResult,
+  Playout,
+  StartPlayoutRequest,
+  ExpectedPlayoutRequest,
+  SubmitPlayoutMoveRequest,
+  CompletePlayoutRequest,
+  CompletePlayoutResult,
+  DiscardPlayoutResult,
 } from './host-client.ts';

@@ -10,6 +10,7 @@ export {
   type MoveNodeId,
   type OccurrenceId,
   type PositionId,
+  type PlayoutDraftId,
   type RevisionImpactId,
   type WorkingContextId,
 } from './local-ids.ts';

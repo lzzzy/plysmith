@@ -99,6 +99,45 @@ export function readChessState(
   });
 }
 
+export function deleteUnreferencedPositions(
+  database: Database.Database,
+  positionIds: readonly number[],
+): void {
+  const remove = database.prepare(
+    `DELETE FROM chess_position
+      WHERE position_id = ?
+        AND NOT EXISTS (
+          SELECT 1 FROM chess_occurrence_snapshot
+           WHERE position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM chess_anchor
+           WHERE position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM analysis_scratch_draft
+           WHERE root_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM analysis_scratch_step
+           WHERE before_position_id = chess_position.position_id
+              OR after_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM workspace_analysis_resume
+           WHERE current_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM playout_draft
+           WHERE root_position_id = chess_position.position_id
+              OR source_root_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM playout_source_ply
+           WHERE before_position_id = chess_position.position_id
+              OR after_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM playout_ply
+           WHERE before_position_id = chess_position.position_id
+              OR after_position_id = chess_position.position_id)`,
+  );
+  for (const positionId of new Set(positionIds)) remove.run(positionId);
+}
+
 function positionValues(
   position: Position,
 ): readonly [string, string, number, number, number, number, number] {

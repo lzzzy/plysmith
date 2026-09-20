@@ -21,6 +21,12 @@ export async function createHttpHostFixture(
     readonly preferenceDisconnects?: number;
     readonly discoveryFingerprint?: string;
     readonly statusFingerprint?: string;
+    readonly routeResponse?: (request: CapturedRequest) =>
+      | {
+          readonly status?: number;
+          readonly body: unknown;
+        }
+      | undefined;
   } = {},
 ) {
   const applicationHome = await mkdtemp(
@@ -48,12 +54,14 @@ export async function createHttpHostFixture(
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const text = Buffer.concat(chunks).toString('utf8');
-      requests.push({
+      const captured = {
         method: request.method,
         url: request.url,
         authorization: request.headers.authorization,
         body: text.length > 0 ? JSON.parse(text) : undefined,
-      });
+      } satisfies CapturedRequest;
+      requests.push(captured);
+      const routeResult = options.routeResponse?.(captured);
       response.setHeader('content-type', 'application/json');
       if (request.method === 'GET' && request.url === '/status') {
         response.end(JSON.stringify(status));
@@ -79,6 +87,9 @@ export async function createHttpHostFixture(
         response.end(
           JSON.stringify(options.writeResponse?.body ?? writeResult),
         );
+      } else if (routeResult !== undefined) {
+        response.statusCode = routeResult.status ?? 200;
+        response.end(JSON.stringify(routeResult.body));
       } else {
         response.statusCode = 404;
         response.end('{}');

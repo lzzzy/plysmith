@@ -4,6 +4,8 @@ import type {
   AddContextReferenceRequest,
   AddContextReferenceResult,
   CreateWorkingContextResult,
+  RemoveContextItemRequest,
+  RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
   WorkingContextSummary,
@@ -34,6 +36,10 @@ export interface WorkingContextWriter {
     request: AddContextReferenceRequest,
     occurredAt: string,
   ): Promise<AddContextReferenceResult>;
+  removeContextItem(
+    request: RemoveContextItemRequest,
+    occurredAt: string,
+  ): Promise<RemoveContextItemResult>;
   setWorkScopeResume(
     request: SetWorkScopeResumeRequest,
     occurredAt: string,

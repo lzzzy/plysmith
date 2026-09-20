@@ -18,7 +18,13 @@ import type {
   StartInventoryRevisionResult,
 } from '../../../application/inventory/index.ts';
 import type {
+  CompletePlayoutResult,
+  PlayoutStartInput,
+  PlayoutView,
+} from '../../../application/playout/index.ts';
+import type {
   AddContextReferenceResult,
+  RemoveContextItemResult,
   AnalysisResume,
   ContextReferenceSummary,
   CreateWorkingContextResult,
@@ -51,6 +57,7 @@ interface WireScope {
 interface AnalysisWorkspaceQuery {
   readonly scopeKind: 'free' | 'context';
   readonly contextId?: string;
+  readonly mode?: 'current' | 'initial_position';
   readonly itemId?: string;
   readonly revisionId?: string;
   readonly anchorId?: string;
@@ -65,8 +72,10 @@ export function parseAnalysisWorkspaceQuery(query: AnalysisWorkspaceQuery) {
     (value) => value !== undefined,
   ).length;
   if (previewCount !== 0 && previewCount !== 3) invalidRequest();
+  if (query.mode === 'initial_position' && previewCount !== 0) invalidRequest();
   return {
     scope,
+    ...(query.mode === undefined ? {} : { mode: query.mode }),
     ...(previewCount === 0
       ? {}
       : {
@@ -86,6 +95,39 @@ export function parseWorkScope(scope: WireScope): WorkScope {
   }
   if (scope.contextId === undefined) invalidRequest();
   return contextWorkScope(parseLocalId('working-context', scope.contextId));
+}
+
+export function parsePlayoutStart(start: {
+  readonly kind:
+    'initial_position' | 'fen' | 'position_setup' | 'inventory_anchor';
+  readonly fen?: string;
+  readonly setup?: AnalysisSetup;
+  readonly itemId?: string;
+  readonly revisionId?: string;
+  readonly anchorId?: string;
+}): PlayoutStartInput {
+  if (start.kind === 'initial_position') return { kind: start.kind };
+  if (start.kind === 'fen') {
+    if (start.fen === undefined) invalidRequest();
+    return { kind: start.kind, fen: start.fen };
+  }
+  if (start.kind === 'position_setup') {
+    if (start.setup === undefined) invalidRequest();
+    return { kind: start.kind, setup: start.setup };
+  }
+  if (
+    start.itemId === undefined ||
+    start.revisionId === undefined ||
+    start.anchorId === undefined
+  ) {
+    invalidRequest();
+  }
+  return {
+    kind: start.kind,
+    itemId: parseLocalId('inventory-item', start.itemId),
+    revisionId: parseLocalId('item-revision', start.revisionId),
+    anchorId: parseLocalId('anchor', start.anchorId),
+  };
 }
 
 export function parseLocalId<Kind extends LocalIdKind>(
@@ -522,6 +564,14 @@ export function addContextReferenceResultDto(model: AddContextReferenceResult) {
   };
 }
 
+export function removeContextItemResultDto(model: RemoveContextItemResult) {
+  return {
+    contextId: idDto(model.contextId),
+    itemId: idDto(model.itemId),
+    dataRevision: model.dataRevision,
+  };
+}
+
 export function setWorkScopeResumeResultDto(model: SetWorkScopeResumeResult) {
   return model.area === 'manage'
     ? {
@@ -534,6 +584,66 @@ export function setWorkScopeResumeResultDto(model: SetWorkScopeResumeResult) {
         resume: analysisResumeDto(model.resume),
         dataRevision: model.dataRevision,
       };
+}
+
+export function playoutResultDto(model: PlayoutView) {
+  const draft = model.draft;
+  return {
+    draft: {
+      draftId: idDto(draft.draftId),
+      draftRevision: draft.draftRevision,
+      decisionGeneration: draft.decisionGeneration,
+      origin:
+        draft.origin.kind === 'inventory_anchor'
+          ? {
+              kind: draft.origin.kind,
+              itemId: idDto(draft.origin.itemId),
+              revisionId: idDto(draft.origin.revisionId),
+              anchorId: idDto(draft.origin.anchorId),
+            }
+          : { kind: draft.origin.kind },
+      ...(draft.sourcePath === undefined
+        ? {}
+        : {
+            sourcePath: {
+              displayName: draft.sourcePath.displayName,
+              root: chessStateDto(draft.sourcePath.root),
+              steps: draft.sourcePath.steps.map((step) => ({
+                before: chessStateDto(step.before),
+                move: canonicalMoveDto(step.move),
+                after: chessStateDto(step.after),
+              })),
+            },
+          }),
+      root: chessStateDto(draft.root),
+      playerSide: draft.playerSide,
+      policy: { ...draft.policy },
+      steps: draft.steps.map((step) => ({
+        before: chessStateDto(step.before),
+        move: canonicalMoveDto(step.move),
+        after: chessStateDto(step.after),
+        actor: step.actor,
+        ...(step.decisionId === undefined
+          ? {}
+          : { decisionId: step.decisionId }),
+      })),
+      status: { ...draft.status },
+    },
+    legalMoves: model.legalMoves.map(canonicalMoveDto),
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function completePlayoutResultDto(model: CompletePlayoutResult) {
+  return {
+    itemId: idDto(model.itemId),
+    revisionId: idDto(model.revisionId),
+    rootAnchorId: idDto(model.rootAnchorId),
+    ...(model.contextReferenceId === undefined
+      ? {}
+      : { contextReferenceId: idDto(model.contextReferenceId) }),
+    dataRevision: model.dataRevision,
+  };
 }
 
 function analysisScratchDto(model: AnalysisScratch) {
@@ -584,6 +694,7 @@ function analysisScratchDto(model: AnalysisScratch) {
 
 export function analysisRecordDto(model: AnalysisRecordView) {
   return {
+    itemType: model.itemType,
     itemId: idDto(model.itemId),
     revisionId: idDto(model.revisionId),
     currentRevisionId: idDto(model.currentRevisionId),
@@ -593,6 +704,15 @@ export function analysisRecordDto(model: AnalysisRecordView) {
     displayName: model.displayName,
     ...(model.summary === undefined ? {} : { summary: model.summary }),
     languageTag: model.languageTag,
+    ...(model.game === undefined
+      ? {}
+      : {
+          game: {
+            playerSide: model.game.playerSide,
+            outcome: model.game.outcome,
+            policy: model.game.policy,
+          },
+        }),
     origin:
       model.origin.kind === 'inventory_anchor'
         ? {

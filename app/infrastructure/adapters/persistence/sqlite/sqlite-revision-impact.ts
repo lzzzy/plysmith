@@ -20,8 +20,9 @@ import {
 } from '../../../../domain/identity/index.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
-import { deleteContextScratch } from './sqlite-analysis-scratch.ts';
+import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { removeContextItemUsage } from './sqlite-context-item.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { resolveAnchorPosition } from './sqlite-workspace.ts';
 
@@ -1442,76 +1443,16 @@ function removeItemFromContext(
   impact: PendingRevisionImpact,
   occurredAt: string,
 ): void {
-  database
-    .prepare(
-      `DELETE FROM workspace_context_reference
-        WHERE context_id = ? AND item_id = ?`,
-    )
-    .run(impact.contextId.value, impact.itemId.value);
-  const contributions = database
-    .prepare(
-      `SELECT contribution.contribution_id AS contributionId
-         FROM workspace_contribution AS contribution
-         JOIN chess_anchor AS anchor
-           ON anchor.anchor_id = contribution.anchor_id
-        WHERE contribution.scope_kind = 'context'
-          AND contribution.context_id = ? AND contribution.status = 'active'
-          AND coalesce(anchor.owner_item_id, anchor.item_id) = ?`,
-    )
-    .all(impact.contextId.value, impact.itemId.value) as {
-    contributionId: number;
-  }[];
-  for (const contribution of contributions) {
-    database
-      .prepare('DELETE FROM search_document WHERE contribution_id = ?')
-      .run(contribution.contributionId);
-    database
-      .prepare(
-        `UPDATE workspace_contribution
-            SET status = 'archived',
-                contribution_version = contribution_version + 1,
-                updated_at_utc = ?
-          WHERE contribution_id = ?`,
-      )
-      .run(occurredAt, contribution.contributionId);
-  }
-  database
-    .prepare(
-      `UPDATE workspace_management_resume
-          SET resume_version = resume_version + 1,
-              selected_item_id = NULL, selected_anchor_id = NULL,
-              updated_at_utc = ?
-        WHERE context_id = ? AND selected_item_id = ?`,
-    )
-    .run(occurredAt, impact.contextId.value, impact.itemId.value);
-  const analysis = database
-    .prepare(
-      `SELECT analysis_scratch_draft_id AS scratchId
-         FROM workspace_analysis_resume
-        WHERE context_id = ? AND item_id = ?`,
-    )
-    .get(impact.contextId.value, impact.itemId.value) as
-    { scratchId: number | null } | undefined;
-  if (analysis !== undefined) {
-    database
-      .prepare(
-        `UPDATE workspace_analysis_resume
-            SET resume_version = resume_version + 1,
-                item_id = NULL, revision_id = NULL, anchor_id = NULL,
-                mode = 'analyze', current_position_id = ?,
-                analysis_scratch_draft_id = NULL, updated_at_utc = ?
-          WHERE context_id = ? AND item_id = ?`,
-      )
-      .run(
-        rootPosition(database, impact.itemId, impact.targetRevisionId),
-        occurredAt,
-        impact.contextId.value,
-        impact.itemId.value,
-      );
-    if (analysis.scratchId !== null) {
-      deleteContextScratch(database, impact.contextId.value);
-    }
-  }
+  removeContextItemUsage(database, {
+    contextId: impact.contextId.value,
+    itemId: impact.itemId.value,
+    occurredAt,
+    currentPositionId: rootPosition(
+      database,
+      impact.itemId,
+      impact.targetRevisionId,
+    ),
+  });
 }
 
 function finishContextRelationship(

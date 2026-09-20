@@ -46,16 +46,31 @@ try {
           throw 'Invalid owner process.'
         }
         $ownerExists = $false
+        $ownerStartedAtUtc = $null
         try {
           $owner = [Diagnostics.Process]::GetProcessById($ownerPid)
           try {
             $ownerExists = $true
-            $ownerStartedAtUtc = $owner.StartTime.ToUniversalTime()
+            try { $ownerStartTime = $owner.StartTime } catch { $ownerStartTime = $null }
+            if ($null -ne $ownerStartTime) {
+              $ownerStartedAtUtc = $ownerStartTime.ToUniversalTime()
+            }
           } finally {
             $owner.Dispose()
           }
         } catch [ArgumentException] {
           # Only a definitely absent process permits recovery of a valid lease.
+        }
+        if ($ownerExists -and $null -eq $ownerStartedAtUtc) {
+          try {
+            $ownerProcess = Get-CimInstance Win32_Process -Filter (
+              'ProcessId = {0}' -f $ownerPid) -ErrorAction Stop
+            if ($null -ne $ownerProcess -and $null -ne $ownerProcess.CreationDate) {
+              $ownerStartedAtUtc = $ownerProcess.CreationDate.ToUniversalTime()
+            }
+          } catch {
+            # An unverifiable live PID remains fail-safe below.
+          }
         }
         $recordStartedAtUtc = [DateTime]::MinValue
         $hasStartIdentity = [DateTime]::TryParseExact(
@@ -66,6 +81,7 @@ try {
           [ref] $recordStartedAtUtc)
         if ($ownerExists -and
             (-not $hasStartIdentity -or
+             $null -eq $ownerStartedAtUtc -or
              $recordStartedAtUtc.ToUniversalTime().Ticks -eq $ownerStartedAtUtc.Ticks)) {
           # Legacy or malformed identities stay fail-safe while their PID exists.
           throw 'host.already_running'

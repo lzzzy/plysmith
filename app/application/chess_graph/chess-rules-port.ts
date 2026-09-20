@@ -4,7 +4,9 @@ import type {
   AppliedMove,
   CanonicalMove,
   ChessState,
+  SideToMove,
 } from '../../domain/chess_graph/index.ts';
+import type { PlayoutTerminalReason } from '../../domain/playout/index.ts';
 
 export type NotationLocale = 'de-DE' | 'en-GB';
 
@@ -26,6 +28,14 @@ export type ChessRulesResult<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly reason: ChessRulesFailure };
 
+export type ChessGameStatus =
+  | { readonly kind: 'ongoing' }
+  | {
+      readonly kind: 'terminal';
+      readonly reason: PlayoutTerminalReason;
+      readonly winner?: SideToMove;
+    };
+
 export interface ChessRulesPort {
   initialState(): ChessState;
   parseFen(fen: string): ChessRulesResult<ChessState>;
@@ -39,4 +49,8 @@ export interface ChessRulesPort {
     root: ChessState,
     moves: readonly CanonicalMove[],
   ): ChessRulesResult<readonly CanonicalMove[]>;
+  gameStatus(
+    root: ChessState,
+    moves: readonly CanonicalMove[],
+  ): ChessRulesResult<ChessGameStatus>;
 }

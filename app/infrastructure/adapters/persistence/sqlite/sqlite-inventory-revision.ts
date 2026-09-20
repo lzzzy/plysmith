@@ -33,11 +33,9 @@ import {
 import type { WorkScope } from '../../../../domain/workspace/index.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
-import {
-  deleteContextScratch,
-  readContextScratch,
-} from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch.ts';
 import { ensurePosition } from './sqlite-chess-state.ts';
+import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
 import {
   applyAutomaticRevisionFollow,

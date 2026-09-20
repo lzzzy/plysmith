@@ -18,6 +18,14 @@ import type {
   InventoryRevisionWriter,
   SearchInventoryRequest,
 } from '../../../../application/inventory/index.ts';
+import type {
+  PlayoutReader,
+  PlayoutWriter,
+  PersistDiscardPlayoutRequest,
+  PersistCompletePlayoutRequest,
+  PersistReplacePlayoutRequest,
+  PersistStartPlayoutRequest,
+} from '../../../../application/playout/index.ts';
 import { ApplicationProblem } from '../../../../application/problems/application-problem.ts';
 import type {
   PreferencesTransaction,
@@ -57,6 +65,16 @@ import {
 import { readContextAnalysisWorkspace } from './sqlite-context-analysis.ts';
 import { searchInventory as searchInventoryRows } from './sqlite-inventory.ts';
 import {
+  createPlayout as writePlayout,
+  discardPlayout as writeDiscardPlayout,
+  readPlayout as readPlayoutRow,
+  replacePlayout as writeReplacePlayout,
+} from './sqlite-playout.ts';
+import {
+  completePlayout as writeCompletePlayout,
+  readPlayoutCompletion as readPlayoutCompletionRow,
+} from './sqlite-game-record.ts';
+import {
   listInventoryRevisions as listInventoryRevisionRows,
   previewInventoryRevision as previewInventoryRevisionRows,
   readAnalysisRevision as readAnalysisRevisionRow,
@@ -72,6 +90,7 @@ import {
   createWorkingContext as writeWorkingContext,
   listWorkingContexts as listContextRows,
   readWorkingContextWorkspace,
+  removeContextItem as writeRemoveContextItem,
   setWorkScopeResume as writeWorkScopeResume,
 } from './sqlite-workspace.ts';
 
@@ -102,7 +121,9 @@ export class SqlitePersistenceAdapter
     ContextAnalysisReader,
     ContextAnalysisWriter,
     AnalysisNoteWriter,
-    AnalysisRecordWriter
+    AnalysisRecordWriter,
+    PlayoutReader,
+    PlayoutWriter
 {
   readonly #databasePath: string;
   readonly #writer: Database.Database;
@@ -224,6 +245,18 @@ export class SqlitePersistenceAdapter
     );
   }
 
+  async readPlayout(scope: Parameters<PlayoutReader['readPlayout']>[0]) {
+    return this.#readSnapshot((reader) => readPlayoutRow(reader, scope));
+  }
+
+  async readPlayoutCompletion(
+    request: Parameters<PlayoutReader['readPlayoutCompletion']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      readPlayoutCompletionRow(reader, request),
+    );
+  }
+
   createWorkingContext(draft: WorkingContextDraft, occurredAt: string) {
     return this.#enqueueWrite(() =>
       writeWorkingContext(this.#writer, draft, occurredAt),
@@ -233,6 +266,15 @@ export class SqlitePersistenceAdapter
   addContextReference(request: AddContextReferenceRequest, occurredAt: string) {
     return this.#enqueueWrite(() =>
       writeContextReference(this.#writer, request, occurredAt),
+    );
+  }
+
+  removeContextItem(
+    request: Parameters<WorkingContextWriter['removeContextItem']>[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeRemoveContextItem(this.#writer, request, occurredAt),
     );
   }
 
@@ -267,6 +309,24 @@ export class SqlitePersistenceAdapter
 
   createAnalysisRecord(request: PersistAnalysisRecordRequest) {
     return this.#enqueueWrite(() => writeAnalysisRecord(this.#writer, request));
+  }
+
+  createPlayout(request: PersistStartPlayoutRequest) {
+    return this.#enqueueWrite(() => writePlayout(this.#writer, request));
+  }
+
+  replacePlayout(request: PersistReplacePlayoutRequest) {
+    return this.#enqueueWrite(() => writeReplacePlayout(this.#writer, request));
+  }
+
+  discardPlayout(request: PersistDiscardPlayoutRequest) {
+    return this.#enqueueWrite(() => writeDiscardPlayout(this.#writer, request));
+  }
+
+  completePlayout(request: PersistCompletePlayoutRequest) {
+    return this.#enqueueWrite(() =>
+      writeCompletePlayout(this.#writer, request),
+    );
   }
 
   createAnalysisNote(request: PersistAnalysisNoteRequest) {

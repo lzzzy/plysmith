@@ -7,6 +7,8 @@ import type {
   ContextReferenceSummary,
   CreateWorkingContextResult,
   ManagementResume,
+  RemoveContextItemRequest,
+  RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
   WorkingContextSummary,
@@ -32,6 +34,7 @@ import {
   incrementDataRevision,
   readDataRevision,
 } from './sqlite-store-helpers.ts';
+import { removeContextItemUsage } from './sqlite-context-item.ts';
 import {
   assertNoOpenRevisionImpact,
   releaseObsoleteResumeImpact,
@@ -290,6 +293,50 @@ export function addContextReference(
   return Object.freeze({ reference, dataRevision });
 }
 
+export function removeContextItem(
+  database: Database.Database,
+  request: RemoveContextItemRequest,
+  occurredAt: string,
+): RemoveContextItemResult {
+  requireActiveContext(database, request.contextId);
+  assertNoOpenRevisionImpact(
+    database,
+    request.contextId.value,
+    request.itemId.value,
+  );
+  const relationship = database
+    .prepare(
+      `SELECT 1 FROM workspace_context_item
+        WHERE context_id = ? AND item_id = ? AND pinned_revision_id IS NULL`,
+    )
+    .get(request.contextId.value, request.itemId.value);
+  if (relationship === undefined) throw contextReferenceNotFound();
+
+  removeContextItemUsage(database, {
+    contextId: request.contextId.value,
+    itemId: request.itemId.value,
+    occurredAt,
+  });
+  const removed = database
+    .prepare(
+      `DELETE FROM workspace_context_item
+        WHERE context_id = ? AND item_id = ? AND pinned_revision_id IS NULL`,
+    )
+    .run(request.contextId.value, request.itemId.value);
+  if (removed.changes !== 1) throw contextReferenceNotFound();
+  database
+    .prepare(
+      `UPDATE workspace_working_context SET updated_at_utc = ?
+        WHERE context_id = ?`,
+    )
+    .run(occurredAt, request.contextId.value);
+  return Object.freeze({
+    contextId: request.contextId,
+    itemId: request.itemId,
+    dataRevision: incrementDataRevision(database, occurredAt),
+  });
+}
+
 export function setWorkScopeResume(
   database: Database.Database,
   request: SetWorkScopeResumeRequest,
@@ -466,9 +513,14 @@ export function resolveAnchorPosition(
          FROM chess_anchor AS a
          LEFT JOIN inventory_analysis_revision AS analysis
            ON analysis.item_id = ? AND analysis.revision_id = ?
+         LEFT JOIN inventory_game_revision AS game
+           ON game.item_id = ? AND game.revision_id = ?
          LEFT JOIN chess_occurrence_snapshot AS root
-           ON root.revision_id = analysis.revision_id
-          AND root.occurrence_id = analysis.root_occurrence_id
+           ON root.revision_id = ?
+          AND root.occurrence_id = COALESCE(
+                analysis.root_occurrence_id,
+                game.root_occurrence_id
+              )
          LEFT JOIN chess_occurrence_snapshot AS occurrence
            ON occurrence.revision_id = ?
           AND occurrence.occurrence_id = a.occurrence_id
@@ -494,6 +546,9 @@ export function resolveAnchorPosition(
     )
     .get(
       itemId,
+      revisionId,
+      itemId,
+      revisionId,
       revisionId,
       revisionId,
       itemId,

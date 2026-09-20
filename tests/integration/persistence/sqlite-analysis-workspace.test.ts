@@ -22,6 +22,7 @@ import {
   CreateWorkingContext,
   GetWorkingContextWorkspace,
   ListWorkingContexts,
+  RemoveContextItem,
   SetWorkScopeResume,
 } from '../../../app/application/workspace/index.ts';
 import {
@@ -127,6 +128,11 @@ function workspaceUseCases(store: SqlitePersistenceAdapter) {
       clock: { now: () => timestamp },
       events: noEvents,
     }),
+    removeItem: new RemoveContextItem({
+      writer: store,
+      clock: { now: () => timestamp },
+      events: noEvents,
+    }),
     setResume: new SetWorkScopeResume({
       writer: store,
       clock: { now: () => timestamp },
@@ -134,6 +140,36 @@ function workspaceUseCases(store: SqlitePersistenceAdapter) {
     }),
   };
 }
+
+test('reads a fresh initial-position workspace without replacing analysis resume', async (t) => {
+  const fixture = storeFixture(t);
+  const store = fixture.open();
+  const analysis = analysisUseCases(store);
+  const scope = freeWorkScope();
+  const started = await analysis.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: { kind: 'initial_position' },
+      firstMove: { kind: 'coordinates', value: 'e2e4' },
+    },
+  });
+
+  const fresh = await analysis.get.execute({
+    scope,
+    mode: 'initial_position',
+  });
+  assert.equal(fresh.scratch, undefined);
+  assert.equal(fresh.record, undefined);
+  assert.equal(fresh.currentState.position.sideToMove, 'white');
+  assert.equal(fresh.legalMoves.length, 20);
+
+  const resumed = await analysis.get.execute({ scope });
+  assert.equal(resumed.scratch?.scratchId, started.scratch?.scratchId);
+  assert.equal(resumed.scratch?.steps[0]?.move.san, 'e4');
+});
 
 test('persists analysis, note, context reference and resume as one recoverable workflow', async (t) => {
   const fixture = storeFixture(t);
@@ -400,7 +436,8 @@ test('navigates inner record anchors independently from every referencing contex
 });
 
 test('an inventory-only record is referenced only by an explicit later command', async (t) => {
-  const store = storeFixture(t).open();
+  const fixture = storeFixture(t);
+  const store = fixture.open();
   const analysis = analysisUseCases(store);
   await analysis.update.execute({
     scope: freeWorkScope(),
@@ -486,6 +523,107 @@ test('an inventory-only record is referenced only by an explicit later command',
   });
   assert.equal(opened.record?.readOnlyPreview, false);
   assert.equal(opened.record?.contextMember, true);
+
+  await workspace.setResume.execute({
+    contextId: context.context.contextId,
+    area: 'manage',
+    expectedResumeVersion: null,
+    presentation: 'list',
+    selectedItemId: record.itemId,
+    selectedAnchorId: record.rootAnchorId,
+  });
+  const exploration = await analysis.update.execute({
+    scope: contextWorkScope(context.context.contextId),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: record.itemId,
+        revisionId: record.revisionId,
+        anchorId: record.rootAnchorId,
+      },
+      firstMove: { kind: 'coordinates', value: 'e2e4' },
+    },
+  });
+  assert.ok(exploration.scratch);
+  const contextNote = await analysis.createPositionNote.execute({
+    scope: contextWorkScope(context.context.contextId),
+    itemId: record.itemId,
+    revisionId: record.revisionId,
+    anchorId: record.rootAnchorId,
+    body: 'Nur in diesem Context.',
+    languageTag: 'de-DE',
+    noteScope: {
+      kind: 'context',
+      contextId: context.context.contextId,
+    },
+  });
+
+  const removed = await workspace.removeItem.execute({
+    contextId: context.context.contextId,
+    itemId: record.itemId,
+  });
+  assert.equal(removed.contextId.value, context.context.contextId.value);
+  assert.equal(removed.itemId.value, record.itemId.value);
+
+  const afterRemoval = await workspace.get.execute({
+    contextId: context.context.contextId,
+  });
+  assert.deepEqual(afterRemoval.references, []);
+  assert.equal(afterRemoval.managementResume?.selectedItemId, undefined);
+  assert.equal(afterRemoval.managementResume?.selectedAnchorId, undefined);
+  assert.equal(afterRemoval.analysisResume?.itemId, undefined);
+  assert.equal(afterRemoval.analysisResume?.revisionId, undefined);
+  assert.equal(afterRemoval.analysisResume?.anchorId, undefined);
+  assert.equal(afterRemoval.analysisResume?.scratchId, undefined);
+
+  const afterRemovalPreview = await analysis.get.execute({
+    scope: contextWorkScope(context.context.contextId),
+    preview: {
+      itemId: record.itemId,
+      revisionId: record.revisionId,
+      anchorId: record.rootAnchorId,
+    },
+  });
+  assert.equal(afterRemovalPreview.record?.readOnlyPreview, true);
+  assert.equal(afterRemovalPreview.record?.contextMember, false);
+
+  const inventory = await new SearchInventory(store).execute({
+    query: 'Damenbauernspiel',
+  });
+  assert.equal(inventory.items.length, 1);
+  assert.deepEqual(inventory.items[0]?.contextIds, []);
+
+  const inspection = new Database(fixture.databasePath, {
+    readonly: true,
+    fileMustExist: true,
+  });
+  try {
+    assert.equal(
+      (
+        inspection
+          .prepare(
+            'SELECT status FROM workspace_contribution WHERE contribution_id = ?',
+          )
+          .get(Number(contextNote.contributionId.value)) as { status: string }
+      ).status,
+      'archived',
+    );
+    assert.equal(
+      (
+        inspection
+          .prepare(
+            'SELECT count(*) AS count FROM analysis_scratch_draft WHERE context_id = ?',
+          )
+          .get(Number(context.context.contextId.value)) as { count: number }
+      ).count,
+      0,
+    );
+  } finally {
+    inspection.close();
+  }
 });
 
 test('an inventory record opened without context remains writable', async (t) => {

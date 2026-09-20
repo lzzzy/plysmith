@@ -65,9 +65,42 @@ export const SqliteProviderConfigurationSchema = Type.Object(
   },
 );
 
+export const StockfishUciProviderConfigurationSchema = Type.Object(
+  {
+    schemaVersion: Type.Literal(1),
+    provider: Type.Literal('stockfish-uci'),
+    enabled: Type.Boolean(),
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    stockfish: Type.Object(
+      {
+        executablePath: Type.String({ minLength: 1 }),
+        executableSha256: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+        arguments: Type.Array(Type.String({ maxLength: 1_024 }), {
+          maxItems: 32,
+        }),
+        threads: Type.Integer({ minimum: 1, maximum: 256 }),
+        hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
+        moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
+        startupTimeoutMs: Type.Integer({ minimum: 100, maximum: 60_000 }),
+        moveTimeoutMs: Type.Integer({ minimum: 100, maximum: 660_000 }),
+        stopTimeoutMs: Type.Integer({ minimum: 100, maximum: 30_000 }),
+        maxOutputBytes: Type.Integer({ minimum: 1_024, maximum: 16_777_216 }),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  {
+    $id: 'https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/stockfish-uci-provider.schema.json',
+    additionalProperties: false,
+  },
+);
+
 export type PlysmithConfiguration = Static<typeof PlysmithConfigurationSchema>;
 export type SqliteProviderConfiguration = Static<
   typeof SqliteProviderConfigurationSchema
+>;
+export type StockfishUciProviderConfiguration = Static<
+  typeof StockfishUciProviderConfigurationSchema
 >;
 
 export interface MinimalConfigurationSet {

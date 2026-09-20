@@ -469,6 +469,57 @@
   gap: 7px;
 }
 
+.removeConfirmation {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+  padding: 12px;
+  color: #633b3b;
+  background: #fff7f7;
+  border: 1px solid #d9b5b5;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.removeConfirmation p {
+  margin: 5px 0 0;
+}
+
+.removeConfirmationActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.scratchDecision {
+  display: grid;
+  gap: 12px;
+  margin-top: 15px;
+  padding: 12px;
+  color: #493a1c;
+  background: #fffaf0;
+  border: 1px solid #e2ca96;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.scratchDecision p {
+  margin: 5px 0 0;
+}
+
+.scratchDecisionActions {
+  display: grid;
+  gap: 7px;
+}
+
+.destructiveButton {
+  color: #7b3737;
+  background: #ffffff;
+  border: 1px solid #c99595;
+}
+
 .impactResolution {
   margin: 17px -15px -15px;
   background: #ffffff;
@@ -653,7 +704,8 @@
 
 .primaryButton[data-disabled],
 .primaryButton:disabled,
-.secondaryButton[data-disabled] {
+.secondaryButton[data-disabled],
+.destructiveButton[data-disabled] {
   color: #969da6;
   background: #e5e8eb;
   border-color: #d5d9de;
@@ -662,6 +714,7 @@
 
 .primaryButton[data-focus-visible],
 .secondaryButton[data-focus-visible],
+.destructiveButton[data-focus-visible],
 .tertiaryButton[data-focus-visible],
 .primaryButton:focus-visible {
   outline: 2px solid #2f66bd;

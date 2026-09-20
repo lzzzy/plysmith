@@ -3,7 +3,9 @@ import {
   Activity,
   Bug,
   CheckCircle2,
+  Cpu,
   FileArchive,
+  FolderOpen,
   Languages,
   RefreshCw,
   ShieldCheck,
@@ -24,6 +26,7 @@ import {
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
 import type { UiLocale } from './messages.ts';
+import type { EngineProviderConfigurationInputDto } from '../../host_client/index.ts';
 import styles from './settings-view.module.css';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
@@ -43,16 +46,30 @@ export function SettingsView({
     state.diagnostics.configuredLevel,
   );
   const [reportReviewOpen, setReportReviewOpen] = useState(false);
+  const configuredEngine = state.engineProviders.providers[0];
+  const [engineDraft, setEngineDraft] =
+    useState<EngineProviderConfigurationInputDto>(() =>
+      engineInput(configuredEngine),
+    );
+  const [engineIssues, setEngineIssues] = useState<readonly string[]>([]);
   useEffect(() => {
     setDraftLocale(state.preferences.uiLocale);
   }, [state.preferences.uiLocale]);
   useEffect(() => {
     setDraftDiagnosticLevel(state.diagnostics.configuredLevel);
   }, [state.diagnostics.configuredLevel]);
+  useEffect(() => {
+    setEngineDraft(engineInput(configuredEngine));
+    setEngineIssues([]);
+  }, [configuredEngine?.configurationRevision]);
 
   const saving = state.busyCommand === 'set_language';
   const savingDiagnostics = state.busyCommand === 'set_diagnostic_log_level';
   const creatingReport = state.busyCommand === 'create_diagnostic_report';
+  const savingEngine =
+    state.busyCommand === 'preview_engine_provider' ||
+    state.busyCommand === 'save_engine_provider' ||
+    state.busyCommand === 'disable_engine_provider';
   return (
     <main className={styles.settingsView}>
       <header className={styles.pageHeader}>
@@ -118,6 +135,179 @@ export function SettingsView({
             )}
             <FormattedMessage id={saving ? 'state.saving' : 'action.apply'} />
           </Button>
+        </div>
+      </section>
+
+      <section
+        className={styles.settingsSection}
+        aria-labelledby="engine-title"
+      >
+        <div className={styles.sectionHeading}>
+          <span className={`${styles.sectionIcon} ${styles.engineIcon}`}>
+            <Cpu aria-hidden="true" size={19} />
+          </span>
+          <div>
+            <h2 id="engine-title">
+              <FormattedMessage id="engines.title" />
+            </h2>
+            <p>
+              <FormattedMessage id="engines.description" />
+            </p>
+          </div>
+        </div>
+        <div className={styles.engineForm}>
+          <label className={styles.wideField}>
+            <span>
+              <FormattedMessage id="engines.executable" />
+            </span>
+            <div className={styles.pathRow}>
+              <input value={engineDraft.executablePath} readOnly />
+              <Button
+                className={styles.secondaryButton!}
+                isDisabled={savingEngine}
+                onPress={() =>
+                  void store.chooseEngineExecutable().then((selected) => {
+                    if (selected !== undefined) {
+                      setEngineDraft((current) => ({
+                        ...current,
+                        executablePath: selected,
+                        enabled: true,
+                      }));
+                      setEngineIssues([]);
+                    }
+                  })
+                }
+              >
+                <FolderOpen aria-hidden="true" size={16} />
+                <FormattedMessage id="engines.choose" />
+              </Button>
+            </div>
+          </label>
+          <label>
+            <span>
+              <FormattedMessage id="engines.displayName" />
+            </span>
+            <input
+              value={engineDraft.displayName}
+              onChange={(event) =>
+                setEngineDraft((current) => ({
+                  ...current,
+                  displayName: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>
+              <FormattedMessage id="engines.moveTime" />
+            </span>
+            <input
+              type="number"
+              min={10}
+              max={600000}
+              value={engineDraft.moveTimeMs}
+              onChange={(event) =>
+                setEngineDraft((current) => ({
+                  ...current,
+                  moveTimeMs: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>
+              <FormattedMessage id="engines.threads" />
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={256}
+              value={engineDraft.threads}
+              onChange={(event) =>
+                setEngineDraft((current) => ({
+                  ...current,
+                  threads: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>
+              <FormattedMessage id="engines.hash" />
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={65536}
+              value={engineDraft.hashMb}
+              onChange={(event) =>
+                setEngineDraft((current) => ({
+                  ...current,
+                  hashMb: Number(event.target.value),
+                }))
+              }
+            />
+          </label>
+          {engineIssues.length > 0 && (
+            <p className={styles.engineError} role="alert">
+              <FormattedMessage id={`engines.issue.${engineIssues[0]}`} />
+            </p>
+          )}
+          {configuredEngine?.restartRequired && (
+            <p className={styles.restartNotice} role="status">
+              <RefreshCw aria-hidden="true" size={15} />
+              <FormattedMessage id="engines.restartRequired" />
+            </p>
+          )}
+          <div className={styles.engineActions}>
+            {configuredEngine?.enabled && (
+              <Button
+                className={styles.secondaryButton!}
+                isDisabled={savingEngine}
+                onPress={() =>
+                  void store.disableEngineProviderConfiguration(
+                    configuredEngine,
+                  )
+                }
+              >
+                <FormattedMessage id="engines.disable" />
+              </Button>
+            )}
+            <Button
+              className={styles.primaryButton!}
+              isDisabled={
+                savingEngine ||
+                engineDraft.executablePath.length === 0 ||
+                engineDraft.displayName.trim().length === 0
+              }
+              onPress={() =>
+                void store
+                  .previewEngineProviderConfiguration(engineDraft)
+                  .then(async (preview) => {
+                    if (preview === undefined) return;
+                    setEngineIssues(preview.issues);
+                    if (!preview.valid) return;
+                    await store.saveEngineProviderConfiguration(
+                      { ...engineDraft, enabled: true },
+                      configuredEngine?.configurationRevision ?? null,
+                    );
+                  })
+              }
+            >
+              {savingEngine ? (
+                <RefreshCw
+                  aria-hidden="true"
+                  className={styles.spinning}
+                  size={16}
+                />
+              ) : (
+                <CheckCircle2 aria-hidden="true" size={16} />
+              )}
+              <FormattedMessage
+                id={savingEngine ? 'state.saving' : 'engines.save'}
+              />
+            </Button>
+          </div>
         </div>
       </section>
 
@@ -360,6 +550,43 @@ export function SettingsView({
       </ModalOverlay>
     </main>
   );
+}
+
+function engineInput(
+  configured: ReadyState['engineProviders']['providers'][number] | undefined,
+): EngineProviderConfigurationInputDto {
+  if (configured !== undefined) {
+    return {
+      instanceId: configured.instanceId,
+      providerType: configured.providerType,
+      displayName: configured.displayName,
+      enabled: configured.enabled,
+      executablePath: configured.executablePath,
+      arguments: [...configured.arguments],
+      threads: configured.threads,
+      hashMb: configured.hashMb,
+      moveTimeMs: configured.moveTimeMs,
+      startupTimeoutMs: configured.startupTimeoutMs,
+      moveTimeoutMs: configured.moveTimeoutMs,
+      stopTimeoutMs: configured.stopTimeoutMs,
+      maxOutputBytes: configured.maxOutputBytes,
+    };
+  }
+  return {
+    instanceId: `engine-${globalThis.crypto.randomUUID()}`,
+    providerType: 'stockfish-uci',
+    displayName: 'Stockfish',
+    enabled: true,
+    executablePath: '',
+    arguments: [],
+    threads: 1,
+    hashMb: 64,
+    moveTimeMs: 500,
+    startupTimeoutMs: 5_000,
+    moveTimeoutMs: 10_000,
+    stopTimeoutMs: 1_000,
+    maxOutputBytes: 1_048_576,
+  };
 }
 
 function ReportCategoryList({

@@ -2,6 +2,7 @@ import { Chess, DEFAULT_POSITION } from 'chess.js';
 
 import type {
   ChessRulesFailure,
+  ChessGameStatus,
   ChessRulesPort,
   ChessRulesResult,
   MoveInput,
@@ -123,6 +124,39 @@ export class ChessJsRulesAdapter implements ChessRulesPort {
           .map((move) => canonicalMove(move)),
       ),
     );
+  }
+
+  gameStatus(
+    root: ChessState,
+    moves: readonly CanonicalMove[],
+  ): ChessRulesResult<ChessGameStatus> {
+    const replay = replayLine(root, moves);
+    if (!replay.ok) return replay;
+    const chess = replay.value;
+    if (chess.isCheckmate()) {
+      return success(
+        Object.freeze({
+          kind: 'terminal',
+          reason: 'checkmate',
+          winner: chess.turn() === 'w' ? 'black' : 'white',
+        }),
+      );
+    }
+    if (chess.isStalemate()) {
+      return success(Object.freeze({ kind: 'terminal', reason: 'stalemate' }));
+    }
+    if (chess.isInsufficientMaterial()) {
+      return success(
+        Object.freeze({ kind: 'terminal', reason: 'insufficient_material' }),
+      );
+    }
+    const halfmoveClock = Number(chess.fen().split(' ')[4]);
+    if (Number.isSafeInteger(halfmoveClock) && halfmoveClock >= 150) {
+      return success(
+        Object.freeze({ kind: 'terminal', reason: 'seventy_five_move' }),
+      );
+    }
+    return success(Object.freeze({ kind: 'ongoing' }));
   }
 }
 

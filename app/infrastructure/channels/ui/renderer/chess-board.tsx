@@ -29,6 +29,7 @@ interface ChessBoardProps {
     promotion?: 'queen' | 'rook' | 'bishop' | 'knight',
   ) => void;
   readonly onTakeBack?: () => void;
+  readonly initialOrientation?: ChessBoardOrientation;
 }
 
 export function ChessBoard({
@@ -39,6 +40,7 @@ export function ChessBoard({
   undoMove,
   onMove,
   onTakeBack,
+  initialOrientation = 'white',
 }: ChessBoardProps) {
   const intl = useIntl();
   const board = useMemo(
@@ -62,7 +64,7 @@ export function ChessBoard({
     !isBusy;
   const [selectedSquare, setSelectedSquare] = useState<string>();
   const [orientation, setOrientation] =
-    useState<ChessBoardOrientation>('white');
+    useState<ChessBoardOrientation>(initialOrientation);
   const [promotionMoves, setPromotionMoves] = useState<
     readonly CanonicalMoveDto[]
   >([]);
@@ -71,6 +73,8 @@ export function ChessBoard({
     setSelectedSquare(undefined);
     setPromotionMoves([]);
   }, [workspace.currentState.fen]);
+
+  useEffect(() => setOrientation(initialOrientation), [initialOrientation]);
 
   const legalSources = new Set(workspace.legalMoves.map((move) => move.from));
   if (undoMove !== undefined) legalSources.add(undoMove.to);

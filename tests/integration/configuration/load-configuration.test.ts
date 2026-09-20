@@ -6,6 +6,7 @@ import test, { type TestContext } from 'node:test';
 
 import {
   ConfigurationProblem,
+  fileSha256,
   initializeConfiguration,
   loadCentralConfiguration,
   loadConfiguration,
@@ -41,6 +42,64 @@ test('loads central diagnostics without requiring a persistence provider', async
 
   assert.equal(central.diagnostics.logging.level, 'off');
   assert.ok(Object.isFrozen(central));
+});
+
+test('loads valid Stockfish playout instances and isolates invalid optional providers', async (context) => {
+  const applicationHome = await createApplicationHome(context);
+  const initialized = await initializeConfiguration({
+    applicationHome,
+    defaultsDirectory,
+  });
+  const centralPath = path.join(initialized.activeDirectory, 'plysmith.json');
+  const executablePath = path.join(applicationHome, 'stockfish.exe');
+  await writeFile(executablePath, 'fake stockfish', 'utf8');
+  const central = JSON.parse(await readFile(centralPath, 'utf8')) as {
+    bindings: { playoutEngines: string[] };
+  };
+  central.bindings.playoutEngines = ['stockfish-main', 'broken-engine'];
+  await writeFile(centralPath, `${JSON.stringify(central)}\n`, 'utf8');
+  await writeFile(
+    path.join(initialized.activeDirectory, 'stockfish-main.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      provider: 'stockfish-uci',
+      enabled: true,
+      displayName: 'Stockfish',
+      stockfish: {
+        executablePath,
+        executableSha256: await fileSha256(executablePath),
+        arguments: [],
+        threads: 1,
+        hashMb: 64,
+        moveTimeMs: 250,
+        startupTimeoutMs: 2_000,
+        moveTimeoutMs: 3_000,
+        stopTimeoutMs: 500,
+        maxOutputBytes: 262_144,
+      },
+    })}\n`,
+    'utf8',
+  );
+  await writeFile(
+    path.join(initialized.activeDirectory, 'broken-engine.json'),
+    '{}\n',
+    'utf8',
+  );
+
+  const runtime = await loadConfiguration(applicationHome);
+
+  assert.deepEqual(
+    runtime.playoutEngines.map((entry) => [entry.instanceId, entry.status]),
+    [
+      ['stockfish-main', 'available'],
+      ['broken-engine', 'unavailable'],
+    ],
+  );
+  assert.ok(Object.isFrozen(runtime.playoutEngines));
+
+  await writeFile(executablePath, 'replaced stockfish', 'utf8');
+  const changedBinary = await loadConfiguration(applicationHome);
+  assert.equal(changedBinary.playoutEngines[0]?.status, 'unavailable');
 });
 
 test('reports a missing active configuration without seeding it', async (context) => {

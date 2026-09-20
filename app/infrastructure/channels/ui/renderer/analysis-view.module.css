@@ -21,6 +21,12 @@
   line-height: 1.2;
 }
 
+.gameMetadata {
+  margin: 5px 0 0;
+  color: #65707c;
+  font-size: 11px;
+}
+
 .eyebrow,
 .panelLabel {
   color: #5f6873;
@@ -32,6 +38,12 @@
 .headerStatus {
   color: #65707c;
   font-size: 12px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .revisionNotice {

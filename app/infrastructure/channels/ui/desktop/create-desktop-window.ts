@@ -14,6 +14,7 @@ import {
   desktopBootstrapChannel,
   desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
+  desktopEngineExecutableChannel,
   parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
@@ -106,6 +107,24 @@ export async function createDesktopWindow(
     desktopDiagnosticReportDestinationChannel,
     diagnosticReportDestinationHandler,
   );
+  const engineExecutableHandler = async (
+    event: IpcMainInvokeEvent,
+  ): Promise<string | undefined> => {
+    if (!isTrustedRendererSender(event, window)) return undefined;
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Schachengine auswählen',
+      properties: ['openFile'],
+      filters:
+        process.platform === 'win32'
+          ? [
+              { name: 'Programme', extensions: ['exe'] },
+              { name: 'Alle Dateien', extensions: ['*'] },
+            ]
+          : [{ name: 'Alle Dateien', extensions: ['*'] }],
+    });
+    return result.canceled ? undefined : result.filePaths[0];
+  };
+  ipcMain.handle(desktopEngineExecutableChannel, engineExecutableHandler);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.on('will-attach-webview', (event) =>
@@ -119,18 +138,23 @@ export async function createDesktopWindow(
     event.preventDefault(),
   );
 
+  let loadSequence = 0;
   const loadSnapshot = (snapshot: DesktopBootstrap): void => {
     if (window.isDestroyed()) {
       return;
     }
+    loadSequence += 1;
+    const sequence = loadSequence;
     const url = new URL('app://plysmith/index.html');
     url.searchParams.set('generation', String(snapshot.generation));
-    void window.loadURL(url.toString()).catch(() => {
+    void window.loadURL(url.toString()).catch((error: unknown) => {
+      if (sequence !== loadSequence || window.isDestroyed()) return;
       options.diagnostics.write({
         level: 'error',
         eventCode: 'desktop.renderer.load_failed',
         status: 'failed',
         generation: snapshot.generation,
+        problemCode: rendererLoadProblemCode(error),
       });
       console.error('Plysmith Desktop renderer could not load.');
     });
@@ -141,12 +165,20 @@ export async function createDesktopWindow(
     unsubscribe();
     ipcMain.removeHandler(desktopBootstrapChannel);
     ipcMain.removeHandler(desktopDiagnosticReportDestinationChannel);
+    ipcMain.removeHandler(desktopEngineExecutableChannel);
     ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });
 
   loadSnapshot(hostConnections.getSnapshot());
   return window;
+}
+
+function rendererLoadProblemCode(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message.slice(0, 160);
+  }
+  return 'unknown';
 }
 
 function isTrustedRendererSender(

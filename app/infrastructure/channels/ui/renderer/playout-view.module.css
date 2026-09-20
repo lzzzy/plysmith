@@ -1,0 +1,405 @@
+.playoutView {
+  min-width: 0;
+  padding: 26px 28px 36px;
+}
+
+.viewHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #d8dde4;
+}
+
+.viewHeader h1,
+.panelHeading h2,
+.confirmationDialog h2 {
+  margin: 3px 0 0;
+  color: #20262e;
+}
+
+.viewHeader h1 {
+  font-size: 23px;
+}
+.panelHeading h2 {
+  font-size: 16px;
+}
+.eyebrow,
+.fieldLabel {
+  color: #5f6873;
+  font-size: 10px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(320px, 430px);
+  gap: 22px;
+  align-items: start;
+}
+
+.sidePanel,
+.preparingPanel {
+  background: #fff;
+  border: 1px solid #d7dce3;
+  border-radius: 7px;
+}
+
+.sidePanel {
+  overflow: hidden;
+}
+.panelHeading {
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e4e9;
+}
+
+.statusBadge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  color: #315f4d;
+  background: #edf7f1;
+  border: 1px solid #b9d9ca;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.moveList {
+  max-height: min(52vh, 520px);
+  min-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
+.moveRow {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 40px;
+  align-items: center;
+  gap: 6px;
+  color: #697480;
+  font-size: 13px;
+}
+
+.moveButton,
+.rootMove {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #303943;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+}
+
+.rootMove {
+  width: 100%;
+  margin-bottom: 4px;
+}
+.sourceHeading {
+  overflow: hidden;
+  padding: 4px 10px 8px;
+  color: #66717d;
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.playoutBoundary {
+  width: 100%;
+  min-height: 36px;
+  margin: 8px 0;
+  padding: 0 10px;
+  color: #76570f;
+  background: #fff7dd;
+  border: 1px solid #e2c777;
+  border-right: 0;
+  border-left: 0;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+.moveButton[data-hovered],
+.rootMove[data-hovered],
+.playoutBoundary[data-hovered] {
+  background: #eef2f7;
+}
+.currentMove {
+  color: #173f72;
+  background: #e7f0fd;
+  font-weight: 700;
+}
+
+.providerLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  color: #66717d;
+  border-top: 1px solid #e0e4e9;
+  font-size: 12px;
+}
+.providerLine strong {
+  color: #29313a;
+}
+
+.runningActions,
+.reviewActions,
+.savedActions {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid #e0e4e9;
+}
+
+.reviewActions {
+  background: #fffaf0;
+}
+.savedActions {
+  background: #edf7f1;
+}
+.savedHeading {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  color: #315f4d;
+}
+.savedHeading div {
+  display: grid;
+  gap: 3px;
+}
+.savedHeading strong {
+  font-size: 15px;
+}
+.savedHeading span {
+  color: #5f6f68;
+  font-size: 12px;
+}
+.reviewHeading {
+  display: grid;
+  gap: 3px;
+}
+.reviewHeading strong {
+  font-size: 15px;
+}
+.reviewHeading span {
+  color: #6b737c;
+  font-size: 12px;
+}
+.reviewActions label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.reviewActions input[type='text'],
+.reviewActions input:not([type]) {
+  width: 100%;
+}
+.reviewActions input {
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 0 11px;
+  border: 1px solid #bcc5cf;
+  border-radius: 5px;
+  font: inherit;
+}
+.contextChoice {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.contextChoice input {
+  min-height: 0;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton,
+.destructiveButton {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+.primaryButton {
+  color: #fff;
+  background: #2f66bd;
+  border: 1px solid #2756a1;
+}
+.secondaryButton {
+  color: #303842;
+  background: #fff;
+  border: 1px solid #bbc4cf;
+}
+.dangerButton {
+  color: #7b3d38;
+  background: transparent;
+  border: 1px solid transparent;
+}
+.destructiveButton {
+  color: #fff;
+  background: #8a423d;
+  border: 1px solid #713632;
+}
+.primaryButton[data-disabled],
+.secondaryButton[data-disabled],
+.dangerButton[data-disabled],
+.destructiveButton[data-disabled] {
+  color: #949ca5;
+  background: #e7eaed;
+  border-color: #d5d9de;
+  cursor: default;
+}
+
+.startSourceLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 16px;
+  color: #66717d;
+  border-top: 1px solid #e0e4e9;
+  font-size: 12px;
+}
+.startSourceLine strong {
+  overflow: hidden;
+  color: #29313a;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prestartActions {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid #e0e4e9;
+}
+.prestartActions .fieldGroup {
+  margin-top: 0;
+}
+.prestartActions .primaryButton {
+  width: 100%;
+}
+.startSourceLine span {
+  color: #69737e;
+  font-size: 12px;
+}
+.fieldGroup {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.fieldGroup select {
+  min-height: 44px;
+  padding: 0 11px;
+  color: #26303a;
+  background: #fff;
+  border: 1px solid #bcc5cf;
+  border-radius: 5px;
+  font: inherit;
+}
+.providerNotice {
+  color: #78540e;
+  font-size: 12px;
+}
+.preparingPanel {
+  width: min(720px, 100%);
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 28px;
+}
+.preparingPanel {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 10px;
+  justify-items: center;
+  justify-content: center;
+  align-items: center;
+  color: #65707c;
+  text-align: center;
+}
+.modalOverlay {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(24 30 37 / 48%);
+}
+.confirmationModal {
+  width: min(520px, 100%);
+  outline: none;
+}
+.confirmationDialog {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #cbd2da;
+  border-radius: 7px;
+  box-shadow: 0 18px 52px rgb(18 24 31 / 24%);
+  outline: none;
+}
+.confirmationDialog h2 {
+  font-size: 20px;
+}
+.confirmationDialog p {
+  margin: 8px 0 0;
+  color: #66717d;
+  line-height: 1.5;
+}
+.confirmationActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.spinning {
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+  }
+  .sidePanel {
+    max-width: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .playoutView {
+    padding: 18px 14px 28px;
+  }
+  .confirmationActions {
+    flex-direction: column;
+    width: 100%;
+  }
+}

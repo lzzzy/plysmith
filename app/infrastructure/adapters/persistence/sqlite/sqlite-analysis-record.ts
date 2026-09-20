@@ -23,10 +23,8 @@ import {
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
 import { ensurePosition, readChessState } from './sqlite-chess-state.ts';
-import {
-  deleteContextScratch,
-  readContextScratch,
-} from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch.ts';
+import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import {
   insertAnalysisNoteContribution,
   readAnalysisNoteMoves,
@@ -42,6 +40,19 @@ import {
 interface InsertedGraph {
   readonly rootAnchorId: AnchorId;
   readonly endAnchorId: AnchorId;
+}
+
+export interface LinearChessGraphInput {
+  readonly root: ChessState;
+  readonly steps: readonly {
+    readonly move: {
+      readonly from: string;
+      readonly to: string;
+      readonly promotion?: PromotionPiece;
+      readonly san: string;
+    };
+    readonly after: ChessState;
+  }[];
 }
 
 export function createAnalysisRecord(
@@ -253,39 +264,73 @@ function readAnalysisRecordViewInternal(
   const nextAncestors = new Set(ancestors).add(recordKey);
   const header = database
     .prepare(
-      `SELECT revision.display_name AS displayName,
+      `SELECT item.item_type AS itemType,
+              revision.display_name AS displayName,
               revision.summary_text AS summary,
               revision.language_tag AS languageTag,
               revision.revision_number AS revisionNumber,
               item.current_revision_id AS currentRevisionId,
-              analysis.origin_mode AS originMode,
-              analysis.root_occurrence_id AS rootOccurrenceId,
-              analysis_origin.source_item_id AS sourceItemId,
-              analysis_origin.source_revision_id AS sourceRevisionId,
-              analysis_origin.source_anchor_id AS sourceAnchorId
+              COALESCE(analysis.origin_mode, game.origin_mode) AS originMode,
+              COALESCE(analysis.root_occurrence_id,
+                       game.root_occurrence_id) AS rootOccurrenceId,
+              COALESCE(analysis_origin.source_item_id,
+                       game_origin.source_item_id) AS sourceItemId,
+              COALESCE(analysis_origin.source_revision_id,
+                       game_origin.source_revision_id) AS sourceRevisionId,
+              COALESCE(analysis_origin.source_anchor_id,
+                       game_origin.source_anchor_id) AS sourceAnchorId,
+              game.player_side AS playerSide,
+              game.result_kind AS resultKind,
+              game.result_reason AS resultReason,
+              game.policy_capability AS policyCapability,
+              game.provider_instance_id AS providerInstanceId,
+              game.provider_fingerprint AS providerFingerprint,
+              game.provider_type AS providerType,
+              game.provider_display_name AS providerDisplayName
          FROM inventory_item AS item
          JOIN item_revision AS revision
            ON revision.item_id = item.item_id
           AND revision.revision_id = ?
-         JOIN inventory_analysis_revision AS analysis
+         LEFT JOIN inventory_analysis_revision AS analysis
            ON analysis.item_id = item.item_id
           AND analysis.revision_id = revision.revision_id
+         LEFT JOIN inventory_game_revision AS game
+           ON game.item_id = item.item_id
+          AND game.revision_id = revision.revision_id
          LEFT JOIN inventory_analysis_origin AS analysis_origin
            ON analysis_origin.analysis_revision_id = analysis.revision_id
-        WHERE item.item_id = ? AND item.item_type = 'analysis'`,
+         LEFT JOIN inventory_game_origin AS game_origin
+           ON game_origin.game_revision_id = game.revision_id
+        WHERE item.item_id = ? AND item.item_type IN ('analysis', 'game')
+          AND (analysis.revision_id IS NOT NULL OR game.revision_id IS NOT NULL)`,
     )
     .get(request.revisionId.value, request.itemId.value) as
     | {
+        itemType: 'analysis' | 'game';
         displayName: string;
         summary: string | null;
         languageTag: string;
         revisionNumber: number;
         currentRevisionId: number;
-        originMode: 'initial_position' | 'fen' | 'inventory_anchor';
+        originMode:
+          'initial_position' | 'fen' | 'position_setup' | 'inventory_anchor';
         rootOccurrenceId: number;
         sourceItemId: number | null;
         sourceRevisionId: number | null;
         sourceAnchorId: number | null;
+        playerSide: 'white' | 'black' | null;
+        resultKind: 'white_win' | 'black_win' | 'draw' | 'unfinished' | null;
+        resultReason:
+          | 'checkmate'
+          | 'stalemate'
+          | 'insufficient_material'
+          | 'seventy_five_move'
+          | null;
+        policyCapability: 'best_move' | null;
+        providerInstanceId: string | null;
+        providerFingerprint: string | null;
+        providerType: string | null;
+        providerDisplayName: string | null;
       }
     | undefined;
   if (header === undefined) return undefined;
@@ -376,6 +421,7 @@ function readAnalysisRecordViewInternal(
           )
           .get(request.contextId.value, request.itemId.value) !== undefined;
   return Object.freeze({
+    itemType: header.itemType,
     itemId: request.itemId,
     revisionId: request.revisionId,
     currentRevisionId: localId('item-revision', header.currentRevisionId),
@@ -385,6 +431,7 @@ function readAnalysisRecordViewInternal(
     displayName: header.displayName,
     ...(header.summary === null ? {} : { summary: header.summary }),
     languageTag: header.languageTag,
+    ...(header.itemType === 'game' ? { game: gameDetails(header) } : {}),
     origin,
     ...(sourceLine === undefined ? {} : { sourceLine }),
     root: states[0],
@@ -394,6 +441,59 @@ function readAnalysisRecordViewInternal(
     contextMember,
     readOnlyPreview: request.readOnlyPreview && !contextMember,
     historical: request.revisionId.value !== header.currentRevisionId,
+  });
+}
+
+function gameDetails(header: {
+  readonly playerSide: 'white' | 'black' | null;
+  readonly resultKind: 'white_win' | 'black_win' | 'draw' | 'unfinished' | null;
+  readonly resultReason:
+    | 'checkmate'
+    | 'stalemate'
+    | 'insufficient_material'
+    | 'seventy_five_move'
+    | null;
+  readonly policyCapability: 'best_move' | null;
+  readonly providerInstanceId: string | null;
+  readonly providerFingerprint: string | null;
+  readonly providerType: string | null;
+  readonly providerDisplayName: string | null;
+}): NonNullable<AnalysisRecordView['game']> {
+  if (
+    header.playerSide === null ||
+    header.resultKind === null ||
+    header.policyCapability === null ||
+    header.providerInstanceId === null ||
+    header.providerFingerprint === null ||
+    header.providerType === null ||
+    header.providerDisplayName === null
+  ) {
+    throw invalidAnalysisRecord();
+  }
+  const outcome =
+    header.resultKind === 'unfinished'
+      ? ({ kind: 'unfinished' } as const)
+      : header.resultKind === 'white_win' || header.resultKind === 'black_win'
+        ? ({
+            kind: 'win',
+            winner: header.resultKind === 'white_win' ? 'white' : 'black',
+          } as const)
+        : header.resultReason === 'stalemate' ||
+            header.resultReason === 'insufficient_material' ||
+            header.resultReason === 'seventy_five_move'
+          ? ({ kind: 'draw', reason: header.resultReason } as const)
+          : undefined;
+  if (outcome === undefined) throw invalidAnalysisRecord();
+  return Object.freeze({
+    playerSide: header.playerSide,
+    outcome: Object.freeze(outcome),
+    policy: Object.freeze({
+      capability: header.policyCapability,
+      providerInstanceId: header.providerInstanceId,
+      providerFingerprint: header.providerFingerprint,
+      providerType: header.providerType,
+      providerDisplayName: header.providerDisplayName,
+    }),
   });
 }
 
@@ -444,11 +544,11 @@ function readSourceLine(
   });
 }
 
-function insertLinearGraph(
+export function insertLinearGraph(
   database: Database.Database,
   itemId: InventoryItemId,
   revisionId: ItemRevisionId,
-  request: PersistAnalysisRecordRequest,
+  request: LinearChessGraphInput,
 ): InsertedGraph {
   const states: ChessState[] = [
     request.root,
@@ -571,7 +671,7 @@ function insertLinearGraph(
   return { rootAnchorId, endAnchorId };
 }
 
-function validateLinearGraph(
+export function validateLinearGraph(
   database: Database.Database,
   itemId: InventoryItemId,
   revisionId: ItemRevisionId,
@@ -945,7 +1045,8 @@ function readContributions(
 }
 
 function analysisRecordOrigin(header: {
-  readonly originMode: 'initial_position' | 'fen' | 'inventory_anchor';
+  readonly originMode:
+    'initial_position' | 'fen' | 'position_setup' | 'inventory_anchor';
   readonly sourceItemId: number | null;
   readonly sourceRevisionId: number | null;
   readonly sourceAnchorId: number | null;

@@ -112,10 +112,16 @@ function inventorySql(withTextQuery: boolean): string {
       LEFT JOIN inventory_analysis_revision AS analysis
         ON analysis.item_id = i.item_id
        AND analysis.revision_id = i.current_revision_id
+      LEFT JOIN inventory_game_revision AS game
+        ON game.item_id = i.item_id
+       AND game.revision_id = i.current_revision_id
       LEFT JOIN chess_anchor AS root_anchor
         ON root_anchor.anchor_kind = 'occurrence'
        AND root_anchor.owner_item_id = i.item_id
-       AND root_anchor.occurrence_id = analysis.root_occurrence_id
+       AND root_anchor.occurrence_id = COALESCE(
+             analysis.root_occurrence_id,
+             game.root_occurrence_id
+           )
       LEFT JOIN chess_anchor AS item_anchor
         ON item_anchor.anchor_kind = 'item'
        AND item_anchor.item_id = i.item_id
