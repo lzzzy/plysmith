@@ -6,7 +6,6 @@ import test, { type TestContext } from 'node:test';
 
 import {
   ConfigurationProblem,
-  fileSha256,
   initializeConfiguration,
   loadCentralConfiguration,
   loadConfiguration,
@@ -44,7 +43,7 @@ test('loads central diagnostics without requiring a persistence provider', async
   assert.ok(Object.isFrozen(central));
 });
 
-test('loads valid Stockfish playout instances and isolates invalid optional providers', async (context) => {
+test('loads Stockfish and Maia playout instances and isolates invalid optional providers', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const initialized = await initializeConfiguration({
     applicationHome,
@@ -52,22 +51,43 @@ test('loads valid Stockfish playout instances and isolates invalid optional prov
   });
   const centralPath = path.join(initialized.activeDirectory, 'plysmith.json');
   const executablePath = path.join(applicationHome, 'stockfish.exe');
+  const weightsPath = path.join(applicationHome, 'maia-1500.pb.gz');
   await writeFile(executablePath, 'fake stockfish', 'utf8');
+  await writeFile(weightsPath, 'fake Maia weights', 'utf8');
   const central = JSON.parse(await readFile(centralPath, 'utf8')) as {
     bindings: { playoutEngines: string[] };
   };
-  central.bindings.playoutEngines = ['stockfish-main', 'broken-engine'];
+  central.bindings.playoutEngines = [
+    'stockfish-main',
+    'maia-1500',
+    'broken-engine',
+  ];
   await writeFile(centralPath, `${JSON.stringify(central)}\n`, 'utf8');
+  await writeFile(
+    path.join(initialized.activeDirectory, 'maia-1500.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      provider: 'maia-chess',
+      displayName: 'Maia 1500',
+      maia: {
+        executablePath,
+        weightsPath,
+        startupTimeoutMs: 30_000,
+        moveTimeoutMs: 30_000,
+        stopTimeoutMs: 1_000,
+        maxOutputBytes: 1_048_576,
+      },
+    })}\n`,
+    'utf8',
+  );
   await writeFile(
     path.join(initialized.activeDirectory, 'stockfish-main.json'),
     `${JSON.stringify({
       schemaVersion: 1,
       provider: 'stockfish-uci',
-      enabled: true,
       displayName: 'Stockfish',
       stockfish: {
         executablePath,
-        executableSha256: await fileSha256(executablePath),
         arguments: [],
         threads: 1,
         hashMb: 64,
@@ -92,14 +112,20 @@ test('loads valid Stockfish playout instances and isolates invalid optional prov
     runtime.playoutEngines.map((entry) => [entry.instanceId, entry.status]),
     [
       ['stockfish-main', 'available'],
+      ['maia-1500', 'available'],
       ['broken-engine', 'unavailable'],
     ],
   );
   assert.ok(Object.isFrozen(runtime.playoutEngines));
+  assert.equal(runtime.playoutEngines[1]?.provider, 'maia-chess');
 
   await writeFile(executablePath, 'replaced stockfish', 'utf8');
   const changedBinary = await loadConfiguration(applicationHome);
-  assert.equal(changedBinary.playoutEngines[0]?.status, 'unavailable');
+  assert.equal(changedBinary.playoutEngines[0]?.status, 'available');
+
+  await writeFile(weightsPath, 'replaced Maia weights', 'utf8');
+  const changedWeights = await loadConfiguration(applicationHome);
+  assert.equal(changedWeights.playoutEngines[1]?.status, 'available');
 });
 
 test('reports a missing active configuration without seeding it', async (context) => {

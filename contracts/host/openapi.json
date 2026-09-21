@@ -515,6 +515,12 @@
                           },
                           {
                             "enum": [
+                              "threefold_repetition"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
                               "seventy_five_move"
                             ],
                             "type": "string"
@@ -562,45 +568,7 @@
                 ]
               },
               "policy": {
-                "additionalProperties": false,
-                "properties": {
-                  "capability": {
-                    "enum": [
-                      "best_move"
-                    ],
-                    "type": "string"
-                  },
-                  "providerDisplayName": {
-                    "maxLength": 160,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "providerFingerprint": {
-                    "maxLength": 160,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "providerInstanceId": {
-                    "maxLength": 160,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9._:-]+$",
-                    "type": "string"
-                  },
-                  "providerType": {
-                    "maxLength": 160,
-                    "minLength": 1,
-                    "pattern": "^[A-Za-z0-9._:-]+$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "capability",
-                  "providerInstanceId",
-                  "providerFingerprint",
-                  "providerType",
-                  "providerDisplayName"
-                ],
-                "type": "object"
+                "$ref": "#/components/schemas/MovePolicyBinding"
               }
             },
             "required": [
@@ -2492,19 +2460,6 @@
         ],
         "type": "object"
       },
-      "DisableEngineProviderConfigurationBody": {
-        "additionalProperties": false,
-        "properties": {
-          "expectedConfigurationRevision": {
-            "pattern": "^sha256:[a-f0-9]{64}$",
-            "type": "string"
-          }
-        },
-        "required": [
-          "expectedConfigurationRevision"
-        ],
-        "type": "object"
-      },
       "DiscardPlayoutResult": {
         "additionalProperties": false,
         "properties": {
@@ -2520,9 +2475,105 @@
         "type": "object"
       },
       "EngineProviderConfiguration": {
-        "allOf": [
+        "anyOf": [
           {
-            "$ref": "#/components/schemas/EngineProviderConfigurationInput"
+            "additionalProperties": false,
+            "properties": {
+              "arguments": {
+                "items": {
+                  "maxLength": 1024,
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              "configurationRevision": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              },
+              "displayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "effectiveFingerprint": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "executablePath": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              "hashMb": {
+                "maximum": 65536,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "instanceId": {
+                "maxLength": 80,
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "type": "string"
+              },
+              "maxOutputBytes": {
+                "maximum": 16777216,
+                "minimum": 1024,
+                "type": "integer"
+              },
+              "moveTimeMs": {
+                "maximum": 600000,
+                "minimum": 10,
+                "type": "integer"
+              },
+              "moveTimeoutMs": {
+                "maximum": 660000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "providerType": {
+                "enum": [
+                  "stockfish-uci"
+                ],
+                "type": "string"
+              },
+              "restartRequired": {
+                "type": "boolean"
+              },
+              "startupTimeoutMs": {
+                "maximum": 60000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "stopTimeoutMs": {
+                "maximum": 30000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "threads": {
+                "maximum": 256,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "instanceId",
+              "displayName",
+              "executablePath",
+              "startupTimeoutMs",
+              "stopTimeoutMs",
+              "maxOutputBytes",
+              "providerType",
+              "moveTimeoutMs",
+              "arguments",
+              "threads",
+              "hashMb",
+              "moveTimeMs",
+              "configurationRevision",
+              "effectiveFingerprint",
+              "restartRequired"
+            ],
+            "type": "object"
           },
           {
             "additionalProperties": false,
@@ -2531,16 +2582,71 @@
                 "pattern": "^sha256:[a-f0-9]{64}$",
                 "type": "string"
               },
+              "displayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
               "effectiveFingerprint": {
                 "maxLength": 160,
                 "minLength": 1,
                 "type": "string"
               },
+              "executablePath": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
+              },
+              "instanceId": {
+                "maxLength": 80,
+                "pattern": "^[a-z0-9][a-z0-9-]*$",
+                "type": "string"
+              },
+              "maxOutputBytes": {
+                "maximum": 16777216,
+                "minimum": 1024,
+                "type": "integer"
+              },
+              "moveTimeoutMs": {
+                "maximum": 60000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "providerType": {
+                "enum": [
+                  "maia-chess"
+                ],
+                "type": "string"
+              },
               "restartRequired": {
                 "type": "boolean"
+              },
+              "startupTimeoutMs": {
+                "maximum": 60000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "stopTimeoutMs": {
+                "maximum": 30000,
+                "minimum": 100,
+                "type": "integer"
+              },
+              "weightsPath": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "type": "string"
               }
             },
             "required": [
+              "instanceId",
+              "displayName",
+              "executablePath",
+              "startupTimeoutMs",
+              "stopTimeoutMs",
+              "maxOutputBytes",
+              "providerType",
+              "moveTimeoutMs",
+              "weightsPath",
               "configurationRevision",
               "effectiveFingerprint",
               "restartRequired"
@@ -2550,92 +2656,14 @@
         ]
       },
       "EngineProviderConfigurationInput": {
-        "additionalProperties": false,
-        "properties": {
-          "arguments": {
-            "items": {
-              "maxLength": 1024,
-              "type": "string"
-            },
-            "maxItems": 32,
-            "type": "array"
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/StockfishUciEngineProviderConfigurationInput"
           },
-          "displayName": {
-            "maxLength": 160,
-            "minLength": 1,
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "executablePath": {
-            "maxLength": 1024,
-            "minLength": 1,
-            "type": "string"
-          },
-          "hashMb": {
-            "maximum": 65536,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "instanceId": {
-            "maxLength": 80,
-            "pattern": "^[a-z0-9][a-z0-9-]*$",
-            "type": "string"
-          },
-          "maxOutputBytes": {
-            "maximum": 16777216,
-            "minimum": 1024,
-            "type": "integer"
-          },
-          "moveTimeMs": {
-            "maximum": 600000,
-            "minimum": 10,
-            "type": "integer"
-          },
-          "moveTimeoutMs": {
-            "maximum": 660000,
-            "minimum": 100,
-            "type": "integer"
-          },
-          "providerType": {
-            "enum": [
-              "stockfish-uci"
-            ],
-            "type": "string"
-          },
-          "startupTimeoutMs": {
-            "maximum": 60000,
-            "minimum": 100,
-            "type": "integer"
-          },
-          "stopTimeoutMs": {
-            "maximum": 30000,
-            "minimum": 100,
-            "type": "integer"
-          },
-          "threads": {
-            "maximum": 256,
-            "minimum": 1,
-            "type": "integer"
+          {
+            "$ref": "#/components/schemas/MaiaChessEngineProviderConfigurationInput"
           }
-        },
-        "required": [
-          "instanceId",
-          "providerType",
-          "displayName",
-          "enabled",
-          "executablePath",
-          "arguments",
-          "threads",
-          "hashMb",
-          "moveTimeMs",
-          "startupTimeoutMs",
-          "moveTimeoutMs",
-          "stopTimeoutMs",
-          "maxOutputBytes"
-        ],
-        "type": "object"
+        ]
       },
       "EngineProviderConfigurationPreview": {
         "additionalProperties": false,
@@ -2646,6 +2674,12 @@
                 {
                   "enum": [
                     "executable_not_found"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "weights_not_found"
                   ],
                   "type": "string"
                 },
@@ -2845,6 +2879,71 @@
             "$ref": "#/components/schemas/ReplayGapEvent"
           }
         ]
+      },
+      "HumanMovePolicyProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "historyMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known_position_history"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "position_only"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "modelName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "reproducibility": {
+            "anyOf": [
+              {
+                "enum": [
+                  "deterministic"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "stochastic"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "selectionMode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "most_likely"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "sampled"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "modelName",
+          "selectionMode",
+          "historyMode",
+          "reproducibility"
+        ],
+        "type": "object"
       },
       "InventoryItemCreatedEvent": {
         "additionalProperties": false,
@@ -3567,6 +3666,69 @@
         ],
         "type": "object"
       },
+      "MaiaChessEngineProviderConfigurationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "executablePath": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "instanceId": {
+            "maxLength": 80,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxOutputBytes": {
+            "maximum": 16777216,
+            "minimum": 1024,
+            "type": "integer"
+          },
+          "moveTimeoutMs": {
+            "maximum": 60000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "providerType": {
+            "enum": [
+              "maia-chess"
+            ],
+            "type": "string"
+          },
+          "startupTimeoutMs": {
+            "maximum": 60000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "stopTimeoutMs": {
+            "maximum": 30000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "weightsPath": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "instanceId",
+          "displayName",
+          "executablePath",
+          "startupTimeoutMs",
+          "stopTimeoutMs",
+          "maxOutputBytes",
+          "providerType",
+          "moveTimeoutMs",
+          "weightsPath"
+        ],
+        "type": "object"
+      },
       "ManagementResume": {
         "additionalProperties": false,
         "properties": {
@@ -3611,15 +3773,115 @@
         ],
         "type": "object"
       },
+      "MovePolicyBinding": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "capability": {
+                "enum": [
+                  "best_move"
+                ],
+                "type": "string"
+              },
+              "providerDisplayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerFingerprint": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerInstanceId": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              "providerType": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "providerInstanceId",
+              "providerFingerprint",
+              "providerType",
+              "providerDisplayName",
+              "capability"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "capability": {
+                "enum": [
+                  "human_profile"
+                ],
+                "type": "string"
+              },
+              "profile": {
+                "$ref": "#/components/schemas/HumanMovePolicyProfile"
+              },
+              "providerDisplayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerFingerprint": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerInstanceId": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              "providerType": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "providerInstanceId",
+              "providerFingerprint",
+              "providerType",
+              "providerDisplayName",
+              "capability",
+              "profile"
+            ],
+            "type": "object"
+          }
+        ]
+      },
       "MovePolicyProvider": {
         "additionalProperties": false,
         "properties": {
           "capabilities": {
             "items": {
-              "enum": [
-                "best_move"
-              ],
-              "type": "string"
+              "anyOf": [
+                {
+                  "enum": [
+                    "best_move"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "human_profile"
+                  ],
+                  "type": "string"
+                }
+              ]
             },
             "maxItems": 1,
             "type": "array",
@@ -3646,23 +3908,36 @@
             "minLength": 1,
             "type": "string"
           },
+          "profile": {
+            "$ref": "#/components/schemas/HumanMovePolicyProfile"
+          },
           "providerType": {
             "maxLength": 160,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9._:-]+$",
             "type": "string"
           },
-          "status": {
+          "readiness": {
             "anyOf": [
               {
                 "enum": [
-                  "available"
+                  "cold"
                 ],
                 "type": "string"
               },
               {
                 "enum": [
-                  "disabled"
+                  "ready"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available"
                 ],
                 "type": "string"
               },
@@ -3681,6 +3956,7 @@
           "displayName",
           "fingerprint",
           "capabilities",
+          "readiness",
           "status"
         ],
         "type": "object"
@@ -3893,45 +4169,7 @@
             ]
           },
           "policy": {
-            "additionalProperties": false,
-            "properties": {
-              "capability": {
-                "enum": [
-                  "best_move"
-                ],
-                "type": "string"
-              },
-              "providerDisplayName": {
-                "maxLength": 160,
-                "minLength": 1,
-                "type": "string"
-              },
-              "providerFingerprint": {
-                "maxLength": 160,
-                "minLength": 1,
-                "type": "string"
-              },
-              "providerInstanceId": {
-                "maxLength": 160,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9._:-]+$",
-                "type": "string"
-              },
-              "providerType": {
-                "maxLength": 160,
-                "minLength": 1,
-                "pattern": "^[A-Za-z0-9._:-]+$",
-                "type": "string"
-              }
-            },
-            "required": [
-              "capability",
-              "providerInstanceId",
-              "providerFingerprint",
-              "providerType",
-              "providerDisplayName"
-            ],
-            "type": "object"
+            "$ref": "#/components/schemas/MovePolicyBinding"
           },
           "root": {
             "$ref": "#/components/schemas/ChessState"
@@ -4152,6 +4390,12 @@
                           },
                           {
                             "enum": [
+                              "threefold_repetition"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
                               "seventy_five_move"
                             ],
                             "type": "string"
@@ -4257,6 +4501,12 @@
                           },
                           {
                             "enum": [
+                              "threefold_repetition"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
                               "seventy_five_move"
                             ],
                             "type": "string"
@@ -4304,6 +4554,12 @@
                   {
                     "enum": [
                       "insufficient_material"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "threefold_repetition"
                     ],
                     "type": "string"
                   },
@@ -4488,6 +4744,19 @@
           "contextId",
           "itemId",
           "dataRevision"
+        ],
+        "type": "object"
+      },
+      "RemoveEngineProviderConfigurationBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedConfigurationRevision": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedConfigurationRevision"
         ],
         "type": "object"
       },
@@ -5265,6 +5534,22 @@
       "StartPlayoutBody": {
         "additionalProperties": false,
         "properties": {
+          "capability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "best_move"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "human_profile"
+                ],
+                "type": "string"
+              }
+            ]
+          },
           "opening": {
             "anyOf": [
               {
@@ -5554,7 +5839,92 @@
           "scope",
           "start",
           "providerInstanceId",
+          "capability",
           "opening"
+        ],
+        "type": "object"
+      },
+      "StockfishUciEngineProviderConfigurationInput": {
+        "additionalProperties": false,
+        "properties": {
+          "arguments": {
+            "items": {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "executablePath": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "type": "string"
+          },
+          "hashMb": {
+            "maximum": 65536,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "instanceId": {
+            "maxLength": 80,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxOutputBytes": {
+            "maximum": 16777216,
+            "minimum": 1024,
+            "type": "integer"
+          },
+          "moveTimeMs": {
+            "maximum": 600000,
+            "minimum": 10,
+            "type": "integer"
+          },
+          "moveTimeoutMs": {
+            "maximum": 660000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "providerType": {
+            "enum": [
+              "stockfish-uci"
+            ],
+            "type": "string"
+          },
+          "startupTimeoutMs": {
+            "maximum": 60000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "stopTimeoutMs": {
+            "maximum": 30000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "threads": {
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instanceId",
+          "displayName",
+          "executablePath",
+          "startupTimeoutMs",
+          "stopTimeoutMs",
+          "maxOutputBytes",
+          "providerType",
+          "moveTimeoutMs",
+          "arguments",
+          "threads",
+          "hashMb",
+          "moveTimeMs"
         ],
         "type": "object"
       },
@@ -9166,7 +9536,7 @@
     },
     "/engine-providers/configurations/{instanceId}": {
       "delete": {
-        "operationId": "DisableEngineProviderConfiguration",
+        "operationId": "RemoveEngineProviderConfiguration",
         "parameters": [
           {
             "in": "path",
@@ -11163,6 +11533,22 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "capability": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "best_move"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "human_profile"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
                   "opening": {
                     "anyOf": [
                       {
@@ -11452,6 +11838,7 @@
                   "scope",
                   "start",
                   "providerInstanceId",
+                  "capability",
                   "opening"
                 ],
                 "type": "object"

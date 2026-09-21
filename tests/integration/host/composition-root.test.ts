@@ -9,10 +9,7 @@ import {
   formatHostStartupFailure,
   parseHostPaths,
 } from '../../../app/bootstrap/host/main.ts';
-import {
-  fileSha256,
-  initializeConfiguration,
-} from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
+import { initializeConfiguration } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
 
 const defaultsDirectory = path.resolve('configuration', 'defaults');
 const hostToken = 'composition-root-test-token';
@@ -24,25 +21,42 @@ test('composition root wires the real store and use cases without listening', as
     defaultsDirectory,
   });
   const centralPath = path.join(initialized.activeDirectory, 'plysmith.json');
+  const maiaWeightsPath = path.join(applicationHome, 'maia-1500.pb.gz');
+  await writeFile(maiaWeightsPath, 'fake Maia weights', 'utf8');
   const central = JSON.parse(await readFile(centralPath, 'utf8'));
-  central.bindings.playoutEngines = ['uci-test'];
+  central.bindings.playoutEngines = ['uci-test', 'maia-test'];
   await writeFile(centralPath, `${JSON.stringify(central)}\n`, 'utf8');
   await writeFile(
     path.join(initialized.activeDirectory, 'uci-test.json'),
     `${JSON.stringify({
       schemaVersion: 1,
       provider: 'stockfish-uci',
-      enabled: true,
       displayName: 'UCI-Testanbieter',
       stockfish: {
         executablePath: process.execPath,
-        executableSha256: await fileSha256(process.execPath),
         arguments: [
           path.resolve('tests', 'fixtures', 'uci', 'fake-uci-engine.mjs'),
         ],
         threads: 1,
         hashMb: 16,
         moveTimeMs: 10,
+        startupTimeoutMs: 2_000,
+        moveTimeoutMs: 2_000,
+        stopTimeoutMs: 1_000,
+        maxOutputBytes: 32_768,
+      },
+    })}\n`,
+    'utf8',
+  );
+  await writeFile(
+    path.join(initialized.activeDirectory, 'maia-test.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      provider: 'maia-chess',
+      displayName: 'Maia 1500',
+      maia: {
+        executablePath: process.execPath,
+        weightsPath: maiaWeightsPath,
         startupTimeoutMs: 2_000,
         moveTimeoutMs: 2_000,
         stopTimeoutMs: 1_000,
@@ -113,6 +127,22 @@ test('composition root wires the real store and use cases without listening', as
         displayName: 'UCI-Testanbieter',
         fingerprint: providers.json().providers[0].fingerprint,
         capabilities: ['best_move'],
+        readiness: 'cold',
+        status: 'available',
+      },
+      {
+        instanceId: 'maia-test',
+        providerType: 'maia-chess',
+        displayName: 'Maia 1500',
+        fingerprint: providers.json().providers[1].fingerprint,
+        capabilities: ['human_profile'],
+        profile: {
+          modelName: 'maia-1500.pb.gz',
+          selectionMode: 'most_likely',
+          historyMode: 'known_position_history',
+          reproducibility: 'deterministic',
+        },
+        readiness: 'cold',
         status: 'available',
       },
     ]);
@@ -125,6 +155,7 @@ test('composition root wires the real store and use cases without listening', as
         scope: { kind: 'free' },
         start: { kind: 'initial_position' },
         providerInstanceId: 'uci-test',
+        capability: 'best_move',
         opening: {
           kind: 'user_move',
           move: { kind: 'notation', value: 'e4', locale: 'de-DE' },

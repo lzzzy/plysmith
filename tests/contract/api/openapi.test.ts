@@ -86,7 +86,7 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     [
       '/engine-providers/configurations/{instanceId}',
       'delete',
-      'DisableEngineProviderConfiguration',
+      'RemoveEngineProviderConfiguration',
     ],
     ['/events', 'get', 'SubscribeHostEvents'],
     ['/analysis/workspace', 'get', 'GetAnalysisWorkspace'],

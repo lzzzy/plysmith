@@ -3,7 +3,6 @@ import { ApplicationProblem } from '../problems/application-problem.ts';
 interface EngineProviderConfigurationBase {
   readonly instanceId: string;
   readonly displayName: string;
-  readonly enabled: boolean;
 }
 
 export interface StockfishUciEngineProviderConfigurationInput extends EngineProviderConfigurationBase {
@@ -19,8 +18,19 @@ export interface StockfishUciEngineProviderConfigurationInput extends EngineProv
   readonly maxOutputBytes: number;
 }
 
+export interface MaiaChessEngineProviderConfigurationInput extends EngineProviderConfigurationBase {
+  readonly providerType: 'maia-chess';
+  readonly executablePath: string;
+  readonly weightsPath: string;
+  readonly startupTimeoutMs: number;
+  readonly moveTimeoutMs: number;
+  readonly stopTimeoutMs: number;
+  readonly maxOutputBytes: number;
+}
+
 export type EngineProviderConfigurationInput =
-  StockfishUciEngineProviderConfigurationInput;
+  | StockfishUciEngineProviderConfigurationInput
+  | MaiaChessEngineProviderConfigurationInput;
 
 export type ConfiguredEngineProvider = EngineProviderConfigurationInput & {
   readonly configurationRevision: string;
@@ -34,7 +44,7 @@ export type EngineProviderConfigurationView = ConfiguredEngineProvider & {
 export interface EngineProviderConfigurationPreview {
   readonly valid: boolean;
   readonly issues: readonly (
-    'executable_not_found' | 'configuration_invalid'
+    'executable_not_found' | 'weights_not_found' | 'configuration_invalid'
   )[];
 }
 
@@ -47,7 +57,7 @@ export interface EngineProviderConfigurationRepository {
     readonly input: EngineProviderConfigurationInput;
     readonly expectedConfigurationRevision: string | null;
   }): Promise<ConfiguredEngineProvider>;
-  disable(request: {
+  remove(request: {
     readonly instanceId: string;
     readonly expectedConfigurationRevision: string;
   }): Promise<ConfiguredEngineProvider>;
@@ -138,14 +148,14 @@ export class SaveEngineProviderConfiguration implements SaveEngineProviderConfig
   }
 }
 
-export interface DisableEngineProviderConfigurationUseCase {
+export interface RemoveEngineProviderConfigurationUseCase {
   execute(request: {
     readonly instanceId: string;
     readonly expectedConfigurationRevision: string;
   }): Promise<ConfiguredEngineProvider>;
 }
 
-export class DisableEngineProviderConfiguration implements DisableEngineProviderConfigurationUseCase {
+export class RemoveEngineProviderConfiguration implements RemoveEngineProviderConfigurationUseCase {
   readonly #repository: EngineProviderConfigurationRepository;
 
   constructor(repository: EngineProviderConfigurationRepository) {
@@ -153,9 +163,9 @@ export class DisableEngineProviderConfiguration implements DisableEngineProvider
   }
 
   execute(
-    request: Parameters<EngineProviderConfigurationRepository['disable']>[0],
+    request: Parameters<EngineProviderConfigurationRepository['remove']>[0],
   ): Promise<ConfiguredEngineProvider> {
-    return this.#repository.disable(request);
+    return this.#repository.remove(request);
   }
 }
 

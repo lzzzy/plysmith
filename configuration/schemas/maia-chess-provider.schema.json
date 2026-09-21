@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/stockfish-uci-provider.schema.json",
+  "$id": "https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/maia-chess-provider.schema.json",
   "additionalProperties": false,
   "properties": {
     "displayName": {
@@ -7,47 +7,21 @@
       "minLength": 1,
       "type": "string"
     },
-    "provider": {
-      "const": "stockfish-uci",
-      "type": "string"
-    },
-    "schemaVersion": {
-      "const": 1,
-      "type": "number"
-    },
-    "stockfish": {
+    "maia": {
       "additionalProperties": false,
       "properties": {
-        "arguments": {
-          "items": {
-            "maxLength": 1024,
-            "type": "string"
-          },
-          "maxItems": 32,
-          "type": "array"
-        },
         "executablePath": {
           "maxLength": 1024,
           "minLength": 1,
           "type": "string"
-        },
-        "hashMb": {
-          "maximum": 65536,
-          "minimum": 1,
-          "type": "integer"
         },
         "maxOutputBytes": {
           "maximum": 16777216,
           "minimum": 1024,
           "type": "integer"
         },
-        "moveTimeMs": {
-          "maximum": 600000,
-          "minimum": 10,
-          "type": "integer"
-        },
         "moveTimeoutMs": {
-          "maximum": 660000,
+          "maximum": 60000,
           "minimum": 100,
           "type": "integer"
         },
@@ -61,31 +35,36 @@
           "minimum": 100,
           "type": "integer"
         },
-        "threads": {
-          "maximum": 256,
-          "minimum": 1,
-          "type": "integer"
+        "weightsPath": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string"
         }
       },
       "required": [
         "executablePath",
-        "arguments",
-        "threads",
-        "hashMb",
-        "moveTimeMs",
+        "weightsPath",
         "startupTimeoutMs",
         "moveTimeoutMs",
         "stopTimeoutMs",
         "maxOutputBytes"
       ],
       "type": "object"
+    },
+    "provider": {
+      "const": "maia-chess",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
     }
   },
   "required": [
     "schemaVersion",
     "provider",
     "displayName",
-    "stockfish"
+    "maia"
   ],
   "type": "object"
 }

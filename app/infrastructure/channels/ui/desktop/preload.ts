@@ -5,6 +5,7 @@ import {
   desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
   desktopEngineExecutableChannel,
+  desktopEngineWeightsChannel,
   type DesktopBootstrap,
   type PlysmithDesktopApi,
   type RendererDiagnosticEvent,
@@ -27,6 +28,10 @@ const api: PlysmithDesktopApi = Object.freeze({
   async chooseEngineExecutable(): Promise<string | undefined> {
     const executable = await ipcRenderer.invoke(desktopEngineExecutableChannel);
     return typeof executable === 'string' ? executable : undefined;
+  },
+  async chooseEngineWeights(): Promise<string | undefined> {
+    const weights = await ipcRenderer.invoke(desktopEngineWeightsChannel);
+    return typeof weights === 'string' ? weights : undefined;
   },
   recordDiagnostic(event: RendererDiagnosticEvent): void {
     ipcRenderer.send(desktopDiagnosticsChannel, event);

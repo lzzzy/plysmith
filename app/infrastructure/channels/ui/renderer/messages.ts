@@ -168,6 +168,8 @@ export const messages = {
     'playout.result.draw.stalemate': 'Remis durch Patt',
     'playout.result.draw.insufficient_material':
       'Remis durch unzureichendes Material',
+    'playout.result.draw.threefold_repetition':
+      'Remis durch dreifache Stellungswiederholung',
     'playout.result.draw.seventy_five_move': 'Remis nach 75-Züge-Regel',
     'playout.result.unfinished': 'Unvollständig beendet',
     'side.white': 'Weiß',
@@ -337,20 +339,29 @@ export const messages = {
     'engines.title': 'Schachengine',
     'engines.description':
       'Engine für das Ausspielen konfigurieren. Änderungen werden nach einem Neustart von Plysmith aktiv.',
+    'engines.configuration': 'Konfiguration',
+    'engines.noneConfigured': 'Noch keine Engine konfiguriert',
+    'engines.addStockfish': 'Stockfish hinzufügen',
+    'engines.addMaia': 'Maia Chess hinzufügen',
     'engines.executable': 'Programmdatei',
     'engines.choose': 'Auswählen',
     'engines.displayName': 'Anzeigename',
     'engines.moveTime': 'Rechenzeit je Zug (ms)',
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
+    'engines.maiaWeights': 'Maia-Gewichtedatei',
     'engines.save': 'Engine speichern',
-    'engines.disable': 'Engine deaktivieren',
+    'engines.remove': 'Engine entfernen',
     'engines.restartRequired':
       'Die Änderung ist gespeichert. Starten Sie Plysmith neu, damit sie wirksam wird.',
     'engines.savedPendingRestart':
       'Engine-Einstellung gespeichert. Ein Neustart von Plysmith ist erforderlich.',
+    'engines.removedPendingRestart':
+      'Engine entfernt. Starten Sie Plysmith neu, damit die Änderung wirksam wird.',
     'engines.issue.executable_not_found':
       'Die ausgewählte Programmdatei wurde nicht gefunden.',
+    'engines.issue.weights_not_found':
+      'Die ausgewählte Maia-Gewichtedatei wurde nicht gefunden.',
     'engines.issue.configuration_invalid':
       'Die Engine-Einstellungen sind nicht gültig.',
     'diagnostics.description':
@@ -429,6 +440,10 @@ export const messages = {
       'Dieser Zug ist in der aktuellen Stellung nicht erlaubt.',
     'error.invalidMove': 'Der Zug konnte nicht eindeutig gelesen werden.',
     'error.referenceExists': 'Dieses Objekt wird im Context bereits verwendet.',
+    'error.engineTimeout':
+      'Die gewählte Engine hat nicht rechtzeitig geantwortet.',
+    'error.engine':
+      'Die gewählte Engine konnte keinen gültigen Zug liefern. Prüfen Sie ihre Dateien und Einstellungen.',
     'error.generic': 'Die Aktion konnte nicht abgeschlossen werden.',
   },
   'en-GB': {
@@ -598,6 +613,7 @@ export const messages = {
     'playout.result.draw.stalemate': 'Draw by stalemate',
     'playout.result.draw.insufficient_material':
       'Draw by insufficient material',
+    'playout.result.draw.threefold_repetition': 'Draw by threefold repetition',
     'playout.result.draw.seventy_five_move': 'Draw by 75-move rule',
     'playout.result.unfinished': 'Stopped unfinished',
     'side.white': 'White',
@@ -764,20 +780,29 @@ export const messages = {
     'engines.title': 'Chess engine',
     'engines.description':
       'Configure the engine used for playout. Changes become active after restarting Plysmith.',
+    'engines.configuration': 'Configuration',
+    'engines.noneConfigured': 'No engine configured yet',
+    'engines.addStockfish': 'Add Stockfish',
+    'engines.addMaia': 'Add Maia Chess',
     'engines.executable': 'Executable',
     'engines.choose': 'Choose',
     'engines.displayName': 'Display name',
     'engines.moveTime': 'Thinking time per move (ms)',
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
+    'engines.maiaWeights': 'Maia weights file',
     'engines.save': 'Save engine',
-    'engines.disable': 'Disable engine',
+    'engines.remove': 'Remove engine',
     'engines.restartRequired':
       'The change is saved. Restart Plysmith for it to take effect.',
     'engines.savedPendingRestart':
       'Engine settings saved. Plysmith must be restarted.',
+    'engines.removedPendingRestart':
+      'Engine removed. Restart Plysmith for the change to take effect.',
     'engines.issue.executable_not_found':
       'The selected executable could not be found.',
+    'engines.issue.weights_not_found':
+      'The selected Maia weights file could not be found.',
     'engines.issue.configuration_invalid': 'The engine settings are invalid.',
     'diagnostics.description':
       'Local technical logging and redacted diagnostic reports',
@@ -851,6 +876,9 @@ export const messages = {
     'error.illegalMove': 'That move is not legal in the current position.',
     'error.invalidMove': 'The move could not be read unambiguously.',
     'error.referenceExists': 'This record is already used in the context.',
+    'error.engineTimeout': 'The selected engine did not respond in time.',
+    'error.engine':
+      'The selected engine could not provide a valid move. Check its files and settings.',
     'error.generic': 'The action could not be completed.',
   },
 } as const;

@@ -16,13 +16,17 @@ CREATE TABLE playout_draft (
     root_fullmove_number INTEGER NOT NULL CHECK (root_fullmove_number > 0),
     root_history_knowledge TEXT NOT NULL CHECK (root_history_knowledge IN ('complete', 'partial', 'unknown')),
     player_side TEXT NOT NULL CHECK (player_side IN ('white', 'black')),
-    policy_capability TEXT NOT NULL CHECK (policy_capability = 'best_move'),
+    policy_capability TEXT NOT NULL CHECK (policy_capability IN ('best_move', 'human_profile')),
     provider_instance_id TEXT NOT NULL CHECK (length(trim(provider_instance_id)) > 0),
     provider_fingerprint TEXT NOT NULL CHECK (length(trim(provider_fingerprint)) > 0),
     provider_type TEXT NOT NULL CHECK (length(trim(provider_type)) > 0),
     provider_display_name TEXT NOT NULL CHECK (length(trim(provider_display_name)) > 0),
+    profile_model_name TEXT,
+    profile_selection_mode TEXT CHECK (profile_selection_mode IN ('most_likely', 'sampled')),
+    profile_history_mode TEXT CHECK (profile_history_mode IN ('known_position_history', 'position_only')),
+    profile_reproducibility TEXT CHECK (profile_reproducibility IN ('deterministic', 'stochastic')),
     status_kind TEXT NOT NULL CHECK (status_kind IN ('active', 'awaiting_policy', 'paused', 'stopped', 'terminal')),
-    terminal_reason TEXT CHECK (terminal_reason IN ('checkmate', 'stalemate', 'insufficient_material', 'seventy_five_move')),
+    terminal_reason TEXT CHECK (terminal_reason IN ('checkmate', 'stalemate', 'insufficient_material', 'threefold_repetition', 'seventy_five_move')),
     outcome_kind TEXT CHECK (outcome_kind IN ('win', 'draw', 'unfinished')),
     winner_side TEXT CHECK (winner_side IN ('white', 'black')),
     draft_revision INTEGER NOT NULL CHECK (draft_revision > 0),
@@ -43,6 +47,10 @@ CREATE TABLE playout_draft (
         (source_display_name IS NOT NULL AND source_root_position_id IS NOT NULL AND source_root_halfmove_clock IS NOT NULL AND source_root_fullmove_number IS NOT NULL AND source_root_history_knowledge IS NOT NULL)
     ),
     CHECK ((status_kind = 'awaiting_policy') = (pending_decision_id IS NOT NULL)),
+    CHECK (
+        (policy_capability = 'best_move' AND profile_model_name IS NULL AND profile_selection_mode IS NULL AND profile_history_mode IS NULL AND profile_reproducibility IS NULL) OR
+        (policy_capability = 'human_profile' AND profile_model_name IS NOT NULL AND length(trim(profile_model_name)) BETWEEN 1 AND 160 AND profile_selection_mode IS NOT NULL AND profile_history_mode IS NOT NULL AND profile_reproducibility IS NOT NULL)
+    ),
     CHECK (
         (status_kind IN ('active', 'awaiting_policy', 'paused') AND terminal_reason IS NULL AND outcome_kind IS NULL AND winner_side IS NULL) OR
         (status_kind = 'stopped' AND terminal_reason IS NULL AND outcome_kind = 'unfinished' AND winner_side IS NULL) OR
@@ -112,16 +120,24 @@ CREATE TABLE inventory_game_revision (
     origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'position_setup', 'inventory_anchor')),
     player_side TEXT NOT NULL CHECK (player_side IN ('white', 'black')),
     result_kind TEXT NOT NULL CHECK (result_kind IN ('white_win', 'black_win', 'draw', 'unfinished')),
-    result_reason TEXT CHECK (result_reason IN ('checkmate', 'stalemate', 'insufficient_material', 'seventy_five_move')),
-    policy_capability TEXT NOT NULL CHECK (policy_capability = 'best_move'),
+    result_reason TEXT CHECK (result_reason IN ('checkmate', 'stalemate', 'insufficient_material', 'threefold_repetition', 'seventy_five_move')),
+    policy_capability TEXT NOT NULL CHECK (policy_capability IN ('best_move', 'human_profile')),
     provider_instance_id TEXT NOT NULL CHECK (length(trim(provider_instance_id)) > 0),
     provider_fingerprint TEXT NOT NULL CHECK (length(trim(provider_fingerprint)) > 0),
     provider_type TEXT NOT NULL CHECK (length(trim(provider_type)) > 0),
     provider_display_name TEXT NOT NULL CHECK (length(trim(provider_display_name)) > 0),
+    profile_model_name TEXT,
+    profile_selection_mode TEXT CHECK (profile_selection_mode IN ('most_likely', 'sampled')),
+    profile_history_mode TEXT CHECK (profile_history_mode IN ('known_position_history', 'position_only')),
+    profile_reproducibility TEXT CHECK (profile_reproducibility IN ('deterministic', 'stochastic')),
     CHECK (
         (result_kind IN ('white_win', 'black_win') AND result_reason = 'checkmate') OR
-        (result_kind = 'draw' AND result_reason IN ('stalemate', 'insufficient_material', 'seventy_five_move')) OR
+        (result_kind = 'draw' AND result_reason IN ('stalemate', 'insufficient_material', 'threefold_repetition', 'seventy_five_move')) OR
         (result_kind = 'unfinished' AND result_reason IS NULL)
+    ),
+    CHECK (
+        (policy_capability = 'best_move' AND profile_model_name IS NULL AND profile_selection_mode IS NULL AND profile_history_mode IS NULL AND profile_reproducibility IS NULL) OR
+        (policy_capability = 'human_profile' AND profile_model_name IS NOT NULL AND length(trim(profile_model_name)) BETWEEN 1 AND 160 AND profile_selection_mode IS NOT NULL AND profile_history_mode IS NOT NULL AND profile_reproducibility IS NOT NULL)
     ),
     UNIQUE (item_id, revision_id),
     FOREIGN KEY (item_id, revision_id) REFERENCES item_revision (item_id, revision_id) ON DELETE RESTRICT,

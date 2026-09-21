@@ -214,6 +214,7 @@ test(
                   displayName: 'Stockfish',
                   fingerprint: 'sha256:engine-main',
                   capabilities: ['best_move'],
+                  readiness: 'cold',
                   status: 'available',
                 },
               ],
@@ -271,6 +272,7 @@ test(
       scope,
       start: { kind: 'initial_position' as const },
       providerInstanceId: 'engine-main',
+      capability: 'best_move' as const,
       opening: { kind: 'provider_move' as const },
     };
 

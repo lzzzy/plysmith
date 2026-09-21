@@ -202,7 +202,7 @@ export interface paths {
         readonly get?: never;
         readonly put: operations["SaveEngineProviderConfiguration"];
         readonly post?: never;
-        readonly delete: operations["DisableEngineProviderConfiguration"];
+        readonly delete: operations["RemoveEngineProviderConfiguration"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -739,20 +739,13 @@ export interface components {
                 } | {
                     /** @enum {string} */
                     readonly kind: "draw";
-                    readonly reason: "stalemate" | "insufficient_material" | "seventy_five_move";
+                    readonly reason: "stalemate" | "insufficient_material" | "threefold_repetition" | "seventy_five_move";
                 } | {
                     /** @enum {string} */
                     readonly kind: "unfinished";
                 };
                 readonly playerSide: "white" | "black";
-                readonly policy: {
-                    /** @enum {string} */
-                    readonly capability: "best_move";
-                    readonly providerDisplayName: string;
-                    readonly providerFingerprint: string;
-                    readonly providerInstanceId: string;
-                    readonly providerType: string;
-                };
+                readonly policy: components["schemas"]["MovePolicyBinding"];
             };
             readonly historical: boolean;
             readonly itemId: string;
@@ -1047,21 +1040,14 @@ export interface components {
             readonly configuredLevel: components["schemas"]["DiagnosticLogLevel"];
             readonly restartRequired: boolean;
         };
-        readonly DisableEngineProviderConfigurationBody: {
-            readonly expectedConfigurationRevision: string;
-        };
         readonly DiscardPlayoutResult: {
             readonly dataRevision: number;
         };
-        readonly EngineProviderConfiguration: components["schemas"]["EngineProviderConfigurationInput"] & {
-            readonly configurationRevision: string;
-            readonly effectiveFingerprint: string;
-            readonly restartRequired: boolean;
-        };
-        readonly EngineProviderConfigurationInput: {
+        readonly EngineProviderConfiguration: {
             readonly arguments: readonly string[];
+            readonly configurationRevision: string;
             readonly displayName: string;
-            readonly enabled: boolean;
+            readonly effectiveFingerprint: string;
             readonly executablePath: string;
             readonly hashMb: number;
             readonly instanceId: string;
@@ -1070,12 +1056,28 @@ export interface components {
             readonly moveTimeoutMs: number;
             /** @enum {string} */
             readonly providerType: "stockfish-uci";
+            readonly restartRequired: boolean;
             readonly startupTimeoutMs: number;
             readonly stopTimeoutMs: number;
             readonly threads: number;
+        } | {
+            readonly configurationRevision: string;
+            readonly displayName: string;
+            readonly effectiveFingerprint: string;
+            readonly executablePath: string;
+            readonly instanceId: string;
+            readonly maxOutputBytes: number;
+            readonly moveTimeoutMs: number;
+            /** @enum {string} */
+            readonly providerType: "maia-chess";
+            readonly restartRequired: boolean;
+            readonly startupTimeoutMs: number;
+            readonly stopTimeoutMs: number;
+            readonly weightsPath: string;
         };
+        readonly EngineProviderConfigurationInput: components["schemas"]["StockfishUciEngineProviderConfigurationInput"] | components["schemas"]["MaiaChessEngineProviderConfigurationInput"];
         readonly EngineProviderConfigurationPreview: {
-            readonly issues: readonly ("executable_not_found" | "configuration_invalid")[];
+            readonly issues: readonly ("executable_not_found" | "weights_not_found" | "configuration_invalid")[];
             readonly valid: boolean;
         };
         readonly EngineProviderInstanceParams: {
@@ -1100,6 +1102,12 @@ export interface components {
         };
         readonly GetPlayoutResult: components["schemas"]["PlayoutResult"] | null;
         readonly HostEvent: components["schemas"]["UiLanguageChangedEvent"] | components["schemas"]["AnalysisScratchChangedEvent"] | components["schemas"]["AnalysisContributionCreatedEvent"] | components["schemas"]["AnalysisContributionChangedEvent"] | components["schemas"]["InventoryItemCreatedEvent"] | components["schemas"]["InventoryRevisionSavedEvent"] | components["schemas"]["PlayoutChangedEvent"] | components["schemas"]["WorkspaceRevisionImpactChangedEvent"] | components["schemas"]["WorkspaceContextCreatedEvent"] | components["schemas"]["WorkspaceReferenceAddedEvent"] | components["schemas"]["WorkspaceItemRemovedEvent"] | components["schemas"]["WorkspaceResumeUpdatedEvent"] | components["schemas"]["ReplayGapEvent"];
+        readonly HumanMovePolicyProfile: {
+            readonly historyMode: "known_position_history" | "position_only";
+            readonly modelName: string;
+            readonly reproducibility: "deterministic" | "stochastic";
+            readonly selectionMode: "most_likely" | "sampled";
+        };
         readonly InventoryItemCreatedEvent: {
             readonly correlationId: string;
             readonly dataRevision: number;
@@ -1225,6 +1233,18 @@ export interface components {
             readonly dataRevision: number;
             readonly nextCursor?: string;
         };
+        readonly MaiaChessEngineProviderConfigurationInput: {
+            readonly displayName: string;
+            readonly executablePath: string;
+            readonly instanceId: string;
+            readonly maxOutputBytes: number;
+            readonly moveTimeoutMs: number;
+            /** @enum {string} */
+            readonly providerType: "maia-chess";
+            readonly startupTimeoutMs: number;
+            readonly stopTimeoutMs: number;
+            readonly weightsPath: string;
+        };
         readonly ManagementResume: {
             readonly presentation: "list" | "atlas";
             readonly resumeVersion: number;
@@ -1232,14 +1252,32 @@ export interface components {
             readonly selectedItemId?: string;
             readonly updatedAt: string;
         };
+        readonly MovePolicyBinding: {
+            /** @enum {string} */
+            readonly capability: "best_move";
+            readonly providerDisplayName: string;
+            readonly providerFingerprint: string;
+            readonly providerInstanceId: string;
+            readonly providerType: string;
+        } | {
+            /** @enum {string} */
+            readonly capability: "human_profile";
+            readonly profile: components["schemas"]["HumanMovePolicyProfile"];
+            readonly providerDisplayName: string;
+            readonly providerFingerprint: string;
+            readonly providerInstanceId: string;
+            readonly providerType: string;
+        };
         readonly MovePolicyProvider: {
-            readonly capabilities: readonly "best_move"[];
+            readonly capabilities: readonly ("best_move" | "human_profile")[];
             readonly displayName: string;
             readonly fingerprint: string;
             readonly instanceId: string;
             readonly problemCode?: string;
+            readonly profile?: components["schemas"]["HumanMovePolicyProfile"];
             readonly providerType: string;
-            readonly status: "available" | "disabled" | "unavailable";
+            readonly readiness: "cold" | "ready";
+            readonly status: "available" | "unavailable";
         };
         readonly PageQuery: {
             readonly cursor?: string;
@@ -1282,14 +1320,7 @@ export interface components {
             readonly draftRevision: number;
             readonly origin: components["schemas"]["AnalysisOrigin"];
             readonly playerSide: "white" | "black";
-            readonly policy: {
-                /** @enum {string} */
-                readonly capability: "best_move";
-                readonly providerDisplayName: string;
-                readonly providerFingerprint: string;
-                readonly providerInstanceId: string;
-                readonly providerType: string;
-            };
+            readonly policy: components["schemas"]["MovePolicyBinding"];
             readonly root: components["schemas"]["ChessState"];
             readonly sourcePath?: components["schemas"]["PlayoutSourcePath"];
             readonly status: components["schemas"]["PlayoutStatus"];
@@ -1329,7 +1360,7 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "draw";
-                readonly reason: "stalemate" | "insufficient_material" | "seventy_five_move";
+                readonly reason: "stalemate" | "insufficient_material" | "threefold_repetition" | "seventy_five_move";
             } | {
                 /** @enum {string} */
                 readonly kind: "unfinished";
@@ -1344,12 +1375,12 @@ export interface components {
             } | {
                 /** @enum {string} */
                 readonly kind: "draw";
-                readonly reason: "stalemate" | "insufficient_material" | "seventy_five_move";
+                readonly reason: "stalemate" | "insufficient_material" | "threefold_repetition" | "seventy_five_move";
             } | {
                 /** @enum {string} */
                 readonly kind: "unfinished";
             };
-            readonly reason: "checkmate" | "stalemate" | "insufficient_material" | "seventy_five_move";
+            readonly reason: "checkmate" | "stalemate" | "insufficient_material" | "threefold_repetition" | "seventy_five_move";
         };
         readonly PlayoutStep: {
             readonly actor: "user" | "provider";
@@ -1384,6 +1415,9 @@ export interface components {
             readonly contextId: string;
             readonly dataRevision: number;
             readonly itemId: string;
+        };
+        readonly RemoveEngineProviderConfigurationBody: {
+            readonly expectedConfigurationRevision: string;
         };
         readonly ReplayGapEvent: {
             readonly correlationId: string;
@@ -1520,6 +1554,7 @@ export interface components {
             readonly scratch: components["schemas"]["AnalysisScratch"];
         };
         readonly StartPlayoutBody: {
+            readonly capability: "best_move" | "human_profile";
             readonly opening: {
                 /** @enum {string} */
                 readonly kind: "user_move";
@@ -1571,6 +1606,21 @@ export interface components {
                 readonly kind: "inventory_anchor";
                 readonly revisionId: string;
             };
+        };
+        readonly StockfishUciEngineProviderConfigurationInput: {
+            readonly arguments: readonly string[];
+            readonly displayName: string;
+            readonly executablePath: string;
+            readonly hashMb: number;
+            readonly instanceId: string;
+            readonly maxOutputBytes: number;
+            readonly moveTimeMs: number;
+            readonly moveTimeoutMs: number;
+            /** @enum {string} */
+            readonly providerType: "stockfish-uci";
+            readonly startupTimeoutMs: number;
+            readonly stopTimeoutMs: number;
+            readonly threads: number;
         };
         readonly SubmitPlayoutMoveBody: {
             readonly draftId: string;
@@ -3413,7 +3463,7 @@ export interface operations {
             };
         };
     };
-    readonly DisableEngineProviderConfiguration: {
+    readonly RemoveEngineProviderConfiguration: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -4630,6 +4680,7 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
+                    readonly capability: "best_move" | "human_profile";
                     readonly opening: {
                         /** @enum {string} */
                         readonly kind: "user_move";

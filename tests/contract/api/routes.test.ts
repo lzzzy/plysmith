@@ -63,6 +63,77 @@ test('engine provider mutation routes bind concrete instance id paths', async (t
   }
 });
 
+test('engine provider configuration read serializes each closed provider variant', async (t) => {
+  const providers = [
+    {
+      instanceId: 'stockfish-main',
+      providerType: 'stockfish-uci' as const,
+      displayName: 'Stockfish',
+      executablePath: 'C:\\engines\\stockfish.exe',
+      arguments: [],
+      threads: 1,
+      hashMb: 64,
+      moveTimeMs: 500,
+      startupTimeoutMs: 5_000,
+      moveTimeoutMs: 10_000,
+      stopTimeoutMs: 1_000,
+      maxOutputBytes: 1_048_576,
+      configurationRevision: `sha256:${'a'.repeat(64)}`,
+      effectiveFingerprint: `sha256:${'b'.repeat(64)}`,
+      restartRequired: false,
+    },
+    {
+      instanceId: 'maia-1500',
+      providerType: 'maia-chess' as const,
+      displayName: 'Maia 1500',
+      executablePath: 'C:\\engines\\lc0.exe',
+      weightsPath: 'C:\\engines\\maia-1500.pb.gz',
+      startupTimeoutMs: 30_000,
+      moveTimeoutMs: 30_000,
+      stopTimeoutMs: 1_000,
+      maxOutputBytes: 1_048_576,
+      configurationRevision: `sha256:${'c'.repeat(64)}`,
+      effectiveFingerprint: `sha256:${'d'.repeat(64)}`,
+      restartRequired: true,
+    },
+  ];
+  const { host } = await buildFixture(t, {
+    getEngineProviderConfigurations: {
+      execute: async () => ({ providers }),
+    },
+  });
+
+  const response = await host.inject({
+    url: '/engine-providers/configurations',
+    headers,
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), { providers });
+});
+
+test('Maia timeout validation matches the persisted provider schema', async (t) => {
+  const { host } = await buildFixture(t);
+  const response = await host.inject({
+    method: 'POST',
+    url: '/engine-providers/configuration-preview',
+    headers,
+    payload: {
+      instanceId: 'maia-main',
+      providerType: 'maia-chess',
+      displayName: 'Maia',
+      executablePath: 'C:\\engines\\lc0.exe',
+      weightsPath: 'C:\\engines\\maia.pb.gz',
+      startupTimeoutMs: 30_000,
+      moveTimeoutMs: 90_000,
+      stopTimeoutMs: 1_000,
+      maxOutputBytes: 1_048_576,
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+});
+
 test('context item removal binds both local ids and returns the removed relationship', async (t) => {
   const received: unknown[] = [];
   const { host } = await buildFixture(t, {
@@ -393,6 +464,17 @@ for (const [code, status] of [
   ['diagnostics.invalid_report_request', 400],
   ['diagnostics.invalid_report_target', 400],
   ['diagnostics.report_target_exists', 409],
+  ['playout.invalid', 400],
+  ['playout.not_found', 404],
+  ['playout.revision_conflict', 409],
+  ['playout.move_policy_unavailable', 409],
+  ['playout.provider_unavailable', 503],
+  ['playout.provider_protocol_error', 502],
+  ['playout.provider_timeout', 504],
+  ['playout.provider_resource_exhausted', 503],
+  ['playout.capability_missing', 409],
+  ['playout.illegal_engine_move', 502],
+  ['playout.interrupted', 409],
   ['analysis.invalid_setup', 400],
   ['inventory.invalid_revision', 400],
   ['inventory.revision_conflict', 409],

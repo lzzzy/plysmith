@@ -138,18 +138,55 @@ test('persists one resumable playout per work scope with revision protection', a
     events: { publish: () => undefined },
   }).execute({ displayName: 'Partietest' });
   const contextScope = contextWorkScope(context.context.contextId);
+  const humanPolicy = {
+    capability: 'human_profile' as const,
+    providerInstanceId: 'maia-1500',
+    providerFingerprint: 'maia-1500:reference',
+    providerType: 'maia-chess',
+    providerDisplayName: 'Maia 1500',
+    profile: {
+      modelName: 'maia-1500.pb.gz',
+      selectionMode: 'most_likely' as const,
+      historyMode: 'known_position_history' as const,
+      reproducibility: 'deterministic' as const,
+    },
+  };
   const contextDraft = await reopened.createPlayout({
     scope: contextScope,
     origin: { kind: 'initial_position' },
     root: rules.initialState(),
     playerSide: 'black',
-    policy,
+    policy: humanPolicy,
     occurredAt: timestamp,
   });
+  assert.deepEqual(
+    (await reopened.readPlayout(contextScope))?.draft.policy,
+    humanPolicy,
+  );
   assert.notEqual(
     (await reopened.readPlayout(contextScope))?.draft.draftId.value,
     recovered?.draft.draftId.value,
   );
+
+  const constraintDatabase = new Database(fixture.databasePath);
+  assert.throws(
+    () =>
+      constraintDatabase
+        .prepare(
+          'UPDATE playout_draft SET profile_model_name = NULL WHERE draft_id = ?',
+        )
+        .run(contextDraft.draft.draftId.value),
+    /CHECK constraint failed/,
+  );
+  const gameSchema = constraintDatabase
+    .prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'inventory_game_revision'",
+    )
+    .pluck()
+    .get() as string;
+  assert.match(gameSchema, /profile_model_name IS NOT NULL/);
+  assert.doesNotMatch(gameSchema, /profile_target_elo/);
+  constraintDatabase.close();
 
   await reopened.discardPlayout({
     scope: free,

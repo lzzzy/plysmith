@@ -1,9 +1,18 @@
 import { createInterface } from 'node:readline';
+import { appendFileSync } from 'node:fs';
 
 const mode = process.argv[2] ?? 'normal';
+const tracePath = process.argv[3]?.startsWith('--')
+  ? undefined
+  : process.argv[3];
 const input = createInterface({ input: process.stdin });
 
+if (tracePath !== undefined) {
+  appendFileSync(tracePath, `argv ${process.argv.slice(4).join(' ')}\n`, 'utf8');
+}
+
 input.on('line', (line) => {
+  if (tracePath !== undefined) appendFileSync(tracePath, `${line}\n`, 'utf8');
   if (line === 'uci') {
     process.stdout.write('id name Plysmith Fake UCI\n');
     if (mode !== 'missing-option') {
@@ -17,7 +26,7 @@ input.on('line', (line) => {
     process.stdout.write('readyok\n');
     return;
   }
-  if (line.startsWith('go ')) {
+  if (line === 'go' || line.startsWith('go ')) {
     if (mode === 'crash') process.exit(3);
     if (mode === 'timeout') return;
     if (mode === 'flood') {

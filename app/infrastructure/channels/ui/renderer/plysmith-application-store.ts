@@ -118,7 +118,7 @@ export type ApplicationCommand =
   | 'discard_playout'
   | 'preview_engine_provider'
   | 'save_engine_provider'
-  | 'disable_engine_provider';
+  | 'remove_engine_provider';
 
 export interface PlysmithApplicationClient {
   getSystemStatus(): Promise<SystemStatusDto>;
@@ -237,7 +237,7 @@ export interface PlysmithApplicationClient {
       readonly expectedConfigurationRevision: string | null;
     },
   ): Promise<EngineProviderConfigurationDto>;
-  disableEngineProviderConfiguration(
+  removeEngineProviderConfiguration(
     instanceId: string,
     request: { readonly expectedConfigurationRevision: string },
   ): Promise<EngineProviderConfigurationDto>;
@@ -254,6 +254,7 @@ export interface PlysmithApplicationStoreOptions {
     suggestedFileName: string,
   ) => Promise<string | undefined>;
   readonly chooseEngineExecutable?: () => Promise<string | undefined>;
+  readonly chooseEngineWeights?: () => Promise<string | undefined>;
   readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
@@ -442,6 +443,8 @@ export class PlysmithApplicationStore {
     }
     if (lifecycle !== this.#lifecycle || this.#events !== events) return;
     await this.refresh();
+    if (lifecycle !== this.#lifecycle) return;
+    if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
   }
 
   async refresh(): Promise<void> {
@@ -815,7 +818,12 @@ export class PlysmithApplicationStore {
     opening: StartPlayoutRequestDto['opening'],
   ): Promise<boolean> {
     const start = this.#playoutStart;
-    if (start === undefined) return false;
+    const state = this.#readyState();
+    const provider = state?.playoutProviders.providers.find(
+      (candidate) => candidate.instanceId === providerInstanceId,
+    );
+    const capability = provider?.capabilities[0];
+    if (start === undefined || capability === undefined) return false;
     const result = await this.#runCommand('start_playout', (client) =>
       client.startPlayout({
         scope: this.#scope,
@@ -833,6 +841,7 @@ export class PlysmithApplicationStore {
               },
             }),
         providerInstanceId,
+        capability,
         opening,
       }),
     );
@@ -2021,6 +2030,16 @@ export class PlysmithApplicationStore {
     }
   }
 
+  async chooseEngineWeights(): Promise<string | undefined> {
+    if (this.#busyCommand !== undefined) return undefined;
+    try {
+      return await this.#options.chooseEngineWeights?.();
+    } catch {
+      this.#setReadyError('configuration.engine_picker_unavailable');
+      return undefined;
+    }
+  }
+
   async previewEngineProviderConfiguration(
     input: EngineProviderConfigurationInputDto,
   ): Promise<EngineProviderConfigurationPreviewDto | undefined> {
@@ -2053,19 +2072,19 @@ export class PlysmithApplicationStore {
     return true;
   }
 
-  async disableEngineProviderConfiguration(
+  async removeEngineProviderConfiguration(
     provider: EngineProviderConfigurationDto,
   ): Promise<boolean> {
     const result = await this.#runCommand(
-      'disable_engine_provider',
+      'remove_engine_provider',
       (client) =>
-        client.disableEngineProviderConfiguration(provider.instanceId, {
+        client.removeEngineProviderConfiguration(provider.instanceId, {
           expectedConfigurationRevision: provider.configurationRevision,
         }),
       false,
     );
     if (result === undefined) return false;
-    this.#announcement = 'engines.savedPendingRestart';
+    this.#announcement = 'engines.removedPendingRestart';
     await this.refresh();
     this.#finishCommand();
     return true;

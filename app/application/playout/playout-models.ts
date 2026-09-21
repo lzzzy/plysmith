@@ -1,6 +1,7 @@
 import type { AnalysisSetup } from '../../domain/chess_graph/index.ts';
 import type {
   MovePolicyBinding,
+  MovePolicyCapability,
   PlayoutDraft,
   PlayoutOrigin,
   PlayoutOutcome,
@@ -39,6 +40,7 @@ export interface StartPlayoutRequest {
     readonly moves: readonly MoveInput[];
   };
   readonly providerInstanceId: string;
+  readonly capability: MovePolicyCapability;
   readonly opening:
     | { readonly kind: 'user_move'; readonly move: MoveInput }
     | { readonly kind: 'provider_move' };

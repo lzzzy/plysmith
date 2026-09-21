@@ -3,6 +3,7 @@ import type {
   ChessState,
 } from '../../domain/chess_graph/index.ts';
 import type {
+  HumanMovePolicyProfile,
   MovePolicyBinding,
   MovePolicyCapability,
 } from '../../domain/playout/index.ts';
@@ -46,7 +47,9 @@ export interface MovePolicyProviderDescriptor {
   readonly displayName: string;
   readonly fingerprint: string;
   readonly capabilities: readonly MovePolicyCapability[];
-  readonly status: 'available' | 'disabled' | 'unavailable';
+  readonly profile?: HumanMovePolicyProfile;
+  readonly readiness: 'cold' | 'ready';
+  readonly status: 'available' | 'unavailable';
   readonly problemCode?: string;
 }
 
@@ -104,11 +107,22 @@ export function policyBinding(
   descriptor: MovePolicyProviderDescriptor,
   capability: MovePolicyCapability,
 ): MovePolicyBinding {
-  return Object.freeze({
+  const base = {
     capability,
     providerInstanceId: descriptor.instanceId,
     providerFingerprint: descriptor.fingerprint,
     providerType: descriptor.providerType,
     providerDisplayName: descriptor.displayName,
-  });
+  } as const;
+  if (capability === 'human_profile') {
+    if (descriptor.profile === undefined) {
+      throw new MovePolicyProviderError('capability_missing');
+    }
+    return Object.freeze({
+      ...base,
+      capability,
+      profile: Object.freeze({ ...descriptor.profile }),
+    });
+  }
+  return Object.freeze({ ...base, capability });
 }

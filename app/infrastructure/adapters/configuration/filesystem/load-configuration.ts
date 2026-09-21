@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { Static, TSchema } from '@sinclair/typebox';
@@ -9,13 +9,13 @@ import {
   type ConfigurationProblemCode,
 } from './configuration-problem.ts';
 import {
+  EngineProviderConfigurationDocumentSchema,
   PlysmithConfigurationSchema,
   SqliteProviderConfigurationSchema,
-  StockfishUciProviderConfigurationSchema,
+  type MaiaChessProviderConfiguration,
   type PlysmithConfiguration,
   type StockfishUciProviderConfiguration,
 } from './configuration-schema.ts';
-import { fileSha256 } from './file-sha256.ts';
 
 export interface RuntimeConfiguration {
   readonly central: PlysmithConfiguration;
@@ -31,8 +31,14 @@ export type RuntimePlayoutEngineConfiguration =
   | {
       readonly instanceId: string;
       readonly provider: 'stockfish-uci';
-      readonly status: 'available' | 'disabled';
+      readonly status: 'available';
       readonly configuration: StockfishUciProviderConfiguration;
+    }
+  | {
+      readonly instanceId: string;
+      readonly provider: 'maia-chess';
+      readonly status: 'available';
+      readonly configuration: MaiaChessProviderConfiguration;
     }
   | {
       readonly instanceId: string;
@@ -127,28 +133,43 @@ async function loadPlayoutEngine(
   try {
     const configuration = await readDocument(
       path.join(activeDirectory, `${instanceId}.json`),
-      StockfishUciProviderConfigurationSchema,
+      EngineProviderConfigurationDocumentSchema,
       'configuration.central_invalid',
       'configuration.central_invalid',
     );
-    if (!path.isAbsolute(configuration.stockfish.executablePath)) {
-      return unavailableEngine(instanceId);
+    if (configuration.provider === 'stockfish-uci') {
+      const engine = configuration.stockfish;
+      if (!path.isAbsolute(engine.executablePath)) {
+        return unavailableEngine(instanceId);
+      }
+      await access(engine.executablePath);
+      Object.freeze(engine.arguments);
+      Object.freeze(engine);
+      Object.freeze(configuration);
+      return Object.freeze({
+        instanceId,
+        provider: configuration.provider,
+        status: 'available' as const,
+        configuration,
+      });
     }
+    const engine = configuration.maia;
     if (
-      (await fileSha256(configuration.stockfish.executablePath)) !==
-      configuration.stockfish.executableSha256
+      !path.isAbsolute(engine.executablePath) ||
+      !path.isAbsolute(engine.weightsPath)
     ) {
       return unavailableEngine(instanceId);
     }
-    Object.freeze(configuration.stockfish.arguments);
-    Object.freeze(configuration.stockfish);
+    await Promise.all([
+      access(engine.executablePath),
+      access(engine.weightsPath),
+    ]);
+    Object.freeze(engine);
     Object.freeze(configuration);
     return Object.freeze({
       instanceId,
-      provider: 'stockfish-uci' as const,
-      status: configuration.enabled
-        ? ('available' as const)
-        : ('disabled' as const),
+      provider: configuration.provider,
+      status: 'available' as const,
       configuration,
     });
   } catch {

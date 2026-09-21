@@ -15,6 +15,7 @@ import {
   desktopDiagnosticReportDestinationChannel,
   desktopDiagnosticsChannel,
   desktopEngineExecutableChannel,
+  desktopEngineWeightsChannel,
   parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
@@ -125,6 +126,21 @@ export async function createDesktopWindow(
     return result.canceled ? undefined : result.filePaths[0];
   };
   ipcMain.handle(desktopEngineExecutableChannel, engineExecutableHandler);
+  const engineWeightsHandler = async (
+    event: IpcMainInvokeEvent,
+  ): Promise<string | undefined> => {
+    if (!isTrustedRendererSender(event, window)) return undefined;
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Maia-Gewichtedatei auswählen',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Maia-Gewichtedatei', extensions: ['gz'] },
+        { name: 'Alle Dateien', extensions: ['*'] },
+      ],
+    });
+    return result.canceled ? undefined : result.filePaths[0];
+  };
+  ipcMain.handle(desktopEngineWeightsChannel, engineWeightsHandler);
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.on('will-attach-webview', (event) =>
@@ -166,6 +182,7 @@ export async function createDesktopWindow(
     ipcMain.removeHandler(desktopBootstrapChannel);
     ipcMain.removeHandler(desktopDiagnosticReportDestinationChannel);
     ipcMain.removeHandler(desktopEngineExecutableChannel);
+    ipcMain.removeHandler(desktopEngineWeightsChannel);
     ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });

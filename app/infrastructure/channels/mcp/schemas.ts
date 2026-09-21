@@ -426,12 +426,54 @@ const analysisGameOutcome = Type.Union([
       reason: Type.Union([
         Type.Literal('stalemate'),
         Type.Literal('insufficient_material'),
+        Type.Literal('threefold_repetition'),
         Type.Literal('seventy_five_move'),
       ]),
     },
     objectOptions,
   ),
   Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
+]);
+
+const humanMovePolicyProfile = Type.Object(
+  {
+    modelName: Type.String({ minLength: 1, maxLength: 160 }),
+    selectionMode: Type.Union([
+      Type.Literal('most_likely'),
+      Type.Literal('sampled'),
+    ]),
+    historyMode: Type.Union([
+      Type.Literal('known_position_history'),
+      Type.Literal('position_only'),
+    ]),
+    reproducibility: Type.Union([
+      Type.Literal('deterministic'),
+      Type.Literal('stochastic'),
+    ]),
+  },
+  objectOptions,
+);
+
+const movePolicyBindingBase = {
+  providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),
+  providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+  providerType: Type.String({ minLength: 1, maxLength: 160 }),
+  providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
+};
+
+const movePolicyBinding = Type.Union([
+  Type.Object(
+    { ...movePolicyBindingBase, capability: Type.Literal('best_move') },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      ...movePolicyBindingBase,
+      capability: Type.Literal('human_profile'),
+      profile: humanMovePolicyProfile,
+    },
+    objectOptions,
+  ),
 ]);
 
 export const AnalysisRecordSchema = Type.Object(
@@ -454,25 +496,7 @@ export const AnalysisRecordSchema = Type.Object(
             Type.Literal('black'),
           ]),
           outcome: analysisGameOutcome,
-          policy: Type.Object(
-            {
-              capability: Type.Literal('best_move'),
-              providerInstanceId: Type.String({
-                minLength: 1,
-                maxLength: 160,
-              }),
-              providerFingerprint: Type.String({
-                minLength: 1,
-                maxLength: 160,
-              }),
-              providerType: Type.String({ minLength: 1, maxLength: 160 }),
-              providerDisplayName: Type.String({
-                minLength: 1,
-                maxLength: 160,
-              }),
-            },
-            objectOptions,
-          ),
+          policy: movePolicyBinding,
         },
         objectOptions,
       ),
@@ -1269,13 +1293,17 @@ export const ListMovePolicyProvidersResultSchema = Type.Object(
           providerType: Type.String({ minLength: 1, maxLength: 160 }),
           displayName: Type.String({ minLength: 1, maxLength: 160 }),
           fingerprint: Type.String({ minLength: 1, maxLength: 160 }),
-          capabilities: Type.Array(Type.Literal('best_move'), {
-            maxItems: 1,
-            uniqueItems: true,
-          }),
+          capabilities: Type.Array(
+            Type.Union([
+              Type.Literal('best_move'),
+              Type.Literal('human_profile'),
+            ]),
+            { maxItems: 1, uniqueItems: true },
+          ),
+          profile: Type.Optional(humanMovePolicyProfile),
+          readiness: Type.Union([Type.Literal('cold'), Type.Literal('ready')]),
           status: Type.Union([
             Type.Literal('available'),
-            Type.Literal('disabled'),
             Type.Literal('unavailable'),
           ]),
           problemCode: Type.Optional(
@@ -1304,6 +1332,7 @@ const playoutOutcome = Type.Union([
       reason: Type.Union([
         Type.Literal('stalemate'),
         Type.Literal('insufficient_material'),
+        Type.Literal('threefold_repetition'),
         Type.Literal('seventy_five_move'),
       ]),
     },
@@ -1330,6 +1359,7 @@ const playoutStatus = Type.Union([
         Type.Literal('checkmate'),
         Type.Literal('stalemate'),
         Type.Literal('insufficient_material'),
+        Type.Literal('threefold_repetition'),
         Type.Literal('seventy_five_move'),
       ]),
       outcome: playoutOutcome,
@@ -1368,16 +1398,7 @@ export const PlayoutResultSchema = Type.Object(
         ),
         root: chessState,
         playerSide: Type.Union([Type.Literal('white'), Type.Literal('black')]),
-        policy: Type.Object(
-          {
-            capability: Type.Literal('best_move'),
-            providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),
-            providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
-            providerType: Type.String({ minLength: 1, maxLength: 160 }),
-            providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
-          },
-          objectOptions,
-        ),
+        policy: movePolicyBinding,
         steps: Type.Array(
           Type.Object(
             {
@@ -1429,6 +1450,10 @@ export const StartPlayoutArgumentsSchema = Type.Object(
       ),
     ),
     providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),
+    capability: Type.Union([
+      Type.Literal('best_move'),
+      Type.Literal('human_profile'),
+    ]),
     opening: Type.Union([
       Type.Object(
         { kind: Type.Literal('user_move'), move: moveInput },

@@ -137,6 +137,7 @@ export class StartPlayout implements StartPlayoutUseCase {
     const provider = requireProvider(
       this.#dependencies.policies,
       request.providerInstanceId,
+      request.capability,
     );
     const resolved = await resolveStart(
       this.#dependencies.rules,
@@ -178,7 +179,7 @@ export class StartPlayout implements StartPlayoutUseCase {
       ...(sourcePath === undefined ? {} : { sourcePath }),
       root: resolved.root,
       playerSide,
-      policy: policyBinding(provider.descriptor, 'best_move'),
+      policy: policyBinding(provider.descriptor, request.capability),
       ...(initialUserMove?.ok === true
         ? { initialUserMove: initialUserMove.value }
         : {}),
@@ -471,8 +472,11 @@ async function drivePolicy(
   let decision;
   try {
     decision = await provider.chooseMove({
-      root: stored.draft.root,
-      moves: stored.draft.steps.map((step) => step.move),
+      root: stored.draft.sourcePath?.root ?? stored.draft.root,
+      moves: [
+        ...(stored.draft.sourcePath?.steps.map((step) => step.move) ?? []),
+        ...stored.draft.steps.map((step) => step.move),
+      ],
       current: currentPlayoutState(stored.draft),
       decisionId,
     });
@@ -663,12 +667,13 @@ function assertOngoing(
 function requireProvider(
   registry: MovePolicyRegistry,
   instanceId: string,
+  capability: PlayoutDraft['policy']['capability'],
 ): MovePolicyProvider {
-  const provider = registry.resolve(instanceId, 'best_move');
+  const provider = registry.resolve(instanceId, capability);
   if (
     provider === undefined ||
     provider.descriptor.status !== 'available' ||
-    !provider.descriptor.capabilities.includes('best_move')
+    !provider.descriptor.capabilities.includes(capability)
   ) {
     throw movePolicyUnavailable();
   }
@@ -679,7 +684,11 @@ function requireBoundProvider(
   registry: MovePolicyRegistry,
   draft: PlayoutDraft,
 ): MovePolicyProvider {
-  const provider = requireProvider(registry, draft.policy.providerInstanceId);
+  const provider = requireProvider(
+    registry,
+    draft.policy.providerInstanceId,
+    draft.policy.capability,
+  );
   if (provider.descriptor.fingerprint !== draft.policy.providerFingerprint) {
     throw movePolicyUnavailable();
   }

@@ -47,20 +47,22 @@ export {
   SubmitPlayoutMove,
 } from './playout-flow.ts';
 export {
-  DisableEngineProviderConfiguration,
+  RemoveEngineProviderConfiguration,
   GetEngineProviderConfigurations,
   PreviewEngineProviderConfiguration,
   SaveEngineProviderConfiguration,
   engineConfigurationConflict,
   type ConfiguredEngineProvider,
-  type DisableEngineProviderConfigurationUseCase,
+  type RemoveEngineProviderConfigurationUseCase,
   type EngineProviderConfigurationInput,
   type EngineProviderConfigurationPreview,
   type EngineProviderConfigurationRepository,
   type EngineProviderConfigurationView,
   type GetEngineProviderConfigurationsUseCase,
+  type MaiaChessEngineProviderConfigurationInput,
   type PreviewEngineProviderConfigurationUseCase,
   type SaveEngineProviderConfigurationUseCase,
+  type StockfishUciEngineProviderConfigurationInput,
 } from './engine-provider-configuration.ts';
 export type {
   CompletePlayoutUseCase,

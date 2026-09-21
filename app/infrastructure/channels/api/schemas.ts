@@ -1,5 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 
+import { ENGINE_PROVIDER_TIMEOUT_LIMITS } from '../../../../contracts/host/engine-provider-configuration.ts';
+
 const objectOptions = { additionalProperties: false } as const;
 const revision = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
 const positiveRevision = Type.Integer({
@@ -105,33 +107,69 @@ export const SetDiagnosticLogLevelResultSchema = Type.Object(
   { ...objectOptions, $id: 'SetDiagnosticLogLevelResult' },
 );
 
-export const EngineProviderConfigurationInputSchema = Type.Object(
-  {
-    instanceId: Type.String({ pattern: '^[a-z0-9][a-z0-9-]*$', maxLength: 80 }),
-    providerType: Type.Literal('stockfish-uci'),
-    displayName: Type.String({ minLength: 1, maxLength: 160 }),
-    enabled: Type.Boolean(),
-    executablePath: Type.String({ minLength: 1, maxLength: 1_024 }),
-    arguments: Type.Array(Type.String({ maxLength: 1_024 }), { maxItems: 32 }),
-    threads: Type.Integer({ minimum: 1, maximum: 256 }),
-    hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
-    moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
-    startupTimeoutMs: Type.Integer({ minimum: 100, maximum: 60_000 }),
-    moveTimeoutMs: Type.Integer({ minimum: 100, maximum: 660_000 }),
-    stopTimeoutMs: Type.Integer({ minimum: 100, maximum: 30_000 }),
-    maxOutputBytes: Type.Integer({ minimum: 1_024, maximum: 16_777_216 }),
-  },
-  { ...objectOptions, $id: 'EngineProviderConfigurationInput' },
+const engineProviderConfigurationBase = {
+  instanceId: Type.String({ pattern: '^[a-z0-9][a-z0-9-]*$', maxLength: 80 }),
+  displayName: Type.String({ minLength: 1, maxLength: 160 }),
+  executablePath: Type.String({ minLength: 1, maxLength: 1_024 }),
+  startupTimeoutMs: Type.Integer(ENGINE_PROVIDER_TIMEOUT_LIMITS.startup),
+  stopTimeoutMs: Type.Integer(ENGINE_PROVIDER_TIMEOUT_LIMITS.stop),
+  maxOutputBytes: Type.Integer({ minimum: 1_024, maximum: 16_777_216 }),
+};
+
+const stockfishUciEngineProviderConfiguration = {
+  ...engineProviderConfigurationBase,
+  providerType: Type.Literal('stockfish-uci'),
+  moveTimeoutMs: Type.Integer(ENGINE_PROVIDER_TIMEOUT_LIMITS.stockfishMove),
+  arguments: Type.Array(Type.String({ maxLength: 1_024 }), { maxItems: 32 }),
+  threads: Type.Integer({ minimum: 1, maximum: 256 }),
+  hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
+  moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
+};
+
+export const StockfishUciEngineProviderConfigurationInputSchema = Type.Object(
+  stockfishUciEngineProviderConfiguration,
+  { ...objectOptions, $id: 'StockfishUciEngineProviderConfigurationInput' },
 );
 
-export const EngineProviderConfigurationSchema = Type.Intersect(
+const maiaChessEngineProviderConfiguration = {
+  ...engineProviderConfigurationBase,
+  providerType: Type.Literal('maia-chess'),
+  moveTimeoutMs: Type.Integer(ENGINE_PROVIDER_TIMEOUT_LIMITS.maiaMove),
+  weightsPath: Type.String({ minLength: 1, maxLength: 1_024 }),
+};
+
+export const MaiaChessEngineProviderConfigurationInputSchema = Type.Object(
+  maiaChessEngineProviderConfiguration,
+  { ...objectOptions, $id: 'MaiaChessEngineProviderConfigurationInput' },
+);
+
+export const EngineProviderConfigurationInputSchema = Type.Union(
   [
-    Type.Ref(EngineProviderConfigurationInputSchema),
+    Type.Ref(StockfishUciEngineProviderConfigurationInputSchema),
+    Type.Ref(MaiaChessEngineProviderConfigurationInputSchema),
+  ],
+  { $id: 'EngineProviderConfigurationInput' },
+);
+
+const engineProviderConfigurationMetadata = {
+  configurationRevision,
+  effectiveFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+  restartRequired: Type.Boolean(),
+};
+
+export const EngineProviderConfigurationSchema = Type.Union(
+  [
     Type.Object(
       {
-        configurationRevision,
-        effectiveFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
-        restartRequired: Type.Boolean(),
+        ...stockfishUciEngineProviderConfiguration,
+        ...engineProviderConfigurationMetadata,
+      },
+      objectOptions,
+    ),
+    Type.Object(
+      {
+        ...maiaChessEngineProviderConfiguration,
+        ...engineProviderConfigurationMetadata,
       },
       objectOptions,
     ),
@@ -155,6 +193,7 @@ export const EngineProviderConfigurationPreviewSchema = Type.Object(
     issues: Type.Array(
       Type.Union([
         Type.Literal('executable_not_found'),
+        Type.Literal('weights_not_found'),
         Type.Literal('configuration_invalid'),
       ]),
       { uniqueItems: true },
@@ -181,9 +220,9 @@ export const EngineProviderInstanceParamsSchema = Type.Object(
   { ...objectOptions, $id: 'EngineProviderInstanceParams' },
 );
 
-export const DisableEngineProviderConfigurationBodySchema = Type.Object(
+export const RemoveEngineProviderConfigurationBodySchema = Type.Object(
   { expectedConfigurationRevision: configurationRevision },
-  { ...objectOptions, $id: 'DisableEngineProviderConfigurationBody' },
+  { ...objectOptions, $id: 'RemoveEngineProviderConfigurationBody' },
 );
 
 const diagnosticReportIncludedCategory = Type.Union([
@@ -590,6 +629,7 @@ const analysisRecordGameOutcome = Type.Union([
       reason: Type.Union([
         Type.Literal('stalemate'),
         Type.Literal('insufficient_material'),
+        Type.Literal('threefold_repetition'),
         Type.Literal('seventy_five_move'),
       ]),
     },
@@ -597,6 +637,50 @@ const analysisRecordGameOutcome = Type.Union([
   ),
   Type.Object({ kind: Type.Literal('unfinished') }, objectOptions),
 ]);
+
+export const HumanMovePolicyProfileSchema = Type.Object(
+  {
+    modelName: Type.String({ minLength: 1, maxLength: 160 }),
+    selectionMode: Type.Union([
+      Type.Literal('most_likely'),
+      Type.Literal('sampled'),
+    ]),
+    historyMode: Type.Union([
+      Type.Literal('known_position_history'),
+      Type.Literal('position_only'),
+    ]),
+    reproducibility: Type.Union([
+      Type.Literal('deterministic'),
+      Type.Literal('stochastic'),
+    ]),
+  },
+  { ...objectOptions, $id: 'HumanMovePolicyProfile' },
+);
+
+const movePolicyBindingBase = {
+  providerInstanceId: identifier,
+  providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
+  providerType: identifier,
+  providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
+};
+
+export const MovePolicyBindingSchema = Type.Union(
+  [
+    Type.Object(
+      { ...movePolicyBindingBase, capability: Type.Literal('best_move') },
+      objectOptions,
+    ),
+    Type.Object(
+      {
+        ...movePolicyBindingBase,
+        capability: Type.Literal('human_profile'),
+        profile: Type.Ref(HumanMovePolicyProfileSchema),
+      },
+      objectOptions,
+    ),
+  ],
+  { $id: 'MovePolicyBinding' },
+);
 
 export const AnalysisRecordSchema = Type.Object(
   {
@@ -618,22 +702,7 @@ export const AnalysisRecordSchema = Type.Object(
             Type.Literal('black'),
           ]),
           outcome: analysisRecordGameOutcome,
-          policy: Type.Object(
-            {
-              capability: Type.Literal('best_move'),
-              providerInstanceId: identifier,
-              providerFingerprint: Type.String({
-                minLength: 1,
-                maxLength: 160,
-              }),
-              providerType: identifier,
-              providerDisplayName: Type.String({
-                minLength: 1,
-                maxLength: 160,
-              }),
-            },
-            objectOptions,
-          ),
+          policy: Type.Ref(MovePolicyBindingSchema),
         },
         objectOptions,
       ),
@@ -821,13 +890,14 @@ export const MovePolicyProviderSchema = Type.Object(
     providerType: identifier,
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
     fingerprint: Type.String({ minLength: 1, maxLength: 160 }),
-    capabilities: Type.Array(Type.Literal('best_move'), {
-      maxItems: 1,
-      uniqueItems: true,
-    }),
+    capabilities: Type.Array(
+      Type.Union([Type.Literal('best_move'), Type.Literal('human_profile')]),
+      { maxItems: 1, uniqueItems: true },
+    ),
+    profile: Type.Optional(Type.Ref(HumanMovePolicyProfileSchema)),
+    readiness: Type.Union([Type.Literal('cold'), Type.Literal('ready')]),
     status: Type.Union([
       Type.Literal('available'),
-      Type.Literal('disabled'),
       Type.Literal('unavailable'),
     ]),
     problemCode: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
@@ -856,6 +926,7 @@ const playoutOutcome = Type.Union([
       reason: Type.Union([
         Type.Literal('stalemate'),
         Type.Literal('insufficient_material'),
+        Type.Literal('threefold_repetition'),
         Type.Literal('seventy_five_move'),
       ]),
     },
@@ -868,6 +939,7 @@ const terminalReason = Type.Union([
   Type.Literal('checkmate'),
   Type.Literal('stalemate'),
   Type.Literal('insufficient_material'),
+  Type.Literal('threefold_repetition'),
   Type.Literal('seventy_five_move'),
 ]);
 
@@ -934,16 +1006,7 @@ export const PlayoutDraftSchema = Type.Object(
     sourcePath: Type.Optional(Type.Ref(PlayoutSourcePathSchema)),
     root: Type.Ref(ChessStateSchema),
     playerSide: Type.Union([Type.Literal('white'), Type.Literal('black')]),
-    policy: Type.Object(
-      {
-        capability: Type.Literal('best_move'),
-        providerInstanceId: identifier,
-        providerFingerprint: Type.String({ minLength: 1, maxLength: 160 }),
-        providerType: identifier,
-        providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
-      },
-      objectOptions,
-    ),
+    policy: Type.Ref(MovePolicyBindingSchema),
     steps: Type.Array(Type.Ref(PlayoutStepSchema), { maxItems: 1_000 }),
     status: Type.Ref(PlayoutStatusSchema),
   },
@@ -987,6 +1050,10 @@ export const StartPlayoutBodySchema = Type.Object(
       ),
     ),
     providerInstanceId: identifier,
+    capability: Type.Union([
+      Type.Literal('best_move'),
+      Type.Literal('human_profile'),
+    ]),
     opening: Type.Union([
       Type.Object(
         { kind: Type.Literal('user_move'), move: moveInput },
@@ -1847,6 +1914,8 @@ export const apiSchemas = [
   DiagnosticSettingsSchema,
   SetDiagnosticLogLevelBodySchema,
   SetDiagnosticLogLevelResultSchema,
+  StockfishUciEngineProviderConfigurationInputSchema,
+  MaiaChessEngineProviderConfigurationInputSchema,
   EngineProviderConfigurationInputSchema,
   EngineProviderConfigurationSchema,
   ListEngineProviderConfigurationsResultSchema,
@@ -1854,7 +1923,7 @@ export const apiSchemas = [
   EngineProviderConfigurationPreviewSchema,
   SaveEngineProviderConfigurationBodySchema,
   EngineProviderInstanceParamsSchema,
-  DisableEngineProviderConfigurationBodySchema,
+  RemoveEngineProviderConfigurationBodySchema,
   DiagnosticReportManifestSchema,
   CreateDiagnosticReportBodySchema,
   CreateDiagnosticReportResultSchema,
@@ -1882,6 +1951,8 @@ export const apiSchemas = [
   UpdateAnalysisScratchResultSchema,
   CreateAnalysisRecordBodySchema,
   CreateAnalysisRecordResultSchema,
+  HumanMovePolicyProfileSchema,
+  MovePolicyBindingSchema,
   MovePolicyProviderSchema,
   ListMovePolicyProvidersResultSchema,
   PlayoutStatusSchema,

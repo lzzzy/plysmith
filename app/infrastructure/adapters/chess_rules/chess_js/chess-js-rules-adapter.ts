@@ -150,6 +150,13 @@ export class ChessJsRulesAdapter implements ChessRulesPort {
         Object.freeze({ kind: 'terminal', reason: 'insufficient_material' }),
       );
     }
+    const repeated = hasThreefoldRepetition(root, moves);
+    if (!repeated.ok) return repeated;
+    if (repeated.value) {
+      return success(
+        Object.freeze({ kind: 'terminal', reason: 'threefold_repetition' }),
+      );
+    }
     const halfmoveClock = Number(chess.fen().split(' ')[4]);
     if (Number.isSafeInteger(halfmoveClock) && halfmoveClock >= 150) {
       return success(
@@ -405,6 +412,43 @@ function replayLine(
   } catch {
     return failure('invalid_line');
   }
+}
+
+function hasThreefoldRepetition(
+  root: ChessState,
+  moves: readonly CanonicalMove[],
+): ChessRulesResult<boolean> {
+  let chess: Chess;
+  try {
+    chess = new Chess(root.fen);
+  } catch {
+    return failure('invalid_line');
+  }
+  const historyKnowledge: HistoryKnowledge =
+    root.playState.historyKnowledge === 'complete' ? 'complete' : 'partial';
+  const occurrences = new Map<string, number>();
+  const recordPosition = (): boolean => {
+    const key = stateFromChess(chess, historyKnowledge).position.positionKey;
+    const count = (occurrences.get(key) ?? 0) + 1;
+    occurrences.set(key, count);
+    return count >= 3;
+  };
+  if (recordPosition()) return success(true);
+  try {
+    for (const move of moves) {
+      chess.move({
+        from: move.from,
+        to: move.to,
+        ...(move.promotion === undefined
+          ? {}
+          : { promotion: promotionSymbol[move.promotion] }),
+      });
+      if (recordPosition()) return success(true);
+    }
+  } catch {
+    return failure('invalid_line');
+  }
+  return success(false);
 }
 
 function normalizeMoveInput(

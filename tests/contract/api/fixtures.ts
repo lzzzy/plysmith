@@ -136,7 +136,7 @@ export function createFixture() {
     getEngineProviderConfigurations: unavailableUseCase,
     previewEngineProviderConfiguration: unavailableUseCase,
     saveEngineProviderConfiguration: unavailableUseCase,
-    disableEngineProviderConfiguration: unavailableUseCase,
+    removeEngineProviderConfiguration: unavailableUseCase,
     events: finiteSource([]),
     security: { hostToken: token },
     productRelease: '0.0.0-test',

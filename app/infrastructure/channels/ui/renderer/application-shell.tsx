@@ -261,6 +261,14 @@ function errorMessageId(errorCode: string): string {
   if (errorCode.endsWith('revision_conflict')) return 'error.revision';
   if (errorCode === 'workspace.reference_exists')
     return 'error.referenceExists';
+  if (errorCode === 'playout.provider_timeout') return 'error.engineTimeout';
+  if (
+    errorCode.startsWith('playout.provider_') ||
+    errorCode === 'playout.move_policy_unavailable' ||
+    errorCode === 'playout.capability_missing' ||
+    errorCode === 'playout.illegal_engine_move'
+  )
+    return 'error.engine';
   if (errorCode === 'host.unavailable') return 'error.unavailable';
   return 'error.generic';
 }

@@ -84,7 +84,7 @@ export async function generateHostContract(
     getEngineProviderConfigurations: unavailableUseCase,
     previewEngineProviderConfiguration: unavailableUseCase,
     saveEngineProviderConfiguration: unavailableUseCase,
-    disableEngineProviderConfiguration: unavailableUseCase,
+    removeEngineProviderConfiguration: unavailableUseCase,
     events: {
       subscribe: () => ({ events: emptyEvents(), close: () => undefined }),
     },

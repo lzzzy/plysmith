@@ -243,7 +243,10 @@ function PrestartWorkspace({
   const available = state.playoutProviders.providers.filter(
     (provider) =>
       provider.status === 'available' &&
-      provider.capabilities.includes('best_move'),
+      provider.capabilities.some(
+        (capability) =>
+          capability === 'best_move' || capability === 'human_profile',
+      ),
   );
   const [providerId, setProviderId] = useState(available[0]?.instanceId ?? '');
   const [reviewPosition, setReviewPosition] = useState<ReviewPosition>({

@@ -48,7 +48,7 @@ import type {
   ListMovePolicyProvidersUseCase,
   StartPlayoutUseCase,
   SubmitPlayoutMoveUseCase,
-  DisableEngineProviderConfigurationUseCase,
+  RemoveEngineProviderConfigurationUseCase,
   GetEngineProviderConfigurationsUseCase,
   PreviewEngineProviderConfigurationUseCase,
   SaveEngineProviderConfigurationUseCase,
@@ -98,7 +98,7 @@ export interface HostDependencies {
   readonly getEngineProviderConfigurations: GetEngineProviderConfigurationsUseCase;
   readonly previewEngineProviderConfiguration: PreviewEngineProviderConfigurationUseCase;
   readonly saveEngineProviderConfiguration: SaveEngineProviderConfigurationUseCase;
-  readonly disableEngineProviderConfiguration: DisableEngineProviderConfigurationUseCase;
+  readonly removeEngineProviderConfiguration: RemoveEngineProviderConfigurationUseCase;
   readonly events: HostEventSource;
   readonly security: { readonly hostToken: string };
   readonly productRelease: string;

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   PlysmithConfigurationSchema,
+  MaiaChessProviderConfigurationSchema,
   SqliteProviderConfigurationSchema,
   StockfishUciProviderConfigurationSchema,
 } from '../app/infrastructure/adapters/configuration/filesystem/configuration-schema.ts';
@@ -29,6 +30,11 @@ export async function generateConfigurationSchemas(
       outputDirectory,
       'stockfish-uci-provider.schema.json',
       StockfishUciProviderConfigurationSchema,
+    ),
+    writeSchema(
+      outputDirectory,
+      'maia-chess-provider.schema.json',
+      MaiaChessProviderConfigurationSchema,
     ),
   ]);
 }

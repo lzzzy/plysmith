@@ -341,7 +341,19 @@ function createClient(
     removeContextItem: async () =>
       assert.fail('no context item removal expected'),
     setWorkScopeResume: async () => assert.fail('no resume write expected'),
-    listMovePolicyProviders: async () => ({ providers: [] }),
+    listMovePolicyProviders: async () => ({
+      providers: [
+        {
+          instanceId: 'engine-main',
+          providerType: 'stockfish-uci',
+          displayName: 'Stockfish',
+          fingerprint: 'sha256:engine-main',
+          capabilities: ['best_move'],
+          readiness: 'cold',
+          status: 'available',
+        },
+      ],
+    }),
     getPlayout: async () => null,
     startPlayout: async () => assert.fail('no playout start expected'),
     submitPlayoutMove: async () => assert.fail('no playout move expected'),
@@ -356,7 +368,7 @@ function createClient(
       assert.fail('no engine preview expected'),
     saveEngineProviderConfiguration: async () =>
       assert.fail('no engine settings write expected'),
-    disableEngineProviderConfiguration: async () =>
+    removeEngineProviderConfiguration: async () =>
       assert.fail('no engine settings write expected'),
     ...overrides,
   };
@@ -686,6 +698,7 @@ test('starting from the current position sends the first user move without a sid
     scope: { kind: 'free' },
     start: { kind: 'fen', fen: blackToMove.fen },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: {
       kind: 'user_move',
       move: { kind: 'coordinates', value: 'a7a6' },
@@ -712,6 +725,7 @@ test('letting the provider move first binds the opening without a side choice', 
     scope: { kind: 'free' },
     start: { kind: 'fen', fen: initialState.fen },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: { kind: 'provider_move' },
   });
   store.close();
@@ -733,6 +747,35 @@ test('opening Ausspielen directly prepares the authoritative initial position', 
   await new Promise<void>((resolve) => setImmediate(resolve));
 
   assert.deepEqual(requests, [{ scopeKind: 'free', mode: 'initial_position' }]);
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'playout',
+  );
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.playoutStart?.start : undefined,
+    { kind: 'initial_position' },
+  );
+  store.close();
+});
+
+test('restoring Ausspielen after startup prepares the authoritative initial position', async () => {
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return analysis();
+    },
+  });
+  const store = createReadyStore(client);
+
+  store.setActivity('playout');
+  await store.start();
+
+  assert.deepEqual(requests, [
+    { scopeKind: 'free' },
+    { scopeKind: 'free', mode: 'initial_position' },
+  ]);
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready' ? snapshot.activity : undefined,
@@ -1015,12 +1058,11 @@ test('diagnostic report requires a chosen destination and sends one write', asyn
   store.close();
 });
 
-test('engine settings are previewed and saved once with a visible restart boundary', async () => {
+test('engine settings are saved and removed once with a visible restart boundary', async () => {
   const input = {
     instanceId: 'stockfish-main',
     providerType: 'stockfish-uci' as const,
     displayName: 'Stockfish',
-    enabled: true,
     executablePath: 'C:\\Engines\\stockfish.exe',
     arguments: [] as readonly string[],
     threads: 2,
@@ -1053,6 +1095,13 @@ test('engine settings are previewed and saved once with a visible restart bounda
       providers = { providers: [saved] };
       return saved;
     },
+    removeEngineProviderConfiguration: async (instanceId, request) => {
+      writes.push({ instanceId, request, remove: true });
+      const removed = providers.providers[0];
+      assert.ok(removed !== undefined);
+      providers = { providers: [] };
+      return removed;
+    },
   });
   const store = createReadyStore(client);
   await store.start();
@@ -1069,7 +1118,7 @@ test('engine settings are previewed and saved once with a visible restart bounda
       request: { input, expectedConfigurationRevision: null },
     },
   ]);
-  const snapshot = store.getSnapshot();
+  let snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
       ? snapshot.engineProviders.providers[0]?.restartRequired
@@ -1079,6 +1128,28 @@ test('engine settings are previewed and saved once with a visible restart bounda
   assert.equal(
     snapshot.phase === 'ready' ? snapshot.announcement : undefined,
     'engines.savedPendingRestart',
+  );
+  const configured =
+    snapshot.phase === 'ready'
+      ? snapshot.engineProviders.providers[0]
+      : undefined;
+  assert.ok(configured !== undefined);
+  assert.equal(await store.removeEngineProviderConfiguration(configured), true);
+  assert.deepEqual(writes[1], {
+    instanceId: 'stockfish-main',
+    request: {
+      expectedConfigurationRevision: `sha256:${'b'.repeat(64)}`,
+    },
+    remove: true,
+  });
+  snapshot = store.getSnapshot();
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.engineProviders.providers : undefined,
+    [],
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.announcement : undefined,
+    'engines.removedPendingRestart',
   );
   store.close();
 });

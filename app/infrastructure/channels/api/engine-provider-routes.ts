@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { HostDependencies } from './host-dependencies.ts';
 import type { EngineProviderConfigurationView } from '../../../application/playout/index.ts';
 import {
-  DisableEngineProviderConfigurationBodySchema,
+  RemoveEngineProviderConfigurationBodySchema,
   EmptyQuerySchema,
   EngineProviderConfigurationPreviewSchema,
   EngineProviderConfigurationSchema,
@@ -86,10 +86,10 @@ export function registerEngineProviderRoutes(
     '/engine-providers/configurations/:instanceId',
     {
       schema: {
-        operationId: 'DisableEngineProviderConfiguration',
+        operationId: 'RemoveEngineProviderConfiguration',
         params: EngineProviderInstanceParamsSchema,
         querystring: EmptyQuerySchema,
-        body: DisableEngineProviderConfigurationBodySchema,
+        body: RemoveEngineProviderConfigurationBodySchema,
         response: {
           200: Type.Ref(EngineProviderConfigurationSchema),
           ...problemResponses,
@@ -97,13 +97,13 @@ export function registerEngineProviderRoutes(
       },
     },
     async (request) => {
-      const saved =
-        await dependencies.disableEngineProviderConfiguration.execute({
+      const removed =
+        await dependencies.removeEngineProviderConfiguration.execute({
           instanceId: request.params.instanceId,
           expectedConfigurationRevision:
             request.body.expectedConfigurationRevision,
         });
-      return readSavedConfiguration(dependencies, saved.instanceId);
+      return configurationDto({ ...removed, restartRequired: true });
     },
   );
 }
@@ -123,5 +123,7 @@ async function readSavedConfiguration(
 }
 
 function configurationDto(configuration: EngineProviderConfigurationView) {
-  return { ...configuration, arguments: [...configuration.arguments] };
+  return configuration.providerType === 'stockfish-uci'
+    ? { ...configuration, arguments: [...configuration.arguments] }
+    : { ...configuration };
 }

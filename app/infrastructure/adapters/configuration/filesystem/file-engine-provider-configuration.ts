@@ -19,14 +19,14 @@ import {
   type EngineProviderConfigurationPreview,
   type EngineProviderConfigurationRepository,
 } from '../../../../application/playout/index.ts';
-import { stockfishUciConfigurationFingerprint } from '../../engine/index.ts';
 import {
+  EngineProviderConfigurationDocumentSchema,
+  MaiaChessProviderConfigurationSchema,
   PlysmithConfigurationSchema,
   StockfishUciProviderConfigurationSchema,
+  type EngineProviderConfigurationDocument,
   type PlysmithConfiguration,
-  type StockfishUciProviderConfiguration,
 } from './configuration-schema.ts';
-import { fileSha256 } from './file-sha256.ts';
 
 export class FileEngineProviderConfigurationRepository implements EngineProviderConfigurationRepository {
   readonly #activeDirectory: string;
@@ -47,7 +47,7 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
     const central = await readCentral(this.#centralPath);
     const providers = await Promise.all(
       central.configuration.bindings.playoutEngines.map((instanceId) =>
-        this.#readProvider(instanceId, central.source),
+        this.#readProvider(instanceId),
       ),
     );
     return Object.freeze(
@@ -61,13 +61,25 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
   async preview(
     input: EngineProviderConfigurationInput,
   ): Promise<EngineProviderConfigurationPreview> {
-    const issues: Array<'executable_not_found' | 'configuration_invalid'> = [];
+    const issues: Array<
+      'executable_not_found' | 'weights_not_found' | 'configuration_invalid'
+    > = [];
     if (!validInput(input)) issues.push('configuration_invalid');
     if (path.isAbsolute(input.executablePath)) {
       try {
         await access(input.executablePath);
       } catch {
         issues.push('executable_not_found');
+      }
+    }
+    if (
+      input.providerType === 'maia-chess' &&
+      path.isAbsolute(input.weightsPath)
+    ) {
+      try {
+        await access(input.weightsPath);
+      } catch {
+        issues.push('weights_not_found');
       }
     }
     return Object.freeze({
@@ -84,18 +96,21 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
     const temporaryPaths: string[] = [];
     try {
       const central = await readCentral(this.#centralPath);
-      const current = await this.#readProvider(
-        request.input.instanceId,
-        central.source,
+      const providerPath = path.join(
+        this.#activeDirectory,
+        `${request.input.instanceId}.json`,
       );
+      const current = await this.#readProvider(request.input.instanceId);
       if (
         (current?.configurationRevision ?? null) !==
-        request.expectedConfigurationRevision
+          request.expectedConfigurationRevision ||
+        (current === undefined &&
+          request.expectedConfigurationRevision === null &&
+          (await fileExists(providerPath)))
       ) {
         throw engineConfigurationConflict();
       }
-      const executableSha256 = await fileSha256(request.input.executablePath);
-      const document = documentFromInput(request.input, executableSha256);
+      const document = documentFromInput(request.input);
       const providerSource = `${JSON.stringify(document, null, 2)}\n`;
       const nextCentral =
         central.configuration.bindings.playoutEngines.includes(
@@ -116,10 +131,6 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
         throw new Error('The updated central configuration is invalid.');
       }
       const centralSource = `${JSON.stringify(nextCentral, null, 2)}\n`;
-      const providerPath = path.join(
-        this.#activeDirectory,
-        `${request.input.instanceId}.json`,
-      );
       const providerTemporary = temporary(providerPath);
       temporaryPaths.push(providerTemporary);
       await writeFile(providerTemporary, providerSource, {
@@ -145,12 +156,7 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
         await rename(centralTemporary, this.#centralPath);
         temporaryPaths.splice(temporaryPaths.indexOf(centralTemporary), 1);
       }
-      return configured(
-        request.input,
-        executableSha256,
-        centralSource,
-        providerSource,
-      );
+      return configured(request.input, providerSource);
     } finally {
       await lock.close();
       await Promise.all(temporaryPaths.map(removeIfPresent));
@@ -158,24 +164,97 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
     }
   }
 
-  async disable(request: {
+  async remove(request: {
     readonly instanceId: string;
     readonly expectedConfigurationRevision: string;
   }): Promise<ConfiguredEngineProvider> {
-    const current = (await this.list()).find(
-      (provider) => provider.instanceId === request.instanceId,
-    );
-    if (current === undefined) throw engineConfigurationConflict();
-    return this.save({
-      input: { ...current, enabled: false },
-      expectedConfigurationRevision: request.expectedConfigurationRevision,
-    });
+    const lock = await this.#lock();
+    let centralTemporary: string | undefined;
+    let removedProviderPath: string | undefined;
+    try {
+      const current = await this.#readProviderDocument(request.instanceId);
+      if (
+        current === undefined ||
+        revision(current.source) !== request.expectedConfigurationRevision
+      ) {
+        throw engineConfigurationConflict();
+      }
+      const central = await readCentral(this.#centralPath);
+      const nextCentral = {
+        ...central.configuration,
+        bindings: {
+          ...central.configuration.bindings,
+          playoutEngines: central.configuration.bindings.playoutEngines.filter(
+            (instanceId) => instanceId !== request.instanceId,
+          ),
+        },
+      };
+      if (!Value.Check(PlysmithConfigurationSchema, nextCentral)) {
+        throw new Error('The updated central configuration is invalid.');
+      }
+      const providerPath = path.join(
+        this.#activeDirectory,
+        `${request.instanceId}.json`,
+      );
+      centralTemporary = temporary(this.#centralPath);
+      await writeFile(
+        centralTemporary,
+        `${JSON.stringify(nextCentral, null, 2)}\n`,
+        {
+          encoding: 'utf8',
+          flag: 'wx',
+        },
+      );
+      if (
+        (await readFile(providerPath, 'utf8')) !== current.source ||
+        (await readFile(this.#centralPath, 'utf8')) !== central.source
+      ) {
+        throw engineConfigurationConflict();
+      }
+      removedProviderPath = temporary(providerPath);
+      await rename(providerPath, removedProviderPath);
+      try {
+        await rename(centralTemporary, this.#centralPath);
+        centralTemporary = undefined;
+      } catch (error) {
+        await rename(removedProviderPath, providerPath);
+        removedProviderPath = undefined;
+        throw error;
+      }
+      await unlink(removedProviderPath);
+      removedProviderPath = undefined;
+      return configured(
+        inputFromDocument(request.instanceId, current.document),
+        current.source,
+      );
+    } finally {
+      await lock.close();
+      if (centralTemporary !== undefined) {
+        await removeIfPresent(centralTemporary);
+      }
+      if (removedProviderPath !== undefined) {
+        await removeIfPresent(removedProviderPath);
+      }
+      await removeIfPresent(this.#lockPath);
+    }
   }
 
   async #readProvider(
     instanceId: string,
-    centralSource: string,
   ): Promise<ConfiguredEngineProvider | undefined> {
+    const stored = await this.#readProviderDocument(instanceId);
+    if (stored === undefined) return undefined;
+    const input = inputFromDocument(instanceId, stored.document);
+    return configured(input, stored.source);
+  }
+
+  async #readProviderDocument(instanceId: string): Promise<
+    | {
+        readonly source: string;
+        readonly document: EngineProviderConfigurationDocument;
+      }
+    | undefined
+  > {
     let source: string;
     try {
       source = await readFile(
@@ -186,17 +265,16 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
       if (errorCode(error) === 'ENOENT') return undefined;
       throw error;
     }
-    const candidate: unknown = JSON.parse(source);
-    if (!Value.Check(StockfishUciProviderConfigurationSchema, candidate)) {
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(source);
+    } catch {
       return undefined;
     }
-    const input = inputFromDocument(instanceId, candidate);
-    return configured(
-      input,
-      candidate.stockfish.executableSha256,
-      centralSource,
-      source,
-    );
+    if (!Value.Check(EngineProviderConfigurationDocumentSchema, candidate)) {
+      return undefined;
+    }
+    return { source, document: candidate };
   }
 
   async #lock(): Promise<FileHandle> {
@@ -213,25 +291,41 @@ function validInput(input: EngineProviderConfigurationInput): boolean {
   return (
     /^[a-z0-9][a-z0-9-]*$/.test(input.instanceId) &&
     path.isAbsolute(input.executablePath) &&
+    (input.providerType !== 'maia-chess' ||
+      path.isAbsolute(input.weightsPath)) &&
     Value.Check(
-      StockfishUciProviderConfigurationSchema,
-      documentFromInput(input, '0'.repeat(64)),
+      input.providerType === 'stockfish-uci'
+        ? StockfishUciProviderConfigurationSchema
+        : MaiaChessProviderConfigurationSchema,
+      documentFromInput(input),
     )
   );
 }
 
 function documentFromInput(
   input: EngineProviderConfigurationInput,
-  executableSha256: string,
-): StockfishUciProviderConfiguration {
+): EngineProviderConfigurationDocument {
+  if (input.providerType === 'maia-chess') {
+    return {
+      schemaVersion: 1,
+      provider: 'maia-chess',
+      displayName: input.displayName,
+      maia: {
+        executablePath: input.executablePath,
+        weightsPath: input.weightsPath,
+        startupTimeoutMs: input.startupTimeoutMs,
+        moveTimeoutMs: input.moveTimeoutMs,
+        stopTimeoutMs: input.stopTimeoutMs,
+        maxOutputBytes: input.maxOutputBytes,
+      },
+    };
+  }
   return {
     schemaVersion: 1,
     provider: 'stockfish-uci',
-    enabled: input.enabled,
     displayName: input.displayName,
     stockfish: {
       executablePath: input.executablePath,
-      executableSha256,
       arguments: [...input.arguments],
       threads: input.threads,
       hashMb: input.hashMb,
@@ -246,13 +340,25 @@ function documentFromInput(
 
 function inputFromDocument(
   instanceId: string,
-  document: StockfishUciProviderConfiguration,
+  document: EngineProviderConfigurationDocument,
 ): EngineProviderConfigurationInput {
+  if (document.provider === 'maia-chess') {
+    return Object.freeze({
+      instanceId,
+      providerType: 'maia-chess' as const,
+      displayName: document.displayName,
+      executablePath: document.maia.executablePath,
+      weightsPath: document.maia.weightsPath,
+      startupTimeoutMs: document.maia.startupTimeoutMs,
+      moveTimeoutMs: document.maia.moveTimeoutMs,
+      stopTimeoutMs: document.maia.stopTimeoutMs,
+      maxOutputBytes: document.maia.maxOutputBytes,
+    });
+  }
   return Object.freeze({
     instanceId,
     providerType: 'stockfish-uci' as const,
     displayName: document.displayName,
-    enabled: document.enabled,
     executablePath: document.stockfish.executablePath,
     arguments: Object.freeze([...document.stockfish.arguments]),
     threads: document.stockfish.threads,
@@ -267,28 +373,14 @@ function inputFromDocument(
 
 function configured(
   input: EngineProviderConfigurationInput,
-  executableSha256: string,
-  centralSource: string,
   providerSource: string,
 ): ConfiguredEngineProvider {
   return Object.freeze({
     ...input,
-    configurationRevision: revision(`${centralSource}\0${providerSource}`),
-    effectiveFingerprint: stockfishUciConfigurationFingerprint({
-      instanceId: input.instanceId,
-      displayName: input.displayName,
-      enabled: input.enabled,
-      executablePath: input.executablePath,
-      executableSha256,
-      arguments: input.arguments,
-      threads: input.threads,
-      hashMb: input.hashMb,
-      moveTimeMs: input.moveTimeMs,
-      startupTimeoutMs: input.startupTimeoutMs,
-      moveTimeoutMs: input.moveTimeoutMs,
-      stopTimeoutMs: input.stopTimeoutMs,
-      maxOutputBytes: input.maxOutputBytes,
-    }),
+    configurationRevision: revision(providerSource),
+    effectiveFingerprint: revision(
+      `${JSON.stringify(documentFromInput(input))}\n`,
+    ),
   });
 }
 
@@ -320,6 +412,16 @@ async function removeIfPresent(filePath: string): Promise<void> {
     await unlink(filePath);
   } catch (error) {
     if (errorCode(error) !== 'ENOENT') throw error;
+  }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') return false;
+    throw error;
   }
 }
 

@@ -367,11 +367,11 @@ export class RediscoveringHostClient {
     );
   }
 
-  async disableEngineProviderConfiguration(
+  async removeEngineProviderConfiguration(
     instanceId: string,
     request: { readonly expectedConfigurationRevision: string },
   ): Promise<EngineProviderConfigurationDto> {
-    return (await this.#currentClient()).disableEngineProviderConfiguration(
+    return (await this.#currentClient()).removeEngineProviderConfiguration(
       instanceId,
       request,
     );

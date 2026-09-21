@@ -20,6 +20,8 @@ import {
   completePlayoutDraft,
   createPlayoutDraft,
   restorePlayoutDraft,
+  type HumanMovePolicyProfile,
+  type MovePolicyBinding,
   type PlayoutDraft,
   type PlayoutOrigin,
   type PlayoutOutcome,
@@ -58,16 +60,22 @@ interface DraftRow {
   readonly rootFullmoveNumber: number;
   readonly rootHistoryKnowledge: HistoryKnowledge;
   readonly playerSide: 'white' | 'black';
-  readonly policyCapability: 'best_move';
+  readonly policyCapability: 'best_move' | 'human_profile';
   readonly providerInstanceId: string;
   readonly providerFingerprint: string;
   readonly providerType: string;
   readonly providerDisplayName: string;
+  readonly profileModelName: string | null;
+  readonly profileSelectionMode: HumanMovePolicyProfile['selectionMode'] | null;
+  readonly profileHistoryMode: HumanMovePolicyProfile['historyMode'] | null;
+  readonly profileReproducibility:
+    HumanMovePolicyProfile['reproducibility'] | null;
   readonly statusKind: PlayoutStatus['kind'];
   readonly terminalReason:
     | 'checkmate'
     | 'stalemate'
     | 'insufficient_material'
+    | 'threefold_repetition'
     | 'seventy_five_move'
     | null;
   readonly outcomeKind: 'win' | 'draw' | 'unfinished' | null;
@@ -223,6 +231,10 @@ const draftSelectSql = `
          d.provider_fingerprint AS providerFingerprint,
          d.provider_type AS providerType,
          d.provider_display_name AS providerDisplayName,
+         d.profile_model_name AS profileModelName,
+         d.profile_selection_mode AS profileSelectionMode,
+         d.profile_history_mode AS profileHistoryMode,
+         d.profile_reproducibility AS profileReproducibility,
          d.status_kind AS statusKind, d.terminal_reason AS terminalReason,
          d.outcome_kind AS outcomeKind, d.winner_side AS winnerSide,
          d.draft_revision AS draftRevision,
@@ -318,13 +330,7 @@ function mapDraft(database: Database.Database, row: DraftRow): PlayoutDraft {
     ...mapSourcePath(database, row),
     root,
     playerSide: row.playerSide,
-    policy: {
-      capability: row.policyCapability,
-      providerInstanceId: row.providerInstanceId,
-      providerFingerprint: row.providerFingerprint,
-      providerType: row.providerType,
-      providerDisplayName: row.providerDisplayName,
-    },
+    policy: mapPolicy(row),
     steps,
     status: mapStatus(row),
   });
@@ -437,10 +443,12 @@ function insertDraft(
             root_halfmove_clock, root_fullmove_number, root_history_knowledge,
             player_side, policy_capability, provider_instance_id,
             provider_fingerprint, provider_type, provider_display_name,
+            profile_model_name, profile_selection_mode,
+            profile_history_mode, profile_reproducibility,
             status_kind, terminal_reason, outcome_kind,
             winner_side, draft_revision, decision_generation,
             pending_decision_id, created_at_utc, updated_at_utc)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         draft.draftId.value,
@@ -458,6 +466,7 @@ function insertDraft(
         draft.policy.providerFingerprint,
         draft.policy.providerType,
         draft.policy.providerDisplayName,
+        ...policyProfileValues(draft.policy),
         ...status,
         draft.draftRevision,
         draft.decisionGeneration,
@@ -498,6 +507,68 @@ function sourceValues(
     sourcePath.root.playState.halfmoveClock,
     sourcePath.root.playState.fullmoveNumber,
     sourcePath.root.playState.historyKnowledge,
+  ];
+}
+
+function mapPolicy(row: DraftRow): MovePolicyBinding {
+  const base = {
+    providerInstanceId: row.providerInstanceId,
+    providerFingerprint: row.providerFingerprint,
+    providerType: row.providerType,
+    providerDisplayName: row.providerDisplayName,
+  } as const;
+  if (row.policyCapability === 'best_move') {
+    if (policyProfileValuesFromRow(row).some((value) => value !== null)) {
+      throw invalidPlayout();
+    }
+    return { ...base, capability: 'best_move' };
+  }
+  const profile = humanProfileFromRow(row);
+  return { ...base, capability: 'human_profile', profile };
+}
+
+function humanProfileFromRow(row: DraftRow): HumanMovePolicyProfile {
+  if (
+    row.profileModelName === null ||
+    row.profileSelectionMode === null ||
+    row.profileHistoryMode === null ||
+    row.profileReproducibility === null
+  ) {
+    throw invalidPlayout();
+  }
+  return {
+    modelName: row.profileModelName,
+    selectionMode: row.profileSelectionMode,
+    historyMode: row.profileHistoryMode,
+    reproducibility: row.profileReproducibility,
+  };
+}
+
+function policyProfileValues(
+  policy: MovePolicyBinding,
+): readonly [
+  string | null,
+  HumanMovePolicyProfile['selectionMode'] | null,
+  HumanMovePolicyProfile['historyMode'] | null,
+  HumanMovePolicyProfile['reproducibility'] | null,
+] {
+  if (policy.capability === 'best_move') {
+    return [null, null, null, null];
+  }
+  return [
+    policy.profile.modelName,
+    policy.profile.selectionMode,
+    policy.profile.historyMode,
+    policy.profile.reproducibility,
+  ];
+}
+
+function policyProfileValuesFromRow(row: DraftRow): readonly unknown[] {
+  return [
+    row.profileModelName,
+    row.profileSelectionMode,
+    row.profileHistoryMode,
+    row.profileReproducibility,
   ];
 }
 

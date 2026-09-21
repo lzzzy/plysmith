@@ -52,7 +52,8 @@ export class UnavailableMovePolicyProvider implements MovePolicyProvider {
       providerType: input.providerType,
       displayName: input.displayName,
       fingerprint: `unavailable:${input.instanceId}`,
-      capabilities: Object.freeze(['best_move']) as readonly ['best_move'],
+      capabilities: Object.freeze([]),
+      readiness: 'cold',
       status: 'unavailable',
       problemCode: input.problemCode,
     });

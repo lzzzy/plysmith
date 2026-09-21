@@ -100,6 +100,7 @@ export function registerPlayoutRoutes(
                 },
               }),
           providerInstanceId: request.body.providerInstanceId,
+          capability: request.body.capability,
           opening: request.body.opening,
         }),
       ),

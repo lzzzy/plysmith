@@ -777,7 +777,7 @@ export class PlysmithHostClient {
     }
   }
 
-  async disableEngineProviderConfiguration(
+  async removeEngineProviderConfiguration(
     instanceId: string,
     request: { readonly expectedConfigurationRevision: string },
   ): Promise<EngineProviderConfigurationDto> {

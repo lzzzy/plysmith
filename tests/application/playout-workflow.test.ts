@@ -13,6 +13,7 @@ import {
   SubmitPlayoutMove,
   type MovePolicyDecision,
   type MovePolicyProvider,
+  type MovePolicyProviderDescriptor,
   type MovePolicyRegistry,
   type MovePolicyRequest,
   type PlayoutChanged,
@@ -23,7 +24,14 @@ import { SqlitePersistenceAdapter } from '../../app/infrastructure/adapters/pers
 
 const timestamp = '2026-09-17T11:00:00.000Z';
 
-function fixture(t: TestContext, choose: MovePolicyProvider['chooseMove']) {
+function fixture(
+  t: TestContext,
+  choose: MovePolicyProvider['chooseMove'],
+  policy: {
+    readonly capability: 'best_move' | 'human_profile';
+    readonly profile?: MovePolicyProviderDescriptor['profile'];
+  } = { capability: 'best_move' },
+) {
   const directory = mkdtempSync(join(tmpdir(), 'plysmith-playout-flow-'));
   const store = new SqlitePersistenceAdapter({
     databasePath: join(directory, 'store.sqlite'),
@@ -39,7 +47,9 @@ function fixture(t: TestContext, choose: MovePolicyProvider['chooseMove']) {
       providerType: 'test-engine',
       displayName: 'Test engine',
       fingerprint: 'test-engine:v1',
-      capabilities: ['best_move'],
+      capabilities: [policy.capability],
+      ...(policy.profile === undefined ? {} : { profile: policy.profile }),
+      readiness: 'cold',
       status: 'available',
     },
     chooseMove: choose,
@@ -48,7 +58,7 @@ function fixture(t: TestContext, choose: MovePolicyProvider['chooseMove']) {
     list: () => [provider.descriptor],
     resolve: (instanceId, capability) =>
       instanceId === provider.descriptor.instanceId &&
-      capability === 'best_move'
+      capability === policy.capability
         ? provider
         : undefined,
   };
@@ -90,6 +100,7 @@ test('binds the player to the opposite side when the provider moves first', asyn
     scope: freeWorkScope(),
     start: { kind: 'fen', fen: '4k3/8/8/8/8/8/8/R3K3 b - - 0 1' },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: { kind: 'provider_move' },
   });
 
@@ -123,6 +134,7 @@ test('keeps a validated analysis path separate from played moves', async (t) => 
       moves: [{ kind: 'coordinates', value: 'e2e4' }],
     },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: { kind: 'provider_move' },
   });
 
@@ -157,6 +169,7 @@ test('rejects a source path that does not end at the playout root', async (t) =>
         moves: [{ kind: 'coordinates', value: 'e2e4' }],
       },
       providerInstanceId: 'engine-main',
+      capability: 'best_move',
       opening: { kind: 'provider_move' },
     }),
     { problemCode: 'playout.invalid' },
@@ -182,6 +195,7 @@ test('publishes the committed user move before the policy response arrives', asy
     scope,
     start: { kind: 'initial_position' },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: {
       kind: 'user_move',
       move: { kind: 'coordinates', value: 'e2e4' },
@@ -212,6 +226,61 @@ test('publishes the committed user move before the policy response arrives', asy
   assert.equal(published[1]?.draftRevision, completed.draft.draftRevision);
 });
 
+test('completes and persists a practice game after threefold repetition', async (t) => {
+  let policyCalls = 0;
+  const { store, start, submit, complete } = fixture(t, async (request) => {
+    policyCalls += 1;
+    return policyCalls % 2 === 1
+      ? decision(request, 'g8', 'f6', 'Nf6')
+      : decision(request, 'f6', 'g8', 'Ng8');
+  });
+  const scope = freeWorkScope();
+  let view = await start.execute({
+    scope,
+    start: { kind: 'initial_position' },
+    providerInstanceId: 'engine-main',
+    capability: 'best_move',
+    opening: {
+      kind: 'user_move',
+      move: { kind: 'coordinates', value: 'g1f3' },
+    },
+  });
+
+  for (const value of ['f3g1', 'g1f3', 'f3g1']) {
+    view = await submit.execute({
+      scope,
+      draftId: view.draft.draftId,
+      expectedDraftRevision: view.draft.draftRevision,
+      move: { kind: 'coordinates', value },
+    });
+  }
+
+  assert.deepEqual(view.draft.status, {
+    kind: 'terminal',
+    reason: 'threefold_repetition',
+    outcome: { kind: 'draw', reason: 'threefold_repetition' },
+  });
+  const completed = await complete.execute({
+    scope,
+    draftId: view.draft.draftId,
+    expectedDraftRevision: view.draft.draftRevision,
+    completionId: 'complete-threefold-game',
+    displayName: 'Remis durch Zugwiederholung',
+    languageTag: 'de-DE',
+  });
+  const opened = await store.readAnalysisRecord({
+    itemId: completed.itemId,
+    revisionId: completed.revisionId,
+    anchorId: completed.rootAnchorId,
+    readOnlyPreview: false,
+  });
+
+  assert.deepEqual(opened?.game?.outcome, {
+    kind: 'draw',
+    reason: 'threefold_repetition',
+  });
+});
+
 test('persists moves and completes one idempotent game record', async (t) => {
   const { store, start, stop, complete } = fixture(t, async (request) =>
     decision(request, 'e7', 'e5', 'e5'),
@@ -221,6 +290,7 @@ test('persists moves and completes one idempotent game record', async (t) => {
     scope,
     start: { kind: 'initial_position' },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: {
       kind: 'user_move',
       move: { kind: 'coordinates', value: 'e2e4' },
@@ -291,6 +361,59 @@ test('persists moves and completes one idempotent game record', async (t) => {
   });
 });
 
+test('persists the selected Maia profile with the completed game', async (t) => {
+  const profile = {
+    modelName: 'maia-1500.pb.gz',
+    selectionMode: 'most_likely' as const,
+    historyMode: 'known_position_history' as const,
+    reproducibility: 'deterministic' as const,
+  };
+  const { store, start, stop, complete } = fixture(
+    t,
+    async (request) => decision(request, 'e7', 'e5', 'e5'),
+    { capability: 'human_profile', profile },
+  );
+  const scope = freeWorkScope();
+  const played = await start.execute({
+    scope,
+    start: { kind: 'initial_position' },
+    providerInstanceId: 'engine-main',
+    capability: 'human_profile',
+    opening: {
+      kind: 'user_move',
+      move: { kind: 'coordinates', value: 'e2e4' },
+    },
+  });
+  const stopped = await stop.execute({
+    scope,
+    draftId: played.draft.draftId,
+    expectedDraftRevision: played.draft.draftRevision,
+  });
+  const completed = await complete.execute({
+    scope,
+    draftId: stopped.draft.draftId,
+    expectedDraftRevision: stopped.draft.draftRevision,
+    completionId: 'complete-maia-game',
+    displayName: 'Praxispartie gegen Maia 1500',
+    languageTag: 'de-DE',
+  });
+  const opened = await store.readAnalysisRecord({
+    itemId: completed.itemId,
+    revisionId: completed.revisionId,
+    anchorId: completed.rootAnchorId,
+    readOnlyPreview: false,
+  });
+
+  assert.deepEqual(opened?.game?.policy, {
+    capability: 'human_profile',
+    providerInstanceId: 'engine-main',
+    providerFingerprint: 'test-engine:v1',
+    providerType: 'test-engine',
+    providerDisplayName: 'Test engine',
+    profile,
+  });
+});
+
 test('keeps the confirmed user move when the provider fails', async (t) => {
   const { store, start } = fixture(t, async () => {
     throw new MovePolicyProviderError('provider_timeout');
@@ -301,6 +424,7 @@ test('keeps the confirmed user move when the provider fails', async (t) => {
       scope,
       start: { kind: 'initial_position' },
       providerInstanceId: 'engine-main',
+      capability: 'best_move',
       opening: {
         kind: 'user_move',
         move: { kind: 'coordinates', value: 'e2e4' },
@@ -326,6 +450,7 @@ test('a late policy result cannot mutate a draft paused in the meantime', async 
     scope,
     start: { kind: 'initial_position' },
     providerInstanceId: 'engine-main',
+    capability: 'best_move',
     opening: {
       kind: 'user_move',
       move: { kind: 'coordinates', value: 'e2e4' },

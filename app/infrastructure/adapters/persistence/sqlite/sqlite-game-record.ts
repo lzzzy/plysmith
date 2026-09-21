@@ -9,7 +9,10 @@ import {
   type CompletePlayoutResult,
   type PersistCompletePlayoutRequest,
 } from '../../../../application/playout/index.ts';
-import type { PlayoutOutcome } from '../../../../domain/playout/index.ts';
+import type {
+  MovePolicyBinding,
+  PlayoutOutcome,
+} from '../../../../domain/playout/index.ts';
 import {
   localId,
   type AnchorId,
@@ -117,8 +120,10 @@ export function completePlayout(
       `INSERT INTO inventory_game_revision
          (revision_id, item_id, root_occurrence_id, origin_mode, player_side,
           result_kind, result_reason, policy_capability, provider_instance_id,
-          provider_fingerprint, provider_type, provider_display_name)
-       SELECT ?, ?, a.occurrence_id, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          provider_fingerprint, provider_type, provider_display_name,
+          profile_model_name, profile_selection_mode,
+          profile_history_mode, profile_reproducibility)
+       SELECT ?, ?, a.occurrence_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          FROM chess_anchor AS a
         WHERE a.anchor_id = ? AND a.anchor_kind = 'occurrence'`,
     )
@@ -133,6 +138,7 @@ export function completePlayout(
       request.game.policy.providerFingerprint,
       request.game.provider.providerType,
       request.game.provider.providerDisplayName,
+      ...policyProfileValues(request.game.policy),
       graph.rootAnchorId.value,
     );
   if (request.game.origin.kind === 'inventory_anchor') {
@@ -363,6 +369,7 @@ function resultValues(
     | 'checkmate'
     | 'stalemate'
     | 'insufficient_material'
+    | 'threefold_repetition'
     | 'seventy_five_move'
     | null
   ),
@@ -446,4 +453,18 @@ function gameFingerprint(request: PersistCompletePlayoutRequest): Buffer {
       }),
     )
     .digest();
+}
+
+function policyProfileValues(
+  policy: MovePolicyBinding,
+): readonly (string | number | null)[] {
+  if (policy.capability === 'best_move') {
+    return [null, null, null, null];
+  }
+  return [
+    policy.profile.modelName,
+    policy.profile.selectionMode,
+    policy.profile.historyMode,
+    policy.profile.reproducibility,
+  ];
 }

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 
 import {
   MovePolicyProviderError,
@@ -18,19 +19,15 @@ import {
   mapLineProcessProblem,
   readUciBestMove,
   readUciHandshake,
-  requireUciOptions,
   waitUntilUciReady,
   writeUciPosition,
 } from '../uci/index.ts';
 
-export interface StockfishUciConfiguration {
+export interface MaiaChessConfiguration {
   readonly instanceId: string;
   readonly displayName: string;
   readonly executablePath: string;
-  readonly arguments: readonly string[];
-  readonly threads: number;
-  readonly hashMb: number;
-  readonly moveTimeMs: number;
+  readonly weightsPath: string;
   readonly startupTimeoutMs: number;
   readonly moveTimeoutMs: number;
   readonly stopTimeoutMs: number;
@@ -39,24 +36,32 @@ export interface StockfishUciConfiguration {
 
 const adapterVersion = 1;
 
-export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
+export class MaiaChessMovePolicyAdapter implements MovePolicyProvider {
   readonly descriptor: MovePolicyProviderDescriptor;
-  readonly #configuration: StockfishUciConfiguration;
+  readonly #configuration: MaiaChessConfiguration;
   readonly #supervisor: LineProcessSupervisor;
   readonly #execution = new ExclusiveUciExecution();
 
   constructor(
-    configuration: StockfishUciConfiguration,
+    configuration: MaiaChessConfiguration,
     supervisor: LineProcessSupervisor,
   ) {
     this.#configuration = Object.freeze({ ...configuration });
     this.#supervisor = supervisor;
     this.descriptor = Object.freeze({
       instanceId: configuration.instanceId,
-      providerType: 'stockfish-uci',
+      providerType: 'maia-chess',
       displayName: configuration.displayName,
-      fingerprint: stockfishUciConfigurationFingerprint(configuration),
-      capabilities: Object.freeze(['best_move']) as readonly ['best_move'],
+      fingerprint: maiaChessConfigurationFingerprint(configuration),
+      capabilities: Object.freeze(['human_profile']) as readonly [
+        'human_profile',
+      ],
+      profile: Object.freeze({
+        modelName: path.basename(configuration.weightsPath),
+        selectionMode: 'most_likely' as const,
+        historyMode: 'known_position_history' as const,
+        reproducibility: 'deterministic' as const,
+      }),
       readiness: 'cold',
       status: 'available',
     });
@@ -68,7 +73,10 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
         this.#supervisor.run(
           {
             executablePath: this.#configuration.executablePath,
-            arguments: this.#configuration.arguments,
+            arguments: [
+              '--config=',
+              `--weights=${this.#configuration.weightsPath}`,
+            ],
             startupTimeoutMs: this.#configuration.startupTimeoutMs,
             stopTimeoutMs: this.#configuration.stopTimeoutMs,
             maxOutputBytes: this.#configuration.maxOutputBytes,
@@ -81,7 +89,7 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
         move,
         providerInstanceId: this.descriptor.instanceId,
         providerFingerprint: this.descriptor.fingerprint,
-        reproducibility: 'unknown' as const,
+        reproducibility: 'deterministic' as const,
       });
     } catch (error) {
       if (error instanceof MovePolicyProviderError) throw error;
@@ -95,37 +103,32 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
 
 async function chooseUciMove(
   session: LineProcessSession,
-  configuration: StockfishUciConfiguration,
+  configuration: MaiaChessConfiguration,
   request: MovePolicyRequest,
 ): Promise<MovePolicyDecision['move']> {
   const startupDeadline = performance.now() + configuration.startupTimeoutMs;
-  const handshake = await readUciHandshake(session, startupDeadline);
-  requireUciOptions(handshake, ['Threads', 'Hash']);
-  session.writeLine(`setoption name Threads value ${configuration.threads}`);
-  session.writeLine(`setoption name Hash value ${configuration.hashMb}`);
+  await readUciHandshake(session, startupDeadline);
   await waitUntilUciReady(session, startupDeadline);
   await beginUciGame(session, startupDeadline);
   writeUciPosition(session, request);
-  session.writeLine(`go movetime ${configuration.moveTimeMs}`);
+  session.writeLine('go nodes 1');
   return readUciBestMove(
     session,
     performance.now() + configuration.moveTimeoutMs,
   );
 }
 
-export function stockfishUciConfigurationFingerprint(
-  configuration: StockfishUciConfiguration,
+export function maiaChessConfigurationFingerprint(
+  configuration: MaiaChessConfiguration,
 ): string {
   return createHash('sha256')
     .update(
       JSON.stringify({
-        providerType: 'stockfish-uci',
+        providerType: 'maia-chess',
         adapterVersion,
         executablePath: configuration.executablePath,
-        arguments: configuration.arguments,
-        threads: configuration.threads,
-        hashMb: configuration.hashMb,
-        moveTimeMs: configuration.moveTimeMs,
+        weightsPath: configuration.weightsPath,
+        nodes: 1,
       }),
     )
     .digest('hex');

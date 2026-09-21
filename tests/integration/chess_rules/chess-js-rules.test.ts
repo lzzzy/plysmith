@@ -24,6 +24,68 @@ test('terminal status is derived from the rules rather than an engine', () => {
   });
 });
 
+test('threefold repetition is recognized from the played position history', () => {
+  const rules = new ChessJsRulesAdapter();
+  const root = rules.initialState();
+  const moves: CanonicalMove[] = [];
+  for (const value of [
+    'g1f3',
+    'g8f6',
+    'f3g1',
+    'f6g8',
+    'g1f3',
+    'g8f6',
+    'f3g1',
+    'f6g8',
+  ]) {
+    const applied = rules.applyMove(root, moves, {
+      kind: 'coordinates',
+      value,
+    });
+    assert.equal(applied.ok, true);
+    if (!applied.ok) throw new Error('Expected a legal move.');
+    moves.push(applied.value.move);
+  }
+
+  assert.deepEqual(rules.gameStatus(root, moves), {
+    ok: true,
+    value: { kind: 'terminal', reason: 'threefold_repetition' },
+  });
+});
+
+test('threefold repetition ignores an ineffective en-passant square', () => {
+  const rules = new ChessJsRulesAdapter();
+  const parsed = rules.parseFen('4k3/8/8/8/4p3/8/3P4/K3R3 w - - 0 1');
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) throw new Error('Expected a valid position.');
+  const root = parsed.value;
+  const moves: CanonicalMove[] = [];
+  for (const value of [
+    'd2d4',
+    'e8f8',
+    'a1b1',
+    'f8e8',
+    'b1a1',
+    'e8f8',
+    'a1b1',
+    'f8e8',
+    'b1a1',
+  ]) {
+    const applied = rules.applyMove(root, moves, {
+      kind: 'coordinates',
+      value,
+    });
+    assert.equal(applied.ok, true);
+    if (!applied.ok) throw new Error('Expected a legal move.');
+    moves.push(applied.value.move);
+  }
+
+  assert.deepEqual(rules.gameStatus(root, moves), {
+    ok: true,
+    value: { kind: 'terminal', reason: 'threefold_repetition' },
+  });
+});
+
 test('initial position is canonical and uses a1-to-h8 board order', () => {
   const rules = new ChessJsRulesAdapter();
   const state = rules.initialState();

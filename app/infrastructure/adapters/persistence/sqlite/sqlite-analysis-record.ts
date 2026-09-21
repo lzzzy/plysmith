@@ -15,6 +15,7 @@ import type {
   ChessState,
   PromotionPiece,
 } from '../../../../domain/chess_graph/index.ts';
+import type { HumanMovePolicyProfile } from '../../../../domain/playout/index.ts';
 import {
   localId,
   type AnchorId,
@@ -286,7 +287,11 @@ function readAnalysisRecordViewInternal(
               game.provider_instance_id AS providerInstanceId,
               game.provider_fingerprint AS providerFingerprint,
               game.provider_type AS providerType,
-              game.provider_display_name AS providerDisplayName
+              game.provider_display_name AS providerDisplayName,
+              game.profile_model_name AS profileModelName,
+              game.profile_selection_mode AS profileSelectionMode,
+              game.profile_history_mode AS profileHistoryMode,
+              game.profile_reproducibility AS profileReproducibility
          FROM inventory_item AS item
          JOIN item_revision AS revision
            ON revision.item_id = item.item_id
@@ -324,13 +329,19 @@ function readAnalysisRecordViewInternal(
           | 'checkmate'
           | 'stalemate'
           | 'insufficient_material'
+          | 'threefold_repetition'
           | 'seventy_five_move'
           | null;
-        policyCapability: 'best_move' | null;
+        policyCapability: 'best_move' | 'human_profile' | null;
         providerInstanceId: string | null;
         providerFingerprint: string | null;
         providerType: string | null;
         providerDisplayName: string | null;
+        profileModelName: string | null;
+        profileSelectionMode: HumanMovePolicyProfile['selectionMode'] | null;
+        profileHistoryMode: HumanMovePolicyProfile['historyMode'] | null;
+        profileReproducibility:
+          HumanMovePolicyProfile['reproducibility'] | null;
       }
     | undefined;
   if (header === undefined) return undefined;
@@ -451,13 +462,19 @@ function gameDetails(header: {
     | 'checkmate'
     | 'stalemate'
     | 'insufficient_material'
+    | 'threefold_repetition'
     | 'seventy_five_move'
     | null;
-  readonly policyCapability: 'best_move' | null;
+  readonly policyCapability: 'best_move' | 'human_profile' | null;
   readonly providerInstanceId: string | null;
   readonly providerFingerprint: string | null;
   readonly providerType: string | null;
   readonly providerDisplayName: string | null;
+  readonly profileModelName: string | null;
+  readonly profileSelectionMode: HumanMovePolicyProfile['selectionMode'] | null;
+  readonly profileHistoryMode: HumanMovePolicyProfile['historyMode'] | null;
+  readonly profileReproducibility:
+    HumanMovePolicyProfile['reproducibility'] | null;
 }): NonNullable<AnalysisRecordView['game']> {
   if (
     header.playerSide === null ||
@@ -480,21 +497,52 @@ function gameDetails(header: {
           } as const)
         : header.resultReason === 'stalemate' ||
             header.resultReason === 'insufficient_material' ||
+            header.resultReason === 'threefold_repetition' ||
             header.resultReason === 'seventy_five_move'
           ? ({ kind: 'draw', reason: header.resultReason } as const)
           : undefined;
   if (outcome === undefined) throw invalidAnalysisRecord();
+  const binding = {
+    providerInstanceId: header.providerInstanceId,
+    providerFingerprint: header.providerFingerprint,
+    providerType: header.providerType,
+    providerDisplayName: header.providerDisplayName,
+  } as const;
   return Object.freeze({
     playerSide: header.playerSide,
     outcome: Object.freeze(outcome),
-    policy: Object.freeze({
-      capability: header.policyCapability,
-      providerInstanceId: header.providerInstanceId,
-      providerFingerprint: header.providerFingerprint,
-      providerType: header.providerType,
-      providerDisplayName: header.providerDisplayName,
-    }),
+    policy:
+      header.policyCapability === 'best_move'
+        ? Object.freeze({ ...binding, capability: 'best_move' as const })
+        : Object.freeze({
+            ...binding,
+            capability: 'human_profile' as const,
+            profile: Object.freeze(gameProfile(header)),
+          }),
   });
+}
+
+function gameProfile(header: {
+  readonly profileModelName: string | null;
+  readonly profileSelectionMode: HumanMovePolicyProfile['selectionMode'] | null;
+  readonly profileHistoryMode: HumanMovePolicyProfile['historyMode'] | null;
+  readonly profileReproducibility:
+    HumanMovePolicyProfile['reproducibility'] | null;
+}): HumanMovePolicyProfile {
+  if (
+    header.profileModelName === null ||
+    header.profileSelectionMode === null ||
+    header.profileHistoryMode === null ||
+    header.profileReproducibility === null
+  ) {
+    throw invalidAnalysisRecord();
+  }
+  return {
+    modelName: header.profileModelName,
+    selectionMode: header.profileSelectionMode,
+    historyMode: header.profileHistoryMode,
+    reproducibility: header.profileReproducibility,
+  };
 }
 
 function readSourceLine(

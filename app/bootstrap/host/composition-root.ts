@@ -41,7 +41,7 @@ import {
   StopPlayout,
   SubmitPlayoutMove,
   type MovePolicyProvider,
-  DisableEngineProviderConfiguration,
+  RemoveEngineProviderConfiguration,
   GetEngineProviderConfigurations,
   PreviewEngineProviderConfiguration,
   SaveEngineProviderConfiguration,
@@ -64,6 +64,7 @@ import {
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
   ConfiguredMovePolicyRegistry,
+  MaiaChessMovePolicyAdapter,
   StockfishUciMovePolicyAdapter,
   UnavailableMovePolicyProvider,
 } from '../../infrastructure/adapters/engine/index.ts';
@@ -191,6 +192,8 @@ export async function composeHost(
       events: eventStream,
     });
     const rules = new ChessJsRulesAdapter();
+    const engineProviderConfigurations =
+      new FileEngineProviderConfigurationRepository(options.applicationHome);
     const movePolicies = new ConfiguredMovePolicyRegistry(
       configuration.playoutEngines.map((engine): MovePolicyProvider => {
         if (engine.provider === 'unknown') {
@@ -201,14 +204,28 @@ export async function composeHost(
             problemCode: engine.problemCode,
           });
         }
+        if (engine.provider === 'maia-chess') {
+          const settings = engine.configuration;
+          return new MaiaChessMovePolicyAdapter(
+            {
+              instanceId: engine.instanceId,
+              displayName: settings.displayName,
+              executablePath: settings.maia.executablePath,
+              weightsPath: settings.maia.weightsPath,
+              startupTimeoutMs: settings.maia.startupTimeoutMs,
+              moveTimeoutMs: settings.maia.moveTimeoutMs,
+              stopTimeoutMs: settings.maia.stopTimeoutMs,
+              maxOutputBytes: settings.maia.maxOutputBytes,
+            },
+            new LineProcessSupervisor(),
+          );
+        }
         const settings = engine.configuration;
         return new StockfishUciMovePolicyAdapter(
           {
             instanceId: engine.instanceId,
             displayName: settings.displayName,
-            enabled: settings.enabled,
             executablePath: settings.stockfish.executablePath,
-            executableSha256: settings.stockfish.executableSha256,
             arguments: settings.stockfish.arguments,
             threads: settings.stockfish.threads,
             hashMb: settings.stockfish.hashMb,
@@ -222,14 +239,12 @@ export async function composeHost(
         );
       }),
     );
-    const engineProviderConfigurations =
-      new FileEngineProviderConfigurationRepository(options.applicationHome);
+    const configuredEngineProviders = await engineProviderConfigurations.list();
     const activeEngineFingerprints = new Map(
-      movePolicies
-        .list()
-        .map(
-          (provider) => [provider.instanceId, provider.fingerprint] as const,
-        ),
+      configuredEngineProviders.map(
+        (provider) =>
+          [provider.instanceId, provider.effectiveFingerprint] as const,
+      ),
     );
     const getEngineProviderConfigurations = new GetEngineProviderConfigurations(
       {
@@ -242,8 +257,8 @@ export async function composeHost(
     const saveEngineProviderConfiguration = new SaveEngineProviderConfiguration(
       engineProviderConfigurations,
     );
-    const disableEngineProviderConfiguration =
-      new DisableEngineProviderConfiguration(engineProviderConfigurations);
+    const removeEngineProviderConfiguration =
+      new RemoveEngineProviderConfiguration(engineProviderConfigurations);
     const freeAnalysisSession = new FreeAnalysisSession();
     const getAnalysisWorkspace = new GetAnalysisWorkspace({
       reader: persistence,
@@ -432,7 +447,7 @@ export async function composeHost(
       getEngineProviderConfigurations,
       previewEngineProviderConfiguration,
       saveEngineProviderConfiguration,
-      disableEngineProviderConfiguration,
+      removeEngineProviderConfiguration,
       events: eventStream,
       security: { hostToken },
       productRelease,

@@ -116,7 +116,8 @@
   font-weight: 650;
 }
 
-.engineForm input {
+.engineForm input,
+.engineForm select {
   box-sizing: border-box;
   width: 100%;
   min-height: 37px;
@@ -129,12 +130,14 @@
   font-weight: 500;
 }
 
-.engineForm input:focus-visible {
+.engineForm input:focus-visible,
+.engineForm select:focus-visible {
   outline: 2px solid #3867d6;
   outline-offset: 2px;
 }
 
 .wideField,
+.engineChooser,
 .engineActions,
 .engineError,
 .engineForm .restartNotice {
@@ -146,6 +149,24 @@
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.engineChooser {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e3e8;
+}
+
+.engineChooser label {
+  flex: 1;
+}
+
+.engineCreateActions {
+  display: flex;
+  gap: 8px;
 }
 
 .pathRow input {

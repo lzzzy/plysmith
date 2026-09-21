@@ -10,15 +10,30 @@ import type {
   PlayoutDraftId,
 } from '../identity/index.ts';
 
-export type MovePolicyCapability = 'best_move';
+export type MovePolicyCapability = 'best_move' | 'human_profile';
 
-export interface MovePolicyBinding {
-  readonly capability: MovePolicyCapability;
+interface MovePolicyBindingBase {
   readonly providerInstanceId: string;
   readonly providerFingerprint: string;
   readonly providerType: string;
   readonly providerDisplayName: string;
 }
+
+export interface HumanMovePolicyProfile {
+  readonly modelName: string;
+  readonly selectionMode: 'most_likely' | 'sampled';
+  readonly historyMode: 'known_position_history' | 'position_only';
+  readonly reproducibility: 'deterministic' | 'stochastic';
+}
+
+export type MovePolicyBinding = MovePolicyBindingBase &
+  (
+    | { readonly capability: 'best_move' }
+    | {
+        readonly capability: 'human_profile';
+        readonly profile: HumanMovePolicyProfile;
+      }
+  );
 
 export type PlayoutOrigin =
   | { readonly kind: 'initial_position' }
@@ -45,7 +60,11 @@ export interface PlayoutSourcePath {
 }
 
 export type PlayoutTerminalReason =
-  'checkmate' | 'stalemate' | 'insufficient_material' | 'seventy_five_move';
+  | 'checkmate'
+  | 'stalemate'
+  | 'insufficient_material'
+  | 'threefold_repetition'
+  | 'seventy_five_move';
 
 export type PlayoutOutcome =
   | { readonly kind: 'win'; readonly winner: SideToMove }
@@ -283,7 +302,8 @@ function assertContinuesDraft(draft: PlayoutDraft, applied: AppliedMove): void {
 
 function validatePolicy(policy: MovePolicyBinding): void {
   if (
-    policy.capability !== 'best_move' ||
+    (policy.capability !== 'best_move' &&
+      policy.capability !== 'human_profile') ||
     policy.providerInstanceId.trim() !== policy.providerInstanceId ||
     policy.providerInstanceId.length === 0 ||
     policy.providerFingerprint.trim() !== policy.providerFingerprint ||
@@ -292,6 +312,24 @@ function validatePolicy(policy: MovePolicyBinding): void {
     policy.providerDisplayName.trim().length === 0
   ) {
     throw new Error('A playout requires a valid move policy binding.');
+  }
+  if (policy.capability === 'human_profile')
+    validateHumanProfile(policy.profile);
+}
+
+function validateHumanProfile(profile: HumanMovePolicyProfile): void {
+  if (
+    profile.modelName.trim() !== profile.modelName ||
+    profile.modelName.length === 0 ||
+    profile.modelName.length > 160 ||
+    (profile.selectionMode !== 'most_likely' &&
+      profile.selectionMode !== 'sampled') ||
+    (profile.historyMode !== 'known_position_history' &&
+      profile.historyMode !== 'position_only') ||
+    (profile.reproducibility !== 'deterministic' &&
+      profile.reproducibility !== 'stochastic')
+  ) {
+    throw new Error('A human move policy requires a valid profile.');
   }
 }
 
@@ -351,7 +389,12 @@ function freezeDraft(draft: PlayoutDraft): PlayoutDraft {
         }),
     root: draft.root,
     playerSide: draft.playerSide,
-    policy: Object.freeze({ ...draft.policy }),
+    policy: Object.freeze({
+      ...draft.policy,
+      ...(draft.policy.capability === 'human_profile'
+        ? { profile: Object.freeze({ ...draft.policy.profile }) }
+        : {}),
+    }),
     steps: Object.freeze(
       draft.steps.map((step) =>
         Object.freeze({

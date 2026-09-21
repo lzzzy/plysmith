@@ -115,6 +115,61 @@ const catalog = {
     'Engine configuration conflict',
     'Read the current engine provider configuration before saving again.',
   ],
+  'playout.invalid': [
+    400,
+    'Invalid playout request',
+    'The playout request is invalid.',
+  ],
+  'playout.not_found': [
+    404,
+    'Playout not found',
+    'The playout draft does not exist.',
+  ],
+  'playout.revision_conflict': [
+    409,
+    'Playout revision conflict',
+    'Read the current playout before submitting another change.',
+  ],
+  'playout.move_policy_unavailable': [
+    409,
+    'Move policy unavailable',
+    'The selected engine does not provide the requested move policy.',
+  ],
+  'playout.provider_unavailable': [
+    503,
+    'Engine unavailable',
+    'The selected engine is unavailable.',
+  ],
+  'playout.provider_protocol_error': [
+    502,
+    'Engine protocol error',
+    'The selected engine could not produce a valid move.',
+  ],
+  'playout.provider_timeout': [
+    504,
+    'Engine timeout',
+    'The selected engine did not respond in time.',
+  ],
+  'playout.provider_resource_exhausted': [
+    503,
+    'Engine resource limit reached',
+    'The selected engine exceeded its configured resource limit.',
+  ],
+  'playout.capability_missing': [
+    409,
+    'Engine capability missing',
+    'The selected engine does not provide the requested capability.',
+  ],
+  'playout.illegal_engine_move': [
+    502,
+    'Illegal engine move',
+    'The selected engine returned an illegal move.',
+  ],
+  'playout.interrupted': [
+    409,
+    'Playout interrupted',
+    'The playout changed before the engine response was applied.',
+  ],
   'analysis.invalid_update': [
     400,
     'Invalid analysis update',
@@ -333,6 +388,10 @@ export function installProblemHandling(
         case 'diagnostics.configuration_conflict':
         case 'diagnostics.report_target_exists':
         case 'configuration.engine_conflict':
+        case 'playout.revision_conflict':
+        case 'playout.move_policy_unavailable':
+        case 'playout.capability_missing':
+        case 'playout.interrupted':
         case 'inventory.revision_conflict':
         case 'inventory.preview_conflict':
         case 'workspace.impact_conflict':
@@ -356,6 +415,7 @@ export function installProblemHandling(
         case 'workspace.invalid_page':
         case 'workspace.invalid_resume':
         case 'workspace.invalid_impact_resolution':
+        case 'playout.invalid':
           return replyWithProblem(
             request,
             reply,
@@ -368,6 +428,18 @@ export function installProblemHandling(
         case 'workspace.context_not_found':
         case 'workspace.reference_target_not_found':
         case 'workspace.reference_exists':
+        case 'playout.not_found':
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
+        case 'playout.provider_unavailable':
+        case 'playout.provider_protocol_error':
+        case 'playout.provider_timeout':
+        case 'playout.provider_resource_exhausted':
+        case 'playout.illegal_engine_move':
           return replyWithProblem(
             request,
             reply,

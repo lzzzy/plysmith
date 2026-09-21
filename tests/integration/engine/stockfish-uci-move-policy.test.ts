@@ -13,7 +13,7 @@ const fakeEngine = fileURLToPath(
 const rules = new ChessJsRulesAdapter();
 
 test('normalizes one Fake-UCI best move behind the move-policy port', async () => {
-  const provider = adapter('normal');
+  const provider = await adapter('normal');
   const root = rules.initialState();
   const user = rules.applyMove(root, [], {
     kind: 'coordinates',
@@ -47,7 +47,7 @@ for (const [mode, code] of [
 ] as const) {
   test(`maps Fake-UCI ${mode} to ${code}`, async () => {
     await assert.rejects(
-      adapter(mode).chooseMove({
+      (await adapter(mode)).chooseMove({
         root: rules.initialState(),
         moves: [],
         current: rules.initialState(),
@@ -59,14 +59,12 @@ for (const [mode, code] of [
   });
 }
 
-function adapter(mode: string): StockfishUciMovePolicyAdapter {
+async function adapter(mode: string): Promise<StockfishUciMovePolicyAdapter> {
   return new StockfishUciMovePolicyAdapter(
     {
       instanceId: 'stockfish-test',
       displayName: 'Stockfish test',
-      enabled: true,
       executablePath: process.execPath,
-      executableSha256: '0'.repeat(64),
       arguments: [fakeEngine, mode],
       threads: 1,
       hashMb: 16,

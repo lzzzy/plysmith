@@ -15,6 +15,7 @@ const store = new PlysmithApplicationStore({
   chooseDiagnosticReportDestination: (suggestedFileName) =>
     window.plysmithDesktop.chooseDiagnosticReportDestination(suggestedFileName),
   chooseEngineExecutable: () => window.plysmithDesktop.chooseEngineExecutable(),
+  chooseEngineWeights: () => window.plysmithDesktop.chooseEngineWeights(),
   recordDiagnostic: (event) => window.plysmithDesktop.recordDiagnostic(event),
 });
 
