@@ -48,7 +48,7 @@ export interface MovePolicyProviderDescriptor {
   readonly fingerprint: string;
   readonly capabilities: readonly MovePolicyCapability[];
   readonly profile?: HumanMovePolicyProfile;
-  readonly readiness: 'cold' | 'ready';
+  readonly readiness: 'cold' | 'warming_up' | 'ready';
   readonly status: 'available' | 'unavailable';
   readonly problemCode?: string;
 }
@@ -88,7 +88,10 @@ export class MovePolicyProviderError extends Error {
 
 export interface MovePolicyProvider {
   readonly descriptor: MovePolicyProviderDescriptor;
-  chooseMove(request: MovePolicyRequest): Promise<MovePolicyDecision>;
+  chooseMove(
+    request: MovePolicyRequest,
+    signal?: AbortSignal,
+  ): Promise<MovePolicyDecision>;
 }
 
 export interface MovePolicyRegistry {

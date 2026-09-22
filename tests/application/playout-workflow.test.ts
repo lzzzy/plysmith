@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
 
 import {
+  ActiveMovePolicyDecisions,
   MovePolicyProviderError,
   CompletePlayout,
   PausePlayout,
@@ -69,6 +70,7 @@ function fixture(
     writer: store,
     rules,
     policies,
+    decisions: new ActiveMovePolicyDecisions(),
     clock: { now: () => timestamp },
     events: { publish: (event: PlayoutChanged) => published.push(event) },
   };
@@ -439,12 +441,18 @@ test('keeps the confirmed user move when the provider fails', async (t) => {
   assert.equal(retained?.draft.steps[0]?.move.san, 'e4');
 });
 
-test('a late policy result cannot mutate a draft paused in the meantime', async (t) => {
-  let release: ((value: MovePolicyDecision) => void) | undefined;
-  const pending = new Promise<MovePolicyDecision>((resolve) => {
-    release = resolve;
-  });
-  const { store, start, pause } = fixture(t, () => pending);
+test('pausing aborts the active policy decision without mutating the draft', async (t) => {
+  const { store, start, pause } = fixture(
+    t,
+    (_request, signal) =>
+      new Promise<MovePolicyDecision>((_resolve, reject) => {
+        signal?.addEventListener(
+          'abort',
+          () => reject(new MovePolicyProviderError('interrupted')),
+          { once: true },
+        );
+      }),
+  );
   const scope = freeWorkScope();
   const starting = start.execute({
     scope,
@@ -467,14 +475,8 @@ test('a late policy result cannot mutate a draft paused in the meantime', async 
     draftId: waiting.draft.draftId,
     expectedDraftRevision: waiting.draft.draftRevision,
   });
-  release?.({
-    move: { from: 'e7', to: 'e5', san: 'e5' },
-    providerInstanceId: 'engine-main',
-    providerFingerprint: 'test-engine:v1',
-    reproducibility: 'deterministic',
-  });
   await assert.rejects(starting, {
-    problemCode: 'playout.revision_conflict',
+    problemCode: 'playout.interrupted',
   });
   const paused = await store.readPlayout(scope);
   assert.equal(paused?.draft.status.kind, 'paused');

@@ -48,12 +48,14 @@ import {
   playoutConflict,
   playoutNotFound,
 } from './playout-problems.ts';
+import type { ActiveMovePolicyDecisions } from './active-move-policy-decisions.ts';
 
 interface PlayoutDependencies {
   readonly reader: PlayoutReader;
   readonly writer: PlayoutWriter;
   readonly rules: ChessRulesPort;
   readonly policies: MovePolicyRegistry;
+  readonly decisions: ActiveMovePolicyDecisions;
   readonly clock: PlayoutClock;
   readonly events: PlayoutChangedPublisher;
 }
@@ -272,6 +274,12 @@ export class RetryPlayoutPolicyMove implements ExpectedPlayoutUseCase {
       persisted,
       occurredAt,
     );
+    await this.#dependencies.decisions.cancelAndWait(
+      persisted.draft.draftId,
+      stored.draft.status.kind === 'awaiting_policy'
+        ? stored.draft.status.decisionId
+        : undefined,
+    );
     return playoutView(
       this.#dependencies.rules,
       await drivePolicy(this.#dependencies, request.scope, persisted, provider),
@@ -282,23 +290,25 @@ export class RetryPlayoutPolicyMove implements ExpectedPlayoutUseCase {
 export class PausePlayout implements ExpectedPlayoutUseCase {
   readonly #dependencies: Pick<
     PlayoutDependencies,
-    'reader' | 'writer' | 'clock' | 'rules'
+    'reader' | 'writer' | 'clock' | 'rules' | 'decisions'
   >;
 
   constructor(
     dependencies: Pick<
       PlayoutDependencies,
-      'reader' | 'writer' | 'clock' | 'rules'
+      'reader' | 'writer' | 'clock' | 'rules' | 'decisions'
     >,
   ) {
     this.#dependencies = dependencies;
   }
 
   async execute(request: ExpectedPlayoutRequest): Promise<PlayoutView> {
-    return playoutView(
+    const result = playoutView(
       this.#dependencies.rules,
       await replaceExpected(this.#dependencies, request, pausePlayoutDraft),
     );
+    this.#dependencies.decisions.cancel(result.draft.draftId);
+    return result;
   }
 }
 
@@ -345,34 +355,39 @@ export class ResumePlayout implements ExpectedPlayoutUseCase {
 export class StopPlayout implements ExpectedPlayoutUseCase {
   readonly #dependencies: Pick<
     PlayoutDependencies,
-    'reader' | 'writer' | 'clock' | 'rules'
+    'reader' | 'writer' | 'clock' | 'rules' | 'decisions'
   >;
 
   constructor(
     dependencies: Pick<
       PlayoutDependencies,
-      'reader' | 'writer' | 'clock' | 'rules'
+      'reader' | 'writer' | 'clock' | 'rules' | 'decisions'
     >,
   ) {
     this.#dependencies = dependencies;
   }
 
   async execute(request: ExpectedPlayoutRequest): Promise<PlayoutView> {
-    return playoutView(
+    const result = playoutView(
       this.#dependencies.rules,
       await replaceExpected(this.#dependencies, request, stopPlayoutDraft),
     );
+    this.#dependencies.decisions.cancel(result.draft.draftId);
+    return result;
   }
 }
 
 export class DiscardPlayout implements DiscardPlayoutUseCase {
   readonly #dependencies: Pick<
     PlayoutDependencies,
-    'reader' | 'writer' | 'clock'
+    'reader' | 'writer' | 'clock' | 'decisions'
   >;
 
   constructor(
-    dependencies: Pick<PlayoutDependencies, 'reader' | 'writer' | 'clock'>,
+    dependencies: Pick<
+      PlayoutDependencies,
+      'reader' | 'writer' | 'clock' | 'decisions'
+    >,
   ) {
     this.#dependencies = dependencies;
   }
@@ -381,10 +396,12 @@ export class DiscardPlayout implements DiscardPlayoutUseCase {
     request: ExpectedPlayoutRequest,
   ): Promise<{ readonly dataRevision: number }> {
     await requireExpected(this.#dependencies.reader, request);
-    return this.#dependencies.writer.discardPlayout({
+    const result = await this.#dependencies.writer.discardPlayout({
       ...request,
       occurredAt: this.#dependencies.clock.now(),
     });
+    this.#dependencies.decisions.cancel(request.draftId);
+    return result;
   }
 }
 
@@ -471,15 +488,24 @@ async function drivePolicy(
   const decisionId = stored.draft.status.decisionId;
   let decision;
   try {
-    decision = await provider.chooseMove({
-      root: stored.draft.sourcePath?.root ?? stored.draft.root,
-      moves: [
-        ...(stored.draft.sourcePath?.steps.map((step) => step.move) ?? []),
-        ...stored.draft.steps.map((step) => step.move),
-      ],
-      current: currentPlayoutState(stored.draft),
+    decision = await dependencies.decisions.run(
+      stored.draft.draftId,
       decisionId,
-    });
+      (signal) =>
+        provider.chooseMove(
+          {
+            root: stored.draft.sourcePath?.root ?? stored.draft.root,
+            moves: [
+              ...(stored.draft.sourcePath?.steps.map((step) => step.move) ??
+                []),
+              ...stored.draft.steps.map((step) => step.move),
+            ],
+            current: currentPlayoutState(stored.draft),
+            decisionId,
+          },
+          signal,
+        ),
+    );
   } catch (error) {
     throw movePolicyFailed(
       error instanceof MovePolicyProviderError

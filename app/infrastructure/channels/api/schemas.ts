@@ -895,7 +895,11 @@ export const MovePolicyProviderSchema = Type.Object(
       { maxItems: 1, uniqueItems: true },
     ),
     profile: Type.Optional(Type.Ref(HumanMovePolicyProfileSchema)),
-    readiness: Type.Union([Type.Literal('cold'), Type.Literal('ready')]),
+    readiness: Type.Union([
+      Type.Literal('cold'),
+      Type.Literal('warming_up'),
+      Type.Literal('ready'),
+    ]),
     status: Type.Union([
       Type.Literal('available'),
       Type.Literal('unavailable'),

@@ -1276,7 +1276,7 @@ export interface components {
             readonly problemCode?: string;
             readonly profile?: components["schemas"]["HumanMovePolicyProfile"];
             readonly providerType: string;
-            readonly readiness: "cold" | "ready";
+            readonly readiness: "cold" | "warming_up" | "ready";
             readonly status: "available" | "unavailable";
         };
         readonly PageQuery: {

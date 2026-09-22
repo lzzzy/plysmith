@@ -1,5 +1,5 @@
 import { createInterface } from 'node:readline';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 const mode = process.argv[2] ?? 'normal';
 const tracePath = process.argv[3]?.startsWith('--')
@@ -8,7 +8,11 @@ const tracePath = process.argv[3]?.startsWith('--')
 const input = createInterface({ input: process.stdin });
 
 if (tracePath !== undefined) {
-  appendFileSync(tracePath, `argv ${process.argv.slice(4).join(' ')}\n`, 'utf8');
+  appendFileSync(
+    tracePath,
+    `pid ${process.pid}\nargv ${process.argv.slice(4).join(' ')}\n`,
+    'utf8',
+  );
 }
 
 input.on('line', (line) => {
@@ -23,11 +27,23 @@ input.on('line', (line) => {
     return;
   }
   if (line === 'isready') {
-    process.stdout.write('readyok\n');
+    if (mode === 'hang-ready-once' && processStarts() === 1) return;
+    if (mode === 'slow-ready') {
+      setTimeout(() => process.stdout.write('readyok\n'), 50);
+    } else {
+      process.stdout.write('readyok\n');
+    }
     return;
   }
   if (line === 'go' || line.startsWith('go ')) {
     if (mode === 'crash') process.exit(3);
+    if (mode === 'crash-once' || mode === 'timeout-once') {
+      const starts = processStarts();
+      if (starts === 1) {
+        if (mode === 'crash-once') process.exit(3);
+        return;
+      }
+    }
     if (mode === 'timeout') return;
     if (mode === 'flood') {
       process.stdout.write(`info string ${'x'.repeat(20_000)}\n`);
@@ -37,6 +53,9 @@ input.on('line', (line) => {
       setInterval(() => process.stdout.write('info depth 1 score cp 0\n'), 5);
       return;
     }
+    if (mode === 'bounded-chatter') {
+      process.stdout.write(`info string ${'x'.repeat(700)}\n`);
+    }
     process.stdout.write(
       mode === 'illegal' ? 'bestmove e7e4\n' : 'bestmove e7e5 ponder g1f3\n',
     );
@@ -44,3 +63,9 @@ input.on('line', (line) => {
   }
   if (line === 'quit') process.exit(0);
 });
+
+function processStarts() {
+  return tracePath === undefined
+    ? 1
+    : (readFileSync(tracePath, 'utf8').match(/^argv /gm)?.length ?? 0);
+}

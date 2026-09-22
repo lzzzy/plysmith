@@ -27,6 +27,7 @@ export type {
   PlayoutWriter,
 } from './playout-ports.ts';
 export { MovePolicyProviderError, policyBinding } from './playout-ports.ts';
+export { ActiveMovePolicyDecisions } from './active-move-policy-decisions.ts';
 export {
   invalidPlayout,
   movePolicyFailed,

@@ -31,6 +31,7 @@ import {
 } from '../../application/preferences/index.ts';
 import {
   CompletePlayout,
+  ActiveMovePolicyDecisions,
   DiscardPlayout,
   GetPlayout,
   ListMovePolicyProviders,
@@ -64,9 +65,12 @@ import {
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
   ConfiguredMovePolicyRegistry,
+  createMaiaChessUciRuntime,
+  createStockfishUciRuntime,
   MaiaChessMovePolicyAdapter,
   StockfishUciMovePolicyAdapter,
   UnavailableMovePolicyProvider,
+  type UciEngineRuntime,
 } from '../../infrastructure/adapters/engine/index.ts';
 import { LineProcessSupervisor } from '../../infrastructure/adapters/process/index.ts';
 import {
@@ -118,6 +122,7 @@ export async function composeHost(
   let persistence: SqlitePersistenceAdapter | undefined;
   let host: FastifyInstance | undefined;
   let diagnostics: FileDiagnosticLog | undefined;
+  const engineRuntimes: UciEngineRuntime[] = [];
 
   try {
     await initializeConfiguration({
@@ -206,37 +211,43 @@ export async function composeHost(
         }
         if (engine.provider === 'maia-chess') {
           const settings = engine.configuration;
-          return new MaiaChessMovePolicyAdapter(
-            {
-              instanceId: engine.instanceId,
-              displayName: settings.displayName,
-              executablePath: settings.maia.executablePath,
-              weightsPath: settings.maia.weightsPath,
-              startupTimeoutMs: settings.maia.startupTimeoutMs,
-              moveTimeoutMs: settings.maia.moveTimeoutMs,
-              stopTimeoutMs: settings.maia.stopTimeoutMs,
-              maxOutputBytes: settings.maia.maxOutputBytes,
-            },
-            new LineProcessSupervisor(),
-          );
-        }
-        const settings = engine.configuration;
-        return new StockfishUciMovePolicyAdapter(
-          {
+          const adapterConfiguration = {
             instanceId: engine.instanceId,
             displayName: settings.displayName,
-            executablePath: settings.stockfish.executablePath,
-            arguments: settings.stockfish.arguments,
-            threads: settings.stockfish.threads,
-            hashMb: settings.stockfish.hashMb,
-            moveTimeMs: settings.stockfish.moveTimeMs,
-            startupTimeoutMs: settings.stockfish.startupTimeoutMs,
-            moveTimeoutMs: settings.stockfish.moveTimeoutMs,
-            stopTimeoutMs: settings.stockfish.stopTimeoutMs,
-            maxOutputBytes: settings.stockfish.maxOutputBytes,
-          },
+            executablePath: settings.maia.executablePath,
+            weightsPath: settings.maia.weightsPath,
+            startupTimeoutMs: settings.maia.startupTimeoutMs,
+            moveTimeoutMs: settings.maia.moveTimeoutMs,
+            stopTimeoutMs: settings.maia.stopTimeoutMs,
+            maxOutputBytes: settings.maia.maxOutputBytes,
+          };
+          const runtime = createMaiaChessUciRuntime(
+            adapterConfiguration,
+            new LineProcessSupervisor(),
+          );
+          engineRuntimes.push(runtime);
+          return new MaiaChessMovePolicyAdapter(adapterConfiguration, runtime);
+        }
+        const settings = engine.configuration;
+        const adapterConfiguration = {
+          instanceId: engine.instanceId,
+          displayName: settings.displayName,
+          executablePath: settings.stockfish.executablePath,
+          arguments: settings.stockfish.arguments,
+          threads: settings.stockfish.threads,
+          hashMb: settings.stockfish.hashMb,
+          moveTimeMs: settings.stockfish.moveTimeMs,
+          startupTimeoutMs: settings.stockfish.startupTimeoutMs,
+          moveTimeoutMs: settings.stockfish.moveTimeoutMs,
+          stopTimeoutMs: settings.stockfish.stopTimeoutMs,
+          maxOutputBytes: settings.stockfish.maxOutputBytes,
+        };
+        const runtime = createStockfishUciRuntime(
+          adapterConfiguration,
           new LineProcessSupervisor(),
         );
+        engineRuntimes.push(runtime);
+        return new StockfishUciMovePolicyAdapter(adapterConfiguration, runtime);
       }),
     );
     const configuredEngineProviders = await engineProviderConfigurations.list();
@@ -381,6 +392,7 @@ export async function composeHost(
       writer: persistence,
       rules,
       policies: movePolicies,
+      decisions: new ActiveMovePolicyDecisions(),
       clock,
       events: eventStream,
     };
@@ -464,6 +476,7 @@ export async function composeHost(
       hostToken,
       host,
       diagnostics,
+      engineRuntimes,
     });
   } catch (error) {
     diagnostics?.write({
@@ -472,6 +485,7 @@ export async function composeHost(
       status: 'failed',
     });
     await host?.close();
+    await Promise.allSettled(engineRuntimes.map((runtime) => runtime.close()));
     await persistence?.close();
     await lease.release();
     await diagnostics?.close();
@@ -487,6 +501,7 @@ function createComposedHost(input: {
   readonly hostToken: string;
   readonly host: FastifyInstance;
   readonly diagnostics: FileDiagnosticLog;
+  readonly engineRuntimes: readonly UciEngineRuntime[];
 }): ComposedHost {
   let closePromise: Promise<void> | undefined;
 
@@ -519,6 +534,7 @@ async function closeComposedHost(input: {
   readonly runtimeStatus: RuntimeStatus;
   readonly host: FastifyInstance;
   readonly diagnostics: FileDiagnosticLog;
+  readonly engineRuntimes: readonly UciEngineRuntime[];
 }): Promise<void> {
   input.runtimeStatus.setState('shutting_down');
   input.diagnostics.write({
@@ -527,13 +543,35 @@ async function closeComposedHost(input: {
     status: 'stopping',
   });
   await clearHostDiscovery(input.applicationHome, input.lease.ownerId);
-  await input.host.close();
-  await input.persistence.close();
-  await input.lease.release();
+  const failures: unknown[] = [];
+  const processClosures = await Promise.allSettled([
+    Promise.resolve().then(() => input.host.close()),
+    ...input.engineRuntimes.map((runtime) => runtime.close()),
+  ]);
+  failures.push(
+    ...processClosures
+      .filter((result) => result.status === 'rejected')
+      .map((result) => result.reason),
+  );
+  for (const close of [
+    () => input.persistence.close(),
+    () => input.lease.release(),
+  ]) {
+    try {
+      await close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
   input.diagnostics.write({
     level: 'info',
     eventCode: 'host.lifecycle.stopped',
     status: 'stopped',
   });
-  await input.diagnostics.close();
+  try {
+    await input.diagnostics.close();
+  } catch (error) {
+    failures.push(error);
+  }
+  if (failures.length > 0) throw failures[0];
 }

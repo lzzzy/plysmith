@@ -6,9 +6,13 @@ import { test } from 'node:test';
 
 import { MovePolicyProviderError } from '../../../app/application/playout/index.ts';
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
-import { MaiaChessMovePolicyAdapter } from '../../../app/infrastructure/adapters/engine/index.ts';
+import {
+  createMaiaChessUciRuntime,
+  MaiaChessMovePolicyAdapter,
+} from '../../../app/infrastructure/adapters/engine/index.ts';
 import {
   LineProcessSupervisor,
+  type LineProcessHandle,
   type LineProcessOptions,
   type LineProcessSession,
 } from '../../../app/infrastructure/adapters/process/index.ts';
@@ -22,19 +26,19 @@ test('runs Maia Chess through Lc0 with one node and complete known position hist
   const weightsPath = path.join(directory, 'maia-1500.pb.gz');
   await writeFile(weightsPath, 'test weights');
   const supervisor = new RecordingUciSupervisor();
-  const provider = new MaiaChessMovePolicyAdapter(
-    {
-      instanceId: 'maia-1500',
-      displayName: 'Maia 1500',
-      executablePath: 'lc0',
-      weightsPath,
-      startupTimeoutMs: 1_000,
-      moveTimeoutMs: 1_000,
-      stopTimeoutMs: 100,
-      maxOutputBytes: 64_000,
-    },
-    supervisor,
-  );
+  const configuration = {
+    instanceId: 'maia-1500',
+    displayName: 'Maia 1500',
+    executablePath: 'lc0',
+    weightsPath,
+    startupTimeoutMs: 1_000,
+    moveTimeoutMs: 1_000,
+    stopTimeoutMs: 100,
+    maxOutputBytes: 64_000,
+  };
+  const runtime = createMaiaChessUciRuntime(configuration, supervisor);
+  t.after(() => runtime.close());
+  const provider = new MaiaChessMovePolicyAdapter(configuration, runtime);
   const root = rules.initialState();
   const user = rules.applyMove(root, [], {
     kind: 'coordinates',
@@ -71,23 +75,23 @@ test('runs Maia Chess through Lc0 with one node and complete known position hist
   assert.ok(supervisor.commands.includes('go nodes 1'));
 });
 
-test('surfaces an Lc0 model error without waiting for the move timeout', async () => {
+test('surfaces an Lc0 model error without waiting for the move timeout', async (t) => {
   const supervisor = new RecordingUciSupervisor(
     'error The file seems to be unparseable.',
   );
-  const provider = new MaiaChessMovePolicyAdapter(
-    {
-      instanceId: 'maia-1500',
-      displayName: 'Maia 1500',
-      executablePath: 'lc0',
-      weightsPath: 'maia-1500.pb.gz',
-      startupTimeoutMs: 1_000,
-      moveTimeoutMs: 30_000,
-      stopTimeoutMs: 100,
-      maxOutputBytes: 64_000,
-    },
-    supervisor,
-  );
+  const configuration = {
+    instanceId: 'maia-1500',
+    displayName: 'Maia 1500',
+    executablePath: 'lc0',
+    weightsPath: 'maia-1500.pb.gz',
+    startupTimeoutMs: 1_000,
+    moveTimeoutMs: 30_000,
+    stopTimeoutMs: 100,
+    maxOutputBytes: 64_000,
+  };
+  const runtime = createMaiaChessUciRuntime(configuration, supervisor);
+  t.after(() => runtime.close());
+  const provider = new MaiaChessMovePolicyAdapter(configuration, runtime);
   const root = rules.initialState();
 
   await assert.rejects(
@@ -108,13 +112,10 @@ class RecordingUciSupervisor extends LineProcessSupervisor {
     this.moveResponse = moveResponse;
   }
 
-  override async run<T>(
-    options: LineProcessOptions,
-    work: (session: LineProcessSession) => Promise<T>,
-  ): Promise<T> {
+  override async open(options: LineProcessOptions): Promise<LineProcessHandle> {
     this.arguments = options.arguments;
     const responses: string[] = [];
-    return work({
+    const session: LineProcessSession = {
       writeLine: (line) => {
         this.commands.push(line);
         if (line === 'uci') responses.push('id name Lc0', 'uciok');
@@ -127,6 +128,13 @@ class RecordingUciSupervisor extends LineProcessSupervisor {
           ? Promise.reject(new Error('No UCI response queued.'))
           : Promise.resolve(response);
       },
-    });
+      resetOutputBudget() {},
+    };
+    return {
+      processId: 1,
+      session,
+      waitForExit: async () => true,
+      terminate: async () => undefined,
+    };
   }
 }

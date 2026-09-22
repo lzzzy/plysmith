@@ -2,53 +2,46 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import {
-  MovePolicyProviderError,
   type MovePolicyDecision,
   type MovePolicyProvider,
   type MovePolicyProviderDescriptor,
   type MovePolicyRequest,
 } from '../../../../application/playout/index.ts';
-import {
-  LineProcessProblem,
-  type LineProcessSession,
-  type LineProcessSupervisor,
-} from '../../process/index.ts';
+import type { LineProcessSession } from '../../process/index.ts';
 import {
   beginUciGame,
-  ExclusiveUciExecution,
-  mapLineProcessProblem,
   readUciBestMove,
-  readUciHandshake,
+  type UciEngineRuntime,
   waitUntilUciReady,
   writeUciPosition,
 } from '../uci/index.ts';
+import {
+  mapMovePolicyRuntimeError,
+  movePolicyDecisionMove,
+  movePolicyPosition,
+} from '../move-policy-runtime.ts';
+import type { MaiaChessRuntimeConfiguration } from './maia-chess-runtime.ts';
 
-export interface MaiaChessConfiguration {
+export interface MaiaChessConfiguration extends MaiaChessRuntimeConfiguration {
   readonly instanceId: string;
   readonly displayName: string;
-  readonly executablePath: string;
-  readonly weightsPath: string;
-  readonly startupTimeoutMs: number;
   readonly moveTimeoutMs: number;
-  readonly stopTimeoutMs: number;
-  readonly maxOutputBytes: number;
 }
 
 const adapterVersion = 1;
 
 export class MaiaChessMovePolicyAdapter implements MovePolicyProvider {
-  readonly descriptor: MovePolicyProviderDescriptor;
   readonly #configuration: MaiaChessConfiguration;
-  readonly #supervisor: LineProcessSupervisor;
-  readonly #execution = new ExclusiveUciExecution();
+  readonly #runtime: UciEngineRuntime;
+  readonly #descriptor: Omit<MovePolicyProviderDescriptor, 'readiness'>;
 
   constructor(
     configuration: MaiaChessConfiguration,
-    supervisor: LineProcessSupervisor,
+    runtime: UciEngineRuntime,
   ) {
     this.#configuration = Object.freeze({ ...configuration });
-    this.#supervisor = supervisor;
-    this.descriptor = Object.freeze({
+    this.#runtime = runtime;
+    this.#descriptor = Object.freeze({
       instanceId: configuration.instanceId,
       providerType: 'maia-chess',
       displayName: configuration.displayName,
@@ -62,28 +55,28 @@ export class MaiaChessMovePolicyAdapter implements MovePolicyProvider {
         historyMode: 'known_position_history' as const,
         reproducibility: 'deterministic' as const,
       }),
-      readiness: 'cold',
       status: 'available',
     });
   }
 
-  async chooseMove(request: MovePolicyRequest): Promise<MovePolicyDecision> {
+  get descriptor(): MovePolicyProviderDescriptor {
+    return Object.freeze({
+      ...this.#descriptor,
+      readiness: this.#runtime.readiness,
+    });
+  }
+
+  async chooseMove(
+    request: MovePolicyRequest,
+    signal?: AbortSignal,
+  ): Promise<MovePolicyDecision> {
     try {
-      const move = await this.#execution.run(() =>
-        this.#supervisor.run(
-          {
-            executablePath: this.#configuration.executablePath,
-            arguments: [
-              '--config=',
-              `--weights=${this.#configuration.weightsPath}`,
-            ],
-            startupTimeoutMs: this.#configuration.startupTimeoutMs,
-            stopTimeoutMs: this.#configuration.stopTimeoutMs,
-            maxOutputBytes: this.#configuration.maxOutputBytes,
-          },
-          async (session) =>
-            chooseUciMove(session, this.#configuration, request),
-        ),
+      const move = await this.#runtime.use(
+        async (session) => chooseUciMove(session, this.#configuration, request),
+        {
+          waitTimeoutMs: this.#configuration.moveTimeoutMs,
+          ...(signal === undefined ? {} : { signal }),
+        },
       );
       return Object.freeze({
         move,
@@ -92,11 +85,7 @@ export class MaiaChessMovePolicyAdapter implements MovePolicyProvider {
         reproducibility: 'deterministic' as const,
       });
     } catch (error) {
-      if (error instanceof MovePolicyProviderError) throw error;
-      if (error instanceof LineProcessProblem) {
-        throw new MovePolicyProviderError(mapLineProcessProblem(error), error);
-      }
-      throw new MovePolicyProviderError('provider_protocol_error', error);
+      mapMovePolicyRuntimeError(error);
     }
   }
 }
@@ -106,16 +95,21 @@ async function chooseUciMove(
   configuration: MaiaChessConfiguration,
   request: MovePolicyRequest,
 ): Promise<MovePolicyDecision['move']> {
-  const startupDeadline = performance.now() + configuration.startupTimeoutMs;
-  await readUciHandshake(session, startupDeadline);
-  await waitUntilUciReady(session, startupDeadline);
-  await beginUciGame(session, startupDeadline);
-  writeUciPosition(session, request);
+  await beginUciGame(
+    session,
+    performance.now() + configuration.startupTimeoutMs,
+  );
+  writeUciPosition(session, movePolicyPosition(request));
   session.writeLine('go nodes 1');
-  return readUciBestMove(
+  const move = await readUciBestMove(
     session,
     performance.now() + configuration.moveTimeoutMs,
   );
+  await waitUntilUciReady(
+    session,
+    performance.now() + configuration.startupTimeoutMs,
+  );
+  return movePolicyDecisionMove(move);
 }
 
 export function maiaChessConfigurationFingerprint(

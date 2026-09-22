@@ -1,9 +1,4 @@
 import {
-  MovePolicyProviderError,
-  type MovePolicyDecision,
-  type MovePolicyRequest,
-} from '../../../../application/playout/index.ts';
-import {
   LineProcessProblem,
   type LineProcessSession,
 } from '../../process/index.ts';
@@ -13,19 +8,19 @@ export interface UciHandshake {
   readonly options: ReadonlySet<string>;
 }
 
-export class ExclusiveUciExecution {
-  #active = false;
+export interface UciMove {
+  readonly from: string;
+  readonly to: string;
+  readonly promotion?: 'queen' | 'rook' | 'bishop' | 'knight';
+}
 
-  async run<T>(work: () => Promise<T>): Promise<T> {
-    if (this.#active) {
-      throw new MovePolicyProviderError('provider_resource_exhausted');
-    }
-    this.#active = true;
-    try {
-      return await work();
-    } finally {
-      this.#active = false;
-    }
+export class UciProtocolProblem extends Error {
+  readonly code: 'protocol_error' | 'capability_missing';
+
+  constructor(code: 'protocol_error' | 'capability_missing') {
+    super(code);
+    this.name = 'UciProtocolProblem';
+    this.code = code;
   }
 }
 
@@ -55,7 +50,7 @@ export function requireUciOptions(
   required: readonly string[],
 ): void {
   if (required.some((option) => !handshake.options.has(option))) {
-    throw new MovePolicyProviderError('capability_missing');
+    throw new UciProtocolProblem('capability_missing');
   }
 }
 
@@ -77,23 +72,26 @@ export async function beginUciGame(
 
 export function writeUciPosition(
   session: LineProcessSession,
-  request: MovePolicyRequest,
+  input: {
+    readonly rootFen: string;
+    readonly moves: readonly UciMove[];
+  },
 ): void {
   const suffix =
-    request.moves.length === 0
+    input.moves.length === 0
       ? ''
-      : ` moves ${request.moves.map(uciMove).join(' ')}`;
-  session.writeLine(`position fen ${request.root.fen}${suffix}`);
+      : ` moves ${input.moves.map(uciMove).join(' ')}`;
+  session.writeLine(`position fen ${input.rootFen}${suffix}`);
 }
 
 export async function readUciBestMove(
   session: LineProcessSession,
   deadline: number,
-): Promise<MovePolicyDecision['move']> {
+): Promise<UciMove> {
   for (;;) {
     const line = await readLineBefore(session, deadline);
     if (/^error(?:\s|$)/i.test(line)) {
-      throw new MovePolicyProviderError('provider_protocol_error');
+      throw new UciProtocolProblem('protocol_error');
     }
     const match = /^bestmove ([a-h][1-8])([a-h][1-8])([qrbn])?(?:\s|$)/.exec(
       line,
@@ -102,32 +100,14 @@ export async function readUciBestMove(
     const from = match[1];
     const to = match[2];
     if (from === undefined || to === undefined) {
-      throw new MovePolicyProviderError('provider_protocol_error');
+      throw new UciProtocolProblem('protocol_error');
     }
     return Object.freeze({
       from,
       to,
       ...(match[3] === undefined ? {} : { promotion: promotion(match[3]) }),
-      san: `${from}${to}${match[3] ?? ''}`,
     });
   }
-}
-
-export function mapLineProcessProblem(
-  problem: LineProcessProblem,
-):
-  | 'provider_unavailable'
-  | 'provider_timeout'
-  | 'provider_resource_exhausted'
-  | 'provider_protocol_error' {
-  if (problem.code === 'process_start_failed') {
-    return 'provider_unavailable';
-  }
-  if (problem.code === 'process_timeout') return 'provider_timeout';
-  if (problem.code === 'process_output_limit') {
-    return 'provider_resource_exhausted';
-  }
-  return 'provider_protocol_error';
 }
 
 async function readUntil(
@@ -151,7 +131,7 @@ function readLineBefore(
   return session.readLine(remainingMs);
 }
 
-function uciMove(move: MovePolicyRequest['moves'][number]): string {
+function uciMove(move: UciMove): string {
   return `${move.from}${move.to}${
     move.promotion === undefined
       ? ''
@@ -161,8 +141,6 @@ function uciMove(move: MovePolicyRequest['moves'][number]): string {
 
 function promotion(value: string): 'queen' | 'rook' | 'bishop' | 'knight' {
   const result = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[value];
-  if (result === undefined) {
-    throw new MovePolicyProviderError('provider_protocol_error');
-  }
+  if (result === undefined) throw new UciProtocolProblem('protocol_error');
   return result as 'queen' | 'rook' | 'bishop' | 'knight';
 }
