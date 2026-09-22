@@ -10,6 +10,7 @@ import type { LineProcessSession } from '../../process/index.ts';
 import {
   beginUciGame,
   readUciBestMove,
+  setUciOption,
   type UciEngineRuntime,
   waitUntilUciReady,
   writeUciPosition,
@@ -64,7 +65,19 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
   ): Promise<MovePolicyDecision> {
     try {
       const move = await this.#runtime.use(
-        async (session) => chooseUciMove(session, this.#configuration, request),
+        async (session, handshake) => {
+          if (handshake.options.has('MultiPV'))
+            setUciOption(session, 'MultiPV', 1);
+          if (handshake.options.has('UCI_ShowWDL'))
+            setUciOption(session, 'UCI_ShowWDL', false);
+          if (handshake.options.has('UCI_LimitStrength'))
+            setUciOption(session, 'UCI_LimitStrength', false);
+          await waitUntilUciReady(
+            session,
+            performance.now() + this.#configuration.startupTimeoutMs,
+          );
+          return chooseUciMove(session, this.#configuration, request);
+        },
         {
           waitTimeoutMs: this.#configuration.moveTimeoutMs,
           ...(signal === undefined ? {} : { signal }),

@@ -9,6 +9,9 @@ import {
   type AddContextReferenceResultDto,
   type RemoveContextItemResultDto,
   type AnalysisWorkspaceDto,
+  type AnalyzePositionRequestDto,
+  type ListPositionAnalysisProvidersResultDto,
+  type PositionAnalysisSnapshotDto,
   type AnalysisRecordDto,
   type AnalysisNoteMutationResultDto,
   type CreateAnalysisRecordRequestDto,
@@ -129,6 +132,16 @@ export class RediscoveringHostClient {
     request: GetAnalysisWorkspaceRequestDto,
   ): Promise<AnalysisWorkspaceDto> {
     return this.#read((client) => client.getAnalysisWorkspace(request));
+  }
+
+  async listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResultDto> {
+    return this.#read((client) => client.listPositionAnalysisProviders());
+  }
+
+  async analyzePosition(
+    request: AnalyzePositionRequestDto,
+  ): Promise<PositionAnalysisSnapshotDto> {
+    return (await this.#currentClient()).analyzePosition(request);
   }
 
   async validateAnalysisSetup(

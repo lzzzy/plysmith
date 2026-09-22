@@ -4,6 +4,7 @@ import {
   PlysmithHostClient,
   type AddContextReferenceRequestDto,
   type AddContextReferenceResultDto,
+  type AnalyzePositionRequestDto,
   type RemoveContextItemResultDto,
   type AnalysisNoteMutationResultDto,
   type AnalysisRecordDto,
@@ -32,7 +33,9 @@ import {
   type CompletePlayoutResultDto,
   type ExpectedPlayoutRequestDto,
   type ListMovePolicyProvidersResultDto,
+  type ListPositionAnalysisProvidersResultDto,
   type PlayoutDto,
+  type PositionAnalysisSnapshotDto,
   type StartPlayoutRequestDto,
   type SubmitPlayoutMoveRequestDto,
   type EngineProviderConfigurationInputDto,
@@ -210,6 +213,10 @@ export interface PlysmithApplicationClient {
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto>;
   listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto>;
+  listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResultDto>;
+  analyzePosition(
+    request: AnalyzePositionRequestDto,
+  ): Promise<PositionAnalysisSnapshotDto>;
   getPlayout(request: {
     readonly scopeKind: 'free' | 'context';
     readonly contextId?: string;
@@ -313,6 +320,7 @@ export type PlysmithApplicationState =
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
       readonly analysis: AnalysisWorkspaceDto;
+      readonly analysisProviders: ListPositionAnalysisProvidersResultDto;
       readonly playoutProviders: ListMovePolicyProvidersResultDto;
       readonly engineProviders: ListEngineProviderConfigurationsResultDto;
       readonly playout: PlayoutDto | null;
@@ -366,6 +374,7 @@ export class PlysmithApplicationStore {
   #pendingPlayoutStart: PlayoutStartSelection | undefined;
   #completedPlayout: CompletePlayoutResultDto | undefined;
   #completedPlayoutView: PlayoutDto | undefined;
+  readonly #analysisConsumerId = `desktop-${crypto.randomUUID()}`;
 
   constructor(options: PlysmithApplicationStoreOptions) {
     this.#options = options;
@@ -476,6 +485,7 @@ export class PlysmithApplicationStore {
             inventory,
             analysis,
             workspace,
+            analysisProviders,
             playoutProviders,
             playout,
             engineProviders,
@@ -490,6 +500,7 @@ export class PlysmithApplicationStore {
             contextId === undefined
               ? Promise.resolve(undefined)
               : client.getWorkingContextWorkspace(contextId),
+            client.listPositionAnalysisProviders(),
             client.listMovePolicyProviders(),
             client.getPlayout(this.#playoutRequest()),
             client.getEngineProviderConfigurations(),
@@ -573,6 +584,7 @@ export class PlysmithApplicationStore {
               contexts,
               inventory,
               analysis,
+              analysisProviders,
               playoutProviders,
               playout,
               engineProviders,
@@ -664,6 +676,45 @@ export class PlysmithApplicationStore {
     this.#publishViewState();
     if (returningToContextAnalysis) void this.refresh();
     if (activity === 'playout') void this.#prepareDefaultPlayout();
+  }
+
+  async analyzePosition(
+    request: Omit<AnalyzePositionRequestDto, 'consumerId'>,
+  ): Promise<
+    | {
+        readonly kind: 'completed';
+        readonly snapshot: PositionAnalysisSnapshotDto;
+      }
+    | { readonly kind: 'cancelled' }
+    | { readonly kind: 'failed'; readonly errorCode: string }
+  > {
+    const client = this.#client;
+    if (client === undefined || this.#readyState() === undefined) {
+      return Object.freeze({
+        kind: 'failed' as const,
+        errorCode: 'host.unavailable',
+      });
+    }
+    const lifecycle = this.#lifecycle;
+    try {
+      const snapshot = await client.analyzePosition({
+        ...request,
+        consumerId: this.#analysisConsumerId,
+      });
+      if (lifecycle !== this.#lifecycle) {
+        return Object.freeze({ kind: 'cancelled' as const });
+      }
+      return Object.freeze({ kind: 'completed' as const, snapshot });
+    } catch (error) {
+      if (lifecycle !== this.#lifecycle) {
+        return Object.freeze({ kind: 'cancelled' as const });
+      }
+      const errorCode = hostErrorCode(error);
+      if (errorCode === 'analysis.position_interrupted') {
+        return Object.freeze({ kind: 'cancelled' as const });
+      }
+      return Object.freeze({ kind: 'failed' as const, errorCode });
+    }
   }
 
   openPlayoutFromCurrentAnalysis(): void {
@@ -2658,6 +2709,7 @@ export class PlysmithApplicationStore {
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,
+        analysisProviders: state.analysisProviders,
         playoutProviders: state.playoutProviders,
         engineProviders: state.engineProviders,
         playout: state.playout,

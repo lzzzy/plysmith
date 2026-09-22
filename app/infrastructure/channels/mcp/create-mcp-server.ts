@@ -25,6 +25,7 @@ import {
   diagnosticReportManifestDto,
   diagnosticSettingsDto,
   languageResultDto,
+  listPositionAnalysisProvidersResultDto,
   listWorkingContextsResultDto,
   preferencesDto,
   preferencesSummary,
@@ -36,6 +37,7 @@ import {
   inventoryRevisionPreviewDto,
   listInventoryRevisionsResultDto,
   pendingRevisionImpactDto,
+  positionAnalysisSnapshotDto,
   resolvePendingRevisionImpactResultDto,
   saveInventoryRevisionResultDto,
   startInventoryRevisionResultDto,
@@ -71,6 +73,7 @@ import {
   HostProblemSchema,
   ListWorkingContextsArgumentsSchema,
   ListWorkingContextsResultSchema,
+  ListPositionAnalysisProvidersResultSchema,
   SearchInventoryArgumentsSchema,
   SearchInventoryResultSchema,
   AnalysisRecordSchema,
@@ -102,6 +105,8 @@ import {
   ValidateAnalysisSetupArgumentsSchema,
   ValidateAnalysisSetupResultSchema,
   WorkingContextWorkspaceSchema,
+  AnalyzePositionArgumentsSchema,
+  PositionAnalysisSnapshotSchema,
   ListMovePolicyProvidersResultSchema,
   PlayoutResultSchema,
   GetPlayoutArgumentsSchema,
@@ -550,6 +555,32 @@ export function createMcpServer({
     },
   ];
   tools.push(
+    {
+      name: 'list_position_analysis_providers',
+      title: 'List position-analysis providers',
+      description:
+        'List engine-neutral objective and human-policy providers available for position analysis.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ListPositionAnalysisProvidersResultSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'analyze_position',
+      title: 'Analyze position',
+      description:
+        'Analyze the exact visible focus with one configured objective or human-policy provider. A newer request for the same consumer and lane replaces the previous request.',
+      inputSchema: AnalyzePositionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [PositionAnalysisSnapshotSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
     {
       name: 'list_move_policy_providers',
       title: 'List playout providers',
@@ -1081,6 +1112,26 @@ export function createMcpServer({
             `${dto.area} resume revision ${dto.resume.resumeVersion}.`,
           );
         }
+        case 'list_position_analysis_providers': {
+          const dto = listPositionAnalysisProvidersResultDto(
+            await hostClient.listPositionAnalysisProviders(),
+          );
+          return toolResult(
+            dto,
+            `${dto.providers.length} position-analysis provider(s).`,
+          );
+        }
+        case 'analyze_position': {
+          if (!Value.Check(AnalyzePositionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = positionAnalysisSnapshotDto(
+            await hostClient.analyzePosition(args),
+          );
+          return toolResult(
+            dto,
+            `${dto.providerDisplayName} returned ${dto.candidates.length} candidate(s) for ${dto.focusKey}.`,
+          );
+        }
         case 'list_move_policy_providers': {
           const dto = await hostClient.listMovePolicyProviders();
           return toolResult(
@@ -1225,6 +1276,7 @@ function inputSchema(name: string) {
     case 'get_user_preferences':
     case 'get_diagnostic_settings':
     case 'get_diagnostic_report_manifest':
+    case 'list_position_analysis_providers':
     case 'list_move_policy_providers':
       return EmptyArgumentsSchema;
     case 'set_diagnostic_log_level':
@@ -1279,6 +1331,8 @@ function inputSchema(name: string) {
       return RemoveContextItemArgumentsSchema;
     case 'set_work_scope_resume':
       return SetWorkScopeResumeArgumentsSchema;
+    case 'analyze_position':
+      return AnalyzePositionArgumentsSchema;
     case 'get_playout':
       return GetPlayoutArgumentsSchema;
     case 'start_playout':

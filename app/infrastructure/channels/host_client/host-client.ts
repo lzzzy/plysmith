@@ -35,6 +35,12 @@ export type CreateDiagnosticReportResultDto =
 export type GetAnalysisWorkspaceRequestDto =
   components['schemas']['GetAnalysisWorkspaceQuery'];
 export type AnalysisWorkspaceDto = components['schemas']['AnalysisWorkspace'];
+export type ListPositionAnalysisProvidersResultDto =
+  components['schemas']['ListPositionAnalysisProvidersResult'];
+export type AnalyzePositionRequestDto =
+  components['schemas']['AnalyzePositionBody'];
+export type PositionAnalysisSnapshotDto =
+  components['schemas']['PositionAnalysisSnapshot'];
 export type ValidateAnalysisSetupRequestDto =
   components['schemas']['ValidateAnalysisSetupBody'];
 export type ValidateAnalysisSetupResultDto =
@@ -238,6 +244,34 @@ export class PlysmithHostClient {
       });
       return unwrap<AnalysisWorkspaceDto>(
         result.data as unknown as AnalysisWorkspaceDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResultDto> {
+    try {
+      const result = await this.#client.GET('/analysis/providers');
+      return unwrap<ListPositionAnalysisProvidersResultDto>(
+        result.data as ListPositionAnalysisProvidersResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async analyzePosition(
+    request: AnalyzePositionRequestDto,
+  ): Promise<PositionAnalysisSnapshotDto> {
+    try {
+      const result = await this.#client.POST('/analysis/position', {
+        body: request,
+      });
+      return unwrap<PositionAnalysisSnapshotDto>(
+        result.data as PositionAnalysisSnapshotDto | undefined,
         result.error,
       );
     } catch (error) {

@@ -123,6 +123,8 @@ export function createFixture() {
     addContextReference: unavailableUseCase,
     removeContextItem: unavailableUseCase,
     setWorkScopeResume: unavailableUseCase,
+    listPositionAnalysisProviders: { execute: () => [] },
+    analyzePosition: unavailableUseCase,
     listMovePolicyProviders: { execute: () => [] },
     getPlayout: unavailableUseCase,
     startPlayout: unavailableUseCase,

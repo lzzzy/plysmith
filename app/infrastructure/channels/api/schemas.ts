@@ -916,6 +916,196 @@ export const ListMovePolicyProvidersResultSchema = Type.Object(
   { ...objectOptions, $id: 'ListMovePolicyProvidersResult' },
 );
 
+export const PositionAnalysisProviderSchema = Type.Object(
+  {
+    instanceId: identifier,
+    providerType: identifier,
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    capability: Type.Union([
+      Type.Literal('objective_position_analysis'),
+      Type.Literal('human_policy_analysis'),
+    ]),
+    readiness: Type.Union([
+      Type.Literal('cold'),
+      Type.Literal('warming_up'),
+      Type.Literal('ready'),
+    ]),
+    status: Type.Union([
+      Type.Literal('available'),
+      Type.Literal('unavailable'),
+    ]),
+    problemCode: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
+  },
+  { ...objectOptions, $id: 'PositionAnalysisProvider' },
+);
+
+export const ListPositionAnalysisProvidersResultSchema = Type.Object(
+  {
+    providers: Type.Array(Type.Ref(PositionAnalysisProviderSchema), {
+      maxItems: 32,
+    }),
+  },
+  { ...objectOptions, $id: 'ListPositionAnalysisProvidersResult' },
+);
+
+const objectiveAnalysisBudget = Type.Union([
+  Type.Literal('fast'),
+  Type.Literal('thorough'),
+  Type.Literal('very_deep'),
+]);
+
+export const AnalyzePositionBodySchema = Type.Object(
+  {
+    consumerId: Type.String({ minLength: 1, maxLength: 128 }),
+    laneId: Type.String({ minLength: 1, maxLength: 128 }),
+    providerInstanceId: identifier,
+    candidateCount: Type.Integer({ minimum: 1, maximum: 8 }),
+    focus: Type.Object(
+      {
+        focusKey: Type.String({ minLength: 1, maxLength: 256 }),
+        root: Type.Ref(ChessStateSchema),
+        moves: Type.Array(Type.Ref(CanonicalMoveSchema), { maxItems: 1_000 }),
+        current: Type.Ref(ChessStateSchema),
+      },
+      objectOptions,
+    ),
+    mode: Type.Union([
+      Type.Object(
+        { kind: Type.Literal('objective'), budget: objectiveAnalysisBudget },
+        objectOptions,
+      ),
+      Type.Object({ kind: Type.Literal('human_policy') }, objectOptions),
+    ]),
+  },
+  { ...objectOptions, $id: 'AnalyzePositionBody' },
+);
+
+export const AnalysisWdlSchema = Type.Object(
+  {
+    wins: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    draws: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    losses: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    perspective: Type.Union([Type.Literal('white'), Type.Literal('black')]),
+    semantics: Type.Union([
+      Type.Literal('stockfish_selfplay'),
+      Type.Literal('human_outcome'),
+    ]),
+  },
+  { ...objectOptions, $id: 'AnalysisWdl' },
+);
+
+const objectiveEvaluation = Type.Union([
+  Type.Object(
+    {
+      kind: Type.Literal('centipawns'),
+      value: Type.Integer({ minimum: -100_000, maximum: 100_000 }),
+      bound: Type.Union([
+        Type.Literal('exact'),
+        Type.Literal('lower'),
+        Type.Literal('upper'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object(
+    {
+      kind: Type.Literal('mate'),
+      moves: Type.Integer({ minimum: -10_000, maximum: 10_000 }),
+      bound: Type.Union([
+        Type.Literal('exact'),
+        Type.Literal('lower'),
+        Type.Literal('upper'),
+      ]),
+    },
+    objectOptions,
+  ),
+  Type.Object({ kind: Type.Literal('unknown') }, objectOptions),
+]);
+
+const positionAnalysisSnapshotBase = {
+  focusKey: Type.String({ minLength: 1, maxLength: 256 }),
+  providerInstanceId: identifier,
+  providerDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
+  historyCompleteness: Type.Union([
+    Type.Literal('complete'),
+    Type.Literal('partial'),
+    Type.Literal('unknown'),
+  ]),
+};
+
+export const PositionAnalysisSnapshotSchema = Type.Union(
+  [
+    Type.Object(
+      {
+        ...positionAnalysisSnapshotBase,
+        kind: Type.Literal('objective'),
+        budget: objectiveAnalysisBudget,
+        rootWdl: Type.Optional(Type.Ref(AnalysisWdlSchema)),
+        candidates: Type.Array(
+          Type.Object(
+            {
+              rank: Type.Integer({ minimum: 1, maximum: 8 }),
+              move: Type.Ref(CanonicalMoveSchema),
+              evaluation: objectiveEvaluation,
+              wdl: Type.Optional(Type.Ref(AnalysisWdlSchema)),
+              principalVariation: Type.Array(Type.Ref(CanonicalMoveSchema), {
+                maxItems: 32,
+              }),
+            },
+            objectOptions,
+          ),
+          { maxItems: 8 },
+        ),
+        search: Type.Object(
+          {
+            limiter: Type.Object(
+              {
+                kind: Type.Literal('movetime'),
+                value: Type.Integer({ minimum: 1, maximum: 60_000 }),
+              },
+              objectOptions,
+            ),
+            depth: Type.Optional(revision),
+            selectiveDepth: Type.Optional(revision),
+            nodes: Type.Optional(revision),
+            elapsedMilliseconds: Type.Optional(revision),
+            nodesPerSecond: Type.Optional(revision),
+            hashfullPermille: Type.Optional(
+              Type.Integer({ minimum: 0, maximum: 1_000 }),
+            ),
+            tablebaseHits: Type.Optional(revision),
+          },
+          objectOptions,
+        ),
+      },
+      objectOptions,
+    ),
+    Type.Object(
+      {
+        ...positionAnalysisSnapshotBase,
+        kind: Type.Literal('human_policy'),
+        profileName: Type.String({ minLength: 1, maxLength: 160 }),
+        modelName: Type.String({ minLength: 1, maxLength: 260 }),
+        rootWdl: Type.Ref(AnalysisWdlSchema),
+        candidates: Type.Array(
+          Type.Object(
+            {
+              rank: Type.Integer({ minimum: 1, maximum: 8 }),
+              move: Type.Ref(CanonicalMoveSchema),
+              policyPercent: Type.Number({ minimum: 0, maximum: 100 }),
+              wdl: Type.Ref(AnalysisWdlSchema),
+            },
+            objectOptions,
+          ),
+          { maxItems: 8 },
+        ),
+      },
+      objectOptions,
+    ),
+  ],
+  { $id: 'PositionAnalysisSnapshot' },
+);
+
 const playoutOutcome = Type.Union([
   Type.Object(
     {
@@ -1959,6 +2149,11 @@ export const apiSchemas = [
   MovePolicyBindingSchema,
   MovePolicyProviderSchema,
   ListMovePolicyProvidersResultSchema,
+  PositionAnalysisProviderSchema,
+  ListPositionAnalysisProvidersResultSchema,
+  AnalyzePositionBodySchema,
+  AnalysisWdlSchema,
+  PositionAnalysisSnapshotSchema,
   PlayoutStatusSchema,
   PlayoutStepSchema,
   PlayoutSourcePathSchema,

@@ -475,6 +475,15 @@ for (const [code, status] of [
   ['playout.capability_missing', 409],
   ['playout.illegal_engine_move', 502],
   ['playout.interrupted', 409],
+  ['analysis.position_invalid_request', 400],
+  ['analysis.position_invalid_focus', 409],
+  ['analysis.position_provider_unavailable', 503],
+  ['analysis.position_provider_protocol_error', 502],
+  ['analysis.position_provider_timeout', 504],
+  ['analysis.position_provider_resource_exhausted', 503],
+  ['analysis.position_capability_missing', 409],
+  ['analysis.position_illegal_engine_move', 502],
+  ['analysis.position_interrupted', 409],
   ['analysis.invalid_setup', 400],
   ['inventory.invalid_revision', 400],
   ['inventory.revision_conflict', 409],
@@ -621,6 +630,87 @@ test('analysis setup validation is read-only and returns stable issues', async (
   assert.deepEqual(response.json(), {
     valid: false,
     issues: [{ code: 'invalid_fen', field: 'fen' }],
+  });
+});
+
+test('position analysis routes preserve provider capabilities and the exact focus', async (t) => {
+  let received: unknown;
+  const provider = {
+    instanceId: 'stockfish-main',
+    providerType: 'stockfish-uci',
+    displayName: 'Stockfish',
+    capability: 'objective_position_analysis' as const,
+    readiness: 'ready' as const,
+    status: 'available' as const,
+  };
+  const { host } = await buildFixture(t, {
+    listPositionAnalysisProviders: { execute: () => [provider] },
+    analyzePosition: {
+      execute: async (request) => {
+        received = request;
+        return {
+          kind: 'objective' as const,
+          focusKey: request.focus.focusKey,
+          providerInstanceId: provider.instanceId,
+          providerDisplayName: provider.displayName,
+          historyCompleteness: 'complete' as const,
+          budget: 'fast' as const,
+          rootWdl: {
+            wins: 430,
+            draws: 400,
+            losses: 170,
+            perspective: 'white' as const,
+            semantics: 'stockfish_selfplay' as const,
+          },
+          candidates: [],
+          search: {
+            limiter: { kind: 'movetime' as const, value: 300 },
+            depth: 12,
+          },
+        };
+      },
+    },
+  });
+  const listed = await host.inject({ url: '/analysis/providers', headers });
+  const request = {
+    consumerId: 'desktop-test',
+    laneId: 'objective',
+    providerInstanceId: provider.instanceId,
+    candidateCount: 5,
+    focus: {
+      focusKey: 'initial',
+      root: initialPosition,
+      moves: [],
+      current: initialPosition,
+    },
+    mode: { kind: 'objective' as const, budget: 'fast' as const },
+  };
+  const analyzed = await host.inject({
+    method: 'POST',
+    url: '/analysis/position',
+    headers,
+    payload: request,
+  });
+
+  assert.deepEqual(listed.json(), { providers: [provider] });
+  assert.equal(analyzed.statusCode, 200);
+  assert.deepEqual(received, request);
+  assert.deepEqual(analyzed.json(), {
+    kind: 'objective',
+    focusKey: 'initial',
+    providerInstanceId: 'stockfish-main',
+    providerDisplayName: 'Stockfish',
+    historyCompleteness: 'complete',
+    budget: 'fast',
+    rootWdl: {
+      wins: 430,
+      draws: 400,
+      losses: 170,
+      perspective: 'white',
+      semantics: 'stockfish_selfplay',
+    },
+    candidates: [],
+    search: { limiter: { kind: 'movetime', value: 300 }, depth: 12 },
   });
 });
 

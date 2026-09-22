@@ -46,9 +46,12 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
   async list(): Promise<readonly ConfiguredEngineProvider[]> {
     const central = await readCentral(this.#centralPath);
     const providers = await Promise.all(
-      central.configuration.bindings.playoutEngines.map((instanceId) =>
-        this.#readProvider(instanceId),
-      ),
+      [
+        ...new Set([
+          ...central.configuration.bindings.analysisEngines,
+          ...central.configuration.bindings.playoutEngines,
+        ]),
+      ].map((instanceId) => this.#readProvider(instanceId)),
     );
     return Object.freeze(
       providers.filter(
@@ -112,21 +115,20 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
       }
       const document = documentFromInput(request.input);
       const providerSource = `${JSON.stringify(document, null, 2)}\n`;
-      const nextCentral =
-        central.configuration.bindings.playoutEngines.includes(
-          request.input.instanceId,
-        )
-          ? central.configuration
-          : {
-              ...central.configuration,
-              bindings: {
-                ...central.configuration.bindings,
-                playoutEngines: [
-                  ...central.configuration.bindings.playoutEngines,
-                  request.input.instanceId,
-                ],
-              },
-            };
+      const nextCentral = {
+        ...central.configuration,
+        bindings: {
+          ...central.configuration.bindings,
+          analysisEngines: appendUnique(
+            central.configuration.bindings.analysisEngines,
+            request.input.instanceId,
+          ),
+          playoutEngines: appendUnique(
+            central.configuration.bindings.playoutEngines,
+            request.input.instanceId,
+          ),
+        },
+      };
       if (!Value.Check(PlysmithConfigurationSchema, nextCentral)) {
         throw new Error('The updated central configuration is invalid.');
       }
@@ -184,6 +186,10 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
         ...central.configuration,
         bindings: {
           ...central.configuration.bindings,
+          analysisEngines:
+            central.configuration.bindings.analysisEngines.filter(
+              (instanceId) => instanceId !== request.instanceId,
+            ),
           playoutEngines: central.configuration.bindings.playoutEngines.filter(
             (instanceId) => instanceId !== request.instanceId,
           ),
@@ -285,6 +291,10 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
       throw error;
     }
   }
+}
+
+function appendUnique(values: readonly string[], value: string): string[] {
+  return values.includes(value) ? [...values] : [...values, value];
 }
 
 function validInput(input: EngineProviderConfigurationInput): boolean {

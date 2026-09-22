@@ -94,6 +94,12 @@ export type SetWorkScopeResumeResult =
   components['schemas']['SetWorkScopeResumeResult'];
 export type ListMovePolicyProvidersResult =
   components['schemas']['ListMovePolicyProvidersResult'];
+export type ListPositionAnalysisProvidersResult =
+  components['schemas']['ListPositionAnalysisProvidersResult'];
+export type AnalyzePositionRequest =
+  components['schemas']['AnalyzePositionBody'];
+export type PositionAnalysisSnapshot =
+  components['schemas']['PositionAnalysisSnapshot'];
 export type Playout = components['schemas']['PlayoutResult'];
 export type StartPlayoutRequest = components['schemas']['StartPlayoutBody'];
 export type ExpectedPlayoutRequest =
@@ -209,6 +215,10 @@ export interface HostClient {
     contextId: string,
     request: SetWorkScopeResumeRequest,
   ): Promise<SetWorkScopeResumeResult>;
+  listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResult>;
+  analyzePosition(
+    request: AnalyzePositionRequest,
+  ): Promise<PositionAnalysisSnapshot>;
   listMovePolicyProviders(): Promise<ListMovePolicyProvidersResult>;
   getPlayout(request: {
     readonly scopeKind: 'free' | 'context';

@@ -16,6 +16,8 @@ import type {
   DiagnosticReportManifest,
   DiagnosticSettings,
   ListWorkingContextsResult,
+  ListPositionAnalysisProvidersResult,
+  PositionAnalysisSnapshot,
   SearchInventoryResult,
   AnalysisRecord,
   InventoryRevisionPreview,
@@ -45,6 +47,8 @@ import {
   DiagnosticReportManifestSchema,
   DiagnosticSettingsSchema,
   ListWorkingContextsResultSchema,
+  ListPositionAnalysisProvidersResultSchema,
+  PositionAnalysisSnapshotSchema,
   SearchInventoryResultSchema,
   AnalysisRecordSchema,
   InventoryRevisionPreviewSchema,
@@ -216,6 +220,16 @@ export function removeContextItemResultDto(model: RemoveContextItemResult) {
 
 export function setWorkScopeResumeResultDto(model: SetWorkScopeResumeResult) {
   return checked(SetWorkScopeResumeResultSchema, model);
+}
+
+export function listPositionAnalysisProvidersResultDto(
+  model: ListPositionAnalysisProvidersResult,
+) {
+  return checked(ListPositionAnalysisProvidersResultSchema, model);
+}
+
+export function positionAnalysisSnapshotDto(model: PositionAnalysisSnapshot) {
+  return checked(PositionAnalysisSnapshotSchema, model);
 }
 
 export function statusSummary(dto: SystemStatus): string {

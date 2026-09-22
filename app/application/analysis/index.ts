@@ -31,6 +31,34 @@ export {
   type ValidateAnalysisSetupUseCase,
 } from './validate-analysis-setup.ts';
 export { FreeAnalysisSession } from './free-analysis-session.ts';
+export {
+  ActivePositionAnalysisLanes,
+  AnalyzePosition,
+  ListPositionAnalysisProviders,
+  PositionAnalysisProviderError,
+} from './position-analysis.ts';
+export type {
+  AnalysisWdl,
+  AnalyzePositionUseCase,
+  HumanPolicyAnalysisSnapshot,
+  HumanPolicyCandidate,
+  ListPositionAnalysisProvidersUseCase,
+  ObjectiveAnalysisBudget,
+  ObjectiveAnalysisCandidate,
+  ObjectiveAnalysisSnapshot,
+  ObjectiveEvaluation,
+  ObjectiveSearchObservation,
+  PositionAnalysisCapability,
+  PositionAnalysisFailureCode,
+  PositionAnalysisFocus,
+  PositionAnalysisMode,
+  PositionAnalysisProvider,
+  PositionAnalysisProviderDescriptor,
+  PositionAnalysisProviderRequest,
+  PositionAnalysisRegistry,
+  PositionAnalysisRequest,
+  PositionAnalysisSnapshot,
+} from './position-analysis.ts';
 export type {
   AnalysisContributionView,
   AnalysisContributionCreated,

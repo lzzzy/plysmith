@@ -154,6 +154,8 @@ test('browser preflight covers every public use-case route including queries and
     ['/diagnostics/reports', 'POST', 'POST'],
     ['/events', 'GET', 'GET'],
     ['/analysis/workspace?scopeKind=free', 'GET', 'GET'],
+    ['/analysis/providers', 'GET', 'GET'],
+    ['/analysis/position', 'POST', 'POST'],
     ['/analysis/setup-validation', 'POST', 'POST'],
     ['/analysis/scratch', 'PUT', 'PUT'],
     ['/analysis/notes', 'POST', 'POST'],

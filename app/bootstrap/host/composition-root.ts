@@ -4,15 +4,19 @@ import type { FastifyInstance } from 'fastify';
 
 import { HostEventStream } from '../../application/events/index.ts';
 import {
+  ActivePositionAnalysisLanes,
+  AnalyzePosition,
   CreateAnalysisRecord,
   CreateAnalysisNote,
   CreatePositionNote,
   DeleteAnalysisNote,
   FreeAnalysisSession,
   GetAnalysisWorkspace,
+  ListPositionAnalysisProviders,
   UpdateAnalysisScratch,
   UpdateAnalysisNote,
   ValidateAnalysisSetup,
+  type PositionAnalysisProvider,
 } from '../../application/analysis/index.ts';
 import {
   GetInventoryRevision,
@@ -65,12 +69,17 @@ import {
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
   ConfiguredMovePolicyRegistry,
+  ConfiguredPositionAnalysisRegistry,
   createMaiaChessUciRuntime,
   createStockfishUciRuntime,
   MaiaChessMovePolicyAdapter,
+  MaiaChessPositionAnalysisAdapter,
   StockfishUciMovePolicyAdapter,
+  StockfishUciPositionAnalysisAdapter,
   UnavailableMovePolicyProvider,
   type UciEngineRuntime,
+  type MaiaChessConfiguration,
+  type StockfishUciConfiguration,
 } from '../../infrastructure/adapters/engine/index.ts';
 import { LineProcessSupervisor } from '../../infrastructure/adapters/process/index.ts';
 import {
@@ -199,6 +208,76 @@ export async function composeHost(
     const rules = new ChessJsRulesAdapter();
     const engineProviderConfigurations =
       new FileEngineProviderConfigurationRepository(options.applicationHome);
+    type RuntimeBinding =
+      | {
+          readonly kind: 'maia-chess';
+          readonly configuration: MaiaChessConfiguration;
+          readonly runtime: UciEngineRuntime;
+        }
+      | {
+          readonly kind: 'stockfish-uci';
+          readonly configuration: StockfishUciConfiguration;
+          readonly runtime: UciEngineRuntime;
+        };
+    const runtimeBindings = new Map<string, RuntimeBinding>();
+    for (const engine of [
+      ...configuration.analysisEngines,
+      ...configuration.playoutEngines,
+    ]) {
+      if (
+        engine.provider === 'unknown' ||
+        runtimeBindings.has(engine.instanceId)
+      )
+        continue;
+      if (engine.provider === 'maia-chess') {
+        const settings = engine.configuration;
+        const adapterConfiguration: MaiaChessConfiguration = {
+          instanceId: engine.instanceId,
+          displayName: settings.displayName,
+          executablePath: settings.maia.executablePath,
+          weightsPath: settings.maia.weightsPath,
+          startupTimeoutMs: settings.maia.startupTimeoutMs,
+          moveTimeoutMs: settings.maia.moveTimeoutMs,
+          stopTimeoutMs: settings.maia.stopTimeoutMs,
+          maxOutputBytes: settings.maia.maxOutputBytes,
+        };
+        const runtime = createMaiaChessUciRuntime(
+          adapterConfiguration,
+          new LineProcessSupervisor(),
+        );
+        engineRuntimes.push(runtime);
+        runtimeBindings.set(engine.instanceId, {
+          kind: 'maia-chess',
+          configuration: adapterConfiguration,
+          runtime,
+        });
+        continue;
+      }
+      const settings = engine.configuration;
+      const adapterConfiguration: StockfishUciConfiguration = {
+        instanceId: engine.instanceId,
+        displayName: settings.displayName,
+        executablePath: settings.stockfish.executablePath,
+        arguments: settings.stockfish.arguments,
+        threads: settings.stockfish.threads,
+        hashMb: settings.stockfish.hashMb,
+        moveTimeMs: settings.stockfish.moveTimeMs,
+        startupTimeoutMs: settings.stockfish.startupTimeoutMs,
+        moveTimeoutMs: settings.stockfish.moveTimeoutMs,
+        stopTimeoutMs: settings.stockfish.stopTimeoutMs,
+        maxOutputBytes: settings.stockfish.maxOutputBytes,
+      };
+      const runtime = createStockfishUciRuntime(
+        adapterConfiguration,
+        new LineProcessSupervisor(),
+      );
+      engineRuntimes.push(runtime);
+      runtimeBindings.set(engine.instanceId, {
+        kind: 'stockfish-uci',
+        configuration: adapterConfiguration,
+        runtime,
+      });
+    }
     const movePolicies = new ConfiguredMovePolicyRegistry(
       configuration.playoutEngines.map((engine): MovePolicyProvider => {
         if (engine.provider === 'unknown') {
@@ -209,46 +288,52 @@ export async function composeHost(
             problemCode: engine.problemCode,
           });
         }
-        if (engine.provider === 'maia-chess') {
-          const settings = engine.configuration;
-          const adapterConfiguration = {
-            instanceId: engine.instanceId,
-            displayName: settings.displayName,
-            executablePath: settings.maia.executablePath,
-            weightsPath: settings.maia.weightsPath,
-            startupTimeoutMs: settings.maia.startupTimeoutMs,
-            moveTimeoutMs: settings.maia.moveTimeoutMs,
-            stopTimeoutMs: settings.maia.stopTimeoutMs,
-            maxOutputBytes: settings.maia.maxOutputBytes,
-          };
-          const runtime = createMaiaChessUciRuntime(
-            adapterConfiguration,
-            new LineProcessSupervisor(),
+        const binding = runtimeBindings.get(engine.instanceId);
+        if (binding?.kind === 'maia-chess') {
+          return new MaiaChessMovePolicyAdapter(
+            binding.configuration,
+            binding.runtime,
           );
-          engineRuntimes.push(runtime);
-          return new MaiaChessMovePolicyAdapter(adapterConfiguration, runtime);
         }
-        const settings = engine.configuration;
-        const adapterConfiguration = {
+        if (binding?.kind === 'stockfish-uci') {
+          return new StockfishUciMovePolicyAdapter(
+            binding.configuration,
+            binding.runtime,
+          );
+        }
+        return new UnavailableMovePolicyProvider({
           instanceId: engine.instanceId,
-          displayName: settings.displayName,
-          executablePath: settings.stockfish.executablePath,
-          arguments: settings.stockfish.arguments,
-          threads: settings.stockfish.threads,
-          hashMb: settings.stockfish.hashMb,
-          moveTimeMs: settings.stockfish.moveTimeMs,
-          startupTimeoutMs: settings.stockfish.startupTimeoutMs,
-          moveTimeoutMs: settings.stockfish.moveTimeoutMs,
-          stopTimeoutMs: settings.stockfish.stopTimeoutMs,
-          maxOutputBytes: settings.stockfish.maxOutputBytes,
-        };
-        const runtime = createStockfishUciRuntime(
-          adapterConfiguration,
-          new LineProcessSupervisor(),
-        );
-        engineRuntimes.push(runtime);
-        return new StockfishUciMovePolicyAdapter(adapterConfiguration, runtime);
+          providerType: engine.provider,
+          displayName: engine.instanceId,
+          problemCode: 'configuration.provider_invalid',
+        });
       }),
+    );
+    const positionAnalyses = new ConfiguredPositionAnalysisRegistry(
+      configuration.analysisEngines.flatMap(
+        (engine): readonly PositionAnalysisProvider[] => {
+          const binding = runtimeBindings.get(engine.instanceId);
+          if (binding?.kind === 'maia-chess') {
+            return [
+              new MaiaChessPositionAnalysisAdapter(
+                binding.configuration,
+                binding.runtime,
+                rules,
+              ),
+            ];
+          }
+          if (binding?.kind === 'stockfish-uci') {
+            return [
+              new StockfishUciPositionAnalysisAdapter(
+                binding.configuration,
+                binding.runtime,
+                rules,
+              ),
+            ];
+          }
+          return [];
+        },
+      ),
     );
     const configuredEngineProviders = await engineProviderConfigurations.list();
     const activeEngineFingerprints = new Map(
@@ -278,6 +363,14 @@ export async function composeHost(
       storeStatus: persistence,
     });
     const validateAnalysisSetup = new ValidateAnalysisSetup({ rules });
+    const listPositionAnalysisProviders = new ListPositionAnalysisProviders(
+      positionAnalyses,
+    );
+    const analyzePosition = new AnalyzePosition({
+      rules,
+      providers: positionAnalyses,
+      lanes: new ActivePositionAnalysisLanes(),
+    });
     const updateAnalysisScratch = new UpdateAnalysisScratch({
       reader: persistence,
       writer: persistence,
@@ -424,6 +517,8 @@ export async function composeHost(
       getUserPreferences,
       setUiLanguage,
       getAnalysisWorkspace,
+      listPositionAnalysisProviders,
+      analyzePosition,
       validateAnalysisSetup,
       updateAnalysisScratch,
       createAnalysisRecord,

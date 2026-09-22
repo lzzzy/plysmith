@@ -341,6 +341,8 @@ function createClient(
     removeContextItem: async () =>
       assert.fail('no context item removal expected'),
     setWorkScopeResume: async () => assert.fail('no resume write expected'),
+    listPositionAnalysisProviders: async () => ({ providers: [] }),
+    analyzePosition: async () => assert.fail('no position analysis expected'),
     listMovePolicyProviders: async () => ({
       providers: [
         {
@@ -439,6 +441,73 @@ test('renderer subscribes to events before loading all authoritative snapshots',
     ]),
   );
   assert.equal(store.getSnapshot().phase, 'ready');
+  store.close();
+});
+
+test('position analysis uses a stable desktop consumer without taking the global command lock', async () => {
+  const consumerIds: string[] = [];
+  let releaseAnalysis: (() => void) | undefined;
+  const client = createClient({
+    listPositionAnalysisProviders: async () => ({
+      providers: [
+        {
+          instanceId: 'stockfish-main',
+          providerType: 'stockfish-uci',
+          displayName: 'Stockfish',
+          capability: 'objective_position_analysis',
+          readiness: 'ready',
+          status: 'available',
+        },
+      ],
+    }),
+    analyzePosition: async (request) => {
+      consumerIds.push(request.consumerId);
+      await new Promise<void>((resolve) => {
+        releaseAnalysis = resolve;
+      });
+      return {
+        kind: 'objective',
+        focusKey: request.focus.focusKey,
+        providerInstanceId: request.providerInstanceId,
+        providerDisplayName: 'Stockfish',
+        historyCompleteness: 'complete',
+        budget: 'fast',
+        candidates: [],
+        search: { limiter: { kind: 'movetime', value: 300 } },
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  const request = {
+    laneId: 'objective',
+    providerInstanceId: 'stockfish-main',
+    candidateCount: 3,
+    focus: {
+      focusKey: 'initial',
+      root: initialState,
+      moves: [],
+      current: initialState,
+    },
+    mode: { kind: 'objective' as const, budget: 'fast' as const },
+  };
+
+  const first = store.analyzePosition(request);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  const pendingState = store.getSnapshot();
+  assert.equal(
+    pendingState.phase === 'ready' ? pendingState.busyCommand : undefined,
+    undefined,
+  );
+  releaseAnalysis?.();
+  assert.equal((await first).kind, 'completed');
+
+  const second = store.analyzePosition(request);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  releaseAnalysis?.();
+  assert.equal((await second).kind, 'completed');
+  assert.equal(consumerIds.length, 2);
+  assert.equal(consumerIds[0], consumerIds[1]);
   store.close();
 });
 

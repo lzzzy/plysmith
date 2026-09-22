@@ -71,6 +71,8 @@ export async function generateHostContract(
     addContextReference: unavailableUseCase,
     removeContextItem: unavailableUseCase,
     setWorkScopeResume: unavailableUseCase,
+    listPositionAnalysisProviders: { execute: () => [] },
+    analyzePosition: unavailableUseCase,
     listMovePolicyProviders: { execute: () => [] },
     getPlayout: unavailableUseCase,
     startPlayout: unavailableUseCase,

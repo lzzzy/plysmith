@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -41,6 +42,7 @@ import {
   type PlysmithApplicationState,
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
+import { PositionAnalysisPanel } from './position-analysis-panel.tsx';
 import { RevisionImpactView } from './revision-impact-view.tsx';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
 import styles from './analysis-view.module.css';
@@ -123,7 +125,10 @@ export function AnalysisView({
             ...revisionPreview.addedSteps,
           ],
         };
-  const path = analysisPathPresentation(state.analysis);
+  const path = useMemo(
+    () => analysisPathPresentation(state.analysis),
+    [state.analysis],
+  );
   const line = path.entries;
   const sourceEntries = line.filter((entry) => entry.kind === 'source');
   const storedEntries = line.filter((entry) => entry.kind === 'stored');
@@ -179,6 +184,31 @@ export function AnalysisView({
     Math.min(selectedPositionIndex, Math.max(0, path.positions.length - 1)),
   );
   const activePosition = path.positions[activePositionIndex];
+  const positionAnalysisFocus = useMemo(() => {
+    const root = path.positions[0]?.state;
+    if (root === undefined || activePosition === undefined) return undefined;
+    const focusKey = [
+      state.analysis.record?.revisionId ?? 'draft',
+      state.analysis.scratch?.scratchId ?? '-',
+      state.analysis.scratch?.scratchRevision ?? 0,
+      activePositionIndex,
+      activePosition.state.fen,
+    ].join(':');
+    return Object.freeze({
+      focusKey,
+      root,
+      moves: Object.freeze(
+        path.entries.slice(0, activePositionIndex).map((entry) => entry.move),
+      ),
+      current: activePosition.state,
+    });
+  }, [
+    activePosition,
+    activePositionIndex,
+    path,
+    state.analysis.record,
+    state.analysis.scratch,
+  ]);
   const navigationLocked =
     isBusy || pathNoteDraft !== undefined || noteEditor !== undefined;
   const atWorkspacePosition = activePositionIndex === path.currentPositionIndex;
@@ -1443,6 +1473,14 @@ export function AnalysisView({
             )}
         </section>
       </div>
+      {positionAnalysisFocus !== undefined && (
+        <PositionAnalysisPanel
+          focus={positionAnalysisFocus}
+          locale={state.preferences.uiLocale}
+          providers={state.analysisProviders}
+          store={store}
+        />
+      )}
       {state.revisionImpact !== undefined && (
         <RevisionImpactView
           details={state.revisionImpact}

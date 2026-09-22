@@ -4,6 +4,7 @@ interface PathMove {
   readonly from: string;
   readonly to: string;
   readonly san: string;
+  readonly promotion?: 'queen' | 'rook' | 'bishop' | 'knight';
 }
 
 export interface PathContribution {

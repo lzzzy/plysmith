@@ -24,10 +24,11 @@ export interface RuntimeConfiguration {
     readonly provider: 'sqlite';
     readonly databasePath: string;
   };
+  readonly analysisEngines: readonly RuntimeEngineConfiguration[];
   readonly playoutEngines: readonly RuntimePlayoutEngineConfiguration[];
 }
 
-export type RuntimePlayoutEngineConfiguration =
+export type RuntimeEngineConfiguration =
   | {
       readonly instanceId: string;
       readonly provider: 'stockfish-uci';
@@ -47,6 +48,8 @@ export type RuntimePlayoutEngineConfiguration =
       readonly problemCode: 'configuration.provider_invalid';
     };
 
+export type RuntimePlayoutEngineConfiguration = RuntimeEngineConfiguration;
+
 export async function loadConfiguration(
   applicationHome: string,
 ): Promise<RuntimeConfiguration> {
@@ -65,10 +68,25 @@ export async function loadConfiguration(
     throw new ConfigurationProblem('configuration.persistence_invalid');
   }
 
-  const playoutEngines = await Promise.all(
-    central.bindings.playoutEngines.map((playoutInstanceId) =>
-      loadPlayoutEngine(activeDirectory, playoutInstanceId),
+  const engineIds = [
+    ...new Set([
+      ...central.bindings.analysisEngines,
+      ...central.bindings.playoutEngines,
+    ]),
+  ];
+  const loadedEngines = new Map(
+    await Promise.all(
+      engineIds.map(
+        async (engineId) =>
+          [engineId, await loadEngine(activeDirectory, engineId)] as const,
+      ),
     ),
+  );
+  const analysisEngines = central.bindings.analysisEngines.map(
+    (engineId) => loadedEngines.get(engineId) ?? unavailableEngine(engineId),
+  );
+  const playoutEngines = central.bindings.playoutEngines.map(
+    (engineId) => loadedEngines.get(engineId) ?? unavailableEngine(engineId),
   );
 
   return Object.freeze({
@@ -81,6 +99,7 @@ export async function loadConfiguration(
         persistence.sqlite.databasePath,
       ),
     }),
+    analysisEngines: Object.freeze(analysisEngines),
     playoutEngines: Object.freeze(playoutEngines),
   });
 }
@@ -126,10 +145,10 @@ async function readDocument<T extends TSchema>(
   return candidate as Static<T>;
 }
 
-async function loadPlayoutEngine(
+async function loadEngine(
   activeDirectory: string,
   instanceId: string,
-): Promise<RuntimePlayoutEngineConfiguration> {
+): Promise<RuntimeEngineConfiguration> {
   try {
     const configuration = await readDocument(
       path.join(activeDirectory, `${instanceId}.json`),

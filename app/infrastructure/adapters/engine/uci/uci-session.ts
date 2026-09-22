@@ -32,7 +32,7 @@ export async function readUciHandshake(
   const options = new Set<string>();
   let engineName: string | undefined;
   for (;;) {
-    const line = await readLineBefore(session, deadline);
+    const line = await readUciLineBefore(session, deadline);
     if (line === 'uciok') break;
     const option = /^option name (.+?) type /.exec(line)?.[1];
     if (option !== undefined) options.add(option);
@@ -89,7 +89,7 @@ export async function readUciBestMove(
   deadline: number,
 ): Promise<UciMove> {
   for (;;) {
-    const line = await readLineBefore(session, deadline);
+    const line = await readUciLineBefore(session, deadline);
     if (/^error(?:\s|$)/i.test(line)) {
       throw new UciProtocolProblem('protocol_error');
     }
@@ -110,17 +110,79 @@ export async function readUciBestMove(
   }
 }
 
+export async function readUciSearch(
+  session: LineProcessSession,
+  deadline: number,
+): Promise<{
+  readonly lines: readonly string[];
+  readonly bestMove?: UciMove;
+}> {
+  const lines: string[] = [];
+  for (;;) {
+    const line = await readUciLineBefore(session, deadline);
+    if (/^error(?:\s|$)/i.test(line)) {
+      throw new UciProtocolProblem('protocol_error');
+    }
+    const terminal = /^bestmove (0000|\(none\))(?:\s|$)/.exec(line);
+    if (terminal !== null)
+      return Object.freeze({ lines: Object.freeze(lines) });
+    const match = /^bestmove ([a-h][1-8])([a-h][1-8])([qrbn])?(?:\s|$)/.exec(
+      line,
+    );
+    if (match !== null) {
+      const from = match[1];
+      const to = match[2];
+      if (from === undefined || to === undefined) {
+        throw new UciProtocolProblem('protocol_error');
+      }
+      return Object.freeze({
+        lines: Object.freeze(lines),
+        bestMove: Object.freeze({
+          from,
+          to,
+          ...(match[3] === undefined ? {} : { promotion: promotion(match[3]) }),
+        }),
+      });
+    }
+    lines.push(line);
+  }
+}
+
+export function setUciOption(
+  session: LineProcessSession,
+  name: string,
+  value: string | number | boolean,
+): void {
+  session.writeLine(`setoption name ${name} value ${String(value)}`);
+}
+
+export function uciMoveText(move: UciMove): string {
+  return uciMove(move);
+}
+
+export function parseUciMove(value: string): UciMove {
+  const match = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/.exec(value);
+  if (match === null || match[1] === undefined || match[2] === undefined) {
+    throw new UciProtocolProblem('protocol_error');
+  }
+  return Object.freeze({
+    from: match[1],
+    to: match[2],
+    ...(match[3] === undefined ? {} : { promotion: promotion(match[3]) }),
+  });
+}
+
 async function readUntil(
   session: LineProcessSession,
   expected: string,
   deadline: number,
 ): Promise<void> {
   for (;;) {
-    if ((await readLineBefore(session, deadline)) === expected) return;
+    if ((await readUciLineBefore(session, deadline)) === expected) return;
   }
 }
 
-function readLineBefore(
+export function readUciLineBefore(
   session: LineProcessSession,
   deadline: number,
 ): Promise<string> {

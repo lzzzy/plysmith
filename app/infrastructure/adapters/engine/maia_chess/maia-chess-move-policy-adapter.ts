@@ -11,6 +11,7 @@ import type { LineProcessSession } from '../../process/index.ts';
 import {
   beginUciGame,
   readUciBestMove,
+  setUciOption,
   type UciEngineRuntime,
   waitUntilUciReady,
   writeUciPosition,
@@ -72,7 +73,22 @@ export class MaiaChessMovePolicyAdapter implements MovePolicyProvider {
   ): Promise<MovePolicyDecision> {
     try {
       const move = await this.#runtime.use(
-        async (session) => chooseUciMove(session, this.#configuration, request),
+        async (session, handshake) => {
+          for (const [name, value] of [
+            ['VerboseMoveStats', false],
+            ['UCI_ShowWDL', false],
+            ['PolicyTemperature', '1.0'],
+            ['ContemptMode', 'disable'],
+            ['WDLCalibrationElo', '0'],
+          ] as const) {
+            if (handshake.options.has(name)) setUciOption(session, name, value);
+          }
+          await waitUntilUciReady(
+            session,
+            performance.now() + this.#configuration.startupTimeoutMs,
+          );
+          return chooseUciMove(session, this.#configuration, request);
+        },
         {
           waitTimeoutMs: this.#configuration.moveTimeoutMs,
           ...(signal === undefined ? {} : { signal }),

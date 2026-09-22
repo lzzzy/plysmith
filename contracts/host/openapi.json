@@ -1377,6 +1377,66 @@
         ],
         "type": "object"
       },
+      "AnalysisWdl": {
+        "additionalProperties": false,
+        "properties": {
+          "draws": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "losses": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "perspective": {
+            "anyOf": [
+              {
+                "enum": [
+                  "white"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "black"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "semantics": {
+            "anyOf": [
+              {
+                "enum": [
+                  "stockfish_selfplay"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "human_outcome"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "wins": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "wins",
+          "draws",
+          "losses",
+          "perspective",
+          "semantics"
+        ],
+        "type": "object"
+      },
       "AnalysisWorkspace": {
         "additionalProperties": false,
         "properties": {
@@ -1481,6 +1541,128 @@
           "currentState",
           "legalMoves",
           "allowedActions"
+        ],
+        "type": "object"
+      },
+      "AnalyzePositionBody": {
+        "additionalProperties": false,
+        "properties": {
+          "candidateCount": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "consumerId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "focus": {
+            "additionalProperties": false,
+            "properties": {
+              "current": {
+                "$ref": "#/components/schemas/ChessState"
+              },
+              "focusKey": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "moves": {
+                "items": {
+                  "$ref": "#/components/schemas/CanonicalMove"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              "root": {
+                "$ref": "#/components/schemas/ChessState"
+              }
+            },
+            "required": [
+              "focusKey",
+              "root",
+              "moves",
+              "current"
+            ],
+            "type": "object"
+          },
+          "laneId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "budget": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "fast"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "thorough"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "very_deep"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "kind": {
+                    "enum": [
+                      "objective"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "budget"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "human_policy"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "providerInstanceId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "consumerId",
+          "laneId",
+          "providerInstanceId",
+          "candidateCount",
+          "focus",
+          "mode"
         ],
         "type": "object"
       },
@@ -3640,6 +3822,22 @@
         ],
         "type": "object"
       },
+      "ListPositionAnalysisProvidersResult": {
+        "additionalProperties": false,
+        "properties": {
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/PositionAnalysisProvider"
+            },
+            "maxItems": 32,
+            "type": "array"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "type": "object"
+      },
       "ListWorkingContextsResult": {
         "additionalProperties": false,
         "properties": {
@@ -4628,6 +4826,497 @@
           "actor"
         ],
         "type": "object"
+      },
+      "PositionAnalysisProvider": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "anyOf": [
+              {
+                "enum": [
+                  "objective_position_analysis"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "human_policy_analysis"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "instanceId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "problemCode": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "providerType": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "readiness": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cold"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "warming_up"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "ready"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "available"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "unavailable"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "instanceId",
+          "providerType",
+          "displayName",
+          "capability",
+          "readiness",
+          "status"
+        ],
+        "type": "object"
+      },
+      "PositionAnalysisSnapshot": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "budget": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "fast"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "thorough"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "very_deep"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "candidates": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "evaluation": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bound": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "exact"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "enum": [
+                                    "lower"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "enum": [
+                                    "upper"
+                                  ],
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "kind": {
+                              "enum": [
+                                "centipawns"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "maximum": 100000,
+                              "minimum": -100000,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "value",
+                            "bound"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "bound": {
+                              "anyOf": [
+                                {
+                                  "enum": [
+                                    "exact"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "enum": [
+                                    "lower"
+                                  ],
+                                  "type": "string"
+                                },
+                                {
+                                  "enum": [
+                                    "upper"
+                                  ],
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "kind": {
+                              "enum": [
+                                "mate"
+                              ],
+                              "type": "string"
+                            },
+                            "moves": {
+                              "maximum": 10000,
+                              "minimum": -10000,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "moves",
+                            "bound"
+                          ],
+                          "type": "object"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "kind": {
+                              "enum": [
+                                "unknown"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ],
+                          "type": "object"
+                        }
+                      ]
+                    },
+                    "move": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    },
+                    "principalVariation": {
+                      "items": {
+                        "$ref": "#/components/schemas/CanonicalMove"
+                      },
+                      "maxItems": 32,
+                      "type": "array"
+                    },
+                    "rank": {
+                      "maximum": 8,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "wdl": {
+                      "$ref": "#/components/schemas/AnalysisWdl"
+                    }
+                  },
+                  "required": [
+                    "rank",
+                    "move",
+                    "evaluation",
+                    "principalVariation"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 8,
+                "type": "array"
+              },
+              "focusKey": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "historyCompleteness": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "partial"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "objective"
+                ],
+                "type": "string"
+              },
+              "providerDisplayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerInstanceId": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              "rootWdl": {
+                "$ref": "#/components/schemas/AnalysisWdl"
+              },
+              "search": {
+                "additionalProperties": false,
+                "properties": {
+                  "depth": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "elapsedMilliseconds": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "hashfullPermille": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "limiter": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "enum": [
+                          "movetime"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "maximum": 60000,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "value"
+                    ],
+                    "type": "object"
+                  },
+                  "nodes": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "nodesPerSecond": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "selectiveDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tablebaseHits": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "limiter"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "focusKey",
+              "providerInstanceId",
+              "providerDisplayName",
+              "historyCompleteness",
+              "kind",
+              "budget",
+              "candidates",
+              "search"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "candidates": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "move": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    },
+                    "policyPercent": {
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "rank": {
+                      "maximum": 8,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "wdl": {
+                      "$ref": "#/components/schemas/AnalysisWdl"
+                    }
+                  },
+                  "required": [
+                    "rank",
+                    "move",
+                    "policyPercent",
+                    "wdl"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 8,
+                "type": "array"
+              },
+              "focusKey": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              "historyCompleteness": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "complete"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "partial"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "unknown"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "kind": {
+                "enum": [
+                  "human_policy"
+                ],
+                "type": "string"
+              },
+              "modelName": {
+                "maxLength": 260,
+                "minLength": 1,
+                "type": "string"
+              },
+              "profileName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerDisplayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerInstanceId": {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              "rootWdl": {
+                "$ref": "#/components/schemas/AnalysisWdl"
+              }
+            },
+            "required": [
+              "focusKey",
+              "providerInstanceId",
+              "providerDisplayName",
+              "historyCompleteness",
+              "kind",
+              "profileName",
+              "modelName",
+              "rootWdl",
+              "candidates"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "PreviewEngineProviderConfigurationBody": {
         "$ref": "#/components/schemas/EngineProviderConfigurationInput"
@@ -7834,6 +8523,242 @@
         }
       }
     },
+    "/analysis/position": {
+      "post": {
+        "operationId": "AnalyzePosition",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidateCount": {
+                    "maximum": 8,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "consumerId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "focus": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "current": {
+                        "$ref": "#/components/schemas/ChessState"
+                      },
+                      "focusKey": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "moves": {
+                        "items": {
+                          "$ref": "#/components/schemas/CanonicalMove"
+                        },
+                        "maxItems": 1000,
+                        "type": "array"
+                      },
+                      "root": {
+                        "$ref": "#/components/schemas/ChessState"
+                      }
+                    },
+                    "required": [
+                      "focusKey",
+                      "root",
+                      "moves",
+                      "current"
+                    ],
+                    "type": "object"
+                  },
+                  "laneId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "budget": {
+                            "anyOf": [
+                              {
+                                "enum": [
+                                  "fast"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "thorough"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "enum": [
+                                  "very_deep"
+                                ],
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "kind": {
+                            "enum": [
+                              "objective"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "budget"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "human_policy"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "providerInstanceId": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9._:-]+$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "consumerId",
+                  "laneId",
+                  "providerInstanceId",
+                  "candidateCount",
+                  "focus",
+                  "mode"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PositionAnalysisSnapshot"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
     "/analysis/position-notes": {
       "post": {
         "operationId": "CreatePositionNote",
@@ -7893,6 +8818,113 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalysisNoteMutationResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/analysis/providers": {
+      "get": {
+        "operationId": "ListPositionAnalysisProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPositionAnalysisProvidersResult"
                 }
               }
             },

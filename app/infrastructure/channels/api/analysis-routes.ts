@@ -6,6 +6,7 @@ import {
   analysisNoteMutationResultDto,
   analysisSetupValidationDto,
   analysisWorkspaceDto,
+  positionAnalysisSnapshotDto,
   createAnalysisRecordResultDto,
   createAnalysisNoteResultDto,
   parseAnalysisScratchAction,
@@ -16,6 +17,9 @@ import {
 } from './dto-mappers.ts';
 import {
   AnalysisWorkspaceSchema,
+  AnalyzePositionBodySchema,
+  ListPositionAnalysisProvidersResultSchema,
+  PositionAnalysisSnapshotSchema,
   AnalysisNoteMutationResultSchema,
   ContributionIdParamsSchema,
   CreatePositionNoteBodySchema,
@@ -56,6 +60,42 @@ export function registerAnalysisRoutes(
     async (request) =>
       analysisSetupValidationDto(
         await dependencies.validateAnalysisSetup.execute(request.body),
+      ),
+  );
+
+  api.get(
+    '/analysis/providers',
+    {
+      schema: {
+        operationId: 'ListPositionAnalysisProviders',
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(ListPositionAnalysisProvidersResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async () => ({
+      providers: [...dependencies.listPositionAnalysisProviders.execute()],
+    }),
+  );
+
+  api.post(
+    '/analysis/position',
+    {
+      schema: {
+        operationId: 'AnalyzePosition',
+        querystring: EmptyQuerySchema,
+        body: AnalyzePositionBodySchema,
+        response: {
+          200: Type.Ref(PositionAnalysisSnapshotSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      positionAnalysisSnapshotDto(
+        await dependencies.analyzePosition.execute(request.body),
       ),
   );
 

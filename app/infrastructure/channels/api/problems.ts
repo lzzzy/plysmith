@@ -205,6 +205,51 @@ const catalog = {
     'Invalid analysis note',
     'The analysis note, source anchor or visibility is invalid.',
   ],
+  'analysis.position_invalid_request': [
+    400,
+    'Invalid position analysis request',
+    'The position analysis request is invalid.',
+  ],
+  'analysis.position_invalid_focus': [
+    409,
+    'Position analysis focus changed',
+    'The visible analysis focus no longer matches the submitted line.',
+  ],
+  'analysis.position_provider_unavailable': [
+    503,
+    'Analysis provider unavailable',
+    'The selected analysis provider is unavailable.',
+  ],
+  'analysis.position_provider_protocol_error': [
+    502,
+    'Analysis provider protocol error',
+    'The selected provider did not produce a valid analysis.',
+  ],
+  'analysis.position_provider_timeout': [
+    504,
+    'Analysis provider timeout',
+    'The selected provider did not complete the analysis in time.',
+  ],
+  'analysis.position_provider_resource_exhausted': [
+    503,
+    'Analysis provider resource limit reached',
+    'The selected provider is busy or exceeded its configured resource limit.',
+  ],
+  'analysis.position_capability_missing': [
+    409,
+    'Analysis capability missing',
+    'The selected provider does not support this analysis.',
+  ],
+  'analysis.position_illegal_engine_move': [
+    502,
+    'Illegal analysis move',
+    'The selected provider returned an illegal analysis move.',
+  ],
+  'analysis.position_interrupted': [
+    409,
+    'Position analysis interrupted',
+    'The analysis focus changed before the provider completed.',
+  ],
   'chess.invalid_fen': [
     400,
     'Invalid chess position',
@@ -392,6 +437,9 @@ export function installProblemHandling(
         case 'playout.move_policy_unavailable':
         case 'playout.capability_missing':
         case 'playout.interrupted':
+        case 'analysis.position_invalid_focus':
+        case 'analysis.position_capability_missing':
+        case 'analysis.position_interrupted':
         case 'inventory.revision_conflict':
         case 'inventory.preview_conflict':
         case 'workspace.impact_conflict':
@@ -405,6 +453,7 @@ export function installProblemHandling(
         case 'analysis.invalid_setup':
         case 'analysis.invalid_record':
         case 'analysis.invalid_note':
+        case 'analysis.position_invalid_request':
         case 'chess.invalid_fen':
         case 'chess.invalid_move_input':
         case 'chess.illegal_move':
@@ -440,6 +489,11 @@ export function installProblemHandling(
         case 'playout.provider_timeout':
         case 'playout.provider_resource_exhausted':
         case 'playout.illegal_engine_move':
+        case 'analysis.position_provider_unavailable':
+        case 'analysis.position_provider_protocol_error':
+        case 'analysis.position_provider_timeout':
+        case 'analysis.position_provider_resource_exhausted':
+        case 'analysis.position_illegal_engine_move':
           return replyWithProblem(
             request,
             reply,

@@ -246,6 +246,32 @@ export const messages = {
     'analysis.positionNoteSaved': 'Notiz wurde an der Stellung gespeichert.',
     'analysis.positionNoteUpdated': 'Notiz wurde aktualisiert.',
     'analysis.positionNoteDeleted': 'Notiz wurde gelöscht.',
+    'positionAnalysis.eyebrow': 'Engineperspektiven',
+    'positionAnalysis.title': 'Stellung einschätzen',
+    'positionAnalysis.currentPosition': 'Aktuell gezeigte Stellung',
+    'positionAnalysis.objective.eyebrow': 'Objektiv',
+    'positionAnalysis.objective.title': 'Stockfish',
+    'positionAnalysis.objective.unavailable':
+      'Keine objektive Analyseengine ist eingerichtet.',
+    'positionAnalysis.human.eyebrow': 'Menschliche Züge',
+    'positionAnalysis.human.title': 'Maia',
+    'positionAnalysis.human.unavailable':
+      'Kein Maia-Profil ist für die Analyse eingerichtet.',
+    'positionAnalysis.human.choose':
+      'Wählen Sie mindestens ein Maia-Profil aus.',
+    'positionAnalysis.budget.fast': 'Schnell',
+    'positionAnalysis.budget.thorough': 'Gründlich',
+    'positionAnalysis.budget.very_deep': 'Sehr tief',
+    'positionAnalysis.loading': 'Engine analysiert die Stellung …',
+    'positionAnalysis.failed':
+      'Diese Engine konnte die Stellung nicht analysieren.',
+    'positionAnalysis.retry': 'Erneut versuchen',
+    'positionAnalysis.depth': 'Tiefe {depth}',
+    'positionAnalysis.time': '{milliseconds} ms',
+    'positionAnalysis.partialHistory':
+      'Die Bewertung kennt nicht die vollständige Partievorgeschichte.',
+    'positionAnalysis.wdlLabel':
+      'Aus Sicht von {side}: {wins} Prozent Gewinn, {draws} Prozent Remis, {losses} Prozent Verlust',
     'context.created': 'Working Context wurde angelegt.',
     'inventory.extendEnterMove': 'Hauptvariante verlängern',
     'inventory.rename': 'Umbenennen',
@@ -690,6 +716,30 @@ export const messages = {
     'analysis.positionNoteSaved': 'Note was saved at the position.',
     'analysis.positionNoteUpdated': 'Note was updated.',
     'analysis.positionNoteDeleted': 'Note was deleted.',
+    'positionAnalysis.eyebrow': 'Engine perspectives',
+    'positionAnalysis.title': 'Assess position',
+    'positionAnalysis.currentPosition': 'Position currently shown',
+    'positionAnalysis.objective.eyebrow': 'Objective',
+    'positionAnalysis.objective.title': 'Stockfish',
+    'positionAnalysis.objective.unavailable':
+      'No objective analysis engine is configured.',
+    'positionAnalysis.human.eyebrow': 'Human moves',
+    'positionAnalysis.human.title': 'Maia',
+    'positionAnalysis.human.unavailable':
+      'No Maia profile is configured for analysis.',
+    'positionAnalysis.human.choose': 'Select at least one Maia profile.',
+    'positionAnalysis.budget.fast': 'Fast',
+    'positionAnalysis.budget.thorough': 'Thorough',
+    'positionAnalysis.budget.very_deep': 'Very deep',
+    'positionAnalysis.loading': 'Engine is analyzing the position …',
+    'positionAnalysis.failed': 'This engine could not analyze the position.',
+    'positionAnalysis.retry': 'Try again',
+    'positionAnalysis.depth': 'Depth {depth}',
+    'positionAnalysis.time': '{milliseconds} ms',
+    'positionAnalysis.partialHistory':
+      'The evaluation does not know the complete game history.',
+    'positionAnalysis.wdlLabel':
+      'From {side} perspective: {wins} percent win, {draws} percent draw, {losses} percent loss',
     'context.created': 'Working context was created.',
     'inventory.extendEnterMove': 'Extend main line',
     'inventory.rename': 'Rename',

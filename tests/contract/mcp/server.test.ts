@@ -53,6 +53,8 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'add_context_reference',
       'remove_context_item',
       'set_work_scope_resume',
+      'list_position_analysis_providers',
+      'analyze_position',
       'list_move_policy_providers',
       'get_playout',
       'start_playout',
@@ -111,6 +113,119 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
     ],
   );
   assert.deepEqual(calls, []);
+});
+
+test('position analysis tools use the shared host contract without exposing provider configuration', async (t) => {
+  const state = {
+    position: {
+      ruleSetId: 'standardChess' as const,
+      boardKey:
+        'rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR',
+      sideToMove: 'white' as const,
+      castlingRights: {
+        whiteKingSide: true,
+        whiteQueenSide: true,
+        blackKingSide: true,
+        blackQueenSide: true,
+      },
+      effectiveEnPassantSquare: -1,
+      positionKey:
+        'rnbqkbnrpppppppp................................PPPPPPPPRNBQKBNR w KQkq -',
+    },
+    playState: {
+      halfmoveClock: 0,
+      fullmoveNumber: 1,
+      historyKnowledge: 'complete' as const,
+    },
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  };
+  const request = {
+    consumerId: 'mcp-test',
+    laneId: 'maia-1500',
+    providerInstanceId: 'maia-1500',
+    candidateCount: 3,
+    focus: {
+      focusKey: 'standard-start',
+      root: state,
+      moves: [],
+      current: state,
+    },
+    mode: { kind: 'human_policy' as const },
+  };
+  const snapshot = {
+    focusKey: 'standard-start',
+    providerInstanceId: 'maia-1500',
+    providerDisplayName: 'Maia 1500',
+    historyCompleteness: 'complete' as const,
+    kind: 'human_policy' as const,
+    profileName: 'Maia 1500',
+    modelName: 'maia-1500.pb.gz',
+    rootWdl: {
+      wins: 370,
+      draws: 310,
+      losses: 320,
+      perspective: 'white' as const,
+      semantics: 'human_outcome' as const,
+    },
+    candidates: [
+      {
+        rank: 1,
+        move: { from: 'e2', to: 'e4', san: 'e4' },
+        policyPercent: 31.5,
+        wdl: {
+          wins: 380,
+          draws: 310,
+          losses: 310,
+          perspective: 'white' as const,
+          semantics: 'human_outcome' as const,
+        },
+      },
+    ],
+  };
+  const { client, calls } = await connectMcp(t, {
+    listPositionAnalysisProviders: async () => ({
+      providers: [
+        {
+          instanceId: 'maia-1500',
+          providerType: 'maia-chess',
+          displayName: 'Maia 1500',
+          capability: 'human_policy_analysis',
+          readiness: 'ready',
+          status: 'available',
+        },
+      ],
+    }),
+    analyzePosition: async () => snapshot,
+  });
+
+  const providers = await client.callTool({
+    name: 'list_position_analysis_providers',
+  });
+  assertToolData(providers, {
+    providers: [
+      {
+        instanceId: 'maia-1500',
+        providerType: 'maia-chess',
+        displayName: 'Maia 1500',
+        capability: 'human_policy_analysis',
+        readiness: 'ready',
+        status: 'available',
+      },
+    ],
+  });
+  const analysis = await client.callTool({
+    name: 'analyze_position',
+    arguments: request,
+  });
+  assertToolData(analysis, snapshot);
+  assert.deepEqual(calls, [
+    { method: 'listPositionAnalysisProviders' },
+    { method: 'analyzePosition', request },
+  ]);
+  assert.doesNotMatch(
+    JSON.stringify([providers, analysis]),
+    /executable|arguments|weightFilePath|threads|hashMb/,
+  );
 });
 
 test('playout discovery and empty scoped read expose no engine configuration', async (t) => {

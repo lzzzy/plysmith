@@ -4,6 +4,7 @@ import type {
   AnalysisWorkspace,
   CreateAnalysisRecordResult,
   CreateAnalysisNoteResult,
+  PositionAnalysisSnapshot,
   UpdateAnalysisScratchAction,
   UpdateAnalysisScratchResult,
 } from '../../../application/analysis/index.ts';
@@ -292,6 +293,36 @@ export function analysisWorkspaceDto(model: AnalysisWorkspace) {
     currentState: chessStateDto(model.currentState),
     legalMoves: model.legalMoves.map(canonicalMoveDto),
     allowedActions: [...model.allowedActions],
+  };
+}
+
+export function positionAnalysisSnapshotDto(model: PositionAnalysisSnapshot) {
+  if (model.kind === 'human_policy') {
+    return {
+      ...model,
+      rootWdl: { ...model.rootWdl },
+      candidates: model.candidates.map((candidate) => ({
+        ...candidate,
+        move: { ...candidate.move },
+        wdl: { ...candidate.wdl },
+      })),
+    };
+  }
+  return {
+    ...model,
+    ...(model.rootWdl === undefined ? {} : { rootWdl: { ...model.rootWdl } }),
+    candidates: model.candidates.map((candidate) => ({
+      ...candidate,
+      move: { ...candidate.move },
+      ...(candidate.wdl === undefined ? {} : { wdl: { ...candidate.wdl } }),
+      principalVariation: candidate.principalVariation.map((move) => ({
+        ...move,
+      })),
+    })),
+    search: {
+      ...model.search,
+      limiter: { ...model.search.limiter },
+    },
   };
 }
 

@@ -21,7 +21,9 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
   assert.deepEqual(Object.keys(api.paths ?? {}).sort(), [
     '/analysis/notes',
     '/analysis/notes/{contributionId}',
+    '/analysis/position',
     '/analysis/position-notes',
+    '/analysis/providers',
     '/analysis/scratch',
     '/analysis/setup-validation',
     '/analysis/workspace',
@@ -90,6 +92,8 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     ],
     ['/events', 'get', 'SubscribeHostEvents'],
     ['/analysis/workspace', 'get', 'GetAnalysisWorkspace'],
+    ['/analysis/providers', 'get', 'ListPositionAnalysisProviders'],
+    ['/analysis/position', 'post', 'AnalyzePosition'],
     ['/analysis/setup-validation', 'post', 'ValidateAnalysisSetup'],
     ['/analysis/scratch', 'put', 'UpdateAnalysisScratch'],
     ['/analysis/notes', 'post', 'CreateAnalysisNote'],
@@ -185,6 +189,10 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
     'UiLanguageChangedEvent',
     'ReplayGapEvent',
     'AnalysisWorkspace',
+    'PositionAnalysisProvider',
+    'ListPositionAnalysisProvidersResult',
+    'AnalyzePositionBody',
+    'AnalysisWdl',
     'UpdateAnalysisScratchBody',
     'UpdateAnalysisScratchResult',
     'CreateAnalysisRecordBody',
@@ -221,6 +229,15 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
     assert.ok(schema && 'properties' in schema, name);
     assert.equal(schema.additionalProperties, false, name);
   }
+  const positionAnalysisSnapshot = api.components?.schemas
+    ?.PositionAnalysisSnapshot as
+    { anyOf?: { additionalProperties?: boolean }[] } | undefined;
+  assert.equal(positionAnalysisSnapshot?.anyOf?.length, 2);
+  assert.ok(
+    positionAnalysisSnapshot?.anyOf?.every(
+      (schema) => schema.additionalProperties === false,
+    ),
+  );
   assert.deepEqual(api.components?.schemas?.HostEvent, {
     anyOf: [
       { $ref: '#/components/schemas/UiLanguageChangedEvent' },

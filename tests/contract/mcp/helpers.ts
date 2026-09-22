@@ -308,6 +308,17 @@ export async function connectMcp(
         return overrides.setWorkScopeResume(contextId, request);
       throw new Error('setWorkScopeResume fixture not configured');
     },
+    async listPositionAnalysisProviders() {
+      calls.push({ method: 'listPositionAnalysisProviders' });
+      if (overrides.listPositionAnalysisProviders)
+        return overrides.listPositionAnalysisProviders();
+      return { providers: [] };
+    },
+    async analyzePosition(request) {
+      calls.push({ method: 'analyzePosition', request });
+      if (overrides.analyzePosition) return overrides.analyzePosition(request);
+      throw new Error('analyzePosition fixture not configured');
+    },
     async listMovePolicyProviders() {
       calls.push({ method: 'listMovePolicyProviders' });
       if (overrides.listMovePolicyProviders)

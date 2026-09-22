@@ -16,6 +16,8 @@ import type {
   CreatePositionNoteUseCase,
   DeleteAnalysisNoteUseCase,
   GetAnalysisWorkspaceUseCase,
+  AnalyzePositionUseCase,
+  ListPositionAnalysisProvidersUseCase,
   UpdateAnalysisScratchUseCase,
   UpdateAnalysisNoteUseCase,
   ValidateAnalysisSetupUseCase,
@@ -63,6 +65,8 @@ export interface HostDependencies {
   readonly getUserPreferences: GetUserPreferencesUseCase;
   readonly setUiLanguage: SetUiLanguageUseCase;
   readonly getAnalysisWorkspace: GetAnalysisWorkspaceUseCase;
+  readonly listPositionAnalysisProviders: ListPositionAnalysisProvidersUseCase;
+  readonly analyzePosition: AnalyzePositionUseCase;
   readonly validateAnalysisSetup: ValidateAnalysisSetupUseCase;
   readonly updateAnalysisScratch: UpdateAnalysisScratchUseCase;
   readonly createAnalysisRecord: CreateAnalysisRecordUseCase;

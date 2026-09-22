@@ -88,7 +88,14 @@ test('engine provider settings are previewed, bound, versioned and removed atomi
       path.join(home, 'configuration', 'active', 'plysmith.json'),
       'utf8',
     ),
-  ) as { bindings: { playoutEngines: string[] } };
+  ) as {
+    bindings: { analysisEngines: string[]; playoutEngines: string[] };
+  };
+  assert.deepEqual(central.bindings.analysisEngines, [
+    'stockfish-main',
+    'maia-1100',
+    'maia-1900',
+  ]);
   assert.deepEqual(central.bindings.playoutEngines, [
     'stockfish-main',
     'maia-1100',
@@ -142,7 +149,10 @@ test('engine provider settings are previewed, bound, versioned and removed atomi
       path.join(home, 'configuration', 'active', 'plysmith.json'),
       'utf8',
     ),
-  ) as { bindings: { playoutEngines: string[] } };
+  ) as {
+    bindings: { analysisEngines: string[]; playoutEngines: string[] };
+  };
+  assert.deepEqual(afterRemoval.bindings.analysisEngines, ['maia-1900']);
   assert.deepEqual(afterRemoval.bindings.playoutEngines, ['maia-1900']);
 });
 
@@ -172,7 +182,10 @@ test('an engine configuration cannot overwrite another provider document', async
   assert.equal(await readFile(sqlitePath, 'utf8'), sqliteSource);
   const central = JSON.parse(
     await readFile(path.join(active, 'plysmith.json'), 'utf8'),
-  ) as { bindings: { playoutEngines: string[] } };
+  ) as {
+    bindings: { analysisEngines: string[]; playoutEngines: string[] };
+  };
+  assert.deepEqual(central.bindings.analysisEngines, []);
   assert.deepEqual(central.bindings.playoutEngines, []);
 });
 
