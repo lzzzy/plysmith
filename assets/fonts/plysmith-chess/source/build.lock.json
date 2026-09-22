@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "inputs": {
+    "src/glyphs.json": "cab60becd48688bd7962937da104af9d9d15084dc0d1cb7304a30e464225127e",
+    "src/font.json": "bc45e363682280fb4989a78f60ee15e24a79c49663742b6dea2642f4264cb087",
+    "OFL.txt": "a9236774ef33d7d6d650ab7577647da66906a21aa1ae5c69753d609343b27647",
+    "build.py": "571b107f6378a6acd69ba6334c6c5e12d45ecf48808308ace5e76769127409b7",
+    "tools/dependencies.py": "3ce7ae69914e5d5409d98dea22b59aeae28da90da16d4b2d21f1d0c8b7986415",
+    "tools/dependencies.lock.json": "c485d0b98505fe59e2349fdd39cc145c4629110af7537d24370d394ea4e73c85",
+    "integration/README.md": "25974b7644ee0a501fa1f86184406176af994fa4e2a2c28ccf244772fb2e0ab7",
+    "integration/plysmith-chess.css": "528ac494593f23592d59c633ce994941d272f736df56c5f4991779d972eee316",
+    "integration/font-ready.ts": "b80f91a00c87c566ad1e7e4f1ad8e61f0552c3ea2fc689992edce26787102c9c",
+    "integration/beispiel.html": "67733db8e7f5210d31848c9106edee747f669fec04619fbea1a967f5cb065140",
+    "licenses/Apache-2.0.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  "outputs": {
+    "PlysmithChess-Regular.ttf": {
+      "sha256": "a9fd675b7a2205f329b727b84b0864eb17bcbc04cc9f691e28a2fd0af84baf21",
+      "bytes": 25680
+    },
+    "PlysmithChess-Regular.woff2": {
+      "sha256": "8d8f68bd0489c446b1a6fec9433157744e92ce51cee13ec1c6d2a0be8ab34332",
+      "bytes": 9992
+    }
+  }
+}

@@ -7,6 +7,7 @@ export default tseslint.config(
       'dist/**',
       'build/**',
       'coverage/**',
+      'assets/fonts/plysmith-chess/source/**',
       'configuration/active/**',
       'data/**',
       'logs/**',

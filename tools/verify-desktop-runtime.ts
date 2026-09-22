@@ -157,8 +157,8 @@ try {
         };
       };
       await browser.document.fonts.ready;
-      await browser.document.fonts.load('32px "Plysmith Chess Symbols"', '♔');
-      return browser.document.fonts.check('32px "Plysmith Chess Symbols"', '♔');
+      await browser.document.fonts.load('32px "Plysmith Chess"', '♔');
+      return browser.document.fonts.check('32px "Plysmith Chess"', '♔');
     }),
     true,
   );
@@ -177,7 +177,7 @@ try {
     await activityNavigation
       .getByRole('button', { name: /Ausspielen|Play out/ })
       .isDisabled(),
-    true,
+    false,
   );
   assert.equal(
     await activityNavigation.getByRole('button', { name: 'Live' }).isDisabled(),
@@ -192,8 +192,14 @@ try {
   await activityRail
     .getByRole('button', { name: /Einstellungen|Settings/ })
     .click();
-  assert.equal(await window.getByRole('radio').count(), 2);
-  const radios = window.getByRole('radio');
+  const languageGroup = window.getByRole('radiogroup', {
+    name: /Sprache auswählen|Choose language/,
+  });
+  assert.equal(await languageGroup.getByRole('radio').count(), 2);
+  const radios = languageGroup.getByRole('radio');
+  const languageSection = window.locator('section').filter({
+    has: languageGroup,
+  });
   const selectedIndex = (await radios.nth(0).isChecked()) ? 0 : 1;
   const expectedLocale = selectedIndex === 0 ? 'de-DE' : 'en-GB';
   assert.equal(
@@ -202,13 +208,16 @@ try {
   );
   const otherIndex = selectedIndex === 0 ? 1 : 0;
   const languageLabels = ['Deutsch', 'English'] as const;
-  const selectedLabel = window.getByText(languageLabels[selectedIndex]!, {
+  const selectedLabel = languageGroup.getByText(
+    languageLabels[selectedIndex]!,
+    {
+      exact: true,
+    },
+  );
+  const otherLabel = languageGroup.getByText(languageLabels[otherIndex]!, {
     exact: true,
   });
-  const otherLabel = window.getByText(languageLabels[otherIndex]!, {
-    exact: true,
-  });
-  const applyButton = window.getByRole('button', {
+  const applyButton = languageSection.getByRole('button', {
     name: /Übernehmen|Apply/,
   });
   assert.equal(await applyButton.isDisabled(), true);

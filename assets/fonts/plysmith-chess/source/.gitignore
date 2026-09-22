@@ -1,0 +1,7 @@
+.build-cache/
+.dist-previous/
+dist/
+__pycache__/
+*.pyc
+Plysmith-Chess-*.zip
+*.zip.part

@@ -2,10 +2,6 @@ import { useRef, useState } from 'react';
 import { RotateCw } from 'lucide-react';
 import { Button } from 'react-aria-components';
 
-import {
-  notoChessPieceBaseline,
-  prefersWindowsChessSymbols,
-} from './chess-piece-metrics.ts';
 import styles from './chess-board-surface.module.css';
 
 export const chessBoardFiles = [
@@ -36,33 +32,13 @@ export function ChessPieceGlyph({
   readonly className?: string | undefined;
   readonly symbol: string;
 }) {
-  const useWindowsSymbols = prefersWindowsChessSymbols(
-    globalThis.navigator?.userAgent ?? '',
-  );
-
-  if (useWindowsSymbols) {
-    return (
-      <span
-        className={`${styles.systemPieceGlyph} ${className ?? ''}`}
-        aria-hidden="true"
-      >
-        {symbol}
-      </span>
-    );
-  }
-
   return (
-    <svg
-      className={`${styles.fallbackPieceGlyph} ${className ?? ''}`}
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMid meet"
+    <span
+      className={`${styles.plysmithPieceGlyph} ${className ?? ''}`}
       aria-hidden="true"
-      focusable="false"
     >
-      <text x="50" y={notoChessPieceBaseline(symbol)}>
-        {symbol}
-      </text>
-    </svg>
+      {symbol}
+    </span>
   );
 }
 

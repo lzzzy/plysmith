@@ -1,0 +1,42 @@
+{
+  "family": "Plysmith Chess",
+  "style": "Regular",
+  "version": "1.000",
+  "postscript_name": "PlysmithChess-Regular",
+  "copyright": "Copyright 2026 The Plysmith Project Authors.",
+  "manufacturer": "Plysmith Project",
+  "designer": "Plysmith Project",
+  "description": "Monochrome chess symbols for boards and chess notation.",
+  "license": "OFL-1.1",
+  "license_url": "https://openfontlicense.org/",
+  "units_per_em": 1000,
+  "advance_width": 1250,
+  "ascent": 1000,
+  "descent": -250,
+  "line_gap": 0,
+  "source_transform": [
+    1.25,
+    0,
+    0,
+    -1.25,
+    0,
+    1000
+  ],
+  "quadratic_error": 0.18,
+  "created": 3809628000,
+  "modified": 3872836800,
+  "codepoints": {
+    "wK": 9812,
+    "wQ": 9813,
+    "wR": 9814,
+    "wB": 9815,
+    "wN": 9816,
+    "wP": 9817,
+    "bK": 9818,
+    "bQ": 9819,
+    "bR": 9820,
+    "bB": 9821,
+    "bN": 9822,
+    "bP": 9823
+  }
+}

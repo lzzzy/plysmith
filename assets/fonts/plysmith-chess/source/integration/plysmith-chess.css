@@ -1,0 +1,26 @@
+/* Copyright 2026 The Plysmith Project Authors. SPDX-License-Identifier: Apache-2.0 */
+@font-face {
+  font-family: 'Plysmith Chess';
+  src: url('./PlysmithChess-Regular.woff2') format('woff2'),
+       url('./PlysmithChess-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+  unicode-range: U+0020, U+2654-265F;
+}
+
+.plysmithPieceGlyph {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  font-family: 'Plysmith Chess';
+  font-size: inherit;
+  font-style: normal;
+  font-weight: 400;
+  font-synthesis: none;
+  font-kerning: none;
+  font-variant-emoji: text;
+  line-height: 1;
+  letter-spacing: 0;
+}

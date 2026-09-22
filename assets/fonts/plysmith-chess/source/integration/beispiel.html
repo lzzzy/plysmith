@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- Copyright 2026 The Plysmith Project Authors. SPDX-License-Identifier: Apache-2.0 -->
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plysmith Chess</title><link rel="stylesheet" href="plysmith-chess.css">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f5f7;color:#20252d;font:16px/1.5 system-ui,sans-serif}
+main{max-width:1060px;margin:auto;padding:28px}h1{font-size:30px;margin:0 0 4px}h2{font-size:19px}
+header{margin-bottom:24px}p{margin:6px 0 16px}.meta{color:#5d6875}select{font:inherit;padding:5px 8px}
+.samples{display:flex;flex-wrap:wrap;gap:28px}.board{display:grid;grid-template-columns:repeat(8,var(--size));width:max-content;border:1px solid #313741}
+.tile{width:var(--size);height:var(--size);background:#e7e3d9;position:relative}.tile.dark{background:#919eae}
+.figure{position:absolute;inset:0;color:#151a20;font-size:calc(var(--size)*.8);filter:drop-shadow(0 1px 0 rgb(255 255 255 / 38%))}
+.loading .figure{visibility:hidden}.row{display:flex;width:max-content}.scroll{overflow:auto;padding-bottom:8px}
+section{margin-bottom:22px}.error{color:#9a2929}footer{font-size:13px;color:#5d6875;margin-top:28px}
+</style>
+</head>
+<body class="loading"><main>
+<header><h1>Plysmith Chess</h1><p class="meta">Regular · Version 1.000 · SIL Open Font License 1.1</p>
+<label>Feldgröße <select id="size"><option>32</option><option>40</option><option selected>56</option><option>70</option><option>96</option></select> px</label>
+<p id="loading" role="status">Schrift wird geladen …</p></header>
+<div class="samples"><section><h2>Grundstellung</h2><div class="scroll" id="initial"></div></section>
+<section><h2>Mittelspiel</h2><div class="scroll" id="middle"></div></section></div>
+<section><h2>Figuren</h2><div class="scroll" id="pieces"></div></section>
+<footer>Copyright 2026 The Plysmith Project Authors. Fontlizenz: OFL.txt.</footer>
+</main>
+<script>
+'use strict';
+const symbols={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+const names={K:'weißer König',Q:'weiße Dame',R:'weißer Turm',B:'weißer Läufer',N:'weißer Springer',P:'weißer Bauer',k:'schwarzer König',q:'schwarze Dame',r:'schwarzer Turm',b:'schwarzer Läufer',n:'schwarzer Springer',p:'schwarzer Bauer'};
+function tile(key,dark,size){return `<div class="tile ${dark?'dark':''}" style="--size:${size}px" ${key?`role="img" aria-label="${names[key]}"`:''}>${key?`<span class="figure plysmithPieceGlyph" aria-hidden="true">${symbols[key]}</span>`:''}</div>`;}
+function board(fen,size){const cells=[];for(const ch of fen.replaceAll('/','')){if(/[1-8]/.test(ch))cells.push(...Array(Number(ch)).fill(null));else cells.push(ch);}return `<div class="board" style="--size:${size}px">`+cells.map((key,i)=>tile(key,(Math.floor(i/8)+i%8)%2===1,size)).join('')+'</div>';}
+function render(){const s=Number(document.querySelector('#size').value);document.querySelector('#initial').innerHTML=board('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',s);document.querySelector('#middle').innerHTML=board('r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2N2N2/PPP2PPP/R1BQ1RK1',s);document.querySelector('#pieces').innerHTML=[0,1].map(offset=>'<div class="row">'+Object.keys(symbols).map((key,i)=>tile(key,(i+offset)%2===1,s)).join('')+'</div>').join('');}
+document.querySelector('#size').addEventListener('change',render);render();
+(async()=>{try{let timer;let faces;try{faces=await Promise.race([document.fonts.load('400 32px "Plysmith Chess"',Object.values(symbols).join('')),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Zeitüberschreitung beim Laden')),10000);})]);}finally{clearTimeout(timer);}if(faces.length!==1||faces[0].status!=='loaded')throw new Error('Fontdateien nicht verfügbar');document.body.classList.remove('loading');document.querySelector('#loading').hidden=true;}catch(error){const target=document.querySelector('#loading');target.className='error';target.textContent='Schrift konnte nicht geladen werden. HTML, CSS und Fontdateien müssen gemeinsam bereitgestellt werden. '+error.message;}})();
+</script></body></html>
