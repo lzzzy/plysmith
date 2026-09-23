@@ -1450,7 +1450,7 @@ export const PositionAnalysisSnapshotSchema = Type.Union([
       kind: Type.Literal('human_policy'),
       profileName: Type.String({ minLength: 1, maxLength: 160 }),
       modelName: Type.String({ minLength: 1, maxLength: 260 }),
-      rootWdl: analysisWdl,
+      rootWdl: Type.Optional(analysisWdl),
       candidates: Type.Array(
         Type.Object(
           {

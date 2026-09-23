@@ -48,15 +48,7 @@ export function developmentHostArguments(
     'host',
     'main.ts',
   );
-  const watchRoots = ['app', 'contracts'].map((directory) =>
-    path.join(applicationHome, directory),
-  );
-  return [
-    '--watch',
-    ...watchRoots.map((watchRoot) => `--watch-path=${watchRoot}`),
-    '--enable-source-maps',
-    hostEntryPoint,
-  ];
+  return ['--watch', '--enable-source-maps', hostEntryPoint];
 }
 
 async function main(): Promise<void> {

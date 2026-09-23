@@ -6,12 +6,48 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import {
+  LineProcessProblem,
+  LineProcessSupervisor,
+} from '../../../app/infrastructure/adapters/process/index.ts';
+
 const owner = fileURLToPath(
   new URL('../../fixtures/process/line-process-owner.ts', import.meta.url),
 );
 const fakeEngine = fileURLToPath(
   new URL('../../fixtures/uci/fake-uci-engine.mjs', import.meta.url),
 );
+
+test('guardian exit while writing fails the session without crashing its owner', async () => {
+  const handle = await new LineProcessSupervisor().open({
+    executablePath: process.execPath,
+    arguments: [fakeEngine, 'timeout'],
+    startupTimeoutMs: 2_000,
+    stopTimeoutMs: 500,
+    maxOutputBytes: 64_000,
+  });
+  try {
+    handle.session.writeLine('uci');
+    while ((await handle.session.readLine(2_000)) !== 'uciok') {
+      // Wait for the fake engine to complete its handshake.
+    }
+    process.kill(handle.processId, 'SIGKILL');
+    try {
+      handle.session.writeLine('x'.repeat(100_000));
+    } catch (error) {
+      assert.ok(error instanceof LineProcessProblem);
+    }
+    await assert.rejects(
+      handle.session.readLine(2_000),
+      (error: unknown) =>
+        error instanceof LineProcessProblem &&
+        (error.code === 'process_write_failed' ||
+          error.code === 'process_exited'),
+    );
+  } finally {
+    await handle.terminate(2_000);
+  }
+});
 
 test('terminates the guarded engine when its owning process disappears', async (t) => {
   const directory = await mkdtemp(

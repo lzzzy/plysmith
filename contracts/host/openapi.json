@@ -5311,7 +5311,6 @@
               "kind",
               "profileName",
               "modelName",
-              "rootWdl",
               "candidates"
             ],
             "type": "object"

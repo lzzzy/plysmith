@@ -714,6 +714,53 @@ test('position analysis routes preserve provider capabilities and the exact focu
   });
 });
 
+test('terminal Maia analysis needs no model WDL', async (t) => {
+  const { host } = await buildFixture(t, {
+    analyzePosition: {
+      execute: async () => ({
+        kind: 'human_policy' as const,
+        focusKey: 'terminal',
+        providerInstanceId: 'maia-1800',
+        providerDisplayName: 'Maia 1800',
+        historyCompleteness: 'unknown' as const,
+        profileName: 'Maia 1800',
+        modelName: 'maia-1800.pb.gz',
+        candidates: [],
+      }),
+    },
+  });
+  const response = await host.inject({
+    method: 'POST',
+    url: '/analysis/position',
+    headers,
+    payload: {
+      consumerId: 'desktop-test',
+      laneId: 'human-maia-1800',
+      providerInstanceId: 'maia-1800',
+      candidateCount: 5,
+      focus: {
+        focusKey: 'terminal',
+        root: initialPosition,
+        moves: [],
+        current: initialPosition,
+      },
+      mode: { kind: 'human_policy' },
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), {
+    kind: 'human_policy',
+    focusKey: 'terminal',
+    providerInstanceId: 'maia-1800',
+    providerDisplayName: 'Maia 1800',
+    historyCompleteness: 'unknown',
+    profileName: 'Maia 1800',
+    modelName: 'maia-1800.pb.gz',
+    candidates: [],
+  });
+});
+
 test('analysis note route maps explicit source and visibility ids without transport leakage', async (t) => {
   let received: unknown;
   const { host } = await buildFixture(t, {

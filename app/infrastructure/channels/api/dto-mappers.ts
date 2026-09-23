@@ -300,7 +300,7 @@ export function positionAnalysisSnapshotDto(model: PositionAnalysisSnapshot) {
   if (model.kind === 'human_policy') {
     return {
       ...model,
-      rootWdl: { ...model.rootWdl },
+      ...(model.rootWdl === undefined ? {} : { rootWdl: { ...model.rootWdl } }),
       candidates: model.candidates.map((candidate) => ({
         ...candidate,
         move: { ...candidate.move },

@@ -110,6 +110,9 @@ class ManagedLineProcess implements LineProcessHandle, LineProcessSession {
     process.stderr.on('data', (chunk: string) =>
       this.#acceptOutput(chunk, false),
     );
+    process.stdin.on('error', (error) =>
+      this.#fail(new LineProcessProblem('process_write_failed', error)),
+    );
     process.on('error', (error) =>
       this.#fail(new LineProcessProblem('process_start_failed', error)),
     );

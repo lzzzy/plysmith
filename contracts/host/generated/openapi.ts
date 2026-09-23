@@ -1518,7 +1518,7 @@ export interface components {
             readonly profileName: string;
             readonly providerDisplayName: string;
             readonly providerInstanceId: string;
-            readonly rootWdl: components["schemas"]["AnalysisWdl"];
+            readonly rootWdl?: components["schemas"]["AnalysisWdl"];
         };
         readonly PreviewEngineProviderConfigurationBody: components["schemas"]["EngineProviderConfigurationInput"];
         readonly ProblemDetails: {

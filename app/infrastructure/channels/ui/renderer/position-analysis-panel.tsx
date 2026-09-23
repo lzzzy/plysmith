@@ -376,7 +376,9 @@ function AnalysisSnapshot({
         </>
       ) : (
         <>
-          <WdlMeter wdl={snapshot.rootWdl} />
+          {snapshot.rootWdl !== undefined && (
+            <WdlMeter wdl={snapshot.rootWdl} />
+          )}
           <ol className={styles.candidates}>
             {snapshot.candidates.map((candidate) => (
               <li
@@ -411,10 +413,9 @@ function WdlMeter({
   wdl,
 }: {
   readonly compact?: boolean;
-  readonly wdl: Extract<
-    PositionAnalysisSnapshotDto,
-    { kind: 'human_policy' }
-  >['rootWdl'];
+  readonly wdl: NonNullable<
+    Extract<PositionAnalysisSnapshotDto, { kind: 'human_policy' }>['rootWdl']
+  >;
 }) {
   const intl = useIntl();
   const total = Math.max(1, wdl.wins + wdl.draws + wdl.losses);

@@ -21,6 +21,7 @@ import {
   readUciSearch,
   requireUciOptions,
   setUciOption,
+  uciMoveText,
   type UciEngineRuntime,
   type UciHandshake,
   waitUntilUciReady,
@@ -76,6 +77,24 @@ export class MaiaChessPositionAnalysisAdapter implements PositionAnalysisProvide
     signal?: AbortSignal,
   ): Promise<HumanPolicyAnalysisSnapshot> {
     try {
+      if (request.mode.kind !== 'human_policy') throw new Error('invalid mode');
+      const legalMoves = this.#rules.legalMoves(
+        request.focus.root,
+        request.focus.moves,
+      );
+      if (!legalMoves.ok) throw new Error('invalid analysis line');
+      if (legalMoves.value.length === 0) {
+        return Object.freeze({
+          kind: 'human_policy',
+          focusKey: request.focus.focusKey,
+          providerInstanceId: this.#descriptor.instanceId,
+          providerDisplayName: this.#descriptor.displayName,
+          historyCompleteness: request.focus.current.playState.historyKnowledge,
+          profileName: this.#descriptor.displayName,
+          modelName: path.basename(this.#configuration.weightsPath),
+          candidates: Object.freeze([]),
+        });
+      }
       return await this.#runtime.use(
         (session, handshake) =>
           analyzeWithMaia(
@@ -85,6 +104,7 @@ export class MaiaChessPositionAnalysisAdapter implements PositionAnalysisProvide
             this.#rules,
             request,
             this.descriptor,
+            legalMoves.value,
           ),
         {
           waitTimeoutMs: this.#configuration.moveTimeoutMs,
@@ -104,8 +124,8 @@ async function analyzeWithMaia(
   rules: ChessRulesPort,
   request: PositionAnalysisProviderRequest,
   descriptor: PositionAnalysisProviderDescriptor,
+  legalMoves: readonly CanonicalMove[],
 ): Promise<HumanPolicyAnalysisSnapshot> {
-  if (request.mode.kind !== 'human_policy') throw new Error('invalid mode');
   requireUciOptions(handshake, requiredAnalysisOptions);
   const deadline = performance.now() + configuration.moveTimeoutMs;
   configureMaiaAnalysis(session, true);
@@ -118,11 +138,10 @@ async function analyzeWithMaia(
   session.writeLine('go nodes 1');
   const rootSearch = await readUciSearch(session, deadline);
   const root = parseMaiaRoot(rootSearch.lines);
-  const legalMoves = rules.legalMoves(request.focus.root, request.focus.moves);
-  if (!legalMoves.ok) throw new Error('invalid analysis line');
-  validatePolicy(root.policy, legalMoves.value);
+  const policy = normalizeMaiaCastlingPolicy(root.policy, legalMoves);
+  validatePolicy(policy, legalMoves);
 
-  const ranked = [...root.policy.entries()]
+  const ranked = [...policy.entries()]
     .sort(
       (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
     )
@@ -234,6 +253,24 @@ function parseWdl(lines: readonly string[]): readonly [number, number, number] {
   }
   if (result === undefined) throw new Error('missing Maia WDL');
   return result;
+}
+
+function normalizeMaiaCastlingPolicy(
+  policy: ReadonlyMap<string, number>,
+  legalMoves: readonly CanonicalMove[],
+): ReadonlyMap<string, number> {
+  const normalized = new Map(policy);
+  for (const move of legalMoves) {
+    if (!move.san.startsWith('O-O')) continue;
+    const rookFile = move.san.startsWith('O-O-O') ? 'a' : 'h';
+    const rookSquareMove = `${move.from}${rookFile}${move.from[1]}`;
+    const value = normalized.get(rookSquareMove);
+    const canonical = uciMoveText(move);
+    if (value === undefined || normalized.has(canonical)) continue;
+    normalized.delete(rookSquareMove);
+    normalized.set(canonical, value);
+  }
+  return normalized;
 }
 
 function validatePolicy(

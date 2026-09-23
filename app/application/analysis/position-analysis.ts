@@ -85,7 +85,7 @@ export interface HumanPolicyAnalysisSnapshot extends PositionAnalysisSnapshotBas
   readonly kind: 'human_policy';
   readonly profileName: string;
   readonly modelName: string;
-  readonly rootWdl: AnalysisWdl;
+  readonly rootWdl?: AnalysisWdl;
   readonly candidates: readonly HumanPolicyCandidate[];
 }
 

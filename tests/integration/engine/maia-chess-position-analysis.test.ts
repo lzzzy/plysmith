@@ -119,6 +119,91 @@ test('restores Maia playout options on the shared provider runtime', async (t) =
   );
 });
 
+test('accepts Lc0 rook-square castling in Maia policy', async (t) => {
+  const parsed = rules.parseFen('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1');
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) throw new Error('Expected valid castling position.');
+  const legal = rules.legalMoves(parsed.value, []);
+  assert.equal(legal.ok, true);
+  if (!legal.ok) throw new Error('Expected legal castling moves.');
+  const policyLines = legal.value.map((move) => {
+    const uci =
+      move.san === 'O-O-O'
+        ? 'e1a1'
+        : move.san === 'O-O'
+          ? 'e1h1'
+          : `${move.from}${move.to}`;
+    return `info string ${uci} (322) N: 0 (P: ${move.san === 'O-O-O' ? '100.00' : '0.00'}%)`;
+  });
+  const supervisor = new MaiaAnalysisSupervisor([
+    ...policyLines,
+    'info depth 1 score cp 0 wdl 500 200 300 pv e1a1',
+    'bestmove e1c1',
+  ]);
+  const configuration = maiaConfiguration();
+  const runtime = createMaiaChessUciRuntime(configuration, supervisor);
+  t.after(() => runtime.close());
+  const provider = new MaiaChessPositionAnalysisAdapter(
+    configuration,
+    runtime,
+    rules,
+  );
+
+  const snapshot = await provider.analyze({
+    candidateCount: 1,
+    focus: {
+      focusKey: 'castling',
+      root: parsed.value,
+      moves: [],
+      current: parsed.value,
+    },
+    mode: { kind: 'human_policy' },
+  });
+
+  assert.equal(snapshot.candidates[0]?.move.san, 'O-O-O');
+  assert.equal(snapshot.candidates[0]?.policyPercent, 100);
+});
+
+test('returns no Maia model prediction when no legal moves remain', async (t) => {
+  const supervisor = new MaiaAnalysisSupervisor();
+  const configuration = maiaConfiguration();
+  const runtime = createMaiaChessUciRuntime(configuration, supervisor);
+  t.after(() => runtime.close());
+  const provider = new MaiaChessPositionAnalysisAdapter(
+    configuration,
+    runtime,
+    rules,
+  );
+
+  for (const [reason, fen] of [
+    ['checkmate', '7k/6Q1/6K1/8/8/8/8/8 b - - 0 1'],
+    ['stalemate', '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1'],
+  ] as const) {
+    const parsed = rules.parseFen(fen);
+    assert.equal(parsed.ok, true);
+    if (!parsed.ok) throw new Error(`Expected valid ${reason} position.`);
+    const status = rules.gameStatus(parsed.value, []);
+    assert.equal(status.ok, true);
+    if (!status.ok) throw new Error(`Expected ${reason} status.`);
+    assert.equal(status.value.kind, 'terminal');
+
+    const snapshot = await provider.analyze({
+      candidateCount: 5,
+      focus: {
+        focusKey: reason,
+        root: parsed.value,
+        moves: [],
+        current: parsed.value,
+      },
+      mode: { kind: 'human_policy' },
+    });
+
+    assert.deepEqual(snapshot.candidates, []);
+    assert.equal(Object.hasOwn(snapshot, 'rootWdl'), false);
+  }
+  assert.equal(supervisor.openCount, 0);
+});
+
 function maiaConfiguration() {
   return {
     instanceId: 'maia-test',
@@ -136,6 +221,12 @@ class MaiaAnalysisSupervisor extends LineProcessSupervisor {
   readonly commands: string[] = [];
   openCount = 0;
   #position = '';
+  readonly #rootLines: readonly string[];
+
+  constructor(rootLines: readonly string[] = rootResponse()) {
+    super();
+    this.#rootLines = rootLines;
+  }
 
   override async open(): Promise<LineProcessHandle> {
     this.openCount += 1;
@@ -158,7 +249,7 @@ class MaiaAnalysisSupervisor extends LineProcessSupervisor {
         if (line.startsWith('position ')) this.#position = line;
         if (line === 'go nodes 1') {
           if (!this.#position.includes(' moves ')) {
-            responses.push(...rootResponse());
+            responses.push(...this.#rootLines);
           } else if (this.#position.endsWith(' e2e4')) {
             responses.push(
               'info depth 1 score cp 0 wdl 200 300 500 pv e7e5',
