@@ -1,31 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { Button, Radio, RadioGroup } from 'react-aria-components';
 import { FormattedMessage, useIntl } from 'react-intl';
 
 import type {
   AnalyzePositionRequestDto,
   ListPositionAnalysisProvidersResultDto,
-  PositionAnalysisSnapshotDto,
 } from '../../host_client/index.ts';
 import { localizeSan } from './chess-display.ts';
 import type { UiLocale } from './messages.ts';
+import {
+  analysisMoveKey,
+  groupAnalysisMoves,
+  whiteEvaluation,
+  whiteWdl,
+  type HumanSnapshot,
+  type ObjectiveCandidate,
+  type ObjectiveEvaluation,
+  type ObjectiveSnapshot,
+} from './position-analysis-groups.ts';
 import type { PlysmithApplicationStore } from './plysmith-application-store.ts';
 import styles from './position-analysis-panel.module.css';
 
-type Provider = ListPositionAnalysisProvidersResultDto['providers'][number];
 type AnalysisFocus = AnalyzePositionRequestDto['focus'];
 type ObjectiveBudget = Extract<
   AnalyzePositionRequestDto['mode'],
   { kind: 'objective' }
 >['budget'];
-type LaneState =
+type LaneState<T> =
   | { readonly kind: 'loading' }
-  | {
-      readonly kind: 'completed';
-      readonly snapshot: PositionAnalysisSnapshotDto;
-    }
-  | { readonly kind: 'failed'; readonly errorCode: string };
+  | { readonly kind: 'completed'; readonly snapshot: T }
+  | { readonly kind: 'failed' };
 
 export function PositionAnalysisPanel({
   focus,
@@ -66,7 +70,15 @@ export function PositionAnalysisPanel({
         humanProviders.slice(0, 1).map((provider) => provider.instanceId),
       ),
   );
+  const [sortBy, setSortBy] = useState('stockfish');
+  const [retry, setRetry] = useState(0);
   const initializedHumanSelection = useRef(humanProviders.length > 0);
+  const focusRef = useRef(focus);
+
+  useEffect(() => {
+    focusRef.current = focus;
+  }, [focus]);
+
   useEffect(() => {
     setObjectiveProviderId((current) =>
       objectiveProviders.some((provider) => provider.instanceId === current)
@@ -74,17 +86,13 @@ export function PositionAnalysisPanel({
         : objectiveProviders[0]?.instanceId,
     );
   }, [objectiveProviders]);
-
   useEffect(() => {
     setSelectedHumanProviderIds((current) => {
       const available = new Set(
         humanProviders.map((provider) => provider.instanceId),
       );
       const next = new Set([...current].filter((id) => available.has(id)));
-      if (
-        !initializedHumanSelection.current &&
-        humanProviders[0] !== undefined
-      ) {
+      if (!initializedHumanSelection.current && humanProviders[0]) {
         next.add(humanProviders[0].instanceId);
         initializedHumanSelection.current = true;
       }
@@ -95,6 +103,206 @@ export function PositionAnalysisPanel({
   const objectiveProvider = objectiveProviders.find(
     (provider) => provider.instanceId === objectiveProviderId,
   );
+  const selectedHumanProviders = humanProviders.filter((provider) =>
+    selectedHumanProviderIds.has(provider.instanceId),
+  );
+  const selectedHumanKey = selectedHumanProviders
+    .map((provider) => provider.instanceId)
+    .sort()
+    .join('|');
+  const selectedHumanIds = useMemo(
+    () => (selectedHumanKey === '' ? [] : selectedHumanKey.split('|')),
+    [selectedHumanKey],
+  );
+  const effectiveSortBy =
+    sortBy === 'stockfish' || selectedHumanProviderIds.has(sortBy)
+      ? sortBy
+      : 'stockfish';
+  const objectiveKey = `${focus.focusKey}|${objectiveProvider?.instanceId ?? '-'}|${budget}|${retry}`;
+  const humanKey = `${focus.focusKey}|${selectedHumanKey}|${retry}`;
+  const extraKey = `${objectiveKey}|${humanKey}`;
+  const [objectiveState, setObjectiveState] = useState<{
+    readonly key: string;
+    readonly value: LaneState<ObjectiveSnapshot>;
+  }>({ key: '', value: { kind: 'loading' } });
+  const [humanState, setHumanState] = useState<{
+    readonly key: string;
+    readonly byProvider: ReadonlyMap<string, LaneState<HumanSnapshot>>;
+  }>({ key: '', byProvider: new Map() });
+  const [extraState, setExtraState] = useState<{
+    readonly key: string;
+    readonly candidates: readonly ObjectiveCandidate[];
+    readonly failed: ReadonlySet<string>;
+  }>({ key: '', candidates: [], failed: new Set() });
+
+  useEffect(() => {
+    if (objectiveProviderId === undefined) return;
+    let current = true;
+    setObjectiveState({ key: objectiveKey, value: { kind: 'loading' } });
+    void store
+      .analyzePosition({
+        laneId: 'objective',
+        providerInstanceId: objectiveProviderId,
+        candidateCount: 5,
+        focus: focusRef.current,
+        mode: { kind: 'objective', budget },
+      })
+      .then((result) => {
+        if (!current) return;
+        setObjectiveState({
+          key: objectiveKey,
+          value:
+            result.kind === 'completed' && result.snapshot.kind === 'objective'
+              ? { kind: 'completed', snapshot: result.snapshot }
+              : { kind: 'failed' },
+        });
+      });
+    return () => {
+      current = false;
+    };
+  }, [budget, objectiveKey, objectiveProviderId, store]);
+
+  useEffect(() => {
+    let current = true;
+    setHumanState({
+      key: humanKey,
+      byProvider: new Map(
+        selectedHumanIds.map((providerId) => [
+          providerId,
+          { kind: 'loading' as const },
+        ]),
+      ),
+    });
+    for (const providerId of selectedHumanIds) {
+      void store
+        .analyzePosition({
+          laneId: `human-${providerId}`,
+          providerInstanceId: providerId,
+          candidateCount: 5,
+          focus: focusRef.current,
+          mode: { kind: 'human_policy' },
+        })
+        .then((result) => {
+          if (!current) return;
+          setHumanState((previous) => {
+            if (previous.key !== humanKey) return previous;
+            const next = new Map(previous.byProvider);
+            next.set(
+              providerId,
+              result.kind === 'completed' &&
+                result.snapshot.kind === 'human_policy'
+                ? { kind: 'completed', snapshot: result.snapshot }
+                : { kind: 'failed' },
+            );
+            return { key: humanKey, byProvider: next };
+          });
+        });
+    }
+    return () => {
+      current = false;
+    };
+  }, [humanKey, selectedHumanIds, store]);
+
+  const objectiveValue =
+    objectiveState.key === objectiveKey
+      ? objectiveState.value
+      : { kind: 'loading' as const };
+  const objectiveSnapshot =
+    objectiveValue.kind === 'completed' ? objectiveValue.snapshot : undefined;
+  const currentHumanState =
+    humanState.key === humanKey ? humanState.byProvider : new Map();
+  const humanReady = selectedHumanProviders.every(
+    (provider) =>
+      currentHumanState.get(provider.instanceId)?.kind === 'completed' ||
+      currentHumanState.get(provider.instanceId)?.kind === 'failed',
+  );
+  const humanSnapshots = useMemo(() => {
+    const snapshots = new Map<string, HumanSnapshot>();
+    if (humanState.key !== humanKey) return snapshots;
+    for (const [providerId, state] of humanState.byProvider) {
+      if (state.kind === 'completed') snapshots.set(providerId, state.snapshot);
+    }
+    return snapshots;
+  }, [humanKey, humanState]);
+
+  useEffect(() => {
+    if (
+      objectiveProviderId === undefined ||
+      objectiveSnapshot === undefined ||
+      !humanReady
+    )
+      return;
+    let current = true;
+    const missing = groupAnalysisMoves(
+      objectiveSnapshot,
+      [],
+      humanSnapshots,
+      'stockfish',
+    )
+      .filter((group) => group.objective === undefined)
+      .map((group) => group.move);
+    setExtraState({
+      key: extraKey,
+      candidates: [],
+      failed: new Set(),
+    });
+    void (async () => {
+      for (let index = 0; index < missing.length; index += 8) {
+        if (!current) return;
+        const batch = missing.slice(index, index + 8);
+        const result = await store.analyzePosition({
+          laneId: 'objective',
+          providerInstanceId: objectiveProviderId,
+          candidateCount: batch.length,
+          focus: focusRef.current,
+          mode: { kind: 'objective', budget, rootMoves: batch },
+        });
+        if (!current) return;
+        setExtraState((previous) => {
+          if (previous.key !== extraKey) return previous;
+          const candidates =
+            result.kind === 'completed' && result.snapshot.kind === 'objective'
+              ? result.snapshot.candidates
+              : [];
+          const delivered = new Set(
+            candidates.map((candidate) => analysisMoveKey(candidate.move)),
+          );
+          const failed = new Set(previous.failed);
+          for (const move of batch) {
+            const key = analysisMoveKey(move);
+            if (!delivered.has(key)) failed.add(key);
+          }
+          return {
+            key: extraKey,
+            candidates: [...previous.candidates, ...candidates],
+            failed,
+          };
+        });
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [
+    budget,
+    extraKey,
+    humanReady,
+    humanSnapshots,
+    objectiveProviderId,
+    objectiveSnapshot,
+    store,
+  ]);
+
+  const additional = extraState.key === extraKey ? extraState.candidates : [];
+  const failedMoves =
+    extraState.key === extraKey ? extraState.failed : new Set<string>();
+  const groups = groupAnalysisMoves(
+    objectiveSnapshot,
+    additional,
+    humanSnapshots,
+    effectiveSortBy,
+  );
+  const intl = useIntl();
 
   function toggleHumanProvider(instanceId: string): void {
     setSelectedHumanProviderIds((current) => {
@@ -103,6 +311,7 @@ export function PositionAnalysisPanel({
       else next.add(instanceId);
       return next;
     });
+    if (sortBy === instanceId) setSortBy('stockfish');
   }
 
   return (
@@ -111,300 +320,198 @@ export function PositionAnalysisPanel({
       aria-labelledby="engine-analysis-title"
     >
       <header className={styles.analysisHeader}>
-        <div>
-          <span className={styles.eyebrow}>
-            <FormattedMessage id="positionAnalysis.eyebrow" />
-          </span>
-          <h2 id="engine-analysis-title">
-            <FormattedMessage id="positionAnalysis.title" />
-          </h2>
-        </div>
-        <p>
-          <FormattedMessage id="positionAnalysis.currentPosition" />
-        </p>
+        <h2 id="engine-analysis-title">
+          <FormattedMessage id="positionAnalysis.title" />
+        </h2>
+        <button
+          type="button"
+          className={styles.retryButton}
+          title={intl.formatMessage({ id: 'positionAnalysis.retry' })}
+          aria-label={intl.formatMessage({ id: 'positionAnalysis.retry' })}
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          <RefreshCw aria-hidden="true" size={15} />
+        </button>
       </header>
-
-      <div className={styles.providerGrid}>
-        <section
-          className={styles.providerArea}
-          aria-labelledby="objective-title"
-        >
-          <div className={styles.providerHeading}>
-            <div>
-              <span className={styles.providerKind}>
-                <FormattedMessage id="positionAnalysis.objective.eyebrow" />
-              </span>
-              <h3 id="objective-title">
-                <FormattedMessage id="positionAnalysis.objective.title" />
-              </h3>
-            </div>
-            {objectiveProviders.length > 1 ? (
-              <select
-                className={styles.providerSelect}
-                aria-label="Stockfish"
-                value={objectiveProviderId}
-                onChange={(event) => setObjectiveProviderId(event.target.value)}
-              >
-                {objectiveProviders.map((provider) => (
-                  <option key={provider.instanceId} value={provider.instanceId}>
-                    {provider.displayName}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className={styles.providerName}>
-                {objectiveProvider?.displayName ?? 'Stockfish'}
-              </span>
-            )}
-          </div>
-
-          <RadioGroup
-            className={styles.budgetGroup!}
-            value={budget}
-            onChange={(value) => setBudget(value as ObjectiveBudget)}
+      <div className={styles.controls}>
+        {objectiveProviders.length > 1 && (
+          <select
+            className={styles.providerSelect}
             aria-label="Stockfish"
-            orientation="horizontal"
+            value={objectiveProviderId}
+            onChange={(event) => setObjectiveProviderId(event.target.value)}
           >
-            {(['fast', 'thorough', 'very_deep'] as const).map((value) => (
-              <Radio key={value} value={value} className={styles.budgetOption!}>
-                <FormattedMessage id={`positionAnalysis.budget.${value}`} />
-              </Radio>
+            {objectiveProviders.map((provider) => (
+              <option key={provider.instanceId} value={provider.instanceId}>
+                {provider.displayName}
+              </option>
             ))}
-          </RadioGroup>
-
-          {objectiveProvider === undefined ? (
-            <EmptyLane messageId="positionAnalysis.objective.unavailable" />
-          ) : (
-            <AnalysisLane
-              focus={focus}
-              laneId="objective"
-              locale={locale}
-              analysisKind="objective"
-              budget={budget}
-              provider={objectiveProvider}
-              store={store}
-            />
-          )}
-        </section>
-
-        <section className={styles.providerArea} aria-labelledby="human-title">
-          <div className={styles.providerHeading}>
-            <div>
-              <span className={styles.providerKind}>
-                <FormattedMessage id="positionAnalysis.human.eyebrow" />
-              </span>
-              <h3 id="human-title">
-                <FormattedMessage id="positionAnalysis.human.title" />
-              </h3>
-            </div>
-          </div>
-
-          {humanProviders.length > 0 && (
-            <div className={styles.profileChoices}>
-              {humanProviders.map((provider) => (
-                <label
-                  key={provider.instanceId}
-                  className={styles.profileChoice}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedHumanProviderIds.has(provider.instanceId)}
-                    onChange={() => toggleHumanProvider(provider.instanceId)}
-                  />
-                  <span>{provider.displayName}</span>
-                </label>
-              ))}
-            </div>
-          )}
-
-          {humanProviders.length === 0 ? (
-            <EmptyLane messageId="positionAnalysis.human.unavailable" />
-          ) : selectedHumanProviderIds.size === 0 ? (
-            <EmptyLane messageId="positionAnalysis.human.choose" />
-          ) : (
-            <div className={styles.humanLanes}>
-              {humanProviders
-                .filter((provider) =>
-                  selectedHumanProviderIds.has(provider.instanceId),
-                )
-                .map((provider) => (
-                  <AnalysisLane
-                    key={provider.instanceId}
-                    focus={focus}
-                    laneId={`human-${provider.instanceId}`}
-                    locale={locale}
-                    analysisKind="human_policy"
-                    provider={provider}
-                    store={store}
-                  />
-                ))}
-            </div>
-          )}
-        </section>
-      </div>
-    </section>
-  );
-}
-
-function AnalysisLane({
-  analysisKind,
-  budget,
-  focus,
-  laneId,
-  locale,
-  provider,
-  store,
-}: {
-  readonly analysisKind: 'objective' | 'human_policy';
-  readonly budget?: ObjectiveBudget;
-  readonly focus: AnalysisFocus;
-  readonly laneId: string;
-  readonly locale: UiLocale;
-  readonly provider: Provider;
-  readonly store: PlysmithApplicationStore;
-}) {
-  const [retry, setRetry] = useState(0);
-  const [state, setState] = useState<LaneState>({ kind: 'loading' });
-
-  useEffect(() => {
-    let current = true;
-    setState({ kind: 'loading' });
-    void store
-      .analyzePosition({
-        laneId,
-        providerInstanceId: provider.instanceId,
-        candidateCount: 5,
-        focus,
-        mode:
-          analysisKind === 'objective'
-            ? { kind: 'objective', budget: budget ?? 'fast' }
-            : { kind: 'human_policy' },
-      })
-      .then((result) => {
-        if (!current || result.kind === 'cancelled') return;
-        setState(
-          result.kind === 'completed'
-            ? { kind: 'completed', snapshot: result.snapshot }
-            : { kind: 'failed', errorCode: result.errorCode },
-        );
-      });
-    return () => {
-      current = false;
-    };
-  }, [analysisKind, budget, focus, laneId, provider.instanceId, retry, store]);
-
-  if (state.kind === 'loading') {
-    return (
-      <div className={styles.laneStatus} role="status">
-        <RefreshCw aria-hidden="true" size={16} className={styles.spinning} />
-        <FormattedMessage id="positionAnalysis.loading" />
-      </div>
-    );
-  }
-  if (state.kind === 'failed') {
-    return (
-      <div className={styles.laneFailure} role="alert">
-        <AlertTriangle aria-hidden="true" size={17} />
-        <span>
-          <FormattedMessage id="positionAnalysis.failed" />
-        </span>
-        <Button
-          className={styles.retryButton!}
-          onPress={() => setRetry((value) => value + 1)}
+          </select>
+        )}
+        <select
+          className={styles.providerSelect}
+          aria-label={intl.formatMessage({ id: 'positionAnalysis.budget' })}
+          value={budget}
+          onChange={(event) => setBudget(event.target.value as ObjectiveBudget)}
         >
-          <RefreshCw aria-hidden="true" size={14} />
-          <FormattedMessage id="positionAnalysis.retry" />
-        </Button>
+          {(['fast', 'thorough', 'very_deep'] as const).map((value) => (
+            <option key={value} value={value}>
+              {intl.formatMessage({ id: `positionAnalysis.budget.${value}` })}
+            </option>
+          ))}
+        </select>
+        {selectedHumanProviders.length > 0 && (
+          <select
+            className={styles.providerSelect}
+            aria-label={intl.formatMessage({ id: 'positionAnalysis.sort' })}
+            value={effectiveSortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+          >
+            <option value="stockfish">Stockfish</option>
+            {selectedHumanProviders.map((provider) => (
+              <option key={provider.instanceId} value={provider.instanceId}>
+                {provider.displayName}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
-    );
-  }
-  return <AnalysisSnapshot locale={locale} snapshot={state.snapshot} />;
-}
-
-function AnalysisSnapshot({
-  locale,
-  snapshot,
-}: {
-  readonly locale: UiLocale;
-  readonly snapshot: PositionAnalysisSnapshotDto;
-}) {
-  return (
-    <div className={styles.snapshot}>
-      {snapshot.kind === 'objective' ? (
-        <>
-          {snapshot.rootWdl !== undefined && (
-            <WdlMeter wdl={snapshot.rootWdl} />
-          )}
-          <ol className={styles.candidates}>
-            {snapshot.candidates.map((candidate) => (
-              <li
-                key={`${candidate.rank}-${candidate.move.from}-${candidate.move.to}`}
-              >
-                <div className={styles.candidateLine}>
-                  <strong>{localizeSan(candidate.move.san, locale)}</strong>
-                  <span className={styles.evaluation}>
-                    {formatEvaluation(candidate.evaluation)}
-                  </span>
-                </div>
-                {candidate.principalVariation.length > 0 && (
-                  <div className={styles.principalVariation}>
-                    {candidate.principalVariation
-                      .map((move) => localizeSan(move.san, locale))
-                      .join(' ')}
-                  </div>
-                )}
-                {candidate.wdl !== undefined && (
-                  <WdlMeter compact wdl={candidate.wdl} />
-                )}
-              </li>
-            ))}
-          </ol>
-          <div className={styles.metrics}>
-            <span>
-              <FormattedMessage
-                id="positionAnalysis.depth"
-                values={{ depth: snapshot.search.depth ?? '-' }}
+      {humanProviders.length > 0 && (
+        <div className={styles.profileChoices}>
+          {humanProviders.map((provider) => (
+            <label key={provider.instanceId} className={styles.profileChoice}>
+              <input
+                type="checkbox"
+                checked={selectedHumanProviderIds.has(provider.instanceId)}
+                onChange={() => toggleHumanProvider(provider.instanceId)}
               />
-            </span>
-            <span>
-              <FormattedMessage
-                id="positionAnalysis.time"
-                values={{ milliseconds: snapshot.search.limiter.value }}
-              />
-            </span>
-          </div>
-        </>
-      ) : (
-        <>
-          {snapshot.rootWdl !== undefined && (
-            <WdlMeter wdl={snapshot.rootWdl} />
-          )}
-          <ol className={styles.candidates}>
-            {snapshot.candidates.map((candidate) => (
-              <li
-                key={`${candidate.rank}-${candidate.move.from}-${candidate.move.to}`}
-              >
-                <div className={styles.candidateLine}>
-                  <strong>{localizeSan(candidate.move.san, locale)}</strong>
-                  <span className={styles.policy}>
-                    {candidate.policyPercent.toLocaleString(locale, {
-                      maximumFractionDigits: 1,
-                    })}
-                    %
-                  </span>
-                </div>
-                <WdlMeter compact wdl={candidate.wdl} />
-              </li>
-            ))}
-          </ol>
-        </>
+              <span>{provider.displayName}</span>
+            </label>
+          ))}
+        </div>
       )}
-      {snapshot.historyCompleteness !== 'complete' && (
+      {objectiveProvider === undefined ? (
+        <p className={styles.status}>
+          <FormattedMessage id="positionAnalysis.objective.unavailable" />
+        </p>
+      ) : objectiveValue.kind === 'failed' ? (
+        <p className={styles.status} role="alert">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <FormattedMessage id="positionAnalysis.failed" />
+        </p>
+      ) : objectiveValue.kind === 'loading' ? (
+        <p className={styles.status} role="status">
+          <RefreshCw aria-hidden="true" size={15} className={styles.spinning} />
+          <FormattedMessage id="positionAnalysis.loading" />
+        </p>
+      ) : null}
+      {objectiveSnapshot?.rootWdl !== undefined && (
+        <div className={styles.positionWdl}>
+          <WdlMeter wdl={objectiveSnapshot.rootWdl} />
+        </div>
+      )}
+      {selectedHumanProviders.some(
+        (provider) =>
+          currentHumanState.get(provider.instanceId)?.kind === 'failed',
+      ) && (
+        <p className={styles.status} role="alert">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <FormattedMessage id="positionAnalysis.failed" />
+        </p>
+      )}
+      <ol
+        className={styles.groups}
+        aria-label={intl.formatMessage({ id: 'positionAnalysis.moves' })}
+      >
+        {groups.map((group) => (
+          <li key={group.key} className={styles.group}>
+            <div className={styles.moveHeading}>
+              <strong>{localizeSan(group.move.san, locale)}</strong>
+              {group.objective !== undefined ? (
+                <span className={styles.evaluation}>
+                  {formatEvaluation(
+                    whiteEvaluation(
+                      group.objective.evaluation,
+                      objectiveSnapshot?.perspective ??
+                        focus.current.position.sideToMove,
+                    ),
+                  )}
+                </span>
+              ) : objectiveProvider === undefined ||
+                objectiveValue.kind === 'failed' ||
+                failedMoves.has(group.key) ? (
+                <AlertTriangle
+                  className={styles.pendingIcon}
+                  aria-label={intl.formatMessage({
+                    id: 'positionAnalysis.failed',
+                  })}
+                  size={15}
+                />
+              ) : (
+                <RefreshCw
+                  className={`${styles.pendingIcon} ${styles.spinning}`}
+                  aria-label={intl.formatMessage({
+                    id: 'positionAnalysis.loading',
+                  })}
+                  size={15}
+                />
+              )}
+            </div>
+            {group.objective !== undefined &&
+              group.objective.principalVariation.length > 1 && (
+                <div
+                  className={styles.principalVariation}
+                  title={group.objective.principalVariation
+                    .slice(1)
+                    .map((move) => localizeSan(move.san, locale))
+                    .join(' ')}
+                >
+                  {group.objective.principalVariation
+                    .slice(1)
+                    .map((move) => localizeSan(move.san, locale))
+                    .join(' ')}
+                </div>
+              )}
+            {group.objective?.wdl !== undefined && (
+              <WdlMeter wdl={group.objective.wdl} compact />
+            )}
+            {selectedHumanProviders.map((provider) => {
+              const candidate = group.human.get(provider.instanceId);
+              return candidate === undefined ? null : (
+                <div key={provider.instanceId} className={styles.policyRow}>
+                  {selectedHumanProviders.length > 1 && (
+                    <span
+                      className={styles.profileName}
+                      title={provider.displayName}
+                    >
+                      {provider.displayName}
+                    </span>
+                  )}
+                  <PolicyMeter
+                    profile={provider.displayName}
+                    percent={candidate.policyPercent}
+                  />
+                </div>
+              );
+            })}
+          </li>
+        ))}
+      </ol>
+      {objectiveSnapshot !== undefined && groups.length === 0 && (
+        <p className={styles.status}>
+          <FormattedMessage id="positionAnalysis.noMoves" />
+        </p>
+      )}
+      {(objectiveSnapshot?.historyCompleteness === 'partial' ||
+        objectiveSnapshot?.historyCompleteness === 'unknown' ||
+        [...humanSnapshots.values()].some(
+          (snapshot) => snapshot.historyCompleteness !== 'complete',
+        )) && (
         <p className={styles.historyNotice}>
           <FormattedMessage id="positionAnalysis.partialHistory" />
         </p>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -413,19 +520,17 @@ function WdlMeter({
   wdl,
 }: {
   readonly compact?: boolean;
-  readonly wdl: NonNullable<
-    Extract<PositionAnalysisSnapshotDto, { kind: 'human_policy' }>['rootWdl']
-  >;
+  readonly wdl: NonNullable<ObjectiveSnapshot['rootWdl']>;
 }) {
   const intl = useIntl();
-  const total = Math.max(1, wdl.wins + wdl.draws + wdl.losses);
-  const values = [wdl.wins, wdl.draws, wdl.losses].map(
+  const white = whiteWdl(wdl);
+  const total = Math.max(1, white.wins + white.draws + white.losses);
+  const values = [white.wins, white.draws, white.losses].map(
     (value) => (value / total) * 100,
   );
   const label = intl.formatMessage(
-    { id: 'positionAnalysis.wdlLabel' },
+    { id: 'positionAnalysis.whiteWdlLabel' },
     {
-      side: intl.formatMessage({ id: `side.${wdl.perspective}` }),
       wins: values[0]!.toLocaleString(intl.locale, {
         maximumFractionDigits: 1,
       }),
@@ -440,36 +545,47 @@ function WdlMeter({
   return (
     <div
       className={compact ? styles.compactWdl : styles.wdl}
+      role="img"
       aria-label={label}
+      title={label}
     >
-      <div className={styles.wdlBar} aria-hidden="true">
-        <span className={styles.wins} style={{ width: `${values[0]}%` }} />
-        <span className={styles.draws} style={{ width: `${values[1]}%` }} />
-        <span className={styles.losses} style={{ width: `${values[2]}%` }} />
-      </div>
-      <div className={styles.wdlValues}>
-        <span>{values[0]!.toFixed(0)}%</span>
-        <span>{values[1]!.toFixed(0)}%</span>
-        <span>{values[2]!.toFixed(0)}%</span>
-      </div>
+      <span className={styles.wins} style={{ width: `${values[0]}%` }} />
+      <span className={styles.draws} style={{ width: `${values[1]}%` }} />
+      <span className={styles.losses} style={{ width: `${values[2]}%` }} />
     </div>
   );
 }
 
-function EmptyLane({ messageId }: { readonly messageId: string }) {
+function PolicyMeter({
+  profile,
+  percent,
+}: {
+  readonly profile: string;
+  readonly percent: number;
+}) {
+  const intl = useIntl();
+  const label = intl.formatMessage(
+    { id: 'positionAnalysis.policyLabel' },
+    {
+      profile,
+      percent: percent.toLocaleString(intl.locale, {
+        maximumFractionDigits: 1,
+      }),
+    },
+  );
   return (
-    <p className={styles.emptyLane}>
-      <FormattedMessage id={messageId} />
-    </p>
+    <div
+      className={styles.policyTrack}
+      role="img"
+      aria-label={label}
+      title={label}
+    >
+      <span className={styles.policyFill} style={{ width: `${percent}%` }} />
+    </div>
   );
 }
 
-function formatEvaluation(
-  evaluation: Extract<
-    PositionAnalysisSnapshotDto,
-    { kind: 'objective' }
-  >['candidates'][number]['evaluation'],
-): string {
+function formatEvaluation(evaluation: ObjectiveEvaluation): string {
   if (evaluation.kind === 'unknown') return '-';
   const bound =
     evaluation.bound === 'lower'

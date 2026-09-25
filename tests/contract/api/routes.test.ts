@@ -650,6 +650,7 @@ test('position analysis routes preserve provider capabilities and the exact focu
         received = request;
         return {
           kind: 'objective' as const,
+          perspective: 'white' as const,
           focusKey: request.focus.focusKey,
           providerInstanceId: provider.instanceId,
           providerDisplayName: provider.displayName,
@@ -683,7 +684,11 @@ test('position analysis routes preserve provider capabilities and the exact focu
       moves: [],
       current: initialPosition,
     },
-    mode: { kind: 'objective' as const, budget: 'fast' as const },
+    mode: {
+      kind: 'objective' as const,
+      budget: 'fast' as const,
+      rootMoves: [{ from: 'e2' as const, to: 'e4' as const, san: 'e4' }],
+    },
   };
   const analyzed = await host.inject({
     method: 'POST',
@@ -697,6 +702,7 @@ test('position analysis routes preserve provider capabilities and the exact focu
   assert.deepEqual(received, request);
   assert.deepEqual(analyzed.json(), {
     kind: 'objective',
+    perspective: 'white',
     focusKey: 'initial',
     providerInstanceId: 'stockfish-main',
     providerDisplayName: 'Stockfish',
@@ -712,6 +718,18 @@ test('position analysis routes preserve provider capabilities and the exact focu
     candidates: [],
     search: { limiter: { kind: 'movetime', value: 300 }, depth: 12 },
   });
+  for (const rootMoves of [
+    [],
+    Array.from({ length: 9 }, () => request.mode.rootMoves[0]),
+  ]) {
+    const rejected = await host.inject({
+      method: 'POST',
+      url: '/analysis/position',
+      headers,
+      payload: { ...request, mode: { ...request.mode, rootMoves } },
+    });
+    assert.equal(rejected.statusCode, 400);
+  }
 });
 
 test('terminal Maia analysis needs no model WDL', async (t) => {

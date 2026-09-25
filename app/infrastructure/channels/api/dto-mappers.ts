@@ -758,6 +758,7 @@ export function analysisRecordDto(model: AnalysisRecordView) {
       : {
           sourceLine: {
             sourceItemId: idDto(model.sourceLine.sourceItemId),
+            sourceItemType: model.sourceLine.sourceItemType,
             sourceRevisionId: idDto(model.sourceLine.sourceRevisionId),
             sourceAnchorId: idDto(model.sourceLine.sourceAnchorId),
             sourceDisplayName: model.sourceLine.sourceDisplayName,

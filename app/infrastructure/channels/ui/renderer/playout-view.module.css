@@ -246,8 +246,8 @@
 }
 .primaryButton {
   color: #fff;
-  background: #2f66bd;
-  border: 1px solid #2756a1;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
 }
 .secondaryButton {
   color: #303842;

@@ -206,7 +206,7 @@ export function SettingsView({
             </label>
             <div className={styles.engineCreateActions}>
               <Button
-                className={styles.secondaryButton!}
+                className={styles.primaryButton!}
                 isDisabled={savingEngine}
                 onPress={() => {
                   const draft = newEngineInput(
@@ -225,7 +225,7 @@ export function SettingsView({
                 <FormattedMessage id="engines.addStockfish" />
               </Button>
               <Button
-                className={styles.secondaryButton!}
+                className={styles.primaryButton!}
                 isDisabled={savingEngine}
                 onPress={() => {
                   const draft = newEngineInput(
@@ -252,7 +252,7 @@ export function SettingsView({
             <div className={styles.pathRow}>
               <input value={engineDraft.executablePath} readOnly />
               <Button
-                className={styles.secondaryButton!}
+                className={styles.primaryButton!}
                 isDisabled={savingEngine}
                 onPress={() =>
                   void store.chooseEngineExecutable().then((selected) => {
@@ -365,7 +365,7 @@ export function SettingsView({
                 <div className={styles.pathRow}>
                   <input value={engineDraft.weightsPath} readOnly />
                   <Button
-                    className={styles.secondaryButton!}
+                    className={styles.primaryButton!}
                     isDisabled={savingEngine}
                     onPress={() =>
                       void store.chooseEngineWeights().then((selected) => {
@@ -399,7 +399,7 @@ export function SettingsView({
           <div className={styles.engineActions}>
             {configuredEngine !== undefined && (
               <Button
-                className={styles.secondaryButton!}
+                className={styles.dangerButton!}
                 isDisabled={savingEngine}
                 onPress={() => {
                   const removedInstanceId = configuredEngine.instanceId;
@@ -555,7 +555,7 @@ export function SettingsView({
             </p>
           </div>
           <Button
-            className={styles.secondaryButton!}
+            className={styles.primaryButton!}
             isDisabled={creatingReport}
             onPress={() => setReportReviewOpen(true)}
           >

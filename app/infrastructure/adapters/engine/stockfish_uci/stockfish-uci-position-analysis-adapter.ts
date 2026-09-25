@@ -7,6 +7,7 @@ import type {
   PositionAnalysisProviderDescriptor,
   PositionAnalysisProviderRequest,
 } from '../../../../application/analysis/index.ts';
+import { validatePositionAnalysisProviderRequest } from '../../../../application/analysis/position-analysis.ts';
 import type { ChessRulesPort } from '../../../../application/chess_graph/index.ts';
 import type { LineProcessSession } from '../../process/index.ts';
 import {
@@ -15,6 +16,7 @@ import {
   readUciSearch,
   requireUciOptions,
   setUciOption,
+  uciMoveText,
   type UciEngineRuntime,
   type UciHandshake,
   waitUntilUciReady,
@@ -85,6 +87,34 @@ export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProv
       throw mapPositionAnalysisRuntimeError(new Error('invalid mode'));
     }
     try {
+      validatePositionAnalysisProviderRequest(this.#rules, request);
+      const legal = this.#rules.legalMoves(
+        request.focus.root,
+        request.focus.moves,
+      );
+      if (!legal.ok) throw new Error('invalid analysis line');
+      if (legal.value.length === 0) {
+        return Object.freeze({
+          kind: 'objective',
+          perspective: request.focus.current.position.sideToMove,
+          focusKey: request.focus.focusKey,
+          providerInstanceId: this.#descriptor.instanceId,
+          providerDisplayName: this.#descriptor.displayName,
+          historyCompleteness: request.focus.current.playState.historyKnowledge,
+          budget: request.mode.budget,
+          candidates: Object.freeze([]),
+          search: Object.freeze({
+            limiter: Object.freeze({
+              kind: 'movetime',
+              value: budgetMilliseconds[request.mode.budget],
+            }),
+          }),
+        });
+      }
+      const candidateCount = Math.min(
+        request.candidateCount,
+        request.mode.rootMoves?.length ?? legal.value.length,
+      );
       return await this.#runtime.use(
         (session, handshake) =>
           analyzeWithStockfish(
@@ -94,6 +124,7 @@ export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProv
             this.#rules,
             request,
             this.descriptor,
+            candidateCount,
           ),
         {
           waitTimeoutMs: this.#configuration.moveTimeoutMs,
@@ -113,12 +144,14 @@ async function analyzeWithStockfish(
   rules: ChessRulesPort,
   request: PositionAnalysisProviderRequest,
   descriptor: PositionAnalysisProviderDescriptor,
+  candidateCount: number,
 ): Promise<ObjectiveAnalysisSnapshot> {
   if (request.mode.kind !== 'objective') throw new Error('invalid mode');
   requireUciOptions(handshake, ['MultiPV', 'UCI_ShowWDL', 'UCI_LimitStrength']);
   const movetime = budgetMilliseconds[request.mode.budget];
   const deadline = performance.now() + configuration.moveTimeoutMs;
-  setUciOption(session, 'MultiPV', request.candidateCount);
+  const rootMoves = request.mode.rootMoves;
+  setUciOption(session, 'MultiPV', candidateCount);
   setUciOption(session, 'UCI_ShowWDL', true);
   setUciOption(session, 'UCI_LimitStrength', false);
   await waitUntilUciReady(session, deadline);
@@ -127,42 +160,66 @@ async function analyzeWithStockfish(
     rootFen: request.focus.root.fen,
     moves: request.focus.moves,
   });
-  session.writeLine(`go movetime ${movetime}`);
+  session.writeLine(
+    `go movetime ${movetime}${rootMoves === undefined ? '' : ` searchmoves ${rootMoves.map(uciMoveText).join(' ')}`}`,
+  );
   const search = await readUciSearch(session, deadline);
   await waitUntilUciReady(session, deadline);
 
-  const latest = new Map<number, ParsedStockfishLine>();
+  let latest: readonly ParsedStockfishLine[] = [];
+  let pass: ParsedStockfishLine[] = [];
   for (const line of search.lines) {
     const parsed = parseStockfishInfo(line);
-    if (parsed !== undefined) latest.set(parsed.rank, parsed);
+    if (parsed === undefined) continue;
+    if (parsed.rank === 1) pass = [];
+    if (
+      parsed.depth === undefined ||
+      parsed.rank !== pass.length + 1 ||
+      (pass.length > 0 && parsed.depth !== pass[0]?.depth) ||
+      parsed.pv[0] === undefined ||
+      pass.some((previous) => previous.pv[0] === parsed.pv[0])
+    ) {
+      pass = [];
+      continue;
+    }
+    pass.push(parsed);
+    // Publish only a complete pass; later partial output must not mix ranks.
+    if (pass.length === candidateCount) latest = [...pass];
   }
+  if (latest.length === 0) throw new Error('missing complete MultiPV pass');
   const perspective = request.focus.current.position.sideToMove;
-  const candidates: ObjectiveAnalysisCandidate[] = [...latest.values()]
-    .sort((left, right) => left.rank - right.rank)
-    .slice(0, request.candidateCount)
-    .map((candidate) => {
-      const pv = candidate.pv.slice(0, 32).map(parseUciMove);
-      const canonical = canonicalAnalysisLine(rules, request.focus.current, pv);
-      const move = canonical[0];
-      if (move === undefined) throw new Error('missing candidate move');
-      return Object.freeze({
-        rank: candidate.rank,
-        move,
-        evaluation: candidate.evaluation,
-        ...(candidate.wdl === undefined
-          ? {}
-          : {
-              wdl: analysisWdl(candidate.wdl, {
-                perspective,
-                semantics: 'stockfish_selfplay',
-              }),
+  const candidates: ObjectiveAnalysisCandidate[] = latest.map((candidate) => {
+    const pv = candidate.pv.slice(0, 32).map(parseUciMove);
+    const canonical = canonicalAnalysisLine(rules, request.focus.current, pv);
+    const move = canonical[0];
+    if (move === undefined) throw new Error('missing candidate move');
+    if (
+      rootMoves !== undefined &&
+      !rootMoves.some(
+        (requested) => uciMoveText(requested) === uciMoveText(move),
+      )
+    ) {
+      throw new Error('unexpected restricted candidate');
+    }
+    return Object.freeze({
+      rank: candidate.rank,
+      move,
+      evaluation: candidate.evaluation,
+      ...(candidate.wdl === undefined
+        ? {}
+        : {
+            wdl: analysisWdl(candidate.wdl, {
+              perspective,
+              semantics: 'stockfish_selfplay',
             }),
-        principalVariation: canonical,
-      });
+          }),
+      principalVariation: canonical,
     });
-  const leading = latest.get(1);
+  });
+  const leading = latest[0];
   return Object.freeze({
     kind: 'objective',
+    perspective,
     focusKey: request.focus.focusKey,
     providerInstanceId: descriptor.instanceId,
     providerDisplayName: descriptor.displayName,

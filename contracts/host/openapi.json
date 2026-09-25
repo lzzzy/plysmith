@@ -1301,6 +1301,22 @@
             "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
           },
+          "sourceItemType": {
+            "anyOf": [
+              {
+                "enum": [
+                  "analysis"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "game"
+                ],
+                "type": "string"
+              }
+            ]
+          },
           "sourceRevisionId": {
             "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
@@ -1347,6 +1363,7 @@
         },
         "required": [
           "sourceItemId",
+          "sourceItemType",
           "sourceRevisionId",
           "sourceAnchorId",
           "sourceDisplayName",
@@ -1624,6 +1641,14 @@
                       "objective"
                     ],
                     "type": "string"
+                  },
+                  "rootMoves": {
+                    "items": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    },
+                    "maxItems": 8,
+                    "minItems": 1,
+                    "type": "array"
                   }
                 },
                 "required": [
@@ -5118,6 +5143,22 @@
                 ],
                 "type": "string"
               },
+              "perspective": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "white"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "black"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
               "providerDisplayName": {
                 "maxLength": 160,
                 "minLength": 1,
@@ -5204,6 +5245,7 @@
               "providerDisplayName",
               "historyCompleteness",
               "kind",
+              "perspective",
               "budget",
               "candidates",
               "search"
@@ -8608,6 +8650,14 @@
                               "objective"
                             ],
                             "type": "string"
+                          },
+                          "rootMoves": {
+                            "items": {
+                              "$ref": "#/components/schemas/CanonicalMove"
+                            },
+                            "maxItems": 8,
+                            "minItems": 1,
+                            "type": "array"
                           }
                         },
                         "required": [

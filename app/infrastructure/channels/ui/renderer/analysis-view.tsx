@@ -11,9 +11,10 @@ import {
   ArrowRight,
   AlertTriangle,
   BookOpen,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CornerDownLeft,
+  ClipboardCheck,
   GitBranch,
   MessageSquarePlus,
   Pencil,
@@ -30,6 +31,7 @@ import { FormattedDate, FormattedMessage, useIntl } from 'react-intl';
 
 import { ChessBoard } from './chess-board.tsx';
 import { localizeSan } from './chess-display.ts';
+import { InventoryTypeIcon } from './inventory-type-icon.tsx';
 import {
   analysisMoveRows,
   analysisNoteMoveRows,
@@ -45,6 +47,7 @@ import {
 import { PositionAnalysisPanel } from './position-analysis-panel.tsx';
 import { RevisionImpactView } from './revision-impact-view.tsx';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
+import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 import styles from './analysis-view.module.css';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
@@ -79,6 +82,7 @@ export function AnalysisView({
   const intl = useIntl();
   const scratch = state.analysis.scratch;
   const record = state.analysis.record;
+  const emptyScratchCleanupRef = useRef<string | null>(null);
   const gameResult =
     record?.game === undefined
       ? undefined
@@ -159,7 +163,6 @@ export function AnalysisView({
   const lineStartNoteTarget = path.hasSourcePrefix
     ? path.sourceRootTarget
     : path.recordRootTarget;
-  const [moveInput, setMoveInput] = useState('');
   const [noteBody, setNoteBody] = useState(scratch?.noteDraft?.body ?? '');
   const [noteEditor, setNoteEditor] = useState<NoteEditor>();
   const [recordTitle, setRecordTitle] = useState('');
@@ -174,11 +177,14 @@ export function AnalysisView({
     state.scope.kind === 'context' ? 'context' : 'global',
   );
   const [showSaveRecord, setShowSaveRecord] = useState(false);
+  const [revisionDetailsOpen, setRevisionDetailsOpen] = useState(false);
+  const [analysisDetailsOpen, setAnalysisDetailsOpen] = useState(false);
   const [selectedPositionIndex, setSelectedPositionIndex] = useState(
     path.currentPositionIndex,
   );
-  const moveInputRef = useRef<HTMLInputElement>(null);
   const moveListRef = useRef<HTMLOListElement>(null);
+  const revisionSummaryRef = useRef<HTMLButtonElement>(null);
+  const analysisSummaryRef = useRef<HTMLButtonElement>(null);
   const activePositionIndex = Math.max(
     0,
     Math.min(selectedPositionIndex, Math.max(0, path.positions.length - 1)),
@@ -223,16 +229,6 @@ export function AnalysisView({
             (action) => action !== 'apply_move',
           ),
         };
-  const lineEndAnchorId =
-    record?.steps.at(-1)?.anchorId ?? record?.rootAnchorId;
-  const canExtendRecord =
-    scratch === undefined &&
-    record !== undefined &&
-    !record.historical &&
-    !record.readOnlyPreview &&
-    record.revisionId === record.currentRevisionId &&
-    record.currentAnchorId === lineEndAnchorId &&
-    atWorkspacePosition;
   const canAnalyzeRecord =
     scratch === undefined &&
     record !== undefined &&
@@ -248,7 +244,9 @@ export function AnalysisView({
     atWorkspacePosition;
   const candidateStoredMoveCount =
     scratch === undefined
-      ? record?.steps.length
+      ? record?.itemType === 'analysis'
+        ? record.steps.length
+        : undefined
       : revisionScratch !== undefined && revisionScratch.steps.length === 0
         ? revisionPreview?.preservedMoveCount
         : undefined;
@@ -268,12 +266,39 @@ export function AnalysisView({
     atWorkspacePosition &&
     !navigationLocked &&
     (scratch === undefined
-      ? record?.cursor === record?.steps.length
+      ? record?.itemType === 'analysis' && record.cursor === record.steps.length
       : scratch.cursor === scratch.steps.length);
 
   useEffect(() => {
     setNoteBody(scratch?.noteDraft?.body ?? '');
   }, [scratch?.scratchId, scratch?.noteDraft?.body]);
+
+  useEffect(() => setRevisionDetailsOpen(false), [revisionScratch?.scratchId]);
+  useEffect(() => setAnalysisDetailsOpen(false), [scratch?.scratchId]);
+
+  useEffect(() => {
+    if (
+      !isBusy &&
+      scratch?.intent.kind === 'exploration' &&
+      scratch.origin.kind === 'inventory_anchor' &&
+      scratch.scratchRevision > 1 &&
+      scratch.steps.length === 0 &&
+      record?.itemId === scratch.origin.itemId &&
+      record.revisionId === scratch.origin.revisionId
+    ) {
+      const key = `${state.scope.kind}:${scratch.scratchId}:${scratch.scratchRevision}`;
+      if (emptyScratchCleanupRef.current === key) return;
+      emptyScratchCleanupRef.current = key;
+      void store.discardAnalysisScratch();
+    }
+  }, [
+    isBusy,
+    record?.itemId,
+    record?.revisionId,
+    scratch,
+    state.scope.kind,
+    store,
+  ]);
 
   useEffect(() => {
     setDestination(state.scope.kind === 'context' ? 'context' : 'inventory');
@@ -355,13 +380,6 @@ export function AnalysisView({
       return;
     }
     setSelectedPositionIndex(boundedIndex);
-  }
-
-  async function submitMove(event: FormEvent) {
-    event.preventDefault();
-    if (!atWorkspacePosition || moveInput.trim() === '') return;
-    await store.applyMove(moveInput);
-    setMoveInput('');
   }
 
   async function saveRecord(event: FormEvent) {
@@ -866,7 +884,14 @@ export function AnalysisView({
       <header className={styles.viewHeader}>
         <div>
           <span className={styles.eyebrow}>
-            <FormattedMessage id="analysis.eyebrow" />
+            {record === undefined ? (
+              <FormattedMessage id="analysis.eyebrow" />
+            ) : (
+              <>
+                <InventoryTypeIcon itemType={record.itemType} size={12} />
+                <FormattedMessage id={`itemType.${record.itemType}`} />
+              </>
+            )}
           </span>
           <h1>
             {record?.displayName ?? (
@@ -909,12 +934,12 @@ export function AnalysisView({
             </span>
           )}
           <Button
-            className={styles.secondaryButton!}
+            className={styles.primaryButton!}
             isDisabled={isBusy || !atWorkspacePosition}
             onPress={() => store.openPlayoutFromCurrentAnalysis()}
           >
             <Play aria-hidden="true" size={15} />
-            <FormattedMessage id="playout.fromHere" />
+            <FormattedMessage id="activity.playout" />
           </Button>
         </div>
       </header>
@@ -967,7 +992,7 @@ export function AnalysisView({
           </div>
           <div className={styles.noticeActions}>
             <Button
-              className={styles.secondaryButton!}
+              className={styles.primaryButton!}
               onPress={() => void store.openCurrentRecordWithoutContext()}
             >
               <ArrowRight aria-hidden="true" size={16} />
@@ -1061,7 +1086,7 @@ export function AnalysisView({
             className={styles.moveList}
             aria-label={intl.formatMessage({ id: 'analysis.moveList' })}
           >
-            {path.hasSourcePrefix && (
+            {path.hasSourcePrefix && path.sourceItemType !== undefined && (
               <li className={styles.sourceLineLabel}>
                 <Button
                   className={styles.sourceLineButton!}
@@ -1075,11 +1100,22 @@ export function AnalysisView({
                     path.sourceOriginTarget === undefined
                   }
                 >
-                  <span>
-                    <FormattedMessage
-                      id="analysis.sourceLine"
-                      values={{ source: path.sourceDisplayName }}
+                  <span className={styles.sourceIdentity}>
+                    <InventoryTypeIcon
+                      itemType={path.sourceItemType}
+                      size={13}
                     />
+                    <span className={styles.sourceIdentityText}>
+                      <FormattedMessage
+                        id="analysis.sourceLine"
+                        values={{
+                          type: intl.formatMessage({
+                            id: `itemType.${path.sourceItemType}`,
+                          }),
+                          source: path.sourceDisplayName,
+                        }}
+                      />
+                    </span>
                   </span>
                   <ArrowRight aria-hidden="true" size={13} />
                 </Button>
@@ -1087,7 +1123,7 @@ export function AnalysisView({
             )}
             {renderInlineNotes(lineStartNoteTarget, 'line-start-notes')}
             {renderMoveRows(sourceEntries, 'source')}
-            {path.hasSourcePrefix && (
+            {path.hasSourcePrefix && record !== undefined && (
               <>
                 <li
                   className={`${styles.pathBoundary} ${path.analysisOriginPositionIndex === activePositionIndex ? styles.currentBoundary : ''}`}
@@ -1113,8 +1149,14 @@ export function AnalysisView({
                       path.analysisOriginPositionIndex === undefined
                     }
                   >
-                    <GitBranch aria-hidden="true" size={14} />
-                    <FormattedMessage id="analysis.analysisOrigin" />
+                    <InventoryTypeIcon itemType={record.itemType} size={14} />
+                    <FormattedMessage
+                      id={
+                        record.itemType === 'game'
+                          ? 'analysis.gameOrigin'
+                          : 'analysis.analysisOrigin'
+                      }
+                    />
                   </Button>
                   {path.recordRootTarget !== undefined &&
                     canChangeNotes &&
@@ -1156,173 +1198,129 @@ export function AnalysisView({
             {renderMoveRows(visibleScratchEntries, 'scratch')}
           </ol>
 
-          {(scratch !== undefined ||
-            canAnalyzeRecord ||
-            canStartAnalysisPath) &&
-            revisionIntent?.mode !== 'metadata' &&
-            pathNoteDraft === undefined &&
-            atWorkspacePosition && (
-              <form className={styles.moveEntry} onSubmit={submitMove}>
-                <label htmlFor="analysis-move">
-                  <FormattedMessage
-                    id={
-                      canExtendRecord
-                        ? 'inventory.extendEnterMove'
-                        : 'analysis.enterMove'
-                    }
-                  />
-                </label>
-                <div>
-                  <input
-                    ref={moveInputRef}
-                    id="analysis-move"
-                    value={moveInput}
-                    onChange={(event) => setMoveInput(event.target.value)}
-                    placeholder={intl.formatMessage({
-                      id: 'analysis.movePlaceholder',
-                    })}
-                    disabled={isBusy}
-                  />
-                  <button
-                    type="submit"
-                    className={styles.iconButton}
-                    aria-label={intl.formatMessage({ id: 'analysis.playMove' })}
-                    disabled={isBusy || moveInput.trim() === ''}
-                  >
-                    <CornerDownLeft aria-hidden="true" size={17} />
-                  </button>
-                </div>
-              </form>
-            )}
-
           {revisionScratch !== undefined && pathNoteDraft === undefined && (
             <section
               className={styles.revisionActions}
               aria-labelledby="revision-actions-title"
             >
-              <div className={styles.revisionHeading}>
-                <div>
-                  <span className={styles.panelLabel}>
-                    <FormattedMessage id="inventory.unsavedRevision" />
+              <div className={styles.draftBar}>
+                <button
+                  ref={revisionSummaryRef}
+                  type="button"
+                  className={styles.draftToggle}
+                  aria-controls="revision-details"
+                  aria-expanded={revisionDetailsOpen}
+                  onClick={() => setRevisionDetailsOpen((open) => !open)}
+                >
+                  <ChevronDown aria-hidden="true" size={17} />
+                  <span className={styles.draftToggleText}>
+                    <span className={styles.panelLabel}>
+                      <FormattedMessage id="draft.unsavedChange" />
+                    </span>
+                    <strong id="revision-actions-title">
+                      <FormattedMessage
+                        id={`inventory.mode.${revisionIntent!.mode}`}
+                      />
+                    </strong>
                   </span>
-                  <h3 id="revision-actions-title">
-                    <FormattedMessage
-                      id={`inventory.mode.${revisionIntent!.mode}`}
-                    />
-                  </h3>
-                </div>
-                {revisionIntent?.mode !== 'metadata' && (
-                  <span>
-                    <FormattedMessage
-                      id="inventory.moveCount"
-                      values={{ count: revisionScratch.steps.length }}
-                    />
-                  </span>
+                  {revisionIntent?.mode !== 'metadata' && (
+                    <span className={styles.draftCount}>
+                      <FormattedMessage
+                        id="inventory.moveCount"
+                        values={{ count: revisionScratch.steps.length }}
+                      />
+                    </span>
+                  )}
+                </button>
+                {!revisionDetailsOpen && (
+                  <Button
+                    className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
+                    onPress={() => {
+                      setRevisionDetailsOpen(true);
+                      revisionSummaryRef.current?.focus();
+                    }}
+                    isDisabled={isBusy}
+                  >
+                    <ClipboardCheck aria-hidden="true" size={15} />
+                    <FormattedMessage id="draft.reviewChange" />
+                  </Button>
                 )}
               </div>
-              {revisionPreview === undefined ? (
-                <p className={styles.revisionHint}>
-                  <FormattedMessage id="inventory.previewPending" />
-                </p>
-              ) : (
-                <div className={styles.revisionPreview}>
-                  {record !== undefined && revisionCandidate !== undefined && (
-                    <RevisionLineComparison
-                      previous={record}
-                      next={revisionCandidate}
-                      unchangedCount={revisionPreview.preservedMoveCount}
-                    />
-                  )}
-                  {revisionPreview.affectedContexts.length > 0 && (
-                    <div className={styles.impactWarning}>
-                      <AlertTriangle aria-hidden="true" size={18} />
-                      <div>
-                        <strong>
-                          <FormattedMessage id="inventory.contextsAffected" />
-                        </strong>
-                        <ul>
-                          {revisionPreview.affectedContexts.map((context) => (
-                            <li key={context.contextId}>
-                              {context.contextName} (
-                              {context.referenceCount +
-                                context.contributionCount +
-                                context.managementResumeCount +
-                                context.analysisResumeCount}
-                              )
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                  {revisionPreview.followingContexts.length > 0 && (
-                    <div className={styles.followingContexts}>
-                      <RefreshCw aria-hidden="true" size={18} />
-                      <div>
-                        <strong>
-                          <FormattedMessage id="inventory.contextsFollowing" />
-                        </strong>
-                        <p>
-                          <FormattedMessage id="inventory.contextsFollowingDetail" />
-                        </p>
-                        <ul>
-                          {revisionPreview.followingContexts.map((context) => (
-                            <li key={context.contextId}>
-                              <FormattedMessage
-                                id="inventory.followingContextEntry"
-                                values={{
-                                  context: context.contextName,
-                                  references: context.referenceCount,
-                                  notes: context.contributionCount,
-                                  resumes:
-                                    context.managementResumeCount +
-                                    context.analysisResumeCount,
-                                }}
-                              />
-                              {context.contributionCount > 0 && (
-                                <span className={styles.followingContextNote}>
-                                  <FormattedMessage
-                                    id="inventory.followingContextNotesHistorical"
-                                    values={{
-                                      count: context.contributionCount,
-                                    }}
-                                  />
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                  <div className={styles.previewActions}>
-                    <Button
-                      className={styles.secondaryButton!}
-                      onPress={() => moveInputRef.current?.focus()}
-                      isDisabled={isBusy}
-                    >
-                      <ArrowLeft aria-hidden="true" size={16} />
-                      <FormattedMessage id="inventory.backToEdit" />
-                    </Button>
-                    <Button
-                      className={styles.primaryButton!}
-                      onPress={() => void store.saveInventoryRevision()}
-                      isDisabled={isBusy || revisionPreview.noOp}
-                    >
-                      <Save aria-hidden="true" size={16} />
-                      <FormattedMessage id="inventory.saveRevision" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <Button
-                className={styles.discardButton!}
-                onPress={() => void store.discardAnalysisScratch()}
-                isDisabled={isBusy}
+              <div
+                id="revision-details"
+                className={styles.draftContent}
+                hidden={!revisionDetailsOpen}
               >
-                <Trash2 aria-hidden="true" size={15} />
-                <FormattedMessage id="inventory.discardRevision" />
-              </Button>
+                {revisionPreview === undefined ? (
+                  <p className={styles.revisionHint}>
+                    <FormattedMessage id="inventory.previewPending" />
+                  </p>
+                ) : (
+                  <div className={styles.revisionPreview}>
+                    {record !== undefined &&
+                      revisionCandidate !== undefined && (
+                        <RevisionLineComparison
+                          previous={record}
+                          next={revisionCandidate}
+                          unchangedCount={revisionPreview.preservedMoveCount}
+                        />
+                      )}
+                    {revisionPreview.affectedContexts.length > 0 && (
+                      <div className={styles.impactWarning}>
+                        <AlertTriangle aria-hidden="true" size={18} />
+                        <div>
+                          <strong>
+                            <FormattedMessage id="inventory.contextsAffected" />
+                          </strong>
+                          <p>
+                            <FormattedMessage id="inventory.contextsAffectedDetail" />
+                          </p>
+                          <ul>
+                            {revisionPreview.affectedContexts.map((context) => (
+                              <li key={context.contextId}>
+                                {context.contextName}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    <RevisionFollowingContexts
+                      contexts={revisionPreview.followingContexts}
+                      metadataOnly={revisionIntent?.mode === 'metadata'}
+                    />
+                    <div className={styles.previewActions}>
+                      <Button
+                        className={styles.secondaryButton!}
+                        onPress={() => {
+                          setRevisionDetailsOpen(false);
+                          revisionSummaryRef.current?.focus();
+                        }}
+                        isDisabled={isBusy}
+                      >
+                        <ArrowLeft aria-hidden="true" size={16} />
+                        <FormattedMessage id="inventory.backToEdit" />
+                      </Button>
+                      <Button
+                        className={styles.primaryButton!}
+                        onPress={() => void store.saveInventoryRevision()}
+                        isDisabled={isBusy || revisionPreview.noOp}
+                      >
+                        <Save aria-hidden="true" size={16} />
+                        <FormattedMessage id="inventory.saveRevision" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                <Button
+                  className={styles.discardButton!}
+                  onPress={() => void store.discardAnalysisScratch()}
+                  isDisabled={isBusy}
+                >
+                  <Trash2 aria-hidden="true" size={15} />
+                  <FormattedMessage id="inventory.discardRevision" />
+                </Button>
+              </div>
             </section>
           )}
 
@@ -1333,154 +1331,200 @@ export function AnalysisView({
                 className={styles.analysisActions}
                 aria-labelledby="analysis-actions-title"
               >
-                <h3 id="analysis-actions-title">
-                  <FormattedMessage id="analysis.keepAnalysis" />
-                </h3>
-                {scratch.origin.kind === 'inventory_anchor' &&
-                  scratch.cursor === scratch.steps.length &&
-                  scratch.steps.length > 0 && (
+                <div className={styles.draftBar}>
+                  <button
+                    ref={analysisSummaryRef}
+                    type="button"
+                    className={styles.draftToggle}
+                    aria-controls="analysis-actions-details"
+                    aria-expanded={analysisDetailsOpen}
+                    onClick={() => setAnalysisDetailsOpen((open) => !open)}
+                  >
+                    <ChevronDown aria-hidden="true" size={17} />
+                    <span className={styles.draftToggleText}>
+                      <span className={styles.panelLabel}>
+                        <FormattedMessage id="draft.unsavedChange" />
+                      </span>
+                      <strong id="analysis-actions-title">
+                        <FormattedMessage id="analysis.newAnalysisPath" />
+                      </strong>
+                    </span>
+                    {scratch.cursor > 0 && (
+                      <span className={styles.draftCount}>
+                        <FormattedMessage
+                          id="inventory.moveCount"
+                          values={{ count: scratch.cursor }}
+                        />
+                      </span>
+                    )}
+                  </button>
+                  {!analysisDetailsOpen && scratch.cursor > 0 && (
                     <Button
-                      className={styles.primaryButton!}
-                      onPress={() =>
-                        void store.promoteAnalysisToInventoryRevision()
-                      }
+                      className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
+                      onPress={() => {
+                        setAnalysisDetailsOpen(true);
+                        analysisSummaryRef.current?.focus();
+                      }}
                       isDisabled={isBusy}
                     >
-                      <GitBranch aria-hidden="true" size={16} />
-                      <FormattedMessage id="analysis.replaceMainLine" />
+                      <ClipboardCheck aria-hidden="true" size={15} />
+                      <FormattedMessage id="draft.reviewChange" />
                     </Button>
                   )}
-                {scratch.origin.kind === 'inventory_anchor' &&
-                  scratch.cursor > 0 && (
-                    <div className={styles.saveChoice}>
-                      <strong className={styles.saveHeading}>
-                        <FormattedMessage id="analysis.saveAsNote" />
-                      </strong>
+                </div>
+                <div
+                  id="analysis-actions-details"
+                  className={styles.draftContent}
+                  hidden={!analysisDetailsOpen}
+                >
+                  {record?.itemType === 'analysis' &&
+                    scratch.origin.kind === 'inventory_anchor' &&
+                    scratch.cursor === scratch.steps.length &&
+                    scratch.steps.length > 0 && (
                       <Button
-                        className={styles.ochreButton!}
-                        onPress={() => {
-                          setShowSaveRecord(false);
-                          void store.prepareAnalysisNote('');
-                        }}
+                        className={styles.primaryButton!}
+                        onPress={() =>
+                          void store.promoteAnalysisToInventoryRevision()
+                        }
                         isDisabled={isBusy}
                       >
-                        <ArrowLeft aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.prepareNote" />
+                        <GitBranch aria-hidden="true" size={16} />
+                        <FormattedMessage id="analysis.replaceMainLine" />
                       </Button>
-                    </div>
+                    )}
+                  {scratch.origin.kind === 'inventory_anchor' &&
+                    scratch.cursor > 0 && (
+                      <div className={styles.saveChoice}>
+                        <strong className={styles.saveHeading}>
+                          <FormattedMessage id="analysis.saveAsNote" />
+                        </strong>
+                        <Button
+                          className={`${styles.primaryButton!} ${styles.noteAction!}`}
+                          onPress={() => {
+                            setShowSaveRecord(false);
+                            void store.prepareAnalysisNote('');
+                          }}
+                          isDisabled={isBusy}
+                        >
+                          <ArrowLeft aria-hidden="true" size={16} />
+                          <FormattedMessage id="analysis.prepareNote" />
+                        </Button>
+                      </div>
+                    )}
+
+                  {scratch.cursor > 0 && !showSaveRecord && (
+                    <Button
+                      className={styles.primaryButton!}
+                      onPress={() => setShowSaveRecord(true)}
+                      isDisabled={isBusy}
+                    >
+                      <Save aria-hidden="true" size={16} />
+                      <FormattedMessage id="analysis.saveAsRecord" />
+                    </Button>
                   )}
 
-                {scratch.cursor > 0 && !showSaveRecord && (
+                  {scratch.cursor > 0 && showSaveRecord && (
+                    <form className={styles.saveForm} onSubmit={saveRecord}>
+                      <label htmlFor="analysis-title">
+                        <FormattedMessage id="analysis.recordTitle" />
+                      </label>
+                      <input
+                        id="analysis-title"
+                        value={recordTitle}
+                        onChange={(event) => setRecordTitle(event.target.value)}
+                        autoFocus
+                        disabled={isBusy}
+                      />
+                      <label htmlFor="analysis-record-note">
+                        <FormattedMessage id="analysis.recordNote" />
+                      </label>
+                      <textarea
+                        id="analysis-record-note"
+                        value={recordNoteBody}
+                        onChange={(event) =>
+                          setRecordNoteBody(event.target.value)
+                        }
+                        rows={3}
+                        disabled={isBusy}
+                        placeholder={intl.formatMessage({
+                          id: 'analysis.recordNotePlaceholder',
+                        })}
+                      />
+                      {state.scope.kind === 'context' && (
+                        <RadioGroup
+                          className={styles.destinationGroup!}
+                          value={destination}
+                          onChange={(value) => {
+                            const next = value as 'inventory' | 'context';
+                            setDestination(next);
+                            if (next === 'inventory')
+                              setRecordNoteScope('global');
+                            if (next === 'context')
+                              setRecordNoteScope('context');
+                          }}
+                          aria-label={intl.formatMessage({
+                            id: 'analysis.destination',
+                          })}
+                        >
+                          <Radio
+                            value="context"
+                            className={styles.destinationOption!}
+                          >
+                            <FormattedMessage
+                              id="analysis.inventoryAndContext"
+                              values={{ context: state.analysis.contextName }}
+                            />
+                          </Radio>
+                          <Radio
+                            value="inventory"
+                            className={styles.destinationOption!}
+                          >
+                            <FormattedMessage id="analysis.inventoryOnly" />
+                          </Radio>
+                        </RadioGroup>
+                      )}
+                      <div className={styles.previewActions}>
+                        <Button
+                          className={styles.secondaryButton!}
+                          onPress={cancelSaveRecord}
+                          isDisabled={isBusy}
+                        >
+                          <X aria-hidden="true" size={16} />
+                          <FormattedMessage id="analysis.cancel" />
+                        </Button>
+                        <button
+                          type="submit"
+                          className={styles.primaryButton}
+                          disabled={isBusy || recordTitle.trim() === ''}
+                        >
+                          <Save aria-hidden="true" size={16} />
+                          <FormattedMessage id="analysis.saveAsAnalysis" />
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
                   <Button
-                    className={styles.secondaryButton!}
-                    onPress={() => setShowSaveRecord(true)}
+                    className={styles.discardButton!}
+                    onPress={() => void store.discardAnalysisScratch()}
                     isDisabled={isBusy}
                   >
-                    <Save aria-hidden="true" size={16} />
-                    <FormattedMessage id="analysis.saveAsRecord" />
+                    <Trash2 aria-hidden="true" size={15} />
+                    <FormattedMessage id="analysis.discard" />
                   </Button>
-                )}
-
-                {scratch.cursor > 0 && showSaveRecord && (
-                  <form className={styles.saveForm} onSubmit={saveRecord}>
-                    <label htmlFor="analysis-title">
-                      <FormattedMessage id="analysis.recordTitle" />
-                    </label>
-                    <input
-                      id="analysis-title"
-                      value={recordTitle}
-                      onChange={(event) => setRecordTitle(event.target.value)}
-                      autoFocus
-                      disabled={isBusy}
-                    />
-                    <label htmlFor="analysis-record-note">
-                      <FormattedMessage id="analysis.recordNote" />
-                    </label>
-                    <textarea
-                      id="analysis-record-note"
-                      value={recordNoteBody}
-                      onChange={(event) =>
-                        setRecordNoteBody(event.target.value)
-                      }
-                      rows={3}
-                      disabled={isBusy}
-                      placeholder={intl.formatMessage({
-                        id: 'analysis.recordNotePlaceholder',
-                      })}
-                    />
-                    {state.scope.kind === 'context' && (
-                      <RadioGroup
-                        className={styles.destinationGroup!}
-                        value={destination}
-                        onChange={(value) => {
-                          const next = value as 'inventory' | 'context';
-                          setDestination(next);
-                          if (next === 'inventory')
-                            setRecordNoteScope('global');
-                          if (next === 'context') setRecordNoteScope('context');
-                        }}
-                        aria-label={intl.formatMessage({
-                          id: 'analysis.destination',
-                        })}
-                      >
-                        <Radio
-                          value="context"
-                          className={styles.destinationOption!}
-                        >
-                          <FormattedMessage
-                            id="analysis.inventoryAndContext"
-                            values={{ context: state.analysis.contextName }}
-                          />
-                        </Radio>
-                        <Radio
-                          value="inventory"
-                          className={styles.destinationOption!}
-                        >
-                          <FormattedMessage id="analysis.inventoryOnly" />
-                        </Radio>
-                      </RadioGroup>
-                    )}
-                    <div className={styles.previewActions}>
-                      <Button
-                        className={styles.secondaryButton!}
-                        onPress={cancelSaveRecord}
-                        isDisabled={isBusy}
-                      >
-                        <X aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.cancel" />
-                      </Button>
-                      <button
-                        type="submit"
-                        className={styles.primaryButton}
-                        disabled={isBusy || recordTitle.trim() === ''}
-                      >
-                        <Save aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.saveAsAnalysis" />
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                <Button
-                  className={styles.discardButton!}
-                  onPress={() => void store.discardAnalysisScratch()}
-                  isDisabled={isBusy}
-                >
-                  <Trash2 aria-hidden="true" size={15} />
-                  <FormattedMessage id="analysis.discard" />
-                </Button>
+                </div>
               </section>
             )}
         </section>
+        {positionAnalysisFocus !== undefined && (
+          <PositionAnalysisPanel
+            focus={positionAnalysisFocus}
+            locale={state.preferences.uiLocale}
+            providers={state.analysisProviders}
+            store={store}
+          />
+        )}
       </div>
-      {positionAnalysisFocus !== undefined && (
-        <PositionAnalysisPanel
-          focus={positionAnalysisFocus}
-          locale={state.preferences.uiLocale}
-          providers={state.analysisProviders}
-          store={store}
-        />
-      )}
       {state.revisionImpact !== undefined && (
         <RevisionImpactView
           details={state.revisionImpact}

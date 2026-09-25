@@ -29,6 +29,9 @@ export function RevisionLineComparison({
   const intl = useIntl();
   const previousMoves = revisionLineTokens(previous, intl.locale);
   const nextMoves = revisionLineTokens(next, intl.locale);
+  const movesChanged =
+    unchangedCount < previous.steps.length ||
+    unchangedCount < next.steps.length;
 
   return (
     <section className={styles.changeOverview}>
@@ -49,18 +52,22 @@ export function RevisionLineComparison({
           next={next.summary}
         />
       )}
-      <ComparedLine
-        label="revisionImpact.previousLine"
-        moves={previousMoves}
-        unchangedCount={unchangedCount}
-        change="removed"
-      />
-      <ComparedLine
-        label="revisionImpact.targetLine"
-        moves={nextMoves}
-        unchangedCount={unchangedCount}
-        change="added"
-      />
+      {movesChanged && (
+        <>
+          <ComparedLine
+            label="revisionImpact.previousLine"
+            moves={previousMoves}
+            unchangedCount={unchangedCount}
+            change="removed"
+          />
+          <ComparedLine
+            label="revisionImpact.targetLine"
+            moves={nextMoves}
+            unchangedCount={unchangedCount}
+            change="added"
+          />
+        </>
+      )}
     </section>
   );
 }

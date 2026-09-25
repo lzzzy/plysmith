@@ -156,7 +156,7 @@ export function AnalysisSetupDialog({
               </div>
               <div className={styles.decisionActions}>
                 <Button
-                  className={styles.secondaryButton!}
+                  className={styles.primaryButton!}
                   isDisabled={isBusy}
                   onPress={() => {
                     onOpenChange(false);

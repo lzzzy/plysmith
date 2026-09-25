@@ -78,6 +78,16 @@ input.on('line', (line) => {
         process.stdout.write('bestmove e7e5\n');
         return;
       }
+      if (line.includes(' searchmoves ')) {
+        const moves = line.split(' searchmoves ')[1].split(' ');
+        for (const [index, move] of moves.entries()) {
+          process.stdout.write(
+            `info depth 7 multipv ${index + 1} score cp -73 upperbound wdl 100 300 600 pv ${move}\n`,
+          );
+        }
+        process.stdout.write(`bestmove ${moves[0]}\n`);
+        return;
+      }
       process.stdout.write(
         'info depth 12 seldepth 18 multipv 1 score cp 34 wdl 430 400 170 nodes 12000 nps 60000 time 200 hashfull 12 tbhits 0 pv e2e4 e7e5 g1f3\n',
       );

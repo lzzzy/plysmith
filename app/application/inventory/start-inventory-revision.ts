@@ -82,6 +82,7 @@ export class StartInventoryRevision implements StartInventoryRevisionUseCase {
     });
     if (
       record === undefined ||
+      (record.itemType === 'game' && request.mode !== 'metadata') ||
       record.historical ||
       record.readOnlyPreview ||
       record.currentRevisionId.value !== request.baseRevisionId.value

@@ -188,7 +188,11 @@ export function PlayoutReplacementDialog({
             </h2>
             <p>
               <FormattedMessage
-                id="playout.replace.detail"
+                id={
+                  pending.start.kind === 'initial_position'
+                    ? 'playout.replace.initialDetail'
+                    : 'playout.replace.detail'
+                }
                 values={{ source: pending.title }}
               />
             </p>
@@ -207,7 +211,13 @@ export function PlayoutReplacementDialog({
               onPress={() => void store.discardPlayoutAndOpenPending()}
             >
               <Trash2 aria-hidden="true" size={16} />
-              <FormattedMessage id="playout.replace.confirm" />
+              <FormattedMessage
+                id={
+                  pending.start.kind === 'initial_position'
+                    ? 'playout.replace.initialConfirm'
+                    : 'playout.replace.confirm'
+                }
+              />
             </Button>
           </div>
         </Dialog>
@@ -704,7 +714,7 @@ function PlayoutActions({
         </Button>
       ) : (
         <Button
-          className={styles.secondaryButton!}
+          className={styles.primaryButton!}
           isDisabled={isBusy}
           onPress={() => void store.pausePlayout()}
         >
@@ -713,7 +723,7 @@ function PlayoutActions({
         </Button>
       )}
       <Button
-        className={styles.secondaryButton!}
+        className={styles.primaryButton!}
         isDisabled={isBusy}
         onPress={() => void store.stopPlayout()}
       >

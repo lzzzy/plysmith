@@ -49,6 +49,7 @@ export interface AnalysisSourceLineStepView extends AnalysisRecordStepView {
 
 export interface AnalysisSourceLineView {
   readonly sourceItemId: InventoryItemId;
+  readonly sourceItemType: 'analysis' | 'game';
   readonly sourceRevisionId: ItemRevisionId;
   readonly sourceAnchorId: AnchorId;
   readonly sourceDisplayName: string;

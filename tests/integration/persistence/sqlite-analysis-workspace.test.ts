@@ -16,7 +16,17 @@ import {
   UpdateAnalysisScratch,
   UpdateAnalysisNote,
 } from '../../../app/application/analysis/index.ts';
-import { SearchInventory } from '../../../app/application/inventory/index.ts';
+import { CompletePlayout } from '../../../app/application/playout/index.ts';
+import {
+  appendUserPlayoutMove,
+  stopPlayoutDraft,
+} from '../../../app/domain/playout/index.ts';
+import {
+  PreviewInventoryRevision,
+  SaveInventoryRevision,
+  SearchInventory,
+  StartInventoryRevision,
+} from '../../../app/application/inventory/index.ts';
 import {
   AddContextReference,
   CreateWorkingContext,
@@ -718,6 +728,60 @@ test('a free scratch stays visible while its inventory preview remains focused',
   ]);
 });
 
+test('discarding an anchored context exploration restores its saved position', async (t) => {
+  const store = storeFixture(t).open();
+  const base = await createFreeRecord(store, 'Ausgangsanalyse', 'e2e4');
+  const workspace = workspaceUseCases(store);
+  const context = await workspace.create.execute({ displayName: 'Repertoire' });
+  const analysis = analysisUseCases(store);
+  const opened = await analysis.get.execute({
+    scope: freeWorkScope(),
+    preview: {
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+    },
+  });
+  const sourceAnchorId = opened.record?.steps[0]?.anchorId;
+  assert.notEqual(sourceAnchorId, undefined);
+  await workspace.addReference.execute({
+    contextId: context.context.contextId,
+    itemId: base.itemId,
+    anchorId: sourceAnchorId!,
+  });
+  const scope = contextWorkScope(context.context.contextId);
+  const draft = await analysis.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: sourceAnchorId!,
+      },
+      firstMove: { kind: 'coordinates', value: 'c7c5' },
+    },
+  });
+  assert.equal(
+    (await analysis.get.execute({ scope })).scratch?.steps.length,
+    1,
+  );
+
+  await analysis.update.execute({
+    scope,
+    expectedScratchId: draft.scratch!.scratchId,
+    expectedScratchRevision: draft.scratch!.scratchRevision,
+    action: { kind: 'discard' },
+  });
+
+  const restored = await analysis.get.execute({ scope });
+  assert.equal(restored.scratch, undefined);
+  assert.equal(restored.record?.currentAnchorId.value, sourceAnchorId?.value);
+});
+
 test('stores a context note at the source anchor without creating another inventory item', async (t) => {
   const store = storeFixture(t).open();
   const base = await createFreeRecord(store, 'Ausgangsanalyse', 'h2h3');
@@ -1139,12 +1203,303 @@ test('persists exact source provenance for a separately stored analysis without 
     recovered.record?.sourceLine?.sourceDisplayName,
     'Ausgangsanalyse',
   );
+  assert.equal(recovered.record?.sourceLine?.sourceItemType, 'analysis');
   assert.deepEqual(
     recovered.record?.sourceLine?.steps.map((step) => step.move.san),
     ['e4'],
   );
   assert.equal(recovered.record?.sourceLine?.root.position.sideToMove, 'white');
   assert.deepEqual(recovered.record?.contributions, []);
+});
+
+test('identifies a played game as the source of a derived analysis', async (t) => {
+  const store = storeFixture(t).open();
+  const rules = new ChessJsRulesAdapter();
+  const scope = freeWorkScope();
+  const playout = await store.createPlayout({
+    scope,
+    origin: { kind: 'initial_position' },
+    root: rules.initialState(),
+    playerSide: 'white',
+    policy: {
+      capability: 'best_move',
+      providerInstanceId: 'stockfish-test',
+      providerFingerprint: 'stockfish-test:reference',
+      providerType: 'stockfish-uci',
+      providerDisplayName: 'Stockfish',
+    },
+    occurredAt: timestamp,
+  });
+  const opening = rules.applyMove(playout.draft.root, [], {
+    kind: 'coordinates',
+    value: 'e2e4',
+  });
+  assert.equal(opening.ok, true);
+  if (!opening.ok) throw new Error('Expected a legal opening move.');
+  const stopped = stopPlayoutDraft(
+    appendUserPlayoutMove(playout.draft, opening.value),
+  );
+  await store.replacePlayout({
+    scope,
+    expectedDraftRevision: playout.draft.draftRevision,
+    draft: stopped,
+    occurredAt: timestamp,
+  });
+  const game = await new CompletePlayout({
+    reader: store,
+    writer: store,
+    clock: { now: () => timestamp },
+  }).execute({
+    scope,
+    draftId: playout.draft.draftId,
+    expectedDraftRevision: stopped.draftRevision,
+    completionId: 'game-origin-test',
+    displayName: 'Gespielte Partie',
+    languageTag: 'de-DE',
+  });
+  const analysis = analysisUseCases(store);
+  const gameView = await analysis.get.execute({
+    scope,
+    preview: {
+      itemId: game.itemId,
+      revisionId: game.revisionId,
+      anchorId: game.rootAnchorId,
+    },
+  });
+  assert.equal(gameView.record?.itemType, 'game');
+  const gameMoveAnchor = gameView.record?.steps[0]?.anchorId;
+  assert.notEqual(gameMoveAnchor, undefined);
+  let scratch = await analysis.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: game.itemId,
+        revisionId: game.revisionId,
+        anchorId: gameMoveAnchor!,
+      },
+    },
+  });
+  scratch = await analysis.update.execute({
+    scope,
+    expectedScratchId: scratch.scratch?.scratchId ?? '',
+    expectedScratchRevision: scratch.scratch?.scratchRevision ?? -1,
+    action: {
+      kind: 'apply_move',
+      move: { kind: 'coordinates', value: 'c7c5' },
+    },
+  });
+  const child = await analysis.create.execute({
+    scope,
+    expectedScratchId: scratch.scratch?.scratchId ?? '',
+    expectedScratchRevision: scratch.scratch?.scratchRevision ?? -1,
+    displayName: 'Fortsetzung',
+    languageTag: 'de-DE',
+  });
+  const recovered = await analysis.get.execute({
+    scope,
+    preview: {
+      itemId: child.itemId,
+      revisionId: child.revisionId,
+      anchorId: child.rootAnchorId,
+    },
+  });
+  assert.equal(recovered.record?.sourceLine?.sourceItemType, 'game');
+  assert.equal(
+    recovered.record?.sourceLine?.sourceDisplayName,
+    'Gespielte Partie',
+  );
+  assert.deepEqual(
+    recovered.record?.sourceLine?.steps.map((step) => step.move.san),
+    ['e4'],
+  );
+});
+
+test('renames a game as a metadata revision without changing played moves', async (t) => {
+  const store = storeFixture(t).open();
+  const scope = freeWorkScope();
+  const rules = new ChessJsRulesAdapter();
+  const analysis = analysisUseCases(store);
+  const sourceScratch = await analysis.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: { kind: 'start', origin: { kind: 'initial_position' } },
+  });
+  const source = await analysis.create.execute({
+    scope,
+    expectedScratchId: sourceScratch.scratch?.scratchId ?? '',
+    expectedScratchRevision: sourceScratch.scratch?.scratchRevision ?? -1,
+    displayName: 'Ausgangsanalyse',
+    languageTag: 'de-DE',
+  });
+  const playout = await store.createPlayout({
+    scope,
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: source.itemId,
+      revisionId: source.revisionId,
+      anchorId: source.rootAnchorId,
+    },
+    root: rules.initialState(),
+    playerSide: 'white',
+    policy: {
+      capability: 'best_move',
+      providerInstanceId: 'stockfish-test',
+      providerFingerprint: 'stockfish-test:reference',
+      providerType: 'stockfish-uci',
+      providerDisplayName: 'Stockfish',
+    },
+    occurredAt: timestamp,
+  });
+  const opening = rules.applyMove(playout.draft.root, [], {
+    kind: 'coordinates',
+    value: 'e2e4',
+  });
+  assert.equal(opening.ok, true);
+  if (!opening.ok) throw new Error('Expected a legal opening move.');
+  const stopped = stopPlayoutDraft(
+    appendUserPlayoutMove(playout.draft, opening.value),
+  );
+  await store.replacePlayout({
+    scope,
+    expectedDraftRevision: playout.draft.draftRevision,
+    draft: stopped,
+    occurredAt: timestamp,
+  });
+  const game = await new CompletePlayout({
+    reader: store,
+    writer: store,
+    clock: { now: () => timestamp },
+  }).execute({
+    scope,
+    draftId: playout.draft.draftId,
+    expectedDraftRevision: stopped.draftRevision,
+    completionId: 'game-rename-test',
+    displayName: 'Gespielte Partie',
+    languageTag: 'de-DE',
+  });
+  const context = await workspaceUseCases(store).create.execute({
+    displayName: 'Training',
+  });
+  await workspaceUseCases(store).addReference.execute({
+    contextId: context.context.contextId,
+    itemId: game.itemId,
+    anchorId: game.rootAnchorId,
+  });
+  const freeSession = new FreeAnalysisSession();
+  const clock = { now: () => timestamp };
+  const started = await new StartInventoryRevision({
+    inventory: store,
+    contextReader: store,
+    contextWriter: store,
+    freeSession,
+    rules,
+    clock,
+    events: noEvents,
+    storeStatus: store,
+    scratchId: () => 'game-rename-scratch',
+  }).execute({
+    scope,
+    itemId: game.itemId,
+    baseRevisionId: game.revisionId,
+    anchorId: game.rootAnchorId,
+    mode: 'metadata',
+    displayName: 'Umbenannte Partie',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const preview = await new PreviewInventoryRevision({
+    inventory: store,
+    contextReader: store,
+    freeSession,
+  }).execute({
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  });
+  assert.equal(preview.preservedMoveCount, 1);
+  assert.equal(preview.affectedContexts.length, 0);
+  const saved = await new SaveInventoryRevision({
+    reader: store,
+    writer: store,
+    freeSession,
+    clock,
+    inventoryEvents: noEvents,
+    impactEvents: noEvents,
+    scratchEvents: noEvents,
+  }).execute({
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  const original = await analysisUseCases(store).get.execute({
+    scope,
+    preview: {
+      itemId: game.itemId,
+      revisionId: game.revisionId,
+      anchorId: game.rootAnchorId,
+    },
+  });
+  const renamed = await analysisUseCases(store).get.execute({
+    scope,
+    preview: {
+      itemId: game.itemId,
+      revisionId: saved.revisionId,
+      anchorId: game.rootAnchorId,
+    },
+  });
+  assert.equal(original.record?.displayName, 'Gespielte Partie');
+  assert.equal(renamed.record?.displayName, 'Umbenannte Partie');
+  assert.equal(renamed.record?.itemType, 'game');
+  assert.deepEqual(
+    renamed.record?.steps.map((step) => step.move.san),
+    ['e4'],
+  );
+  assert.deepEqual(renamed.record?.game, original.record?.game);
+  assert.deepEqual(renamed.record?.origin, original.record?.origin);
+  assert.equal(
+    renamed.record?.sourceLine?.sourceDisplayName,
+    'Ausgangsanalyse',
+  );
+  const workspace = await workspaceUseCases(store).get.execute({
+    contextId: context.context.contextId,
+  });
+  assert.equal(
+    workspace.references[0]?.currentRevisionId.value,
+    saved.revisionId.value,
+  );
+  const inventory = await new SearchInventory(store).execute({
+    query: 'Umbenannte',
+    pageSize: 10,
+  });
+  assert.equal(inventory.items[0]?.displayName, 'Umbenannte Partie');
+  await assert.rejects(
+    new StartInventoryRevision({
+      inventory: store,
+      contextReader: store,
+      contextWriter: store,
+      freeSession: new FreeAnalysisSession(),
+      rules,
+      clock,
+      events: noEvents,
+      storeStatus: store,
+      scratchId: () => 'illegal-game-extension',
+    }).execute({
+      scope,
+      itemId: game.itemId,
+      baseRevisionId: saved.revisionId,
+      anchorId: game.rootAnchorId,
+      mode: 'extend',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    }),
+    { problemCode: 'inventory.invalid_revision' },
+  );
 });
 
 test('a context scratch resumes after reopening and remains writable', async (t) => {

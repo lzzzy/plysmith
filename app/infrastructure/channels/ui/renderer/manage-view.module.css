@@ -36,6 +36,7 @@
 .headerActions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -560,8 +561,7 @@
   gap: 7px;
 }
 
-.impactWarning,
-.followingContexts {
+.impactWarning {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 8px;
@@ -575,36 +575,20 @@
   border: 1px solid #e3bf68;
 }
 
-.followingContexts {
-  color: #2f5c45;
-  background: #edf7f0;
-  border: 1px solid #c5ddcc;
-}
-
-.impactWarning strong,
-.followingContexts strong {
+.impactWarning strong {
   font-size: 11px;
 }
 
-.impactWarning p,
-.followingContexts p {
+.impactWarning p {
   margin: 3px 0 0;
   font-size: 10px;
   line-height: 1.4;
 }
 
-.impactWarning ul,
-.followingContexts ul {
+.impactWarning ul {
   margin: 5px 0 0;
   padding-left: 17px;
   font-size: 10px;
-}
-
-.followingContextNote {
-  display: block;
-  margin-top: 2px;
-  color: #754f08;
-  line-height: 1.4;
 }
 
 .contextDetails {
@@ -670,6 +654,7 @@
 
 .primaryButton,
 .secondaryButton,
+.destructiveButton,
 .tertiaryButton {
   display: inline-flex;
   min-height: 36px;
@@ -686,8 +671,8 @@
 
 .primaryButton {
   color: #ffffff;
-  background: #2e61ad;
-  border: 1px solid #244f90;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
 }
 
 .secondaryButton {

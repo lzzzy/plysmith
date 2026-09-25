@@ -885,6 +885,7 @@ export interface components {
             readonly sourceAnchorId: string;
             readonly sourceDisplayName: string;
             readonly sourceItemId: string;
+            readonly sourceItemType: "analysis" | "game";
             readonly sourceRevisionId: string;
             readonly steps: readonly {
                 readonly after: components["schemas"]["ChessState"];
@@ -932,6 +933,7 @@ export interface components {
                 readonly budget: "fast" | "thorough" | "very_deep";
                 /** @enum {string} */
                 readonly kind: "objective";
+                readonly rootMoves?: readonly components["schemas"]["CanonicalMove"][];
             } | {
                 /** @enum {string} */
                 readonly kind: "human_policy";
@@ -1486,6 +1488,7 @@ export interface components {
             readonly historyCompleteness: "complete" | "partial" | "unknown";
             /** @enum {string} */
             readonly kind: "objective";
+            readonly perspective: "white" | "black";
             readonly providerDisplayName: string;
             readonly providerInstanceId: string;
             readonly rootWdl?: components["schemas"]["AnalysisWdl"];
@@ -2375,6 +2378,7 @@ export interface operations {
                         readonly budget: "fast" | "thorough" | "very_deep";
                         /** @enum {string} */
                         readonly kind: "objective";
+                        readonly rootMoves?: readonly components["schemas"]["CanonicalMove"][];
                     } | {
                         /** @enum {string} */
                         readonly kind: "human_policy";

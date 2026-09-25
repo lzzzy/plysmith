@@ -1,4 +1,6 @@
 :root {
+  --action-blue: #2e61ad;
+  --action-blue-border: #244f90;
   color: #20252d;
   background: #f5f6f8;
   font-family:

@@ -56,8 +56,8 @@
 
 .actions .primary {
   color: #fff;
-  background: #3168b3;
-  border-color: #285a9c;
+  background: var(--action-blue);
+  border-color: var(--action-blue-border);
 }
 
 .actions button:disabled {

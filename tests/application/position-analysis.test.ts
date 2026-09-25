@@ -146,6 +146,7 @@ function objectiveProvider(
 function objectiveSnapshot(focusKey: string) {
   return {
     kind: 'objective' as const,
+    perspective: 'white' as const,
     focusKey,
     providerInstanceId: 'stockfish-test',
     providerDisplayName: 'Stockfish test',
@@ -155,3 +156,50 @@ function objectiveSnapshot(focusKey: string) {
     search: { limiter: { kind: 'movetime' as const, value: 300 } },
   };
 }
+
+test('validates restricted root moves before calling the provider', async () => {
+  const root = rules.initialState();
+  const legal = rules.legalMoves(root, []);
+  if (!legal.ok) throw new Error('Expected legal moves.');
+  const first = legal.value[0]!;
+  let calls = 0;
+  const provider = objectiveProvider(async (request) => {
+    calls += 1;
+    return objectiveSnapshot(request.focus.focusKey);
+  });
+  const execute = analyzePosition(provider);
+  const base = {
+    consumerId: 'test',
+    laneId: 'objective',
+    providerInstanceId: provider.descriptor.instanceId,
+    candidateCount: 8,
+    focus: { focusKey: 'root', root, moves: [], current: root },
+  };
+  for (const rootMoves of [
+    [],
+    [first, first],
+    legal.value.slice(0, 9),
+    [{ ...first, san: 'wrong' }],
+    [{ ...first, to: first.from }],
+  ]) {
+    await assert.rejects(
+      execute.execute({
+        ...base,
+        mode: { kind: 'objective', budget: 'fast', rootMoves },
+      }),
+      (error: unknown) =>
+        error instanceof ApplicationProblem &&
+        error.problemCode === 'analysis.position_invalid_request',
+    );
+  }
+  assert.equal(calls, 0);
+  await execute.execute({
+    ...base,
+    mode: {
+      kind: 'objective',
+      budget: 'fast',
+      rootMoves: legal.value.slice(0, 8),
+    },
+  });
+  assert.equal(calls, 1);
+});

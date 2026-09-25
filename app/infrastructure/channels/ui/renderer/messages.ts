@@ -12,6 +12,7 @@ export const messages = {
     'manage.eyebrow': 'Bestand und Arbeitskontexte',
     'manage.title': 'Verwalten',
     'manage.newAnalysis': 'Neue Analyse',
+    'manage.newGame': 'Neue Partie',
     'manage.resultCount':
       '{count, plural, =0 {Keine Ergebnisse} one {# Ergebnis} other {# Ergebnisse}}',
     'manage.workScope': 'Aktiver Ausschnitt',
@@ -44,14 +45,11 @@ export const messages = {
     'manage.origin': 'Herkunft',
     'manage.language': 'Sprache',
     'manage.revision': 'Revision',
-    'manage.openAnalysis': 'In Analyse öffnen',
     'manage.openAnalysisDraftTitle': 'Offene Analyse fortsetzen?',
     'manage.openAnalysisDraftDetail':
       'In diesem Context ist noch ein Analyseentwurf offen. Entscheiden Sie zuerst, ob Sie ihn fortsetzen oder verwerfen möchten.',
     'manage.continueAnalysisDraft': 'Vorhandene Analyse fortsetzen',
-    'manage.discardDraftAndOpenAnalysis':
-      'Entwurf verwerfen und Analyse öffnen',
-    'manage.playOut': 'Von hier ausspielen',
+    'manage.discardDraftAndOpenItem': 'Entwurf verwerfen und Eintrag öffnen',
     'manage.useInContext': 'Im Context verwenden',
     'manage.removeFromContext': 'Aus Context entfernen',
     'manage.removeFromContextTitle': 'Aus diesem Context entfernen?',
@@ -135,6 +133,9 @@ export const messages = {
     'playout.replace.detail':
       'Um „{source}“ von dieser Stellung auszuspielen, muss die laufende Partie verworfen werden.',
     'playout.replace.confirm': 'Partie verwerfen und hier beginnen',
+    'playout.replace.initialDetail':
+      'Um eine neue Partie aus der Grundstellung zu beginnen, muss die laufende Partie verworfen werden.',
+    'playout.replace.initialConfirm': 'Partie verwerfen und neu beginnen',
     'playout.saved': 'Partie gespeichert',
     'playout.savedDetail':
       'Die Partie liegt jetzt als eigener Bestandseintrag vor.',
@@ -160,7 +161,6 @@ export const messages = {
     'playout.pause': 'Pausieren',
     'playout.stop': 'Partie beenden',
     'playout.returnToGame': 'Zur aktuellen Stellung',
-    'playout.fromHere': 'Von dieser Stellung ausspielen',
     'playout.recordMetadata':
       'Eigene Seite: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'Bestzug',
@@ -196,15 +196,13 @@ export const messages = {
     'analysis.previousMove': 'Einen Zug zurück',
     'analysis.nextMove': 'Einen Zug vor',
     'analysis.addNoteAtPathStart': 'Notiz an der Ausgangsstellung hinzufügen',
-    'analysis.moveList': 'Zugfolge der Analyse',
+    'analysis.moveList': 'Zugfolge',
     'analysis.moveAt':
       '{number}. {move}, {side, select, white {Weiß} black {Schwarz} other {}}',
-    'analysis.sourceLine': 'Herkunft: {source}',
+    'analysis.sourceLine': 'Herkunft: {type} · {source}',
     'analysis.analysisOrigin': 'Ausgangsstellung dieser Analyse',
+    'analysis.gameOrigin': 'Ausgangsstellung dieser Partie',
     'analysis.newAnalysisPath': 'Neuer Analysepfad',
-    'analysis.enterMove': 'Zug eingeben',
-    'analysis.movePlaceholder': 'Sf3, Nf3 oder g1f3',
-    'analysis.playMove': 'Zug ausführen',
     'analysis.takeBackLastMove': 'Letzten Zug zurücknehmen',
     'analysis.fromInitial': 'Neue Analyse ab Grundstellung',
     'analysis.fenPlaceholder': 'Standardschach-FEN',
@@ -218,7 +216,8 @@ export const messages = {
     'analysis.cancel': 'Abbrechen',
     'analysis.saveNoteEdit': 'Notiz speichern',
     'analysis.positionNoteHint': 'Gedanke zu dieser Stellung',
-    'analysis.keepAnalysis': 'Analysepfad verwenden',
+    'draft.unsavedChange': 'Ungespeicherte Änderung',
+    'draft.reviewChange': 'Änderung prüfen…',
     'analysis.replaceMainLine': 'Hauptvariante ab hier ersetzen',
     'analysis.contextNote': 'Nur in diesem Context',
     'analysis.generalNote': 'Allgemein',
@@ -259,6 +258,14 @@ export const messages = {
       'Kein Maia-Profil ist für die Analyse eingerichtet.',
     'positionAnalysis.human.choose':
       'Wählen Sie mindestens ein Maia-Profil aus.',
+    'positionAnalysis.budget': 'Rechenzeit',
+    'positionAnalysis.sort': 'Sortieren nach',
+    'positionAnalysis.moves': 'Fortsetzungszüge',
+    'positionAnalysis.noMoves': 'Keine Fortsetzungszüge in dieser Stellung.',
+    'positionAnalysis.whiteWdlLabel':
+      'Weiß gewinnt {wins} Prozent, Remis {draws} Prozent, Schwarz gewinnt {losses} Prozent',
+    'positionAnalysis.policyLabel':
+      '{profile}: {percent} Prozent Wahrscheinlichkeit für diesen Zug',
     'positionAnalysis.budget.fast': 'Schnell',
     'positionAnalysis.budget.thorough': 'Gründlich',
     'positionAnalysis.budget.very_deep': 'Sehr tief',
@@ -273,13 +280,10 @@ export const messages = {
     'positionAnalysis.wdlLabel':
       'Aus Sicht von {side}: {wins} Prozent Gewinn, {draws} Prozent Remis, {losses} Prozent Verlust',
     'context.created': 'Working Context wurde angelegt.',
-    'inventory.extendEnterMove': 'Hauptvariante verlängern',
     'inventory.rename': 'Umbenennen',
     'inventory.displayName': 'Titel',
     'inventory.summary': 'Beschreibung',
     'inventory.emptyValue': 'Nicht gesetzt',
-    'inventory.previewMetadata': 'Änderung prüfen',
-    'inventory.unsavedRevision': 'Ungespeicherte Änderung',
     'inventory.mode.extend': 'Hauptvariante verlängern',
     'inventory.mode.truncate_after': 'Hauptvariante abschneiden',
     'inventory.mode.replace_move': 'Zug und Fortsetzung ersetzen',
@@ -293,18 +297,21 @@ export const messages = {
       '{preserved} Züge bleiben, {added} kommen hinzu, {removed} entfallen.',
     'inventory.removedMoves': 'Entfallende Fortsetzung',
     'inventory.contextsAffected':
-      'Working Contexts müssen danach geklärt werden',
-    'inventory.contextsFollowing': 'Contexts folgen automatisch',
-    'inventory.contextsFollowingDetail':
-      'Diese Contexts werden ohne weitere Entscheidung auf die neue Fassung gesetzt.',
-    'inventory.followingContextEntry':
-      '{context}: {references, plural, =0 {keine Bestandsverknüpfung} one {# Bestandsverknüpfung} other {# Bestandsverknüpfungen}}, {notes, plural, =0 {keine Notiz} one {# Notiz} other {# Notizen}}, {resumes, plural, =0 {keine gemerkte Ansicht} one {# gemerkte Ansicht} other {# gemerkte Ansichten}}.',
+      'In diesen Arbeitskontexten ist eine Entscheidung nötig',
+    'inventory.contextsAffectedDetail':
+      'Prüfen Sie nach dem Speichern, welche Fassung dort verwendet werden soll.',
+    'inventory.contextsRenamed': 'Neuer Name in Arbeitskontexten',
+    'inventory.contextsRenamedDetail':
+      'Nach dem Speichern erscheint dort der neue Name. Zugfolge, Notizen und gemerkte Ansichten bleiben unverändert.',
+    'inventory.contextsUpdated': 'Arbeitskontexte werden aktualisiert',
+    'inventory.contextsUpdatedDetail':
+      'Nach dem Speichern wird dort die neue Fassung angezeigt. Eine weitere Entscheidung ist nicht nötig.',
     'inventory.followingContextNotesHistorical':
       '{count, plural, one {Die Notiz an einer entfallenden Stellung bleibt in der bisherigen Fassung erhalten und ist in der neuen Fassung nicht mehr sichtbar.} other {Die Notizen an entfallenden Stellungen bleiben in der bisherigen Fassung erhalten und sind in der neuen Fassung nicht mehr sichtbar.}}',
     'inventory.backToEdit': 'Weiter bearbeiten',
-    'inventory.saveRevision': 'Neue Revision speichern',
+    'inventory.saveRevision': 'Speichern',
     'inventory.discardRevision': 'Änderung verwerfen',
-    'inventory.revisionSaved': 'Die neue Bestandsrevision wurde gespeichert.',
+    'inventory.revisionSaved': 'Änderung gespeichert.',
     'inventory.revisionImpactResolved':
       'Die Revisionsentscheidung wurde gespeichert.',
     'revisionImpact.available': 'Neue Fassung verfügbar',
@@ -485,6 +492,7 @@ export const messages = {
     'manage.eyebrow': 'Inventory and working contexts',
     'manage.title': 'Manage',
     'manage.newAnalysis': 'New analysis',
+    'manage.newGame': 'New game',
     'manage.resultCount':
       '{count, plural, =0 {No results} one {# result} other {# results}}',
     'manage.workScope': 'Active scope',
@@ -517,13 +525,11 @@ export const messages = {
     'manage.origin': 'Origin',
     'manage.language': 'Language',
     'manage.revision': 'Revision',
-    'manage.openAnalysis': 'Open in analysis',
     'manage.openAnalysisDraftTitle': 'Continue the open analysis?',
     'manage.openAnalysisDraftDetail':
       'An analysis draft is still open in this context. Decide first whether to continue or discard it.',
     'manage.continueAnalysisDraft': 'Continue existing analysis',
-    'manage.discardDraftAndOpenAnalysis': 'Discard draft and open analysis',
-    'manage.playOut': 'Play out from here',
+    'manage.discardDraftAndOpenItem': 'Discard draft and open item',
     'manage.useInContext': 'Use in context',
     'manage.removeFromContext': 'Remove from context',
     'manage.removeFromContextTitle': 'Remove from this context?',
@@ -607,6 +613,9 @@ export const messages = {
     'playout.replace.detail':
       'To play “{source}” from this position, the current game must be discarded.',
     'playout.replace.confirm': 'Discard game and start here',
+    'playout.replace.initialDetail':
+      'To start a new game from the initial position, the current game must be discarded.',
+    'playout.replace.initialConfirm': 'Discard game and start a new one',
     'playout.saved': 'Game saved',
     'playout.savedDetail':
       'The game is now available as its own inventory item.',
@@ -631,7 +640,6 @@ export const messages = {
     'playout.pause': 'Pause',
     'playout.stop': 'Stop game',
     'playout.returnToGame': 'Return to current position',
-    'playout.fromHere': 'Play out from this position',
     'playout.recordMetadata':
       'Your side: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'best move',
@@ -666,15 +674,13 @@ export const messages = {
     'analysis.previousMove': 'Previous move',
     'analysis.nextMove': 'Next move',
     'analysis.addNoteAtPathStart': 'Add note at the starting position',
-    'analysis.moveList': 'Analysis move sequence',
+    'analysis.moveList': 'Move sequence',
     'analysis.moveAt':
       '{number}. {move}, {side, select, white {White} black {Black} other {}}',
-    'analysis.sourceLine': 'Source: {source}',
+    'analysis.sourceLine': 'Source: {type} · {source}',
     'analysis.analysisOrigin': 'Starting position of this analysis',
+    'analysis.gameOrigin': 'Starting position of this game',
     'analysis.newAnalysisPath': 'New analysis path',
-    'analysis.enterMove': 'Enter move',
-    'analysis.movePlaceholder': 'Nf3 or g1f3',
-    'analysis.playMove': 'Play move',
     'analysis.takeBackLastMove': 'Take back last move',
     'analysis.fromInitial': 'New analysis from initial position',
     'analysis.fenPlaceholder': 'Standard chess FEN',
@@ -688,7 +694,8 @@ export const messages = {
     'analysis.cancel': 'Cancel',
     'analysis.saveNoteEdit': 'Save note',
     'analysis.positionNoteHint': 'Thought about this position',
-    'analysis.keepAnalysis': 'Use analysis path',
+    'draft.unsavedChange': 'Unsaved change',
+    'draft.reviewChange': 'Review change…',
     'analysis.replaceMainLine': 'Replace main line from here',
     'analysis.contextNote': 'This context only',
     'analysis.generalNote': 'General',
@@ -728,6 +735,14 @@ export const messages = {
     'positionAnalysis.human.unavailable':
       'No Maia profile is configured for analysis.',
     'positionAnalysis.human.choose': 'Select at least one Maia profile.',
+    'positionAnalysis.budget': 'Thinking time',
+    'positionAnalysis.sort': 'Sort by',
+    'positionAnalysis.moves': 'Continuation moves',
+    'positionAnalysis.noMoves': 'No continuation moves in this position.',
+    'positionAnalysis.whiteWdlLabel':
+      'White wins {wins} percent, draw {draws} percent, Black wins {losses} percent',
+    'positionAnalysis.policyLabel':
+      '{profile}: {percent} percent probability of this move',
     'positionAnalysis.budget.fast': 'Fast',
     'positionAnalysis.budget.thorough': 'Thorough',
     'positionAnalysis.budget.very_deep': 'Very deep',
@@ -741,13 +756,10 @@ export const messages = {
     'positionAnalysis.wdlLabel':
       'From {side} perspective: {wins} percent win, {draws} percent draw, {losses} percent loss',
     'context.created': 'Working context was created.',
-    'inventory.extendEnterMove': 'Extend main line',
     'inventory.rename': 'Rename',
     'inventory.displayName': 'Title',
     'inventory.summary': 'Description',
     'inventory.emptyValue': 'Not set',
-    'inventory.previewMetadata': 'Review change',
-    'inventory.unsavedRevision': 'Unsaved change',
     'inventory.mode.extend': 'Extend main line',
     'inventory.mode.truncate_after': 'Truncate main line',
     'inventory.mode.replace_move': 'Replace move and continuation',
@@ -759,18 +771,21 @@ export const messages = {
     'inventory.previewSummary':
       '{preserved} moves remain, {added} are added, {removed} are removed.',
     'inventory.removedMoves': 'Removed continuation',
-    'inventory.contextsAffected': 'Working contexts require review afterwards',
-    'inventory.contextsFollowing': 'Contexts follow automatically',
-    'inventory.contextsFollowingDetail':
-      'These contexts move to the new version without another decision.',
-    'inventory.followingContextEntry':
-      '{context}: {references, plural, =0 {no inventory link} one {# inventory link} other {# inventory links}}, {notes, plural, =0 {no note} one {# note} other {# notes}}, {resumes, plural, =0 {no remembered view} one {# remembered view} other {# remembered views}}.',
+    'inventory.contextsAffected': 'These working contexts need a decision',
+    'inventory.contextsAffectedDetail':
+      'After saving, choose which version to use in each of them.',
+    'inventory.contextsRenamed': 'New name in working contexts',
+    'inventory.contextsRenamedDetail':
+      'After saving, the new name appears there too. Moves, notes, and remembered views remain unchanged.',
+    'inventory.contextsUpdated': 'Working contexts will be updated',
+    'inventory.contextsUpdatedDetail':
+      'After saving, the new version appears there. No further decision is needed.',
     'inventory.followingContextNotesHistorical':
       '{count, plural, one {The note at a removed position remains with the previous version and is no longer visible in the new version.} other {The notes at removed positions remain with the previous version and are no longer visible in the new version.}}',
     'inventory.backToEdit': 'Continue editing',
-    'inventory.saveRevision': 'Save new revision',
+    'inventory.saveRevision': 'Save',
     'inventory.discardRevision': 'Discard change',
-    'inventory.revisionSaved': 'The new inventory revision was saved.',
+    'inventory.revisionSaved': 'Change saved.',
     'inventory.revisionImpactResolved': 'The revision decision was saved.',
     'revisionImpact.available': 'New version available',
     'revisionImpact.availableDetail':

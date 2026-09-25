@@ -61,7 +61,7 @@ export function InventoryMetadataForm({
       <div className={styles.actions}>
         <button type="button" onClick={onCancel} disabled={isBusy}>
           <X aria-hidden="true" size={15} />
-          <FormattedMessage id="analysis.cancel" />
+          <FormattedMessage id="action.cancel" />
         </button>
         <button
           type="submit"
@@ -69,7 +69,7 @@ export function InventoryMetadataForm({
           disabled={isBusy || nextDisplayName.trim() === ''}
         >
           <ArrowRight aria-hidden="true" size={15} />
-          <FormattedMessage id="inventory.previewMetadata" />
+          <FormattedMessage id="draft.reviewChange" />
         </button>
       </div>
     </form>

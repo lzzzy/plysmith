@@ -241,6 +241,7 @@ test('keeps the source route visible for a persisted derived analysis', () => {
       contributions: [],
       sourceLine: {
         sourceItemId: '3',
+        sourceItemType: 'game',
         sourceRevisionId: '3',
         sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',
@@ -267,6 +268,7 @@ test('keeps the source route visible for a persisted derived analysis', () => {
   });
 
   assert.equal(presentation.sourceDisplayName, 'e4 d5');
+  assert.equal(presentation.sourceItemType, 'game');
   assert.equal(presentation.hasSourcePrefix, true);
   assert.deepEqual(presentation.sourceOriginTarget, {
     itemId: '3',
@@ -316,6 +318,7 @@ test('groups half-moves into conventional move rows using chess state', () => {
       contributions: [],
       sourceLine: {
         sourceItemId: '3',
+        sourceItemType: 'analysis',
         sourceRevisionId: '3',
         sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',
@@ -409,6 +412,7 @@ test('binds inline notes to their exact source and record anchors', () => {
       ],
       sourceLine: {
         sourceItemId: '3',
+        sourceItemType: 'analysis',
         sourceRevisionId: '3',
         sourceAnchorId: '17',
         sourceDisplayName: 'e4 d5',

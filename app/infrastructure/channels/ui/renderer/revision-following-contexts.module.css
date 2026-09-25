@@ -1,0 +1,33 @@
+.notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 9px;
+  color: #2f5c45;
+  background: #edf7f0;
+  border: 1px solid #c5ddcc;
+  border-radius: 5px;
+}
+
+.notice strong {
+  font-size: 11px;
+}
+
+.notice p {
+  margin: 3px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.notice ul {
+  margin: 5px 0 0;
+  padding-left: 17px;
+  font-size: 10px;
+}
+
+.historicalNote {
+  display: block;
+  margin-top: 2px;
+  color: #754f08;
+  line-height: 1.4;
+}

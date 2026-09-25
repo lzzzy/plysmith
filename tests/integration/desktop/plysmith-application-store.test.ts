@@ -128,6 +128,14 @@ function savedLineAnalysis(
   };
 }
 
+function savedGameLineAnalysis(): AnalysisWorkspaceDto {
+  const workspace = savedLineAnalysis('14');
+  return {
+    ...workspace,
+    record: { ...workspace.record!, itemType: 'game' },
+  };
+}
+
 function revisionPreview(
   overrides: Partial<InventoryRevisionPreviewDto> = {},
 ): InventoryRevisionPreviewDto {
@@ -472,6 +480,7 @@ test('position analysis uses a stable desktop consumer without taking the global
         providerDisplayName: 'Stockfish',
         historyCompleteness: 'complete',
         budget: 'fast',
+        perspective: 'white',
         candidates: [],
         search: { limiter: { kind: 'movetime', value: 300 } },
       };
@@ -817,6 +826,99 @@ test('opening Ausspielen directly prepares the authoritative initial position', 
 
   assert.deepEqual(requests, [{ scopeKind: 'free', mode: 'initial_position' }]);
   const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'playout',
+  );
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.playoutStart?.start : undefined,
+    { kind: 'initial_position' },
+  );
+  store.close();
+});
+
+test('new game from manage replaces a prepared source with the initial position', async () => {
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return request.mode === 'initial_position'
+        ? analysis()
+        : savedLineAnalysis('14');
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  store.openPlayoutFromCurrentAnalysis();
+  const prepared = store.getSnapshot();
+  assert.equal(
+    prepared.phase === 'ready' ? prepared.playoutStart?.start.kind : undefined,
+    'inventory_anchor',
+  );
+  store.setActivity('manage');
+
+  await store.openNewPlayout();
+
+  assert.deepEqual(requests.at(-1), {
+    scopeKind: 'free',
+    mode: 'initial_position',
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'playout',
+  );
+  assert.deepEqual(
+    snapshot.phase === 'ready' ? snapshot.playoutStart?.start : undefined,
+    { kind: 'initial_position' },
+  );
+  store.close();
+});
+
+test('new game from manage asks before discarding a running game', async () => {
+  let currentPlayout: PlayoutDto | null = playout(3, 0, []);
+  let discardCount = 0;
+  const client = createClient({
+    getAnalysisWorkspace: async () => analysis(),
+    getPlayout: async () => currentPlayout,
+    discardPlayout: async () => {
+      discardCount += 1;
+      currentPlayout = null;
+      return { dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.openNewPlayout();
+  let snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'manage',
+  );
+  assert.deepEqual(
+    snapshot.phase === 'ready'
+      ? snapshot.pendingPlayoutStart?.start
+      : undefined,
+    { kind: 'initial_position' },
+  );
+  assert.equal(discardCount, 0);
+
+  store.cancelPendingPlayoutStart();
+  snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.pendingPlayoutStart : undefined,
+    undefined,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.activity : undefined,
+    'manage',
+  );
+
+  await store.openNewPlayout();
+  await store.discardPlayoutAndOpenPending();
+  snapshot = store.getSnapshot();
+  assert.equal(discardCount, 1);
   assert.equal(
     snapshot.phase === 'ready' ? snapshot.activity : undefined,
     'playout',
@@ -2828,6 +2930,22 @@ test('rename from manage previews and saves one metadata revision in place', asy
     expectedScratchRevision: 1,
     action: { kind: 'discard' },
   });
+  startRequest = undefined;
+  await store.prepareInventoryItemRename(
+    { ...item, itemType: 'game' },
+    'Gespielte Partie',
+    null,
+  );
+  assert.deepEqual(startRequest, {
+    scope: { kind: 'free' },
+    baseRevisionId: '12',
+    anchorId: '13',
+    mode: 'metadata',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    displayName: 'Gespielte Partie',
+    summary: null,
+  });
   store.close();
 });
 
@@ -3026,6 +3144,227 @@ test('focusing the saved line end makes the next move an inventory extension', a
     expectedScratchRevision: null,
     firstMove: { kind: 'notation', value: 'd5', locale: 'de-DE' },
   });
+  store.close();
+});
+
+test('context inventory extension remains visible for the next board move', async () => {
+  const context = {
+    contextId: '7',
+    displayName: 'Repertoire',
+    lifecycle: 'active' as const,
+    contextVersion: 1,
+    referenceCount: 1,
+    pendingRevisionImpactCount: 0,
+    createdAt: '2026-09-11T18:00:00.000Z',
+    updatedAt: '2026-09-11T18:00:00.000Z',
+  };
+  let scratch: AnalysisWorkspaceDto['scratch'];
+  let revisionStarts = 0;
+  let scratchUpdates = 0;
+  const client = createClient({
+    getWorkingContextWorkspace: async () => ({
+      context,
+      references: [],
+      pendingRevisionImpacts: [],
+      dataRevision: 0,
+    }),
+    getAnalysisWorkspace: async (request) => {
+      if (request.scopeKind !== 'context') return analysis();
+      const base = savedAnalysis();
+      return {
+        ...base,
+        scope: { kind: 'context', contextId: '7' },
+        ...(request.itemId === undefined && scratch !== undefined
+          ? { scratch, allowedActions: ['apply_move' as const] }
+          : {}),
+      };
+    },
+    startInventoryRevision: async (_itemId, request) => {
+      revisionStarts += 1;
+      assert.equal(request.expectedScratchId, null);
+      scratch = {
+        scratchId: 'context-revision',
+        scratchRevision: 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'extend',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Französisch',
+        },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '13',
+        },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'e2', to: 'e4', san: 'e4' },
+            after: initialState,
+          },
+        ],
+        cursor: 1,
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    updateAnalysisScratch: async (request) => {
+      scratchUpdates += 1;
+      assert.equal(request.expectedScratchId, 'context-revision');
+      assert.equal(request.expectedScratchRevision, 1);
+      assert.deepEqual(request.action, {
+        kind: 'apply_move',
+        move: { kind: 'coordinates', value: 'd2d4' },
+      });
+      scratch = { ...scratch!, scratchRevision: 2 };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () => revisionPreview(),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+
+  await store.applyBoardMove('e2', 'e4');
+  const afterFirstMove = store.getSnapshot();
+  assert.equal(
+    afterFirstMove.phase === 'ready'
+      ? afterFirstMove.analysis.scratch?.scratchId
+      : undefined,
+    'context-revision',
+  );
+
+  await store.applyBoardMove('d2', 'd4');
+  assert.equal(revisionStarts, 1);
+  assert.equal(scratchUpdates, 1);
+  store.close();
+});
+
+test('continuing a saved game starts exploration instead of an analysis revision', async () => {
+  let current: AnalysisWorkspaceDto = savedGameLineAnalysis();
+  let request:
+    | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
+    | undefined;
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    updateAnalysisScratch: async (input) => {
+      request = input;
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'game-exploration',
+        scratchRevision: 1,
+        intent: { kind: 'exploration' },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '14',
+        },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'd7', to: 'd5', san: 'd5' },
+            after: initialState,
+          },
+        ],
+        cursor: 1,
+      };
+      current = { ...current, scratch };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.applyBoardMove('d7', 'd5');
+  assert.deepEqual(request, {
+    scope: { kind: 'free' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '14',
+      },
+      firstMove: { kind: 'coordinates', value: 'd7d5' },
+    },
+  });
+  await store.promoteAnalysisToInventoryRevision();
+  store.close();
+});
+
+test('discarding a resumed inventory exploration returns to its source anchor', async () => {
+  const source = savedGameLineAnalysis();
+  let scratch: AnalysisWorkspaceDto['scratch'] = {
+    scratchId: 'resumed-game-exploration',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '14',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd7', to: 'd5', san: 'd5' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return scratch === undefined
+        ? request.itemId === '11'
+          ? source
+          : analysis()
+        : { ...source, scratch };
+    },
+    updateAnalysisScratch: async (request) => {
+      assert.equal(request.action.kind, 'discard');
+      scratch = undefined;
+      return { discarded: true, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  assert.equal(await store.discardAnalysisScratch(), true);
+  assert.deepEqual(requests.at(-1), {
+    scopeKind: 'free',
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '14',
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.analysis.record?.itemId : undefined,
+    '11',
+  );
+  store.close();
+});
+
+test('a saved game move cannot be taken back as an analysis revision', async () => {
+  const client = createClient({
+    getAnalysisWorkspace: async () => savedGameLineAnalysis(),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.takeBackLastMove();
+  assert.equal(store.getSnapshot().phase, 'ready');
   store.close();
 });
 
@@ -3254,6 +3593,61 @@ test('taking back the last exploration move uses the dedicated scratch action', 
       ? snapshot.analysis.scratch?.steps.length
       : undefined,
     0,
+  );
+  store.close();
+});
+
+test('taking back the only anchored exploration move returns to the saved analysis', async () => {
+  const source = savedGameLineAnalysis();
+  let scratch: AnalysisWorkspaceDto['scratch'] = {
+    scratchId: 'anchored-exploration',
+    scratchRevision: 2,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '14',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd7', to: 'd5', san: 'd5' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  const requests: GetAnalysisWorkspaceRequestDto[] = [];
+  const actions: string[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      requests.push(request);
+      return scratch === undefined ? source : { ...source, scratch };
+    },
+    updateAnalysisScratch: async (request) => {
+      actions.push(request.action.kind);
+      scratch = undefined;
+      return { discarded: true, dataRevision: 0 };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+
+  await store.takeBackLastMove();
+
+  assert.deepEqual(actions, ['discard']);
+  assert.deepEqual(requests.at(-1), {
+    scopeKind: 'free',
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '14',
+  });
+  const snapshot = store.getSnapshot();
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    undefined,
   );
   store.close();
 });

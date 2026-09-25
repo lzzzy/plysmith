@@ -240,11 +240,12 @@ export function saveInventoryRevision(
   );
   const currentAnchorId =
     intent.mode === 'metadata' ? intent.returnAnchorId : revisionEndAnchorId;
-  copyAnalysisRevisionMetadata(
+  copyTypedRevisionMetadata(
     database,
     candidate.base.itemId,
     candidate.base.revisionId,
     revisionId,
+    candidate.base.itemType,
   );
   insertRevisionSearchDocument(
     database,
@@ -254,6 +255,7 @@ export function saveInventoryRevision(
     request.scratch,
     candidate.base.languageTag,
     request.occurredAt,
+    candidate.base.itemType,
   );
   database
     .prepare(
@@ -338,14 +340,20 @@ function buildCandidate(
   const intent = scratch.intent;
   const current = database
     .prepare(
-      `SELECT current_revision_id AS currentRevisionId
+      `SELECT current_revision_id AS currentRevisionId,
+              item_type AS itemType
          FROM inventory_item
-        WHERE item_id = ? AND item_type = 'analysis' AND lifecycle = 'active'`,
+        WHERE item_id = ? AND item_type IN ('analysis', 'game')
+          AND lifecycle = 'active'`,
     )
     .get(intent.itemId.value) as
-    { currentRevisionId: number | null } | undefined;
+    | { currentRevisionId: number | null; itemType: 'analysis' | 'game' }
+    | undefined;
   if (current?.currentRevisionId !== intent.baseRevisionId.value) {
     throw inventoryRevisionConflict();
+  }
+  if (current.itemType === 'game' && intent.mode !== 'metadata') {
+    throw invalidInventoryRevision();
   }
   const base = readAnalysisRevision(database, {
     scope,
@@ -561,20 +569,51 @@ function insertRevision(
       scratch.intent.displayName,
       scratch.intent.summary ?? null,
       candidate.base.languageTag,
-      analysisContentFingerprint({
-        displayName: scratch.intent.displayName,
-        ...(scratch.intent.summary === undefined
-          ? {}
-          : { summary: scratch.intent.summary }),
-        languageTag: candidate.base.languageTag,
-        originMode: candidate.base.origin.kind,
-        root: candidate.base.root,
-        steps: candidate.candidateSteps,
-      }),
+      candidate.base.itemType === 'game'
+        ? gameMetadataFingerprint(
+            database,
+            candidate.base.revisionId,
+            scratch.intent.displayName,
+            scratch.intent.summary,
+          )
+        : analysisContentFingerprint({
+            displayName: scratch.intent.displayName,
+            ...(scratch.intent.summary === undefined
+              ? {}
+              : { summary: scratch.intent.summary }),
+            languageTag: candidate.base.languageTag,
+            originMode: candidate.base.origin.kind,
+            root: candidate.base.root,
+            steps: candidate.candidateSteps,
+          }),
       occurredAt,
       scratch.intent.mode,
     );
   return localId('item-revision', Number(inserted.lastInsertRowid));
+}
+
+function gameMetadataFingerprint(
+  database: Database.Database,
+  baseRevisionId: ItemRevisionId,
+  displayName: string,
+  summary: string | undefined,
+): Buffer {
+  const base = database
+    .prepare(
+      `SELECT content_fingerprint AS contentFingerprint
+         FROM item_revision WHERE revision_id = ?`,
+    )
+    .get(baseRevisionId.value) as { contentFingerprint: Buffer } | undefined;
+  if (base === undefined) throw invalidInventoryRevision();
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        baseFingerprint: base.contentFingerprint.toString('hex'),
+        displayName,
+        summary: summary ?? null,
+      }),
+    )
+    .digest();
 }
 
 function writeRevisionGraph(
@@ -738,12 +777,42 @@ function writeRevisionGraph(
   return localId('anchor', endAnchorId);
 }
 
-function copyAnalysisRevisionMetadata(
+function copyTypedRevisionMetadata(
   database: Database.Database,
   itemId: InventoryItemId,
   baseRevisionId: ItemRevisionId,
   revisionId: ItemRevisionId,
+  itemType: 'analysis' | 'game',
 ): void {
+  if (itemType === 'game') {
+    database
+      .prepare(
+        `INSERT INTO inventory_game_revision
+           (revision_id, item_id, root_occurrence_id, origin_mode, player_side,
+            result_kind, result_reason, policy_capability, provider_instance_id,
+            provider_fingerprint, provider_type, provider_display_name,
+            profile_model_name, profile_selection_mode, profile_history_mode,
+            profile_reproducibility)
+         SELECT ?, item_id, root_occurrence_id, origin_mode, player_side,
+                result_kind, result_reason, policy_capability, provider_instance_id,
+                provider_fingerprint, provider_type, provider_display_name,
+                profile_model_name, profile_selection_mode, profile_history_mode,
+                profile_reproducibility
+           FROM inventory_game_revision
+          WHERE item_id = ? AND revision_id = ?`,
+      )
+      .run(revisionId.value, itemId.value, baseRevisionId.value);
+    database
+      .prepare(
+        `INSERT INTO inventory_game_origin
+           (game_revision_id, source_item_id, source_revision_id,
+            source_anchor_id)
+         SELECT ?, source_item_id, source_revision_id, source_anchor_id
+           FROM inventory_game_origin WHERE game_revision_id = ?`,
+      )
+      .run(revisionId.value, baseRevisionId.value);
+    return;
+  }
   database
     .prepare(
       `INSERT INTO inventory_analysis_revision
@@ -772,6 +841,7 @@ function insertRevisionSearchDocument(
   scratch: AnalysisScratch,
   languageTag: string,
   occurredAt: string,
+  itemType: 'analysis' | 'game',
 ): void {
   if (scratch.intent.kind !== 'inventory_revision') {
     throw invalidInventoryRevision();
@@ -784,7 +854,7 @@ function insertRevisionSearchDocument(
           evidence_class, scope_kind, stable_sort_value, title,
           aliases_concepts, metadata, body)
        VALUES (1, 'item_revision', ?, ?, NULL, ?, NULL, ?,
-               'personal', 'global', ?, ?, '', 'analysis manual', ?)`,
+               'personal', 'global', ?, ?, '', ?, ?)`,
     )
     .run(
       itemId.value,
@@ -793,6 +863,7 @@ function insertRevisionSearchDocument(
       languageTag,
       occurredAt,
       scratch.intent.displayName,
+      itemType === 'game' ? 'game playout' : 'analysis manual',
       scratch.intent.summary ?? '',
     );
 }
@@ -977,9 +1048,14 @@ function readGraph(
     .prepare(
       `SELECT root_occurrence_id AS rootOccurrenceId
          FROM inventory_analysis_revision
+        WHERE item_id = ? AND revision_id = ?
+       UNION ALL
+       SELECT root_occurrence_id AS rootOccurrenceId
+         FROM inventory_game_revision
         WHERE item_id = ? AND revision_id = ?`,
     )
-    .get(itemId, revisionId) as { rootOccurrenceId: number } | undefined;
+    .get(itemId, revisionId, itemId, revisionId) as
+    { rootOccurrenceId: number } | undefined;
   if (root === undefined) throw invalidInventoryRevision();
   return database
     .prepare(
@@ -1068,12 +1144,20 @@ function rootAnchor(
   const row = database
     .prepare(
       `SELECT anchor.anchor_id AS anchorId
-         FROM inventory_analysis_revision AS analysis
+         FROM inventory_item AS item
+         JOIN item_revision AS revision
+           ON revision.item_id = item.item_id
+         LEFT JOIN inventory_analysis_revision AS analysis
+           ON analysis.revision_id = revision.revision_id
+         LEFT JOIN inventory_game_revision AS game
+           ON game.revision_id = revision.revision_id
          JOIN chess_anchor AS anchor
            ON anchor.anchor_kind = 'occurrence'
-          AND anchor.owner_item_id = analysis.item_id
-          AND anchor.occurrence_id = analysis.root_occurrence_id
-        WHERE analysis.item_id = ? AND analysis.revision_id = ?`,
+          AND anchor.owner_item_id = item.item_id
+          AND anchor.occurrence_id = COALESCE(
+            analysis.root_occurrence_id, game.root_occurrence_id
+          )
+        WHERE item.item_id = ? AND revision.revision_id = ?`,
     )
     .get(itemId, revisionId) as { anchorId: number } | undefined;
   return row === undefined ? undefined : localId('anchor', row.anchorId);

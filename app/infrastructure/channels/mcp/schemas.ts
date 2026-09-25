@@ -506,6 +506,10 @@ export const AnalysisRecordSchema = Type.Object(
       Type.Object(
         {
           sourceItemId: localId,
+          sourceItemType: Type.Union([
+            Type.Literal('analysis'),
+            Type.Literal('game'),
+          ]),
           sourceRevisionId: localId,
           sourceAnchorId: localId,
           sourceDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
@@ -1340,7 +1344,13 @@ export const AnalyzePositionArgumentsSchema = Type.Object(
     ),
     mode: Type.Union([
       Type.Object(
-        { kind: Type.Literal('objective'), budget: objectiveAnalysisBudget },
+        {
+          kind: Type.Literal('objective'),
+          budget: objectiveAnalysisBudget,
+          rootMoves: Type.Optional(
+            Type.Array(canonicalMove, { minItems: 1, maxItems: 8 }),
+          ),
+        },
         objectOptions,
       ),
       Type.Object({ kind: Type.Literal('human_policy') }, objectOptions),
@@ -1379,6 +1389,7 @@ export const PositionAnalysisSnapshotSchema = Type.Union([
     {
       ...positionAnalysisSnapshotBase,
       kind: Type.Literal('objective'),
+      perspective: Type.Union([Type.Literal('white'), Type.Literal('black')]),
       budget: objectiveAnalysisBudget,
       rootWdl: Type.Optional(analysisWdl),
       candidates: Type.Array(

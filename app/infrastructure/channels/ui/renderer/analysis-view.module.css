@@ -35,6 +35,12 @@
   text-transform: uppercase;
 }
 
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .headerStatus {
   color: #65707c;
   font-size: 12px;
@@ -76,8 +82,8 @@
   gap: 7px;
   padding: 0 12px;
   color: #ffffff;
-  background: #91650d;
-  border: 1px solid #765108;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
   border-radius: 5px;
   cursor: pointer;
   font-size: 12px;
@@ -127,11 +133,18 @@
 .workspaceGrid {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(340px, 440px);
-  gap: 22px;
+  column-gap: 22px;
+  row-gap: 12px;
   align-items: start;
 }
 
+.workspaceGrid > :first-child {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+
 .linePanel {
+  grid-column: 2;
   min-width: 0;
   background: #ffffff;
   border: 1px solid #d7dce3;
@@ -214,7 +227,7 @@
 .moveList {
   display: grid;
   gap: 2px;
-  max-height: 42vh;
+  max-height: min(28vh, 280px);
   margin: 0;
   padding: 8px;
   overflow-x: hidden;
@@ -329,7 +342,16 @@
   cursor: pointer;
 }
 
-.sourceLineButton span {
+.sourceIdentity {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sourceIdentityText {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -443,27 +465,12 @@
   font-size: 11px;
 }
 
-.moveEntry {
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
-  border-top: 1px solid #e0e4e9;
-}
-
-.moveEntry label,
 .saveForm label {
   color: #59636f;
   font-size: 11px;
   font-weight: 680;
 }
 
-.moveEntry > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
-}
-
-.moveEntry input,
 .saveForm input,
 .analysisActions textarea,
 .inlineNoteForm textarea {
@@ -478,7 +485,6 @@
   font-size: 13px;
 }
 
-.moveEntry input:focus,
 .saveForm input:focus,
 .analysisActions textarea:focus,
 .inlineNoteForm textarea:focus {
@@ -488,7 +494,6 @@
 
 .primaryButton,
 .secondaryButton,
-.ochreButton,
 .dangerButton,
 .discardButton,
 .smallButton {
@@ -507,8 +512,8 @@
 
 .primaryButton {
   color: #ffffff;
-  background: #2e61ad;
-  border: 1px solid #244f90;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
 }
 
 .secondaryButton,
@@ -518,11 +523,8 @@
   border: 1px solid #c5cbd3;
 }
 
-.ochreButton {
+.noteAction {
   width: 100%;
-  color: #5c400c;
-  background: #fff4d8;
-  border: 1px solid #dfbd6f;
 }
 
 .dangerButton {
@@ -542,7 +544,6 @@
 
 .primaryButton[data-disabled],
 .secondaryButton[data-disabled],
-.ochreButton[data-disabled],
 .dangerButton[data-disabled],
 .discardButton[data-disabled],
 .primaryButton:disabled,
@@ -555,7 +556,6 @@
 
 .primaryButton[data-focus-visible],
 .secondaryButton[data-focus-visible],
-.ochreButton[data-focus-visible],
 .dangerButton[data-focus-visible],
 .discardButton[data-focus-visible],
 .primaryButton:focus-visible,
@@ -585,13 +585,7 @@
   padding: 12px;
   background: #fffaf0;
   border: 1px solid #e2ca96;
-  border-radius: 5px;
-}
-
-.revisionActions h3 {
-  margin: 0;
-  color: #493a1c;
-  font-size: 13px;
+  border-width: 1px 0 0;
 }
 
 .revisionHint,
@@ -602,21 +596,75 @@
   line-height: 1.45;
 }
 
-.revisionActions {
-  border-width: 1px 0 0;
-  border-radius: 0;
-}
-
-.revisionHeading {
+.draftBar {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.revisionHeading > span {
+.draftToggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 2px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.draftToggle:focus-visible {
+  outline: 2px solid #2f66a8;
+  outline-offset: 2px;
+}
+
+.draftToggle > svg {
+  flex: none;
+  transition: transform 150ms ease;
+}
+
+.draftToggle[aria-expanded='true'] > svg {
+  transform: rotate(180deg);
+}
+
+.draftToggleText {
+  display: grid;
+  min-width: 0;
+}
+
+.draftToggleText strong {
+  color: #493a1c;
+  font-size: 13px;
+}
+
+.analysisActions .draftToggleText strong {
+  color: #2f3741;
+}
+
+.draftCount {
+  margin-left: auto;
   color: #745c27;
   font-size: 10px;
+  white-space: nowrap;
+}
+
+.draftPrompt {
+  min-height: 32px;
+  flex: none;
+  white-space: nowrap;
+}
+
+.draftContent {
+  display: grid;
+  gap: 8px;
+}
+
+.draftContent[hidden] {
+  display: none;
 }
 
 .revisionPreview,
@@ -651,56 +699,22 @@
   font-size: 11px;
 }
 
+.impactWarning p {
+  margin: 3px 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .impactWarning ul {
   margin: 5px 0 0;
   padding-left: 17px;
   font-size: 10px;
 }
 
-.followingContexts {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 9px;
-  color: #2f5c45;
-  background: #edf7f0;
-  border: 1px solid #c5ddcc;
-  border-radius: 5px;
-}
-
-.followingContexts strong {
-  font-size: 11px;
-}
-
-.followingContexts p {
-  margin: 3px 0 0;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.followingContexts ul {
-  margin: 5px 0 0;
-  padding-left: 17px;
-  font-size: 10px;
-}
-
-.followingContextNote {
-  display: block;
-  margin-top: 2px;
-  color: #754f08;
-  line-height: 1.4;
-}
-
 .previewActions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 7px;
-}
-
-.analysisActions h3 {
-  margin: 0 0 2px;
-  color: #2f3741;
-  font-size: 13px;
 }
 
 .inlineNotes {
@@ -833,8 +847,8 @@
 
 .saveNoteButton {
   color: #ffffff;
-  background: #926715;
-  border: 1px solid #77530e;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
 }
 
 .cancelNoteButton {
@@ -942,6 +956,18 @@
   .workspaceGrid {
     grid-template-columns: minmax(360px, 1fr) minmax(250px, 320px);
   }
+
+  .draftBar {
+    flex-wrap: wrap;
+  }
+
+  .draftToggle {
+    flex-basis: 100%;
+  }
+
+  .draftPrompt {
+    margin-left: auto;
+  }
 }
 
 @media (max-width: 820px) {
@@ -951,6 +977,12 @@
 
   .workspaceGrid {
     grid-template-columns: 1fr;
+  }
+
+  .workspaceGrid > :first-child,
+  .linePanel {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .revisionNotice,

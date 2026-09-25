@@ -742,36 +742,16 @@ export class PlysmithApplicationStore {
     this.#openPreparedPlayout(selection);
   }
 
-  async openPlayoutFromInventoryItem(item: InventoryItem): Promise<void> {
-    const revisionId = this.#effectiveRevisionId(item);
-    const start: StartPlayoutRequestDto['start'] = {
-      kind: 'inventory_anchor',
-      itemId: item.itemId,
-      revisionId,
-      anchorId: item.rootAnchorId,
-    };
-    const workspace = await this.#runCommand(
-      'prepare_playout',
-      (client) =>
-        client.getAnalysisWorkspace({
-          scopeKind: this.#scope.kind,
-          ...(this.#scope.kind === 'context'
-            ? { contextId: this.#scope.contextId }
-            : {}),
-          itemId: item.itemId,
-          revisionId,
-          anchorId: item.rootAnchorId,
-        }),
-      false,
-    );
+  async openNewPlayout(): Promise<void> {
+    const workspace = await this.#getInitialPlayoutWorkspace();
     if (workspace === undefined) return;
-    const selection = Object.freeze({
-      title: item.displayName,
-      start,
-      workspace,
-      ...playoutSourcePath(item.displayName, workspace),
-    });
-    this.#openPreparedPlayout(selection);
+    this.#openPreparedPlayout(
+      Object.freeze({
+        title: 'Grundstellung',
+        start: { kind: 'initial_position' as const },
+        workspace,
+      }),
+    );
     this.#finishCommand();
   }
 
@@ -823,6 +803,19 @@ export class PlysmithApplicationStore {
     ) {
       return;
     }
+    const workspace = await this.#getInitialPlayoutWorkspace();
+    if (workspace === undefined) return;
+    this.#playoutStart = Object.freeze({
+      title: 'Grundstellung',
+      start: { kind: 'initial_position' as const },
+      workspace,
+    });
+    this.#finishCommand();
+  }
+
+  async #getInitialPlayoutWorkspace(): Promise<
+    AnalysisWorkspaceDto | undefined
+  > {
     const scope = this.#scope;
     const workspace = await this.#runCommand(
       'prepare_playout',
@@ -839,12 +832,7 @@ export class PlysmithApplicationStore {
       this.#finishCommand();
       return;
     }
-    this.#playoutStart = Object.freeze({
-      title: 'Grundstellung',
-      start: { kind: 'initial_position' as const },
-      workspace,
-    });
-    this.#finishCommand();
+    return workspace;
   }
 
   async letProviderStartPlayout(providerInstanceId: string): Promise<boolean> {
@@ -1480,6 +1468,14 @@ export class PlysmithApplicationStore {
     if (scratch !== undefined) {
       if (scratch.cursor !== scratch.steps.length) return;
       if (scratch.steps.length > 0) {
+        if (
+          scratch.steps.length === 1 &&
+          scratch.intent.kind === 'exploration' &&
+          scratch.origin.kind === 'inventory_anchor'
+        ) {
+          await this.discardAnalysisScratch();
+          return;
+        }
         await this.#updateScratch('remove_last_move', {
           kind: 'remove_last_move',
         });
@@ -1511,7 +1507,8 @@ export class PlysmithApplicationStore {
       record.readOnlyPreview ||
       record.revisionId !== record.currentRevisionId ||
       record.cursor !== record.steps.length ||
-      record.steps.length === 0
+      record.steps.length === 0 ||
+      record.itemType !== 'analysis'
     ) {
       return;
     }
@@ -1530,6 +1527,7 @@ export class PlysmithApplicationStore {
       state === undefined ||
       scratch === undefined ||
       record === undefined ||
+      record.itemType !== 'analysis' ||
       scratch.intent.kind !== 'exploration' ||
       origin?.kind !== 'inventory_anchor' ||
       origin.itemId !== record.itemId ||
@@ -1635,24 +1633,38 @@ export class PlysmithApplicationStore {
 
   async discardAnalysisScratch(): Promise<boolean> {
     const state = this.#readyState();
-    const scratchRevision = state?.analysis.scratch?.scratchRevision;
-    const scratchId = state?.analysis.scratch?.scratchId;
-    if (
-      state === undefined ||
-      scratchId === undefined ||
-      scratchRevision === undefined
-    )
-      return false;
+    const scratch = state?.analysis.scratch;
+    if (state === undefined || scratch === undefined) return false;
     this.#inventoryRevisionPreview = undefined;
-    const result = await this.#runCommand('discard_scratch', (client) =>
-      client.updateAnalysisScratch({
-        scope: state.scope,
-        expectedScratchId: scratchId,
-        expectedScratchRevision: scratchRevision,
-        action: { kind: 'discard' },
-      }),
+    const result = await this.#runCommand(
+      'discard_scratch',
+      (client) =>
+        client.updateAnalysisScratch({
+          scope: state.scope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          action: { kind: 'discard' },
+        }),
+      false,
     );
-    return result?.discarded === true;
+    if (result === undefined) return false;
+    if (!result.discarded) {
+      this.#finishCommand();
+      return false;
+    }
+    if (
+      state.scope.kind === 'free' &&
+      scratch.origin.kind === 'inventory_anchor'
+    ) {
+      this.#analysisFocus = Object.freeze({
+        itemId: scratch.origin.itemId,
+        revisionId: scratch.origin.revisionId,
+        anchorId: scratch.origin.anchorId,
+      });
+    }
+    await this.refresh();
+    this.#finishCommand();
+    return true;
   }
 
   async discardAnalysisScratchAndOpenInventoryItem(
@@ -2196,7 +2208,10 @@ export class PlysmithApplicationStore {
       await this.openRecordAnchor(savedNextStep.anchorId);
       return;
     }
-    if (record.cursor === record.steps.length) {
+    if (
+      record.itemType === 'analysis' &&
+      record.cursor === record.steps.length
+    ) {
       await this.#startInventoryRevision(
         'extend',
         record.currentAnchorId,
@@ -2268,6 +2283,7 @@ export class PlysmithApplicationStore {
     if (
       state === undefined ||
       record === undefined ||
+      record.itemType !== 'analysis' ||
       (existingScratch !== undefined &&
         existingScratch.intent.kind !== 'inventory_revision') ||
       record.historical ||
@@ -2302,11 +2318,14 @@ export class PlysmithApplicationStore {
       false,
     );
     if (outcome === undefined) return;
-    this.#analysisFocus = Object.freeze({
-      itemId: record.itemId,
-      revisionId: record.revisionId,
-      anchorId,
-    });
+    this.#analysisFocus =
+      state.scope.kind === 'context'
+        ? undefined
+        : Object.freeze({
+            itemId: record.itemId,
+            revisionId: record.revisionId,
+            anchorId,
+          });
     this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
       state.scope,
       outcome.result.scratch,

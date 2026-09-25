@@ -227,6 +227,7 @@
 .segment[data-focus-visible],
 .primaryButton[data-focus-visible],
 .secondaryButton[data-focus-visible],
+.dangerButton[data-focus-visible],
 .iconButton[data-focus-visible] {
   outline: 2px solid #3867d6;
   outline-offset: 2px;
@@ -270,8 +271,8 @@
   gap: 7px;
   padding: 0 14px;
   color: #ffffff;
-  background: #315fbd;
-  border: 1px solid #254f9f;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
   border-radius: 5px;
   outline: none;
   cursor: pointer;
@@ -286,7 +287,8 @@
   cursor: default;
 }
 
-.secondaryButton {
+.secondaryButton,
+.dangerButton {
   display: inline-flex;
   min-height: 37px;
   align-items: center;
@@ -306,6 +308,19 @@
 .secondaryButton[data-disabled] {
   color: #9299a3;
   background: #e3e6ea;
+  cursor: default;
+}
+
+.dangerButton {
+  color: #7b3737;
+  background: #fffafa;
+  border-color: #c99595;
+}
+
+.dangerButton[data-disabled] {
+  color: #9299a3;
+  background: #e3e6ea;
+  border-color: #d4d8de;
   cursor: default;
 }
 

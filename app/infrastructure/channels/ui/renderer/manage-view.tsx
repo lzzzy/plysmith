@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
-  BookOpen,
   Boxes,
   FileSearch,
   FilePlus2,
@@ -11,7 +10,6 @@ import {
   Pencil,
   Play,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -27,9 +25,11 @@ import {
 } from './plysmith-application-store.ts';
 import { AnalysisSetupDialog } from './analysis-setup-dialog.tsx';
 import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
+import { InventoryTypeIcon } from './inventory-type-icon.tsx';
 import styles from './manage-view.module.css';
 import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
+import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
 type RevisionImpactSummary = NonNullable<
@@ -107,6 +107,14 @@ export function ManageView({
               values={{ count: state.inventory.items.length }}
             />
           </span>
+          <Button
+            className={styles.primaryButton!}
+            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            onPress={() => void store.openNewPlayout()}
+          >
+            <Play aria-hidden="true" size={16} />
+            <FormattedMessage id="manage.newGame" />
+          </Button>
           <Button
             className={styles.primaryButton!}
             isDisabled={state.busyCommand !== undefined}
@@ -397,7 +405,7 @@ function InventoryRow({
       onPress={onSelect}
     >
       <span className={styles.itemIcon}>
-        <BookOpen aria-hidden="true" size={18} />
+        <InventoryTypeIcon itemType={item.itemType} size={18} />
       </span>
       <span className={styles.itemMain}>
         <strong>{item.displayName}</strong>
@@ -449,6 +457,7 @@ function ItemInspector({
     contextId !== undefined && item.contextIds.includes(contextId);
   const isBusy = state.busyCommand !== undefined;
   const [showRename, setShowRename] = useState(false);
+  const renameOpen = showRename;
   const [showRemove, setShowRemove] = useState(false);
   const [showScratchDecision, setShowScratchDecision] = useState(false);
   const hasOpenAnalysisDraft = state.analysis.scratch !== undefined;
@@ -484,7 +493,7 @@ function ItemInspector({
     <div className={styles.inspectorBody}>
       <div className={styles.inspectorTitle}>
         <span className={styles.itemIcon}>
-          <BookOpen aria-hidden="true" size={19} />
+          <InventoryTypeIcon itemType={item.itemType} size={19} />
         </span>
         <div>
           <strong>{item.displayName}</strong>
@@ -516,7 +525,7 @@ function ItemInspector({
         </div>
       </dl>
       {revisionImpact === undefined &&
-        showRename &&
+        renameOpen &&
         renameDraft === undefined && (
           <div className={styles.renameForm}>
             <strong>
@@ -553,6 +562,9 @@ function ItemInspector({
                   <strong>
                     <FormattedMessage id="inventory.contextsAffected" />
                   </strong>
+                  <p>
+                    <FormattedMessage id="inventory.contextsAffectedDetail" />
+                  </p>
                   <ul>
                     {renameDraft.preview.affectedContexts.map((context) => (
                       <li key={context.contextId}>{context.contextName}</li>
@@ -561,47 +573,13 @@ function ItemInspector({
                 </div>
               </div>
             )}
-            {renameDraft.preview.followingContexts.length > 0 && (
-              <div className={styles.followingContexts}>
-                <RefreshCw aria-hidden="true" size={18} />
-                <div>
-                  <strong>
-                    <FormattedMessage id="inventory.contextsFollowing" />
-                  </strong>
-                  <p>
-                    <FormattedMessage id="inventory.contextsFollowingDetail" />
-                  </p>
-                  <ul>
-                    {renameDraft.preview.followingContexts.map((context) => (
-                      <li key={context.contextId}>
-                        <FormattedMessage
-                          id="inventory.followingContextEntry"
-                          values={{
-                            context: context.contextName,
-                            references: context.referenceCount,
-                            notes: context.contributionCount,
-                            resumes:
-                              context.managementResumeCount +
-                              context.analysisResumeCount,
-                          }}
-                        />
-                        {context.contributionCount > 0 && (
-                          <span className={styles.followingContextNote}>
-                            <FormattedMessage
-                              id="inventory.followingContextNotesHistorical"
-                              values={{ count: context.contributionCount }}
-                            />
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
+            <RevisionFollowingContexts
+              contexts={renameDraft.preview.followingContexts}
+              metadataOnly
+            />
             <div className={styles.managedRevisionActions}>
               <Button
-                className={styles.secondaryButton!}
+                className={styles.destructiveButton!}
                 onPress={async () => {
                   if (await store.discardManagedInventoryRevision()) {
                     setShowRename(false);
@@ -661,7 +639,7 @@ function ItemInspector({
               isDisabled={isBusy}
             >
               <Trash2 aria-hidden="true" size={16} />
-              <FormattedMessage id="manage.discardDraftAndOpenAnalysis" />
+              <FormattedMessage id="manage.discardDraftAndOpenItem" />
             </Button>
             <Button
               className={styles.secondaryButton!}
@@ -707,7 +685,7 @@ function ItemInspector({
           </div>
         </section>
       ) : revisionImpact === undefined &&
-        !showRename &&
+        !renameOpen &&
         renameDraft === undefined &&
         !showScratchDecision ? (
         <div className={styles.inspectorActions}>
@@ -723,18 +701,10 @@ function ItemInspector({
             isDisabled={isBusy}
           >
             <ArrowRight aria-hidden="true" size={16} />
-            <FormattedMessage id="manage.openAnalysis" />
+            <FormattedMessage id="activity.analyze" />
           </Button>
           <Button
-            className={styles.secondaryButton!}
-            onPress={() => void store.openPlayoutFromInventoryItem(item)}
-            isDisabled={isBusy}
-          >
-            <Play aria-hidden="true" size={16} />
-            <FormattedMessage id="manage.playOut" />
-          </Button>
-          <Button
-            className={styles.secondaryButton!}
+            className={styles.primaryButton!}
             onPress={() => setShowRename((visible) => !visible)}
             isDisabled={isBusy}
           >
@@ -743,7 +713,7 @@ function ItemInspector({
           </Button>
           {contextId !== undefined && !isContextMember && (
             <Button
-              className={styles.secondaryButton!}
+              className={styles.primaryButton!}
               onPress={() => void store.addInventoryItemToCurrentContext(item)}
               isDisabled={isBusy}
             >
@@ -753,7 +723,7 @@ function ItemInspector({
           )}
           {contextId !== undefined && isContextMember && (
             <Button
-              className={styles.secondaryButton!}
+              className={styles.destructiveButton!}
               onPress={() => {
                 setShowRename(false);
                 setShowRemove(true);

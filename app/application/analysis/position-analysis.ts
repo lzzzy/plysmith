@@ -75,6 +75,7 @@ interface PositionAnalysisSnapshotBase {
 
 export interface ObjectiveAnalysisSnapshot extends PositionAnalysisSnapshotBase {
   readonly kind: 'objective';
+  readonly perspective: SideToMove;
   readonly budget: ObjectiveAnalysisBudget;
   readonly rootWdl?: AnalysisWdl;
   readonly candidates: readonly ObjectiveAnalysisCandidate[];
@@ -106,6 +107,7 @@ export type PositionAnalysisMode =
   | {
       readonly kind: 'objective';
       readonly budget: ObjectiveAnalysisBudget;
+      readonly rootMoves?: readonly CanonicalMove[];
     }
   | { readonly kind: 'human_policy' };
 
@@ -222,6 +224,7 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
   ): Promise<PositionAnalysisSnapshot> {
     validateRequest(request);
     validateFocus(this.#rules, request.focus);
+    validatePositionAnalysisProviderRequest(this.#rules, request);
     const capability =
       request.mode.kind === 'objective'
         ? 'objective_position_analysis'
@@ -272,6 +275,44 @@ function validateRequest(request: PositionAnalysisRequest): void {
     request.focus.moves.length > 1_000
   ) {
     throw positionAnalysisProblem('invalid_request');
+  }
+}
+
+export function validatePositionAnalysisProviderRequest(
+  rules: ChessRulesPort,
+  request: PositionAnalysisProviderRequest,
+): void {
+  if (
+    !Number.isSafeInteger(request.candidateCount) ||
+    request.candidateCount < 1 ||
+    request.candidateCount > 8
+  ) {
+    throw positionAnalysisProblem('invalid_request');
+  }
+  if (request.mode.kind !== 'objective') return;
+  if (!['fast', 'thorough', 'very_deep'].includes(request.mode.budget)) {
+    throw positionAnalysisProblem('invalid_request');
+  }
+  const rootMoves = request.mode.rootMoves;
+  if (rootMoves === undefined) return;
+  if (rootMoves.length === 0 || rootMoves.length > 8) {
+    throw positionAnalysisProblem('invalid_request');
+  }
+  const seen = new Set<string>();
+  for (const move of rootMoves) {
+    const coordinates = `${move.from}${move.to}${promotionLetter(move.promotion)}`;
+    const applied = rules.applyMove(request.focus.root, request.focus.moves, {
+      kind: 'coordinates',
+      value: coordinates,
+    });
+    if (
+      seen.has(coordinates) ||
+      !applied.ok ||
+      applied.value.move.san !== move.san
+    ) {
+      throw positionAnalysisProblem('invalid_request');
+    }
+    seen.add(coordinates);
   }
 }
 

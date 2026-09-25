@@ -50,6 +50,7 @@ interface StoredPath {
   readonly contributions: readonly PathContribution[];
   readonly sourceLine?: {
     readonly sourceItemId: string;
+    readonly sourceItemType: 'analysis' | 'game';
     readonly sourceRevisionId: string;
     readonly sourceAnchorId: string;
     readonly sourceDisplayName: string;
@@ -121,6 +122,7 @@ export interface AnalysisPathPresentation {
   readonly analysisOriginPositionIndex: number | undefined;
   readonly rootCurrent: boolean;
   readonly sourceDisplayName: string | undefined;
+  readonly sourceItemType: 'analysis' | 'game' | undefined;
   readonly hasSourcePrefix: boolean;
   readonly hasStoredPrefix: boolean;
   readonly scratchCursor: number | undefined;
@@ -219,6 +221,7 @@ export function analysisPathPresentation(source: {
         record === undefined ? undefined : sourceEntries.length,
       rootCurrent: record?.cursor === 0,
       sourceDisplayName: record?.sourceLine?.sourceDisplayName,
+      sourceItemType: record?.sourceLine?.sourceItemType,
       hasSourcePrefix: record?.sourceLine !== undefined,
       hasStoredPrefix: false,
       scratchCursor: undefined,
@@ -319,6 +322,9 @@ export function analysisPathPresentation(source: {
       scratch.cursor === 0 && (!attachedRecord || recordOriginCursor === 0),
     sourceDisplayName: attachedRecord
       ? record!.sourceLine?.sourceDisplayName
+      : undefined,
+    sourceItemType: attachedRecord
+      ? record!.sourceLine?.sourceItemType
       : undefined,
     hasSourcePrefix: attachedRecord && record!.sourceLine !== undefined,
     hasStoredPrefix,

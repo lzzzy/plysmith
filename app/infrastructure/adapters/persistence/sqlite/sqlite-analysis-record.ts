@@ -566,6 +566,7 @@ function readSourceLine(
   if (source === undefined) throw invalidAnalysisRecord();
   return Object.freeze({
     sourceItemId: origin.itemId,
+    sourceItemType: source.itemType,
     sourceRevisionId: origin.revisionId,
     sourceAnchorId: origin.anchorId,
     sourceDisplayName: source.displayName,

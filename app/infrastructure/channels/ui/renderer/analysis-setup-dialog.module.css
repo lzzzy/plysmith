@@ -319,8 +319,8 @@
 
 .primaryButton {
   color: #ffffff;
-  background: #2e61ad;
-  border: 1px solid #244f90;
+  background: var(--action-blue);
+  border: 1px solid var(--action-blue-border);
 }
 
 .dangerButton {

@@ -198,7 +198,7 @@ export function RevisionImpactResolutionPanel({
           </div>
           <button
             type="submit"
-            className={styles.secondaryButton}
+            className={styles.primaryButton}
             disabled={isBusy || copyName.trim() === ''}
           >
             <Copy aria-hidden="true" size={16} />

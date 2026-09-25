@@ -65,6 +65,7 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
     });
     if (
       record === undefined ||
+      record.itemType !== 'analysis' ||
       record.historical ||
       record.readOnlyPreview ||
       record.currentRevisionId.value !== request.baseRevisionId.value
