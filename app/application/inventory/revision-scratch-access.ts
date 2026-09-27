@@ -16,7 +16,7 @@ export async function readRevisionScratch(input: {
 }): Promise<AnalysisScratch> {
   const scratch =
     input.scope.kind === 'free'
-      ? input.freeSession.read()
+      ? await input.freeSession.read()
       : (
           await input.contextReader.readContextAnalysisWorkspace(
             input.scope.contextId,

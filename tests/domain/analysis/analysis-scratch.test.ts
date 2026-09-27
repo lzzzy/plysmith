@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   appendAnalysisMove,
+  canContinueAnalysisExploration,
   clearAnalysisNote,
+  continueAnalysisExploration,
   currentAnalysisMoves,
   currentAnalysisState,
   moveAnalysisCursor,
@@ -15,6 +17,7 @@ import type {
   AppliedMove,
   ChessState,
 } from '../../../app/domain/chess_graph/index.ts';
+import { localId } from '../../../app/domain/identity/index.ts';
 
 test('analysis scratch navigates without changing its stored line', () => {
   const root = state('root');
@@ -124,6 +127,73 @@ test('clearing a prepared note keeps the explored path intact', () => {
   );
   assert.equal(cleared.cursor, 1);
   assert.equal(cleared.scratchRevision, prepared.scratchRevision + 1);
+});
+
+test('continuing a revision preserves all steps even behind the cursor and clears stale notes', () => {
+  const root = state('root');
+  const origin = {
+    kind: 'inventory_anchor' as const,
+    itemId: localId('inventory-item', 1),
+    revisionId: localId('item-revision', 1),
+    anchorId: localId('anchor', 1),
+  };
+  for (const mode of ['extend', 'truncate_after', 'replace_move'] as const) {
+    const first = transition(root, 'e2', 'e4', 'e4', state('after-e4'));
+    const scratch = prepareAnalysisNote(
+      moveAnalysisCursor(
+        appendAnalysisMove(
+          appendAnalysisMove(
+            startAnalysisScratch('revision', root, origin, {
+              kind: 'inventory_revision',
+              mode,
+              itemId: origin.itemId,
+              baseRevisionId: origin.revisionId,
+              cutAnchorId: origin.anchorId,
+              returnAnchorId: origin.anchorId,
+              displayName: 'Source',
+            }),
+            first,
+          ),
+          transition(first.after, 'e7', 'e5', 'e5', state('after-e5')),
+        ),
+        1,
+      ),
+      'Stale note',
+    );
+    const continued = continueAnalysisExploration(scratch);
+    assert.equal(canContinueAnalysisExploration(scratch), true);
+    assert.equal(continued.scratchId, scratch.scratchId);
+    assert.equal(continued.scratchRevision, scratch.scratchRevision + 1);
+    assert.deepEqual(continued.root, scratch.root);
+    assert.deepEqual(continued.origin, scratch.origin);
+    assert.deepEqual(continued.steps, scratch.steps);
+    assert.equal(continued.cursor, 1);
+    assert.deepEqual(continued.intent, { kind: 'exploration' });
+    assert.equal(continued.noteDraft, undefined);
+    assert.equal(scratch.noteDraft?.body, 'Stale note');
+    const invalid = [
+      continued,
+      { ...scratch, steps: [], cursor: 0 },
+      { ...scratch, origin: { kind: 'initial_position' as const } },
+      {
+        ...scratch,
+        intent: {
+          ...scratch.intent,
+          kind: 'inventory_revision' as const,
+          mode: 'metadata' as const,
+          itemId: origin.itemId,
+          baseRevisionId: origin.revisionId,
+          cutAnchorId: origin.anchorId,
+          returnAnchorId: origin.anchorId,
+          displayName: 'Metadata',
+        },
+      },
+    ];
+    for (const candidate of invalid) {
+      assert.equal(canContinueAnalysisExploration(candidate), false);
+      assert.throws(() => continueAnalysisExploration(candidate));
+    }
+  }
 });
 
 function state(fen: string): ChessState {

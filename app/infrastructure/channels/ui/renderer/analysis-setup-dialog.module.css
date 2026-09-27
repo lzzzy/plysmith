@@ -45,20 +45,6 @@
   font-size: 22px;
 }
 
-.header p {
-  margin: 0;
-  color: #69737f;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.eyebrow {
-  color: #6b747f;
-  font-size: 10px;
-  font-weight: 720;
-  text-transform: uppercase;
-}
-
 .closeButton,
 .iconButton {
   display: inline-grid;
@@ -74,58 +60,10 @@
   place-items: center;
 }
 
-.choices,
 .scratchDecision {
   display: grid;
   gap: 12px;
   padding: 26px;
-}
-
-.choices {
-  max-width: 680px;
-  margin: 0 auto;
-}
-
-.choiceButton {
-  display: grid;
-  min-height: 92px;
-  grid-template-columns: 40px minmax(0, 1fr) 20px;
-  gap: 14px;
-  align-items: center;
-  padding: 16px 18px;
-  color: #26303a;
-  text-align: left;
-  background: #ffffff;
-  border: 1px solid #cbd2da;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.choiceButton:hover {
-  border-color: #2f66b5;
-  box-shadow: 0 3px 12px rgb(37 80 142 / 10%);
-}
-
-.choiceButton strong,
-.choiceButton small {
-  display: block;
-}
-
-.choiceButton strong {
-  margin-bottom: 4px;
-  font-size: 14px;
-}
-
-.choiceButton small {
-  color: #68727e;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-.boardChoiceIcon {
-  width: 40px;
-  height: 40px;
-  font-size: 32px;
 }
 
 .scratchDecision {
@@ -249,7 +187,6 @@
 }
 
 .pieceButton[data-focus-visible],
-.choiceButton[data-focus-visible],
 .closeButton[data-focus-visible],
 .iconButton[data-focus-visible],
 .primaryButton[data-focus-visible],
@@ -445,8 +382,7 @@
 .secondaryButton[data-disabled],
 .dangerButton[data-disabled],
 .iconButton[data-disabled],
-.pieceButton[data-disabled],
-.choiceButton[data-disabled] {
+.pieceButton[data-disabled] {
   color: #969da6;
   background: #e5e8eb;
   border-color: #d5d9de;

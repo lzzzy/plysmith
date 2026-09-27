@@ -148,11 +148,6 @@
   box-shadow: 0 0 0 2px rgb(47 102 189 / 14%);
 }
 
-.scopeMeta {
-  color: #656f7a;
-  font-size: 10px;
-}
-
 .announcement {
   position: absolute;
   width: 1px;
@@ -276,10 +271,6 @@
     position: static;
     grid-template-columns: auto minmax(0, 1fr);
     padding: 7px 18px;
-  }
-
-  .scopeMeta {
-    display: none;
   }
 }
 

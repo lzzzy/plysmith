@@ -13,6 +13,74 @@ import {
   languageEvent,
 } from './fixtures.ts';
 import { localId } from '../../../app/domain/identity/index.ts';
+import {
+  HostEventStream,
+  type HostEvent,
+} from '../../../app/application/events/index.ts';
+
+test(
+  'lifecycle refresh events traverse the event stream and SSE with free-scope resume',
+  { timeout: 20_000 },
+  async (t) => {
+    const stream = new HostEventStream({ generation: 'lifecycle' });
+    const subscription = stream.subscribe({
+      lastEventId: undefined,
+      signal: new AbortController().signal,
+    });
+    const metadata = {
+      occurredAt: '2026-09-08T12:00:00.000Z',
+      dataRevision: 12,
+    };
+    stream.publish({
+      ...metadata,
+      kind: 'inventory.item-deleted',
+      itemId: localId('inventory-item', 7),
+    });
+    stream.publish({
+      ...metadata,
+      kind: 'workspace.context-deleted',
+      contextId: localId('working-context', 2),
+    });
+    stream.publish({
+      ...metadata,
+      kind: 'workspace.startup-updated',
+      startupVersion: 3,
+    });
+    stream.publish({
+      ...metadata,
+      kind: 'workspace.resume-updated',
+      area: 'manage',
+      resumeVersion: 4,
+    });
+    const events: HostEvent[] = [];
+    const iterator = subscription.events[Symbol.asyncIterator]();
+    try {
+      for (let index = 0; index < 4; index++) {
+        const next = await iterator.next();
+        assert.equal(next.done, false);
+        events.push(next.value);
+      }
+    } finally {
+      subscription.close();
+    }
+    const { host } = await buildFixture(t, { events: finiteSource(events) });
+    const response = await host.inject({ url: '/events', headers });
+    const payloads = response.body
+      .trim()
+      .split('\n\n')
+      .map((frame) => {
+        const line = frame.split('\n').find((line) => line.startsWith('data:'));
+        assert.ok(line);
+        return JSON.parse(line.slice(5)).payload;
+      });
+    assert.deepEqual(payloads, [
+      { itemId: '7' },
+      { contextId: '2' },
+      { startupVersion: 3 },
+      { area: 'manage', resumeVersion: 4 },
+    ]);
+  },
+);
 
 test('SSE frames preserve ordered replay, ids and the constant wire event name', async (t) => {
   const cursors: (string | undefined)[] = [];

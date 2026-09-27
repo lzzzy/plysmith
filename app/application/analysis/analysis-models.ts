@@ -21,7 +21,9 @@ import type {
 import type { WorkScope } from '../../domain/workspace/index.ts';
 import type {
   MovePolicyBinding,
-  PlayoutOutcome,
+  GameOutcome,
+  GameOutcomeSource,
+  PlayoutSourcePath,
 } from '../../domain/playout/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
 
@@ -42,9 +44,10 @@ export interface AnalysisRecordStepView extends AnalysisScratchStep {
   readonly anchorId: AnchorId;
 }
 
-export interface AnalysisSourceLineStepView extends AnalysisRecordStepView {
-  readonly itemId: InventoryItemId;
-  readonly revisionId: ItemRevisionId;
+export interface AnalysisSourceLineStepView extends AnalysisScratchStep {
+  readonly anchorId?: AnchorId;
+  readonly itemId?: InventoryItemId;
+  readonly revisionId?: ItemRevisionId;
 }
 
 export interface AnalysisSourceLineView {
@@ -54,7 +57,7 @@ export interface AnalysisSourceLineView {
   readonly sourceAnchorId: AnchorId;
   readonly sourceDisplayName: string;
   readonly root: ChessState;
-  readonly rootTarget: {
+  readonly rootTarget?: {
     readonly itemId: InventoryItemId;
     readonly revisionId: ItemRevisionId;
     readonly anchorId: AnchorId;
@@ -76,23 +79,31 @@ export interface AnalysisRecordView {
   readonly languageTag: string;
   readonly game?: {
     readonly playerSide: 'white' | 'black';
-    readonly outcome: PlayoutOutcome;
+    readonly outcome: GameOutcome;
+    readonly outcomeSource: GameOutcomeSource;
     readonly policy: MovePolicyBinding;
   };
   readonly origin: AnalysisScratchOrigin;
   readonly sourceLine?: AnalysisSourceLineView;
+  readonly sourcePath?: PlayoutSourcePath;
   readonly root: ChessState;
   readonly steps: readonly AnalysisRecordStepView[];
   readonly cursor: number;
   readonly contributions: readonly AnalysisContributionView[];
   readonly contextMember: boolean;
-  readonly readOnlyPreview: boolean;
   readonly historical: boolean;
 }
 
 export interface StoredContextAnalysisWorkspace {
   readonly contextId: WorkingContextId;
   readonly contextName: string;
+  readonly dataRevision: number;
+  readonly resumeVersion?: number;
+  readonly scratch?: AnalysisScratch;
+  readonly record?: AnalysisRecordView;
+}
+
+export interface StoredFreeAnalysisWorkspace {
   readonly dataRevision: number;
   readonly resumeVersion?: number;
   readonly scratch?: AnalysisScratch;
@@ -115,6 +126,7 @@ export interface AnalysisWorkspace {
     | 'remove_last_move'
     | 'prepare_note'
     | 'clear_note'
+    | 'continue_exploration'
     | 'discard_scratch'
     | 'create_analysis_note'
     | 'create_analysis_record'
@@ -151,6 +163,7 @@ export type UpdateAnalysisScratchAction =
   | { readonly kind: 'remove_last_move' }
   | { readonly kind: 'prepare_note'; readonly body: string }
   | { readonly kind: 'clear_note' }
+  | { readonly kind: 'continue_exploration' }
   | { readonly kind: 'discard' };
 
 export interface UpdateAnalysisScratchRequest {
@@ -256,6 +269,7 @@ export interface CreateAnalysisRecordResult {
 }
 
 export interface PersistAnalysisRecordRequest {
+  readonly sourceScope?: WorkScope;
   readonly sourceContextId?: WorkingContextId;
   readonly expectedScratchId?: string;
   readonly expectedScratchRevision?: number;
@@ -271,6 +285,7 @@ export interface PersistAnalysisRecordRequest {
 }
 
 export interface PersistAnalysisNoteRequest {
+  readonly sourceScope?: WorkScope;
   readonly sourceContextId?: WorkingContextId;
   readonly expectedScratchId?: string;
   readonly expectedScratchRevision?: number;

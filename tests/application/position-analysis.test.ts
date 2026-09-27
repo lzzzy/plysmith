@@ -13,6 +13,10 @@ import { ChessJsRulesAdapter } from '../../app/infrastructure/adapters/chess_rul
 import { ConfiguredPositionAnalysisRegistry } from '../../app/infrastructure/adapters/engine/index.ts';
 
 const rules = new ChessJsRulesAdapter();
+const freeWork = {
+  scope: { kind: 'free' as const },
+  subject: { kind: 'position' as const },
+};
 
 test('analyzes the exact visible position and preserves its focus key', async () => {
   const root = rules.initialState();
@@ -30,6 +34,7 @@ test('analyzes the exact visible position and preserves its focus key', async ()
   const useCase = analyzePosition(provider);
 
   const result = await useCase.execute({
+    work: freeWork,
     consumerId: 'desktop-test',
     laneId: 'objective',
     providerInstanceId: provider.descriptor.instanceId,
@@ -69,6 +74,7 @@ test('replaces an older request in the same consumer lane', async () => {
   });
   const useCase = analyzePosition(provider);
   const request = {
+    work: freeWork,
     consumerId: 'desktop-test',
     laneId: 'objective',
     providerInstanceId: provider.descriptor.instanceId,
@@ -101,6 +107,7 @@ test('rejects a focus whose move history does not reach the current state', asyn
 
   await assert.rejects(
     analyzePosition(provider).execute({
+      work: freeWork,
       consumerId: 'desktop-test',
       laneId: 'objective',
       providerInstanceId: provider.descriptor.instanceId,
@@ -124,6 +131,7 @@ function analyzePosition(provider: PositionAnalysisProvider): AnalyzePosition {
     rules,
     providers: new ConfiguredPositionAnalysisRegistry([provider]),
     lanes: new ActivePositionAnalysisLanes(),
+    workspace: { readWorkingContextWorkspace: async () => undefined },
   });
 }
 
@@ -169,6 +177,7 @@ test('validates restricted root moves before calling the provider', async () => 
   });
   const execute = analyzePosition(provider);
   const base = {
+    work: freeWork,
     consumerId: 'test',
     laneId: 'objective',
     providerInstanceId: provider.descriptor.instanceId,

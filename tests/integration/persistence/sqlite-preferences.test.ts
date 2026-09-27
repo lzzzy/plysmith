@@ -57,7 +57,7 @@ preferencesStoreContract(
   'SQLite preferences port contract',
   async (t) => storeFixture(t).open(),
   false,
-  6,
+  7,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -80,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 6,
+    schemaVersion: 7,
     dataRevision: 1,
   });
 });
@@ -201,6 +201,8 @@ test('the current schema contains all strict tables and a healthy FTS projection
       { name: 'inventory_analysis_revision', strict: 1 },
       { name: 'inventory_game_origin', strict: 1 },
       { name: 'inventory_game_revision', strict: 1 },
+      { name: 'inventory_game_source_path', strict: 1 },
+      { name: 'inventory_game_source_ply', strict: 1 },
       { name: 'inventory_item', strict: 1 },
       { name: 'item_revision', strict: 1 },
       { name: 'playout_completion_receipt', strict: 1 },
@@ -224,6 +226,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
       { name: 'workspace_management_resume', strict: 1 },
       { name: 'workspace_pending_revision_impact', strict: 1 },
       { name: 'workspace_revision_impact_entry', strict: 1 },
+      { name: 'workspace_startup_resume', strict: 1 },
       { name: 'workspace_working_context', strict: 1 },
     ]);
     assert.equal(database.pragma('journal_mode', { simple: true }), 'wal');
@@ -245,6 +248,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
         { migrationId: 4, size: 32 },
         { migrationId: 5, size: 32 },
         { migrationId: 6, size: 32 },
+        { migrationId: 7, size: 32 },
       ],
     );
     assert.throws(() =>
@@ -294,7 +298,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
   }
 });
 
-test('upgrades a valid schema 1 store once without changing its committed data', async (t) => {
+test('rejects an older schema 1 store without changing its committed data', (t) => {
   const fixture = storeFixture(t);
   const migrationPath = join(
     process.cwd(),
@@ -335,23 +339,8 @@ test('upgrades a valid schema 1 store once without changing its committed data',
     database.close();
   }
 
-  const upgraded = fixture.open();
-  assert.deepEqual(await upgraded.readStoreStatus(), {
-    schemaVersion: 6,
-    dataRevision: 7,
-  });
-  assert.deepEqual(await upgraded.readUserPreferences(), {
-    uiLocale: 'en-GB',
-    preferenceRevision: 3,
-    dataRevision: 7,
-    updatedAt: timestamp,
-  });
-  await upgraded.close();
-
-  const reopened = fixture.open();
-  assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 6,
-    dataRevision: 7,
+  assert.throws(() => fixture.open(), {
+    problemCode: 'persistence.incompatible_store',
   });
   const inspection = new Database(fixture.databasePath, {
     readonly: true,
@@ -364,21 +353,14 @@ test('upgrades a valid schema 1 store once without changing its committed data',
           'SELECT migration_id AS migrationId FROM runtime_schema_migration ORDER BY migration_id',
         )
         .all(),
-      [
-        { migrationId: 1 },
-        { migrationId: 2 },
-        { migrationId: 3 },
-        { migrationId: 4 },
-        { migrationId: 5 },
-        { migrationId: 6 },
-      ],
+      [{ migrationId: 1 }],
     );
   } finally {
     inspection.close();
   }
 });
 
-test('upgrades a populated schema 4 store without losing workspace state', async (t) => {
+test('rejects a populated older schema without upgrading its workspace state', (t) => {
   const fixture = storeFixture(t);
   const database = new Database(fixture.databasePath);
   try {
@@ -474,20 +456,30 @@ test('upgrades a populated schema 4 store without losing workspace state', async
       .run(timestamp, timestamp);
     database
       .prepare(
-        `INSERT INTO workspace_management_resume VALUES
+        `INSERT INTO workspace_management_resume
+           (context_id, resume_version, presentation, selected_item_id,
+            selected_anchor_id, updated_at_utc) VALUES
            (1, 1, 'list', 1, 2, ?)`,
       )
       .run(timestamp);
     database
       .prepare(
-        `INSERT INTO analysis_scratch_draft VALUES
+        `INSERT INTO analysis_scratch_draft
+           (scratch_draft_id, context_id, origin_mode, origin_item_id,
+            origin_revision_id, origin_anchor_id, root_position_id,
+            root_halfmove_clock, root_fullmove_number, root_history_knowledge,
+            cursor_index, scratch_revision, note_body, created_at_utc,
+            updated_at_utc, scratch_key) VALUES
            (1, 1, 'inventory_anchor', 1, 1, 2, 1, 0, 1, 'complete',
             0, 1, NULL, ?, ?, 'legacy-scratch')`,
       )
       .run(timestamp, timestamp);
     database
       .prepare(
-        `INSERT INTO workspace_analysis_resume VALUES
+        `INSERT INTO workspace_analysis_resume
+           (context_id, resume_version, item_id, revision_id, anchor_id,
+            mode, current_position_id, analysis_scratch_draft_id,
+            updated_at_utc) VALUES
            (1, 1, 1, 1, 2, 'analyze', 1, 1, ?)`,
       )
       .run(timestamp);
@@ -495,25 +487,9 @@ test('upgrades a populated schema 4 store without losing workspace state', async
     database.close();
   }
 
-  const upgraded = fixture.open();
-  assert.deepEqual(await upgraded.readStoreStatus(), {
-    schemaVersion: 6,
-    dataRevision: 9,
+  assert.throws(() => fixture.open(), {
+    problemCode: 'persistence.incompatible_store',
   });
-  const workspace = await upgraded.readWorkingContextWorkspace({
-    kind: 'working-context',
-    value: 1,
-  });
-  assert.equal(workspace?.references[0]?.currentRevisionId.value, 1);
-  assert.equal(workspace?.managementResume?.selectedAnchorId?.value, 2);
-  assert.equal(workspace?.analysisResume?.scratchId, 'legacy-scratch');
-  const analysis = await upgraded.readContextAnalysisWorkspace({
-    kind: 'working-context',
-    value: 1,
-  });
-  assert.equal(analysis?.scratch?.intent.kind, 'exploration');
-  assert.equal(analysis?.record?.contributions[0]?.body, 'Bestehende Notiz');
-  await upgraded.close();
 
   const inspection = new Database(fixture.databasePath, {
     readonly: true,
@@ -559,7 +535,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 7',
+    'UPDATE runtime_store_state SET schema_version = 8',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

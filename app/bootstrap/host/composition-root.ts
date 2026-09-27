@@ -20,6 +20,8 @@ import {
 } from '../../application/analysis/index.ts';
 import {
   GetInventoryRevision,
+  DeleteInventoryItem,
+  PreviewInventoryItemDeletion,
   GetPendingRevisionImpact,
   ListInventoryRevisions,
   PreviewInventoryRevision,
@@ -40,6 +42,7 @@ import {
   GetPlayout,
   ListMovePolicyProviders,
   PausePlayout,
+  CancelPlayoutCompletion,
   ResumePlayout,
   RetryPlayoutPolicyMove,
   StartPlayout,
@@ -61,10 +64,17 @@ import {
 import {
   AddContextReference,
   CreateWorkingContext,
+  UpdateWorkingContextMetadata,
   GetWorkingContextWorkspace,
   ListWorkingContexts,
   RemoveContextItem,
   SetWorkScopeResume,
+  GetWorkScopeWorkspace,
+  GetStartupResume,
+  SetStartupResume,
+  PreviewContextItemRemoval,
+  PreviewWorkingContextDeletion,
+  DeleteWorkingContext,
 } from '../../application/workspace/index.ts';
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import {
@@ -355,7 +365,7 @@ export async function composeHost(
     );
     const removeEngineProviderConfiguration =
       new RemoveEngineProviderConfiguration(engineProviderConfigurations);
-    const freeAnalysisSession = new FreeAnalysisSession();
+    const freeAnalysisSession = new FreeAnalysisSession({ persistence, clock });
     const getAnalysisWorkspace = new GetAnalysisWorkspace({
       reader: persistence,
       freeSession: freeAnalysisSession,
@@ -367,6 +377,7 @@ export async function composeHost(
       positionAnalyses,
     );
     const analyzePosition = new AnalyzePosition({
+      workspace: persistence,
       rules,
       providers: positionAnalyses,
       lanes: new ActivePositionAnalysisLanes(),
@@ -413,6 +424,34 @@ export async function composeHost(
       events: eventStream,
     });
     const searchInventory = new SearchInventory(persistence);
+    const previewInventoryItemDeletion = new PreviewInventoryItemDeletion(
+      persistence,
+    );
+    const deleteInventoryItem = new DeleteInventoryItem({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const getWorkScopeWorkspace = new GetWorkScopeWorkspace(persistence);
+    const getStartupResume = new GetStartupResume(persistence);
+    const setStartupResume = new SetStartupResume({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const previewContextItemRemoval = new PreviewContextItemRemoval(
+      persistence,
+    );
+    const previewWorkingContextDeletion = new PreviewWorkingContextDeletion(
+      persistence,
+    );
+    const activeMovePolicyDecisions = new ActiveMovePolicyDecisions();
+    const deleteWorkingContext = new DeleteWorkingContext({
+      writer: persistence,
+      playout: activeMovePolicyDecisions,
+      clock,
+      events: eventStream,
+    });
     const startInventoryRevision = new StartInventoryRevision({
       inventory: persistence,
       contextReader: persistence,
@@ -460,6 +499,11 @@ export async function composeHost(
     const getWorkingContextWorkspace = new GetWorkingContextWorkspace(
       persistence,
     );
+    const updateWorkingContextMetadata = new UpdateWorkingContextMetadata({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
     const createWorkingContext = new CreateWorkingContext({
       writer: persistence,
       clock,
@@ -485,7 +529,7 @@ export async function composeHost(
       writer: persistence,
       rules,
       policies: movePolicies,
-      decisions: new ActiveMovePolicyDecisions(),
+      decisions: activeMovePolicyDecisions,
       clock,
       events: eventStream,
     };
@@ -502,6 +546,9 @@ export async function composeHost(
     const pausePlayout = new PausePlayout(playoutDependencies);
     const resumePlayout = new ResumePlayout(playoutDependencies);
     const stopPlayout = new StopPlayout(playoutDependencies);
+    const cancelPlayoutCompletion = new CancelPlayoutCompletion(
+      playoutDependencies,
+    );
     const completePlayout = new CompletePlayout(playoutDependencies);
     const discardPlayout = new DiscardPlayout(playoutDependencies);
     const hostToken =
@@ -527,6 +574,14 @@ export async function composeHost(
       updateAnalysisNote,
       deleteAnalysisNote,
       searchInventory,
+      previewInventoryItemDeletion,
+      deleteInventoryItem,
+      getWorkScopeWorkspace,
+      getStartupResume,
+      setStartupResume,
+      previewContextItemRemoval,
+      previewWorkingContextDeletion,
+      deleteWorkingContext,
       startInventoryRevision,
       promoteAnalysisToInventoryRevision,
       previewInventoryRevision,
@@ -538,6 +593,7 @@ export async function composeHost(
       listWorkingContexts,
       getWorkingContextWorkspace,
       createWorkingContext,
+      updateWorkingContextMetadata,
       addContextReference,
       removeContextItem,
       setWorkScopeResume,
@@ -549,6 +605,7 @@ export async function composeHost(
       pausePlayout,
       resumePlayout,
       stopPlayout,
+      cancelPlayoutCompletion,
       completePlayout,
       discardPlayout,
       getEngineProviderConfigurations,

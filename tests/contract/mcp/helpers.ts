@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import type { TestContext } from 'node:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type {
+  JsonSchemaValidator,
+  jsonSchemaValidator,
+} from '@modelcontextprotocol/sdk/validation';
 
 import {
   createMcpServer,
@@ -12,6 +17,22 @@ import {
   contractFingerprint,
   productRelease,
 } from '../../../contracts/host/index.ts';
+
+const schemaValidator = new AjvJsonSchemaValidator();
+const compiledSchemas = new Map<string, JsonSchemaValidator<unknown>>();
+// Tool discovery returns new schema objects for each client. Cache identical
+// content, retaining the SDK validator and a fresh client per test.
+const cachedSchemaValidator: jsonSchemaValidator = {
+  getValidator<T>(schema: Parameters<jsonSchemaValidator['getValidator']>[0]) {
+    const key = JSON.stringify(schema);
+    let validator = compiledSchemas.get(key);
+    if (!validator) {
+      validator = schemaValidator.getValidator(schema);
+      compiledSchemas.set(key, validator);
+    }
+    return validator as JsonSchemaValidator<T>;
+  },
+};
 
 export const systemStatus: Awaited<ReturnType<HostClient['getSystemStatus']>> =
   {
@@ -83,6 +104,68 @@ export async function connectMcp(
 ) {
   const calls: { method: string; request?: unknown }[] = [];
   const hostClient: HostClient = {
+    async getWorkScopeWorkspace(request) {
+      calls.push({ method: 'getWorkScopeWorkspace', request });
+      if (overrides.getWorkScopeWorkspace)
+        return overrides.getWorkScopeWorkspace(request);
+      throw new Error('getWorkScopeWorkspace fixture not configured');
+    },
+    async getStartupResume() {
+      calls.push({ method: 'getStartupResume' });
+      if (overrides.getStartupResume) return overrides.getStartupResume();
+      throw new Error('getStartupResume fixture not configured');
+    },
+    async setStartupResume(request) {
+      calls.push({ method: 'setStartupResume', request });
+      if (overrides.setStartupResume)
+        return overrides.setStartupResume(request);
+      throw new Error('setStartupResume fixture not configured');
+    },
+    async previewContextItemRemoval(contextId, itemId) {
+      calls.push({
+        method: 'previewContextItemRemoval',
+        request: { contextId, itemId },
+      });
+      if (overrides.previewContextItemRemoval)
+        return overrides.previewContextItemRemoval(contextId, itemId);
+      throw new Error('previewContextItemRemoval fixture not configured');
+    },
+    async previewWorkingContextDeletion(contextId) {
+      calls.push({
+        method: 'previewWorkingContextDeletion',
+        request: { contextId },
+      });
+      if (overrides.previewWorkingContextDeletion)
+        return overrides.previewWorkingContextDeletion(contextId);
+      throw new Error('previewWorkingContextDeletion fixture not configured');
+    },
+    async deleteWorkingContext(contextId, request) {
+      calls.push({
+        method: 'deleteWorkingContext',
+        request: { contextId, ...request },
+      });
+      if (overrides.deleteWorkingContext)
+        return overrides.deleteWorkingContext(contextId, request);
+      throw new Error('deleteWorkingContext fixture not configured');
+    },
+    async previewInventoryItemDeletion(itemId) {
+      calls.push({
+        method: 'previewInventoryItemDeletion',
+        request: { itemId },
+      });
+      if (overrides.previewInventoryItemDeletion)
+        return overrides.previewInventoryItemDeletion(itemId);
+      throw new Error('previewInventoryItemDeletion fixture not configured');
+    },
+    async deleteInventoryItem(itemId, request) {
+      calls.push({
+        method: 'deleteInventoryItem',
+        request: { itemId, ...request },
+      });
+      if (overrides.deleteInventoryItem)
+        return overrides.deleteInventoryItem(itemId, request);
+      throw new Error('deleteInventoryItem fixture not configured');
+    },
     async getSystemStatus() {
       calls.push({ method: 'getSystemStatus' });
       return overrides.getSystemStatus
@@ -275,6 +358,15 @@ export async function connectMcp(
         return overrides.getWorkingContextWorkspace(contextId);
       throw new Error('getWorkingContextWorkspace fixture not configured');
     },
+    async updateWorkingContextMetadata(contextId, request) {
+      calls.push({
+        method: 'updateWorkingContextMetadata',
+        request: { contextId, ...request },
+      });
+      if (overrides.updateWorkingContextMetadata)
+        return overrides.updateWorkingContextMetadata(contextId, request);
+      throw new Error('updateWorkingContextMetadata fixture not configured');
+    },
     async createWorkingContext(request) {
       calls.push({ method: 'createWorkingContext', request });
       if (overrides.createWorkingContext)
@@ -290,22 +382,22 @@ export async function connectMcp(
         return overrides.addContextReference(contextId, request);
       throw new Error('addContextReference fixture not configured');
     },
-    async removeContextItem(contextId, itemId) {
+    async removeContextItem(contextId, itemId, request) {
       calls.push({
         method: 'removeContextItem',
-        request: { contextId, itemId },
+        request: { contextId, itemId, ...request },
       });
       if (overrides.removeContextItem)
-        return overrides.removeContextItem(contextId, itemId);
+        return overrides.removeContextItem(contextId, itemId, request);
       throw new Error('removeContextItem fixture not configured');
     },
-    async setWorkScopeResume(contextId, request) {
+    async setWorkScopeResume(request) {
       calls.push({
         method: 'setWorkScopeResume',
-        request: { contextId, ...request },
+        request,
       });
       if (overrides.setWorkScopeResume)
-        return overrides.setWorkScopeResume(contextId, request);
+        return overrides.setWorkScopeResume(request);
       throw new Error('setWorkScopeResume fixture not configured');
     },
     async listPositionAnalysisProviders() {
@@ -361,6 +453,12 @@ export async function connectMcp(
       if (overrides.stopPlayout) return overrides.stopPlayout(request);
       throw new Error('stopPlayout fixture not configured');
     },
+    async cancelPlayoutCompletion(request) {
+      calls.push({ method: 'cancelPlayoutCompletion', request });
+      if (overrides.cancelPlayoutCompletion)
+        return overrides.cancelPlayoutCompletion(request);
+      throw new Error('cancelPlayoutCompletion fixture not configured');
+    },
     async completePlayout(request) {
       calls.push({ method: 'completePlayout', request });
       if (overrides.completePlayout) return overrides.completePlayout(request);
@@ -373,7 +471,10 @@ export async function connectMcp(
     },
   };
   const server = createMcpServer({ hostClient, productRelease });
-  const client = new Client({ name: 'plysmith-mcp-test', version: '1.0.0' });
+  const client = new Client(
+    { name: 'plysmith-mcp-test', version: '1.0.0' },
+    { jsonSchemaValidator: cachedSchemaValidator },
+  );
   const [clientTransport, serverTransport] =
     InMemoryTransport.createLinkedPair();
   t.after(async () => {

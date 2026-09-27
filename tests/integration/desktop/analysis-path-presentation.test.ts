@@ -53,6 +53,76 @@ const step = (
   ),
 });
 
+test('persisted bridge moves have no invented navigation or note targets and are not duplicated', () => {
+  const first = step('e4', 'white', 1);
+  const bridge = step('e5', 'black', 1);
+  const presentation = analysisPathPresentation({
+    record: {
+      itemId: '3',
+      revisionId: '3',
+      rootAnchorId: '15',
+      currentAnchorId: '15',
+      root: bridge.after,
+      cursor: 0,
+      contributions: [],
+      steps: [],
+      sourcePath: {
+        displayName: 'Source',
+        root: first.before,
+        steps: [first, bridge],
+      },
+      sourceLine: {
+        sourceItemId: '1',
+        sourceItemType: 'analysis',
+        sourceRevisionId: '1',
+        sourceAnchorId: '2',
+        sourceDisplayName: 'Source',
+        root: first.before,
+        rootTarget: { itemId: '1', revisionId: '1', anchorId: '1' },
+        contributions: [],
+        steps: [
+          { ...first, itemId: '1', revisionId: '1', anchorId: '2' },
+          bridge,
+        ],
+      },
+    },
+  });
+  assert.deepEqual(
+    presentation.entries.map((entry) => entry.move.san),
+    ['e4', 'e5'],
+  );
+  assert.equal(presentation.entries[0]?.noteTarget?.anchorId, '2');
+  assert.equal(presentation.entries[1]?.noteTarget, undefined);
+  assert.equal(presentation.positions[1]?.target?.anchorId, '2');
+  assert.equal(presentation.positions[2]?.target?.itemId, '3');
+  assert.equal(presentation.currentPositionIndex, 2);
+});
+
+test('a free persisted source prefix does not pretend to have a stored source root', () => {
+  const prefix = step('e4', 'white', 1);
+  const presentation = analysisPathPresentation({
+    record: {
+      itemId: '3',
+      revisionId: '3',
+      rootAnchorId: '15',
+      currentAnchorId: '15',
+      root: prefix.after,
+      cursor: 0,
+      contributions: [],
+      steps: [],
+      sourcePath: {
+        displayName: 'Starting position',
+        root: prefix.before,
+        steps: [prefix],
+      },
+    },
+  });
+  assert.equal(presentation.positions[0]?.target, undefined);
+  assert.equal(presentation.sourceRootTarget, undefined);
+  assert.equal(presentation.entries[0]?.noteTarget, undefined);
+  assert.equal(presentation.hasSourcePrefix, true);
+});
+
 test('keeps the stored route visible while a noted analysis path remains active', () => {
   const presentation = analysisPathPresentation({
     record: {

@@ -7,7 +7,10 @@ import type {
   RevisionImpactId,
   WorkingContextId,
 } from '../../domain/identity/index.ts';
-import type { WorkingContextDraft } from '../../domain/workspace/index.ts';
+import type {
+  WorkingContextDraft,
+  WorkScope,
+} from '../../domain/workspace/index.ts';
 
 export interface WorkingContextSummary extends WorkingContextDraft {
   readonly contextId: WorkingContextId;
@@ -71,6 +74,13 @@ export interface WorkingContextWorkspace {
   readonly dataRevision: number;
 }
 
+export interface WorkScopeWorkspace {
+  readonly scope: WorkScope;
+  readonly managementResume?: ManagementResume;
+  readonly analysisResume?: AnalysisResume;
+  readonly dataRevision: number;
+}
+
 export interface CreateWorkingContextRequest {
   readonly displayName: string;
   readonly purpose?: string;
@@ -81,6 +91,13 @@ export interface CreateWorkingContextRequest {
 export interface CreateWorkingContextResult {
   readonly context: WorkingContextSummary;
   readonly dataRevision: number;
+}
+
+export interface UpdateWorkingContextMetadataRequest {
+  readonly contextId: WorkingContextId;
+  readonly expectedContextVersion: number;
+  readonly displayName: string;
+  readonly purpose?: string | null;
 }
 
 export interface AddContextReferenceRequest {
@@ -97,6 +114,8 @@ export interface AddContextReferenceResult {
 export interface RemoveContextItemRequest {
   readonly contextId: WorkingContextId;
   readonly itemId: InventoryItemId;
+  readonly expectedDataRevision: number;
+  readonly expectedContextVersion: number;
 }
 
 export interface RemoveContextItemResult {
@@ -107,7 +126,7 @@ export interface RemoveContextItemResult {
 
 export type SetWorkScopeResumeRequest =
   | {
-      readonly contextId: WorkingContextId;
+      readonly scope: WorkScope;
       readonly area: 'manage';
       readonly expectedResumeVersion: number | null;
       readonly presentation: 'list' | 'atlas';
@@ -115,7 +134,7 @@ export type SetWorkScopeResumeRequest =
       readonly selectedAnchorId?: AnchorId;
     }
   | {
-      readonly contextId: WorkingContextId;
+      readonly scope: WorkScope;
       readonly area: 'analyze';
       readonly expectedResumeVersion: number | null;
       readonly mode: 'analyze' | 'edit_inventory' | 'edit_overlay';
@@ -138,7 +157,7 @@ export type SetWorkScopeResumeResult =
 
 export type WorkspaceChanged =
   | {
-      readonly kind: 'workspace.context-created';
+      readonly kind: 'workspace.context-created' | 'workspace.context-updated';
       readonly occurredAt: string;
       readonly dataRevision: number;
       readonly contextId: WorkingContextId;
@@ -162,7 +181,19 @@ export type WorkspaceChanged =
       readonly kind: 'workspace.resume-updated';
       readonly occurredAt: string;
       readonly dataRevision: number;
-      readonly contextId: WorkingContextId;
+      readonly contextId?: WorkingContextId;
       readonly area: 'manage' | 'analyze';
       readonly resumeVersion: number;
+    }
+  | {
+      readonly kind: 'workspace.context-deleted';
+      readonly occurredAt: string;
+      readonly dataRevision: number;
+      readonly contextId: WorkingContextId;
+    }
+  | {
+      readonly kind: 'workspace.startup-updated';
+      readonly occurredAt: string;
+      readonly dataRevision: number;
+      readonly startupVersion: number;
     };

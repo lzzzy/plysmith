@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import type { AnalysisRecordView } from '../../../../application/analysis/index.ts';
 import {
   invalidInventoryRevision,
+  inventoryDisplayNameConflict,
   inventoryPreviewConflict,
   inventoryRevisionConflict,
   type InventoryRevisionPreview,
@@ -96,7 +97,6 @@ export function readAnalysisRevision(
     ...(request.scope.kind === 'context'
       ? { contextId: request.scope.contextId }
       : {}),
-    readOnlyPreview: request.scope.kind === 'context',
   });
 }
 
@@ -305,18 +305,19 @@ export function saveInventoryRevision(
     impactedContexts,
     occurredAt: request.occurredAt,
   });
-  if (request.scope.kind === 'context') {
-    consumePublishingContextScratch(database, {
-      contextId: request.scope.contextId.value,
-      itemId: candidate.base.itemId,
-      baseRevisionId: candidate.base.revisionId,
-      targetRevisionId: revisionId,
-      currentAnchorId,
-      cutAnchorId: intent.cutAnchorId,
-      impacted: impactedContexts.has(request.scope.contextId.value),
-      occurredAt: request.occurredAt,
-    });
-  }
+  consumePublishingScopeScratch(database, {
+    contextId:
+      request.scope.kind === 'context' ? request.scope.contextId.value : null,
+    itemId: candidate.base.itemId,
+    baseRevisionId: candidate.base.revisionId,
+    targetRevisionId: revisionId,
+    currentAnchorId,
+    cutAnchorId: intent.cutAnchorId,
+    impacted:
+      request.scope.kind === 'context' &&
+      impactedContexts.has(request.scope.contextId.value),
+    occurredAt: request.occurredAt,
+  });
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   return Object.freeze({
     itemId: candidate.base.itemId,
@@ -361,7 +362,13 @@ function buildCandidate(
     revisionId: intent.baseRevisionId,
     anchorId: intent.cutAnchorId,
   });
-  if (base === undefined || base.historical || base.readOnlyPreview) {
+  if (
+    base === undefined ||
+    base.historical ||
+    (scope.kind === 'context' &&
+      !base.contextMember &&
+      intent.mode !== 'metadata')
+  ) {
     throw invalidInventoryRevision();
   }
   if (
@@ -371,7 +378,7 @@ function buildCandidate(
       intent.itemId.value,
     )
   ) {
-    throw invalidInventoryRevision();
+    throw inventoryDisplayNameConflict();
   }
   const line: InventoryRevisionLine = {
     itemId: base.itemId,
@@ -789,12 +796,12 @@ function copyTypedRevisionMetadata(
       .prepare(
         `INSERT INTO inventory_game_revision
            (revision_id, item_id, root_occurrence_id, origin_mode, player_side,
-            result_kind, result_reason, policy_capability, provider_instance_id,
+            result_kind, result_reason, result_source, policy_capability, provider_instance_id,
             provider_fingerprint, provider_type, provider_display_name,
             profile_model_name, profile_selection_mode, profile_history_mode,
             profile_reproducibility)
          SELECT ?, item_id, root_occurrence_id, origin_mode, player_side,
-                result_kind, result_reason, policy_capability, provider_instance_id,
+                result_kind, result_reason, result_source, policy_capability, provider_instance_id,
                 provider_fingerprint, provider_type, provider_display_name,
                 profile_model_name, profile_selection_mode, profile_history_mode,
                 profile_reproducibility
@@ -811,6 +818,7 @@ function copyTypedRevisionMetadata(
            FROM inventory_game_origin WHERE game_revision_id = ?`,
       )
       .run(revisionId.value, baseRevisionId.value);
+    copyGameSourcePath(database, baseRevisionId.value, revisionId.value);
     return;
   }
   database
@@ -976,10 +984,10 @@ function rebaseExplorationScratch(
   return changed.changes === 1;
 }
 
-function consumePublishingContextScratch(
+function consumePublishingScopeScratch(
   database: Database.Database,
   request: {
-    readonly contextId: number;
+    readonly contextId: number | null;
     readonly itemId: InventoryItemId;
     readonly baseRevisionId: ItemRevisionId;
     readonly targetRevisionId: ItemRevisionId;
@@ -989,6 +997,25 @@ function consumePublishingContextScratch(
     readonly occurredAt: string;
   },
 ): void {
+  const member = database
+    .prepare(
+      'SELECT 1 FROM workspace_context_item WHERE context_id = ? AND item_id = ?',
+    )
+    .get(request.contextId, request.itemId.value);
+  if (request.contextId !== null && member === undefined) {
+    const cleared = database
+      .prepare(
+        `UPDATE workspace_analysis_resume
+      SET resume_version = resume_version + 1, item_id = NULL, revision_id = NULL,
+          anchor_id = NULL, mode = 'analyze', analysis_scratch_draft_id = NULL,
+          updated_at_utc = ?
+      WHERE context_id = ? AND item_id = ? AND analysis_scratch_draft_id IS NOT NULL`,
+      )
+      .run(request.occurredAt, request.contextId, request.itemId.value);
+    if (cleared.changes !== 1) throw inventoryRevisionConflict();
+    deleteContextScratch(database, request.contextId);
+    return;
+  }
   const revisionId = request.impacted
     ? request.baseRevisionId
     : request.targetRevisionId;
@@ -1008,7 +1035,7 @@ function consumePublishingContextScratch(
           SET resume_version = resume_version + 1, revision_id = ?,
               anchor_id = ?, mode = 'analyze', current_position_id = ?,
               analysis_scratch_draft_id = NULL, updated_at_utc = ?
-        WHERE context_id = ? AND item_id = ?
+        WHERE context_id IS ? AND item_id = ?
           AND analysis_scratch_draft_id IS NOT NULL`,
     )
     .run(
@@ -1028,8 +1055,10 @@ function validateStoredScratch(
   scope: WorkScope,
   scratch: AnalysisScratch,
 ): void {
-  if (scope.kind === 'free') return;
-  const stored = readContextScratch(database, scope.contextId);
+  const stored = readContextScratch(
+    database,
+    scope.kind === 'free' ? null : scope.contextId,
+  );
   if (
     stored?.scratchId !== scratch.scratchId ||
     stored.scratchRevision !== scratch.scratchRevision ||
@@ -1248,3 +1277,4 @@ function revisionFingerprint(value: unknown): string {
 function sha256(value: unknown): Buffer {
   return createHash('sha256').update(JSON.stringify(value), 'utf8').digest();
 }
+import { copyGameSourcePath } from './sqlite-game-source-path.ts';

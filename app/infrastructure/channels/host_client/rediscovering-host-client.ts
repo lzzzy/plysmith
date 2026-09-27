@@ -1,5 +1,16 @@
 import {
   connectHost,
+  type ContextRemovalPreviewDto,
+  type InventoryItemDeletionPreviewDto,
+  type WorkScopeWorkspaceDto,
+  type StartupResumeDto,
+  type SetStartupResumeRequestDto,
+  type DeleteWorkingContextRequestDto,
+  type DeleteInventoryItemRequestDto,
+  type RemoveContextItemRequestDto,
+  type DeleteWorkingContextResultDto,
+  type DeleteInventoryItemResultDto,
+  type GetWorkScopeWorkspaceRequestDto,
   type PlysmithHostClient,
   type PlysmithHostClientOptions,
   type SetUiLanguageResultDto,
@@ -25,6 +36,7 @@ import {
   type DiagnosticReportManifestDto,
   type DiagnosticSettingsDto,
   type CreateWorkingContextRequestDto,
+  type UpdateWorkingContextMetadataRequestDto,
   type CreateWorkingContextResultDto,
   type GetAnalysisWorkspaceRequestDto,
   type ListWorkingContextsRequestDto,
@@ -90,6 +102,62 @@ export class RediscoveringHostClient {
 
   async attach(): Promise<void> {
     await this.#currentClient();
+  }
+
+  async getWorkScopeWorkspace(
+    request: GetWorkScopeWorkspaceRequestDto,
+  ): Promise<WorkScopeWorkspaceDto> {
+    return this.#read((client) => client.getWorkScopeWorkspace(request));
+  }
+
+  async getStartupResume(): Promise<StartupResumeDto> {
+    return this.#read((client) => client.getStartupResume());
+  }
+
+  async setStartupResume(
+    request: SetStartupResumeRequestDto,
+  ): Promise<StartupResumeDto> {
+    return (await this.#currentClient()).setStartupResume(request);
+  }
+
+  async previewContextItemRemoval(
+    contextId: string,
+    itemId: string,
+  ): Promise<ContextRemovalPreviewDto> {
+    return this.#read((client) =>
+      client.previewContextItemRemoval(contextId, itemId),
+    );
+  }
+
+  async previewWorkingContextDeletion(
+    contextId: string,
+  ): Promise<ContextRemovalPreviewDto> {
+    return this.#read((client) =>
+      client.previewWorkingContextDeletion(contextId),
+    );
+  }
+
+  async deleteWorkingContext(
+    contextId: string,
+    request: DeleteWorkingContextRequestDto,
+  ): Promise<DeleteWorkingContextResultDto> {
+    return (await this.#currentClient()).deleteWorkingContext(
+      contextId,
+      request,
+    );
+  }
+
+  async previewInventoryItemDeletion(
+    itemId: string,
+  ): Promise<InventoryItemDeletionPreviewDto> {
+    return this.#read((client) => client.previewInventoryItemDeletion(itemId));
+  }
+
+  async deleteInventoryItem(
+    itemId: string,
+    request: DeleteInventoryItemRequestDto,
+  ): Promise<DeleteInventoryItemResultDto> {
+    return (await this.#currentClient()).deleteInventoryItem(itemId, request);
   }
 
   async getSystemStatus(): Promise<SystemStatusDto> {
@@ -279,6 +347,16 @@ export class RediscoveringHostClient {
     return this.#read((client) => client.getWorkingContextWorkspace(contextId));
   }
 
+  async updateWorkingContextMetadata(
+    contextId: string,
+    request: UpdateWorkingContextMetadataRequestDto,
+  ): Promise<CreateWorkingContextResultDto> {
+    return (await this.#currentClient()).updateWorkingContextMetadata(
+      contextId,
+      request,
+    );
+  }
+
   async createWorkingContext(
     request: CreateWorkingContextRequestDto,
   ): Promise<CreateWorkingContextResultDto> {
@@ -298,15 +376,19 @@ export class RediscoveringHostClient {
   async removeContextItem(
     contextId: string,
     itemId: string,
+    request: RemoveContextItemRequestDto,
   ): Promise<RemoveContextItemResultDto> {
-    return (await this.#currentClient()).removeContextItem(contextId, itemId);
+    return (await this.#currentClient()).removeContextItem(
+      contextId,
+      itemId,
+      request,
+    );
   }
 
   async setWorkScopeResume(
-    contextId: string,
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto> {
-    return (await this.#currentClient()).setWorkScopeResume(contextId, request);
+    return (await this.#currentClient()).setWorkScopeResume(request);
   }
 
   async listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto> {
@@ -344,6 +426,12 @@ export class RediscoveringHostClient {
 
   async stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
     return (await this.#currentClient()).stopPlayout(request);
+  }
+
+  async cancelPlayoutCompletion(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<PlayoutDto> {
+    return (await this.#currentClient()).cancelPlayoutCompletion(request);
   }
 
   async completePlayout(

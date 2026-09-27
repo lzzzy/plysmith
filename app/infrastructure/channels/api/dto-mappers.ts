@@ -10,6 +10,9 @@ import type {
 } from '../../../application/analysis/index.ts';
 import type {
   InventoryRevisionPreview,
+  InventoryItemDeletionPreview,
+  InventoryItemUsageSummary,
+  DeleteInventoryItemResult,
   InventorySearchItem,
   ListInventoryRevisionsResult,
   PendingRevisionImpact,
@@ -34,6 +37,11 @@ import type {
   SetWorkScopeResumeResult,
   WorkingContextSummary,
   WorkingContextWorkspace,
+  WorkScopeWorkspace,
+  StartupResume,
+  ContextRemovalPreview,
+  ContextPlayoutWork,
+  DeleteWorkingContextResult,
 } from '../../../application/workspace/index.ts';
 import type { AnalysisScratch } from '../../../domain/analysis/index.ts';
 import type {
@@ -106,6 +114,7 @@ export function parsePlayoutStart(start: {
   readonly itemId?: string;
   readonly revisionId?: string;
   readonly anchorId?: string;
+  readonly continuation?: readonly MoveInput[];
 }): PlayoutStartInput {
   if (start.kind === 'initial_position') return { kind: start.kind };
   if (start.kind === 'fen') {
@@ -128,6 +137,9 @@ export function parsePlayoutStart(start: {
     itemId: parseLocalId('inventory-item', start.itemId),
     revisionId: parseLocalId('item-revision', start.revisionId),
     anchorId: parseLocalId('anchor', start.anchorId),
+    ...(start.continuation === undefined
+      ? {}
+      : { continuation: start.continuation }),
   };
 }
 
@@ -151,6 +163,7 @@ export function parseAnalysisScratchAction(action: {
     | 'remove_last_move'
     | 'prepare_note'
     | 'clear_note'
+    | 'continue_exploration'
     | 'discard';
   readonly origin?:
     | { readonly kind: 'initial_position' }
@@ -215,6 +228,7 @@ export function parseAnalysisScratchAction(action: {
       if (action.body === undefined) invalidRequest();
       return { kind: action.kind, body: action.body };
     case 'clear_note':
+    case 'continue_exploration':
     case 'remove_last_move':
     case 'discard':
       return { kind: action.kind };
@@ -222,7 +236,7 @@ export function parseAnalysisScratchAction(action: {
 }
 
 export function parseResumeRequest(
-  contextId: string,
+  scope: WireScope,
   body:
     | {
         readonly area: 'manage';
@@ -240,10 +254,10 @@ export function parseResumeRequest(
         readonly anchorId?: string;
       },
 ): SetWorkScopeResumeRequest {
-  const parsedContextId = parseLocalId('working-context', contextId);
+  const parsedScope = parseWorkScope(scope);
   if (body.area === 'manage') {
     return {
-      contextId: parsedContextId,
+      scope: parsedScope,
       area: body.area,
       expectedResumeVersion: body.expectedResumeVersion,
       presentation: body.presentation,
@@ -258,7 +272,7 @@ export function parseResumeRequest(
     };
   }
   return {
-    contextId: parsedContextId,
+    scope: parsedScope,
     area: body.area,
     expectedResumeVersion: body.expectedResumeVersion,
     mode: body.mode,
@@ -417,6 +431,13 @@ export function analysisNoteMutationResultDto(
 export function searchInventoryResultDto(model: SearchInventoryResult) {
   return {
     items: model.items.map(inventorySearchItemDto),
+    ancestors: model.ancestors.map(inventorySearchItemDto),
+    provenanceEdges: model.provenanceEdges.map((edge) => ({
+      itemId: idDto(edge.itemId),
+      sourceItemId: idDto(edge.sourceItemId),
+      sourceRevisionId: idDto(edge.sourceRevisionId),
+      sourceAnchorId: idDto(edge.sourceAnchorId),
+    })),
     ...(model.nextCursor === undefined ? {} : { nextCursor: model.nextCursor }),
     dataRevision: model.dataRevision,
   };
@@ -509,6 +530,11 @@ export function listInventoryRevisionsResultDto(
 
 export function pendingRevisionImpactDto(model: PendingRevisionImpact) {
   return {
+    dataRevision: model.dataRevision,
+    useTargetLoss: inventoryItemUsageSummaryDto(model.useTargetLoss),
+    removeFromContextLoss: inventoryItemUsageSummaryDto(
+      model.removeFromContextLoss,
+    ),
     impactId: idDto(model.impactId),
     contextId: idDto(model.contextId),
     contextName: model.contextName,
@@ -667,12 +693,156 @@ export function playoutResultDto(model: PlayoutView) {
 
 export function completePlayoutResultDto(model: CompletePlayoutResult) {
   return {
+    outcome: model.outcome,
+    outcomeSource: model.outcomeSource,
     itemId: idDto(model.itemId),
     revisionId: idDto(model.revisionId),
     rootAnchorId: idDto(model.rootAnchorId),
     ...(model.contextReferenceId === undefined
       ? {}
       : { contextReferenceId: idDto(model.contextReferenceId) }),
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function inventoryItemDeletionPreviewDto(
+  model: InventoryItemDeletionPreview,
+) {
+  return {
+    itemId: idDto(model.itemId),
+    currentRevisionId: idDto(model.currentRevisionId),
+    displayName: model.displayName,
+    itemType: model.itemType,
+    contexts: model.contexts.map((context) => ({
+      ...inventoryItemUsageSummaryDto(context),
+      contextId: idDto(context.contextId),
+      contextName: context.contextName,
+    })),
+    global: inventoryItemUsageSummaryDto(model.global),
+    retainedDerivedItemCount: model.retainedDerivedItemCount,
+    retainedPlayoutCount: model.retainedPlayoutCount,
+    dataRevision: model.dataRevision,
+  };
+}
+
+function inventoryItemUsageSummaryDto(model: InventoryItemUsageSummary) {
+  return {
+    referenceCount: model.referenceCount,
+    activeNoteCount: model.activeNoteCount,
+    noteMoveCount: model.noteMoveCount,
+    scratchCount: model.scratchCount,
+    scratchMoveCount: model.scratchMoveCount,
+    scratchNoteCount: model.scratchNoteCount,
+    managementResumeAffected: model.managementResumeAffected,
+    analysisResumeAffected: model.analysisResumeAffected,
+  };
+}
+
+export function deleteInventoryItemResultDto(model: DeleteInventoryItemResult) {
+  return { itemId: idDto(model.itemId), dataRevision: model.dataRevision };
+}
+
+export function workScopeWorkspaceDto(model: WorkScopeWorkspace) {
+  return {
+    scope: workScopeDto(model.scope),
+    dataRevision: model.dataRevision,
+    ...(model.managementResume === undefined
+      ? {}
+      : { managementResume: managementResumeDto(model.managementResume) }),
+    ...(model.analysisResume === undefined
+      ? {}
+      : { analysisResume: analysisResumeDto(model.analysisResume) }),
+  };
+}
+
+export function startupResumeDto(model: StartupResume) {
+  return {
+    scope: workScopeDto(model.scope),
+    area: model.area,
+    startupVersion: model.startupVersion,
+    dataRevision: model.dataRevision,
+    ...(model.unavailableContext === undefined
+      ? {}
+      : {
+          unavailableContext: {
+            contextId: idDto(model.unavailableContext.contextId),
+            reason: model.unavailableContext.reason,
+            ...(model.unavailableContext.displayName === undefined
+              ? {}
+              : { displayName: model.unavailableContext.displayName }),
+          },
+        }),
+  };
+}
+
+function contextPlayoutWorkDto(model: ContextPlayoutWork) {
+  return {
+    draftId: idDto(model.draftId),
+    draftRevision: model.draftRevision,
+    moveCount: model.moveCount,
+    status: model.status,
+    ...(model.sourceItemId === undefined
+      ? {}
+      : { sourceItemId: idDto(model.sourceItemId) }),
+  };
+}
+
+export function contextRemovalPreviewDto(model: ContextRemovalPreview) {
+  const { losses } = model;
+  return {
+    contextId: idDto(model.contextId),
+    contextName: model.contextName,
+    contextVersion: model.contextVersion,
+    dataRevision: model.dataRevision,
+    items: model.items.map((item) => ({
+      itemId: idDto(item.itemId),
+      displayName: item.displayName,
+    })),
+    referenceCount: model.referenceCount,
+    losses: {
+      notes: losses.notes.map((note) => ({
+        contributionId: idDto(note.contributionId),
+        body: note.body,
+        moveCount: note.moveCount,
+        ...(note.itemId === undefined ? {} : { itemId: idDto(note.itemId) }),
+      })),
+      ...(losses.scratch === undefined
+        ? {}
+        : {
+            scratch: {
+              scratchId: losses.scratch.scratchId,
+              scratchRevision: losses.scratch.scratchRevision,
+              stepCount: losses.scratch.stepCount,
+              intent: losses.scratch.intent,
+              ...(losses.scratch.noteBody === undefined
+                ? {}
+                : { noteBody: losses.scratch.noteBody }),
+              ...(losses.scratch.itemId === undefined
+                ? {}
+                : { itemId: idDto(losses.scratch.itemId) }),
+            },
+          }),
+      ...(losses.managementResume === undefined
+        ? {}
+        : { managementResume: managementResumeDto(losses.managementResume) }),
+      ...(losses.analysisResume === undefined
+        ? {}
+        : { analysisResume: analysisResumeDto(losses.analysisResume) }),
+      ...(losses.playout === undefined
+        ? {}
+        : { playout: contextPlayoutWorkDto(losses.playout) }),
+    },
+    ...(model.retainedPlayout === undefined
+      ? {}
+      : { retainedPlayout: contextPlayoutWorkDto(model.retainedPlayout) }),
+  };
+}
+
+export function deleteWorkingContextResultDto(
+  model: DeleteWorkingContextResult,
+) {
+  return {
+    contextId: idDto(model.contextId),
     dataRevision: model.dataRevision,
   };
 }
@@ -741,6 +911,7 @@ export function analysisRecordDto(model: AnalysisRecordView) {
           game: {
             playerSide: model.game.playerSide,
             outcome: model.game.outcome,
+            outcomeSource: model.game.outcomeSource,
             policy: model.game.policy,
           },
         }),
@@ -763,18 +934,28 @@ export function analysisRecordDto(model: AnalysisRecordView) {
             sourceAnchorId: idDto(model.sourceLine.sourceAnchorId),
             sourceDisplayName: model.sourceLine.sourceDisplayName,
             root: chessStateDto(model.sourceLine.root),
-            rootTarget: {
-              itemId: idDto(model.sourceLine.rootTarget.itemId),
-              revisionId: idDto(model.sourceLine.rootTarget.revisionId),
-              anchorId: idDto(model.sourceLine.rootTarget.anchorId),
-            },
+            ...(model.sourceLine.rootTarget === undefined
+              ? {}
+              : {
+                  rootTarget: {
+                    itemId: idDto(model.sourceLine.rootTarget.itemId),
+                    revisionId: idDto(model.sourceLine.rootTarget.revisionId),
+                    anchorId: idDto(model.sourceLine.rootTarget.anchorId),
+                  },
+                }),
             steps: model.sourceLine.steps.map((step) => ({
               before: chessStateDto(step.before),
               move: canonicalMoveDto(step.move),
               after: chessStateDto(step.after),
-              anchorId: idDto(step.anchorId),
-              itemId: idDto(step.itemId),
-              revisionId: idDto(step.revisionId),
+              ...(step.anchorId === undefined
+                ? {}
+                : { anchorId: idDto(step.anchorId) }),
+              ...(step.itemId === undefined
+                ? {}
+                : { itemId: idDto(step.itemId) }),
+              ...(step.revisionId === undefined
+                ? {}
+                : { revisionId: idDto(step.revisionId) }),
             })),
             contributions: model.sourceLine.contributions.map(
               analysisContributionDto,
@@ -790,8 +971,16 @@ export function analysisRecordDto(model: AnalysisRecordView) {
     })),
     cursor: model.cursor,
     contributions: model.contributions.map(analysisContributionDto),
+    ...(model.sourcePath === undefined
+      ? {}
+      : {
+          sourcePath: {
+            displayName: model.sourcePath.displayName,
+            root: chessStateDto(model.sourcePath.root),
+            steps: model.sourcePath.steps.map(analysisStepDto),
+          },
+        }),
     contextMember: model.contextMember,
-    readOnlyPreview: model.readOnlyPreview,
     historical: model.historical,
   };
 }
@@ -875,6 +1064,7 @@ function canonicalMoveDto(model: CanonicalMove) {
 
 function inventorySearchItemDto(model: InventorySearchItem) {
   return {
+    lifecycle: model.lifecycle,
     itemId: idDto(model.itemId),
     currentRevisionId: idDto(model.currentRevisionId),
     rootAnchorId: idDto(model.rootAnchorId),
@@ -971,3 +1161,4 @@ function idDto(id: { readonly value: number }): string {
 function invalidRequest(): never {
   throw new ApiProblem('request.invalid');
 }
+import type { MoveInput } from '../../../application/chess_graph/index.ts';

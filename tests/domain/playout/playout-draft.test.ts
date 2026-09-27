@@ -6,10 +6,13 @@ import { localId } from '../../../app/domain/identity/index.ts';
 import {
   appendPolicyPlayoutMove,
   appendUserPlayoutMove,
+  cancelPlayoutCompletion,
+  completePlayoutDraft,
   createPlayoutDraft,
   pausePlayoutDraft,
   resumePlayoutDraft,
   retryPlayoutPolicy,
+  stopPlayoutDraft,
 } from '../../../app/domain/playout/index.ts';
 
 const rules = new ChessJsRulesAdapter();
@@ -52,6 +55,48 @@ describe('PlayoutDraft', () => {
       kind: 'awaiting_policy',
       decisionId: 3,
     });
+  });
+
+  for (const playerSide of ['white', 'black'] as const) {
+    it(`cancels completion to paused with ${playerSide} as player`, () => {
+      const draft = createDraft(playerSide);
+      const stopped = stopPlayoutDraft(draft);
+      const cancelled = cancelPlayoutCompletion(stopped);
+
+      assert.deepEqual(cancelled, {
+        ...stopped,
+        draftRevision: stopped.draftRevision + 1,
+        status: { kind: 'paused' },
+      });
+      assert.equal(stopped.status.kind, 'stopped');
+      assert.ok(Object.isFrozen(cancelled));
+      const resumed = resumePlayoutDraft(cancelled);
+      assert.deepEqual(
+        resumed.status,
+        playerSide === 'white'
+          ? { kind: 'active' }
+          : {
+              kind: 'awaiting_policy',
+              decisionId: stopped.decisionGeneration + 1,
+            },
+      );
+    });
+  }
+
+  it('only cancels completion preparation, never an automatic terminal end', () => {
+    const active = createDraft('white');
+    const terminal = completePlayoutDraft(active, {
+      reason: 'stalemate',
+      outcome: { kind: 'draw', reason: 'stalemate' },
+    });
+    for (const draft of [
+      active,
+      createDraft('black'),
+      pausePlayoutDraft(active),
+      terminal,
+    ]) {
+      assert.throws(() => cancelPlayoutCompletion(draft));
+    }
   });
 });
 

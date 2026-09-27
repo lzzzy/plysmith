@@ -8,6 +8,7 @@ import type {
   WorkspaceClock,
   WorkingContextWriter,
 } from './workspace-ports.ts';
+import { validateRemovalConfirmation } from './workspace-lifecycle.ts';
 
 export interface RemoveContextItemUseCase {
   execute(request: RemoveContextItemRequest): Promise<RemoveContextItemResult>;
@@ -31,6 +32,7 @@ export class RemoveContextItem implements RemoveContextItemUseCase {
   async execute(
     request: RemoveContextItemRequest,
   ): Promise<RemoveContextItemResult> {
+    validateRemovalConfirmation(request);
     const occurredAt = this.#clock.now();
     const result = await this.#writer.removeContextItem(request, occurredAt);
     const event: WorkspaceChanged = Object.freeze({

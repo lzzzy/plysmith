@@ -116,10 +116,8 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #d8dde4;
-  border-radius: 5px;
+  padding: 12px 0;
+  border-bottom: 1px solid #d8dde4;
 }
 
 .choice > div {
@@ -156,8 +154,26 @@
 }
 
 .removeChoice {
-  background: #fffafa;
   border-color: #e4cccc;
+}
+
+.confirmation {
+  padding-top: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.confirmationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.choice,
+.confirmation {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .primaryButton,
@@ -168,11 +184,18 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 0 12px;
+  max-width: 100%;
+  padding: 8px 12px;
   border-radius: 5px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 680;
+}
+
+.primaryButton svg,
+.secondaryButton svg,
+.removeButton svg {
+  flex-shrink: 0;
 }
 
 .primaryButton {
@@ -194,6 +217,7 @@
 }
 
 .primaryButton:disabled,
+.primaryButton[data-disabled],
 .secondaryButton:disabled,
 .secondaryButton[data-disabled],
 .removeButton[data-disabled],

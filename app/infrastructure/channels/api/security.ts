@@ -39,8 +39,12 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/playout/pause': ['POST'],
   '/playout/resume': ['POST'],
   '/playout/stop': ['POST'],
+  '/playout/cancel-completion': ['POST'],
   '/playout/complete': ['POST'],
   '/working-contexts': ['GET', 'POST'],
+  '/workspace/scope': ['GET'],
+  '/workspace/startup': ['GET', 'PUT'],
+  '/workspace/resume': ['PUT'],
 };
 
 function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
@@ -69,11 +73,20 @@ function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
   if (/^\/workspace\/revision-impacts\/[^/]+$/.test(pathname)) return ['GET'];
   if (/^\/workspace\/revision-impacts\/[^/]+\/resolution$/.test(pathname))
     return ['POST'];
-  if (/^\/working-contexts\/[^/]+$/.test(pathname)) return ['GET'];
+  if (/^\/inventory\/items\/[^/]+$/.test(pathname)) return ['DELETE'];
+  if (/^\/inventory\/items\/[^/]+\/deletion-preview$/.test(pathname))
+    return ['GET'];
+  if (/^\/working-contexts\/[^/]+$/.test(pathname)) return ['GET', 'DELETE'];
+  if (/^\/working-contexts\/[^/]+\/deletion-preview$/.test(pathname))
+    return ['GET'];
+  if (
+    /^\/working-contexts\/[^/]+\/items\/[^/]+\/removal-preview$/.test(pathname)
+  )
+    return ['GET'];
+  if (/^\/working-contexts\/[^/]+\/metadata$/.test(pathname)) return ['PUT'];
   if (/^\/working-contexts\/[^/]+\/items\/[^/]+$/.test(pathname))
     return ['DELETE'];
   if (/^\/working-contexts\/[^/]+\/references$/.test(pathname)) return ['POST'];
-  if (/^\/working-contexts\/[^/]+\/resume$/.test(pathname)) return ['PUT'];
   return undefined;
 }
 

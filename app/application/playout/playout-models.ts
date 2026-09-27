@@ -7,6 +7,9 @@ import type {
   PlayoutOutcome,
   PlayoutSourcePath,
   PlayoutTerminalReason,
+  GameOutcome,
+  GameOutcomeSource,
+  ManualGameResult,
 } from '../../domain/playout/index.ts';
 import type {
   AppliedMove,
@@ -29,7 +32,9 @@ export type PlayoutStartInput =
   | { readonly kind: 'initial_position' }
   | { readonly kind: 'fen'; readonly fen: string }
   | { readonly kind: 'position_setup'; readonly setup: AnalysisSetup }
-  | Extract<PlayoutOrigin, { readonly kind: 'inventory_anchor' }>;
+  | (Extract<PlayoutOrigin, { readonly kind: 'inventory_anchor' }> & {
+      readonly continuation?: readonly MoveInput[];
+    });
 
 export interface StartPlayoutRequest {
   readonly scope: WorkScope;
@@ -108,6 +113,7 @@ export interface PersistDiscardPlayoutRequest {
 }
 
 export interface CompletePlayoutRequest extends ExpectedPlayoutRequest {
+  readonly manualResult?: ManualGameResult;
   readonly completionId: string;
   readonly displayName: string;
   readonly languageTag: string;
@@ -125,6 +131,8 @@ export interface PersistCompletePlayoutRequest {
 }
 
 export interface CompletePlayoutResult {
+  readonly outcome: GameOutcome;
+  readonly outcomeSource: GameOutcomeSource;
   readonly itemId: InventoryItemId;
   readonly revisionId: ItemRevisionId;
   readonly rootAnchorId: AnchorId;

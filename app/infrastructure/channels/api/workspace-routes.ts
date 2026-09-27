@@ -13,6 +13,11 @@ import {
   resolvePendingRevisionImpactResultDto,
   setWorkScopeResumeResultDto,
   workingContextWorkspaceDto,
+  parseWorkScope,
+  workScopeWorkspaceDto,
+  startupResumeDto,
+  contextRemovalPreviewDto,
+  deleteWorkingContextResultDto,
 } from './dto-mappers.ts';
 import {
   AddContextReferenceBodySchema,
@@ -20,6 +25,7 @@ import {
   ContextIdParamsSchema,
   ContextItemParamsSchema,
   CreateWorkingContextBodySchema,
+  UpdateWorkingContextMetadataBodySchema,
   CreateWorkingContextResultSchema,
   EmptyQuerySchema,
   ListWorkingContextsResultSchema,
@@ -33,6 +39,14 @@ import {
   ResolvePendingRevisionImpactResultSchema,
   RevisionImpactIdParamsSchema,
   WorkingContextWorkspaceSchema,
+  WorkScopeWorkspaceQuerySchema,
+  WorkScopeWorkspaceSchema,
+  StartupResumeSchema,
+  SetStartupResumeBodySchema,
+  ContextRemovalPreviewSchema,
+  RemoveContextItemBodySchema,
+  DeleteWorkingContextBodySchema,
+  DeleteWorkingContextResultSchema,
 } from './schemas.ts';
 
 export function registerWorkspaceRoutes(
@@ -40,6 +54,122 @@ export function registerWorkspaceRoutes(
   dependencies: HostDependencies,
 ) {
   const api = host.withTypeProvider<TypeBoxTypeProvider>();
+  api.get(
+    '/workspace/scope',
+    {
+      schema: {
+        operationId: 'GetWorkScopeWorkspace',
+        querystring: WorkScopeWorkspaceQuerySchema,
+        response: {
+          200: Type.Ref(WorkScopeWorkspaceSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      workScopeWorkspaceDto(
+        await dependencies.getWorkScopeWorkspace.execute({
+          scope: parseWorkScope({
+            kind: request.query.scopeKind,
+            ...(request.query.contextId === undefined
+              ? {}
+              : { contextId: request.query.contextId }),
+          }),
+        }),
+      ),
+  );
+  api.get(
+    '/workspace/startup',
+    {
+      schema: {
+        operationId: 'GetStartupResume',
+        querystring: EmptyQuerySchema,
+        response: { 200: Type.Ref(StartupResumeSchema), ...problemResponses },
+      },
+    },
+    async () => startupResumeDto(await dependencies.getStartupResume.execute()),
+  );
+  api.put(
+    '/workspace/startup',
+    {
+      schema: {
+        operationId: 'SetStartupResume',
+        querystring: EmptyQuerySchema,
+        body: SetStartupResumeBodySchema,
+        response: { 200: Type.Ref(StartupResumeSchema), ...problemResponses },
+      },
+    },
+    async (request) =>
+      startupResumeDto(
+        await dependencies.setStartupResume.execute({
+          ...request.body,
+          scope: parseWorkScope(request.body.scope),
+        }),
+      ),
+  );
+  api.get(
+    '/working-contexts/:contextId/items/:itemId/removal-preview',
+    {
+      schema: {
+        operationId: 'PreviewContextItemRemoval',
+        params: ContextItemParamsSchema,
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(ContextRemovalPreviewSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      contextRemovalPreviewDto(
+        await dependencies.previewContextItemRemoval.execute({
+          contextId: parseLocalId('working-context', request.params.contextId),
+          itemId: parseLocalId('inventory-item', request.params.itemId),
+        }),
+      ),
+  );
+  api.get(
+    '/working-contexts/:contextId/deletion-preview',
+    {
+      schema: {
+        operationId: 'PreviewWorkingContextDeletion',
+        params: ContextIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(ContextRemovalPreviewSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      contextRemovalPreviewDto(
+        await dependencies.previewWorkingContextDeletion.execute({
+          contextId: parseLocalId('working-context', request.params.contextId),
+        }),
+      ),
+  );
+  api.delete(
+    '/working-contexts/:contextId',
+    {
+      schema: {
+        operationId: 'DeleteWorkingContext',
+        params: ContextIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        body: DeleteWorkingContextBodySchema,
+        response: {
+          200: Type.Ref(DeleteWorkingContextResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      deleteWorkingContextResultDto(
+        await dependencies.deleteWorkingContext.execute({
+          ...request.body,
+          contextId: parseLocalId('working-context', request.params.contextId),
+        }),
+      ),
+  );
 
   api.get(
     '/working-contexts',
@@ -117,11 +247,35 @@ export function registerWorkspaceRoutes(
       ),
   );
 
+  api.put(
+    '/working-contexts/:contextId/metadata',
+    {
+      schema: {
+        operationId: 'UpdateWorkingContextMetadata',
+        params: ContextIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        body: UpdateWorkingContextMetadataBodySchema,
+        response: {
+          200: Type.Ref(CreateWorkingContextResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      createWorkingContextResultDto(
+        await dependencies.updateWorkingContextMetadata.execute({
+          ...request.body,
+          contextId: parseLocalId('working-context', request.params.contextId),
+        }),
+      ),
+  );
+
   api.delete(
     '/working-contexts/:contextId/items/:itemId',
     {
       schema: {
         operationId: 'RemoveContextItem',
+        body: RemoveContextItemBodySchema,
         params: ContextItemParamsSchema,
         querystring: EmptyQuerySchema,
         response: {
@@ -133,6 +287,7 @@ export function registerWorkspaceRoutes(
     async (request) =>
       removeContextItemResultDto(
         await dependencies.removeContextItem.execute({
+          ...request.body,
           contextId: parseLocalId('working-context', request.params.contextId),
           itemId: parseLocalId('inventory-item', request.params.itemId),
         }),
@@ -164,11 +319,10 @@ export function registerWorkspaceRoutes(
   );
 
   api.put(
-    '/working-contexts/:contextId/resume',
+    '/workspace/resume',
     {
       schema: {
         operationId: 'SetWorkScopeResume',
-        params: ContextIdParamsSchema,
         querystring: EmptyQuerySchema,
         body: SetWorkScopeResumeBodySchema,
         response: {
@@ -180,7 +334,7 @@ export function registerWorkspaceRoutes(
     async (request) =>
       setWorkScopeResumeResultDto(
         await dependencies.setWorkScopeResume.execute(
-          parseResumeRequest(request.params.contextId, request.body),
+          parseResumeRequest(request.body.scope, request.body),
         ),
       ),
   );
@@ -225,6 +379,7 @@ export function registerWorkspaceRoutes(
         await dependencies.resolvePendingRevisionImpact.execute({
           impactId: parseLocalId('revision-impact', request.params.impactId),
           expectedImpactVersion: request.body.expectedImpactVersion,
+          expectedDataRevision: request.body.expectedDataRevision,
           resolution: request.body.resolution,
         }),
       ),

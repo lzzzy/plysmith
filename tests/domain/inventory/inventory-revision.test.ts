@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   appendAnalysisMove,
+  moveAnalysisCursor,
   startAnalysisScratch,
 } from '../../../app/domain/analysis/index.ts';
 import { localId } from '../../../app/domain/identity/index.ts';
@@ -131,6 +132,51 @@ test('an explored continuation can become a truncate revision without replaying 
   );
 });
 
+for (const rootOnly of [false, true]) {
+  test(`end-anchored exploration promotes to extend (root-only: ${rootOnly})`, () => {
+    const line = { ...openingLine(), ...(rootOnly ? { steps: [] } : {}) };
+    const plan = planInventoryRevision({
+      line,
+      mode: 'extend',
+      anchorId: line.steps.at(-1)?.anchorId ?? line.rootAnchorId,
+    });
+    let exploration = startAnalysisScratch(
+      'end-exploration',
+      plan.scratchRoot,
+      {
+        kind: 'inventory_anchor',
+        itemId: line.itemId,
+        revisionId: line.revisionId,
+        anchorId: plan.cutAnchorId,
+      },
+    );
+    const applied = rules.applyMove(exploration.root, [], {
+      kind: 'notation',
+      value: rootOnly ? 'e4' : 'Bc4',
+      locale: 'en-GB',
+    });
+    if (!applied.ok) throw new Error('Expected a legal move.');
+    exploration = appendAnalysisMove(exploration, applied.value);
+
+    const revision = promoteAnalysisExplorationToRevision({
+      scratch: exploration,
+      plan,
+    });
+
+    assert.deepEqual(revision, {
+      ...exploration,
+      scratchRevision: exploration.scratchRevision + 1,
+      intent: plan.intent,
+    });
+    assert.equal(plan.removedSteps.length, 0);
+    assert.deepEqual(plan.preservedSteps, line.steps);
+    assert.deepEqual(
+      inventoryRevisionCandidateSteps({ base: line, scratch: revision }),
+      [...line.steps, ...exploration.steps],
+    );
+  });
+}
+
 test('only a complete exploration from the revision cut can be promoted', () => {
   const line = openingLine();
   const plan = planInventoryRevision({
@@ -157,6 +203,59 @@ test('only a complete exploration from the revision cut can be promoted', () => 
   assert.throws(() =>
     promoteAnalysisExplorationToRevision({ scratch: empty, plan }),
   );
+});
+
+test('extend promotion retains origin identity, root and complete-cursor guards', () => {
+  const line = openingLine();
+  const plan = planInventoryRevision({
+    line,
+    mode: 'extend',
+    anchorId: line.steps.at(-1)!.anchorId,
+  });
+  const origin = {
+    kind: 'inventory_anchor' as const,
+    itemId: line.itemId,
+    revisionId: line.revisionId,
+    anchorId: plan.cutAnchorId,
+  };
+  const empty = startAnalysisScratch('guarded', plan.scratchRoot, origin);
+  const applied = rules.applyMove(empty.root, [], {
+    kind: 'notation',
+    value: 'Bc4',
+    locale: 'en-GB',
+  });
+  if (!applied.ok) throw new Error('Expected a legal move.');
+  const scratch = appendAnalysisMove(empty, applied.value);
+  const invalid = [
+    empty,
+    moveAnalysisCursor(scratch, 0),
+    { ...scratch, intent: plan.intent },
+    { ...scratch, origin: { kind: 'initial_position' as const } },
+    {
+      ...scratch,
+      origin: { ...origin, itemId: localId('inventory-item', 99) },
+    },
+    {
+      ...scratch,
+      origin: { ...origin, revisionId: localId('item-revision', 99) },
+    },
+    { ...scratch, origin: { ...origin, anchorId: line.rootAnchorId } },
+    { ...scratch, root: { ...scratch.root, fen: line.root.fen } },
+    { ...scratch, root: { ...scratch.root, position: line.root.position } },
+  ];
+  for (const candidate of invalid) {
+    assert.throws(() =>
+      promoteAnalysisExplorationToRevision({ scratch: candidate, plan }),
+    );
+  }
+  for (const mode of ['metadata', 'replace_move'] as const) {
+    assert.throws(() =>
+      promoteAnalysisExplorationToRevision({
+        scratch,
+        plan: { ...plan, mode },
+      }),
+    );
+  }
 });
 
 test('metadata revision preserves the line and changes only descriptive data', () => {

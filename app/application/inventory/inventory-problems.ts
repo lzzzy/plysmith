@@ -14,6 +14,27 @@ export function inventoryItemNotFound(): ApplicationProblem {
   );
 }
 
+export function inventoryDisplayNameConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.display_name_conflict',
+    'An active analysis already uses this name. Choose another name.',
+  );
+}
+
+export function invalidInventoryDeletion(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.invalid_deletion',
+    'The inventory deletion request is invalid.',
+  );
+}
+
+export function inventoryDeletionConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'inventory.deletion_conflict',
+    'The inventory deletion preview is stale. Preview the deletion again.',
+  );
+}
+
 export function invalidInventoryRevision(): ApplicationProblem {
   return new ApplicationProblem(
     'inventory.invalid_revision',

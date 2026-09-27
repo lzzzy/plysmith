@@ -596,9 +596,11 @@ export const AnalysisSourceLineSchema = Type.Object(
     sourceAnchorId: localId,
     sourceDisplayName: Type.String({ minLength: 1, maxLength: 160 }),
     root: Type.Ref(ChessStateSchema),
-    rootTarget: Type.Object(
-      { itemId: localId, revisionId: localId, anchorId: localId },
-      objectOptions,
+    rootTarget: Type.Optional(
+      Type.Object(
+        { itemId: localId, revisionId: localId, anchorId: localId },
+        objectOptions,
+      ),
     ),
     steps: Type.Array(
       Type.Object(
@@ -606,9 +608,9 @@ export const AnalysisSourceLineSchema = Type.Object(
           before: Type.Ref(ChessStateSchema),
           move: Type.Ref(CanonicalMoveSchema),
           after: Type.Ref(ChessStateSchema),
-          anchorId: localId,
-          itemId: localId,
-          revisionId: localId,
+          anchorId: Type.Optional(localId),
+          itemId: Type.Optional(localId),
+          revisionId: Type.Optional(localId),
         },
         objectOptions,
       ),
@@ -620,6 +622,7 @@ export const AnalysisSourceLineSchema = Type.Object(
 );
 
 const analysisRecordGameOutcome = Type.Union([
+  Type.Object({ kind: Type.Literal('draw') }, objectOptions),
   Type.Object(
     {
       kind: Type.Literal('win'),
@@ -706,6 +709,10 @@ export const AnalysisRecordSchema = Type.Object(
             Type.Literal('black'),
           ]),
           outcome: analysisRecordGameOutcome,
+          outcomeSource: Type.Union([
+            Type.Literal('manual'),
+            Type.Literal('automatic'),
+          ]),
           policy: Type.Ref(MovePolicyBindingSchema),
         },
         objectOptions,
@@ -713,12 +720,12 @@ export const AnalysisRecordSchema = Type.Object(
     ),
     origin: Type.Ref(AnalysisOriginSchema),
     sourceLine: Type.Optional(Type.Ref(AnalysisSourceLineSchema)),
+    sourcePath: Type.Optional(Type.Ref('PlayoutSourcePath')),
     root: Type.Ref(ChessStateSchema),
     steps: Type.Array(Type.Ref(AnalysisRecordStepSchema), { maxItems: 1_000 }),
     cursor: Type.Integer({ minimum: 0, maximum: 1_000 }),
     contributions: Type.Array(Type.Ref(AnalysisContributionSchema)),
     contextMember: Type.Boolean(),
-    readOnlyPreview: Type.Boolean(),
     historical: Type.Boolean(),
   },
   { ...objectOptions, $id: 'AnalysisRecord' },
@@ -742,6 +749,7 @@ export const AnalysisWorkspaceSchema = Type.Object(
         Type.Literal('remove_last_move'),
         Type.Literal('prepare_note'),
         Type.Literal('clear_note'),
+        Type.Literal('continue_exploration'),
         Type.Literal('discard_scratch'),
         Type.Literal('create_analysis_note'),
         Type.Literal('create_analysis_record'),
@@ -841,6 +849,10 @@ export const UpdateAnalysisScratchBodySchema = Type.Object(
         objectOptions,
       ),
       Type.Object({ kind: Type.Literal('clear_note') }, objectOptions),
+      Type.Object(
+        { kind: Type.Literal('continue_exploration') },
+        objectOptions,
+      ),
       Type.Object({ kind: Type.Literal('discard') }, objectOptions),
     ]),
   },
@@ -960,6 +972,19 @@ const objectiveAnalysisBudget = Type.Union([
 
 export const AnalyzePositionBodySchema = Type.Object(
   {
+    work: Type.Object(
+      {
+        scope: Type.Ref(WorkScopeSchema),
+        subject: Type.Union([
+          Type.Object({ kind: Type.Literal('position') }, objectOptions),
+          Type.Object(
+            { kind: Type.Literal('inventory_item'), itemId: localId },
+            objectOptions,
+          ),
+        ]),
+      },
+      objectOptions,
+    ),
     consumerId: Type.String({ minLength: 1, maxLength: 128 }),
     laneId: Type.String({ minLength: 1, maxLength: 128 }),
     providerInstanceId: identifier,
@@ -1246,7 +1271,19 @@ export const GetPlayoutResultSchema = Type.Union(
 export const StartPlayoutBodySchema = Type.Object(
   {
     scope: Type.Ref(WorkScopeSchema),
-    start: analysisStartOrigin,
+    start: Type.Union([
+      analysisStartOrigin,
+      Type.Object(
+        {
+          kind: Type.Literal('inventory_anchor'),
+          itemId: localId,
+          revisionId: localId,
+          anchorId: localId,
+          continuation: Type.Array(moveInput, { maxItems: 1_000 }),
+        },
+        objectOptions,
+      ),
+    ]),
     sourcePath: Type.Optional(
       Type.Object(
         {
@@ -1293,6 +1330,14 @@ export const CompletePlayoutBodySchema = Type.Object(
   {
     ...expectedPlayoutFields,
     completionId: identifier,
+    manualResult: Type.Optional(
+      Type.Union([
+        Type.Literal('white_win'),
+        Type.Literal('black_win'),
+        Type.Literal('draw'),
+        Type.Literal('unfinished'),
+      ]),
+    ),
     displayName: Type.String({ minLength: 1, maxLength: 200 }),
     languageTag,
     targetContextId: Type.Optional(localId),
@@ -1302,6 +1347,11 @@ export const CompletePlayoutBodySchema = Type.Object(
 
 export const CompletePlayoutResultSchema = Type.Object(
   {
+    outcome: analysisRecordGameOutcome,
+    outcomeSource: Type.Union([
+      Type.Literal('manual'),
+      Type.Literal('automatic'),
+    ]),
     itemId: localId,
     revisionId: localId,
     rootAnchorId: localId,
@@ -1404,6 +1454,12 @@ export const InventorySearchQuerySchema = Type.Object(
 
 export const InventorySearchItemSchema = Type.Object(
   {
+    lifecycle: Type.Union([
+      Type.Literal('active'),
+      Type.Literal('archived'),
+      Type.Literal('trashed'),
+      Type.Literal('tombstone'),
+    ]),
     itemId: localId,
     currentRevisionId: localId,
     rootAnchorId: localId,
@@ -1432,6 +1488,18 @@ export const InventorySearchItemSchema = Type.Object(
 export const SearchInventoryResultSchema = Type.Object(
   {
     items: Type.Array(Type.Ref(InventorySearchItemSchema)),
+    ancestors: Type.Array(Type.Ref(InventorySearchItemSchema)),
+    provenanceEdges: Type.Array(
+      Type.Object(
+        {
+          itemId: localId,
+          sourceItemId: localId,
+          sourceRevisionId: localId,
+          sourceAnchorId: localId,
+        },
+        objectOptions,
+      ),
+    ),
     nextCursor: Type.Optional(cursor),
     dataRevision: revision,
   },
@@ -1611,6 +1679,7 @@ export const RevisionImpactIdParamsSchema = Type.Object(
 
 export const PendingRevisionImpactSchema = Type.Object(
   {
+    dataRevision: revision,
     impactId: localId,
     contextId: localId,
     contextName: Type.String({ minLength: 1, maxLength: 160 }),
@@ -1623,6 +1692,8 @@ export const PendingRevisionImpactSchema = Type.Object(
     contributionCount: revision,
     managementResumeAffected: Type.Boolean(),
     analysisResumeAffected: Type.Boolean(),
+    useTargetLoss: Type.Ref('InventoryItemUsageSummary'),
+    removeFromContextLoss: Type.Ref('InventoryItemUsageSummary'),
     createdAt: timestamp,
     updatedAt: timestamp,
   },
@@ -1632,6 +1703,7 @@ export const PendingRevisionImpactSchema = Type.Object(
 export const ResolvePendingRevisionImpactBodySchema = Type.Object(
   {
     expectedImpactVersion: positiveRevision,
+    expectedDataRevision: revision,
     resolution: Type.Union([
       Type.Object({ kind: Type.Literal('use_target') }, objectOptions),
       Type.Object(
@@ -1802,6 +1874,20 @@ export const CreateWorkingContextResultSchema = Type.Object(
   { ...objectOptions, $id: 'CreateWorkingContextResult' },
 );
 
+export const UpdateWorkingContextMetadataBodySchema = Type.Object(
+  {
+    expectedContextVersion: positiveRevision,
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
+    purpose: Type.Optional(
+      Type.Union([
+        Type.String({ minLength: 1, maxLength: 2_000 }),
+        Type.Null(),
+      ]),
+    ),
+  },
+  { ...objectOptions, $id: 'UpdateWorkingContextMetadataBody' },
+);
+
 export const AddContextReferenceBodySchema = Type.Object(
   { itemId: localId, anchorId: localId },
   { ...objectOptions, $id: 'AddContextReferenceBody' },
@@ -1825,6 +1911,7 @@ export const SetWorkScopeResumeBodySchema = Type.Union(
     Type.Object(
       {
         area: Type.Literal('manage'),
+        scope: Type.Ref(WorkScopeSchema),
         expectedResumeVersion: Type.Union([positiveRevision, Type.Null()]),
         presentation: Type.Union([Type.Literal('list'), Type.Literal('atlas')]),
         selectedItemId: Type.Optional(localId),
@@ -1835,6 +1922,7 @@ export const SetWorkScopeResumeBodySchema = Type.Union(
     Type.Object(
       {
         area: Type.Literal('analyze'),
+        scope: Type.Ref(WorkScopeSchema),
         expectedResumeVersion: Type.Union([positiveRevision, Type.Null()]),
         mode: Type.Union([
           Type.Literal('analyze'),
@@ -1871,6 +1959,215 @@ export const SetWorkScopeResumeResultSchema = Type.Union(
     ),
   ],
   { $id: 'SetWorkScopeResumeResult' },
+);
+
+export const InventoryItemUsageSummarySchema = Type.Object(
+  {
+    referenceCount: revision,
+    activeNoteCount: revision,
+    noteMoveCount: revision,
+    scratchCount: revision,
+    scratchMoveCount: revision,
+    scratchNoteCount: revision,
+    managementResumeAffected: Type.Boolean(),
+    analysisResumeAffected: Type.Boolean(),
+  },
+  { ...objectOptions, $id: 'InventoryItemUsageSummary' },
+);
+
+export const InventoryItemDeletionPreviewSchema = Type.Object(
+  {
+    itemId: localId,
+    currentRevisionId: localId,
+    displayName: Type.String(),
+    itemType: Type.Union([
+      Type.Literal('game'),
+      Type.Literal('analysis'),
+      Type.Literal('source'),
+    ]),
+    contexts: Type.Array(
+      Type.Object(
+        {
+          ...InventoryItemUsageSummarySchema.properties,
+          contextId: localId,
+          contextName: Type.String(),
+        },
+        objectOptions,
+      ),
+    ),
+    global: Type.Ref(InventoryItemUsageSummarySchema),
+    retainedDerivedItemCount: revision,
+    retainedPlayoutCount: revision,
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'InventoryItemDeletionPreview' },
+);
+
+export const DeleteInventoryItemBodySchema = Type.Object(
+  {
+    expectedCurrentRevisionId: localId,
+    expectedDataRevision: revision,
+  },
+  { ...objectOptions, $id: 'DeleteInventoryItemBody' },
+);
+
+export const DeleteInventoryItemResultSchema = Type.Object(
+  {
+    itemId: localId,
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'DeleteInventoryItemResult' },
+);
+
+export const WorkScopeWorkspaceQuerySchema = Type.Object(
+  {
+    scopeKind: Type.Union([Type.Literal('free'), Type.Literal('context')]),
+    contextId: Type.Optional(localId),
+  },
+  { ...objectOptions, $id: 'WorkScopeWorkspaceQuery' },
+);
+
+export const WorkScopeWorkspaceSchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    managementResume: Type.Optional(Type.Ref(ManagementResumeSchema)),
+    analysisResume: Type.Optional(Type.Ref(AnalysisResumeSchema)),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'WorkScopeWorkspace' },
+);
+
+const workspaceArea = Type.Union([
+  Type.Literal('manage'),
+  Type.Literal('analyze'),
+  Type.Literal('playout'),
+  Type.Literal('settings'),
+]);
+
+export const StartupResumeSchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    area: workspaceArea,
+    startupVersion: Type.Union([positiveRevision, Type.Null()]),
+    dataRevision: revision,
+    unavailableContext: Type.Optional(
+      Type.Object(
+        {
+          contextId: localId,
+          displayName: Type.Optional(Type.String()),
+          reason: Type.Union([
+            Type.Literal('deleted'),
+            Type.Literal('missing'),
+          ]),
+        },
+        objectOptions,
+      ),
+    ),
+  },
+  { ...objectOptions, $id: 'StartupResume' },
+);
+
+export const SetStartupResumeBodySchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    area: workspaceArea,
+    expectedStartupVersion: Type.Union([positiveRevision, Type.Null()]),
+  },
+  { ...objectOptions, $id: 'SetStartupResumeBody' },
+);
+
+const contextPlayoutWork = Type.Object(
+  {
+    draftId: localId,
+    draftRevision: positiveRevision,
+    moveCount: revision,
+    status: Type.Union([
+      Type.Literal('active'),
+      Type.Literal('awaiting_policy'),
+      Type.Literal('paused'),
+      Type.Literal('stopped'),
+      Type.Literal('terminal'),
+    ]),
+    sourceItemId: Type.Optional(localId),
+  },
+  objectOptions,
+);
+
+export const ContextRemovalPreviewSchema = Type.Object(
+  {
+    contextId: localId,
+    contextName: Type.String(),
+    contextVersion: positiveRevision,
+    dataRevision: revision,
+    items: Type.Array(
+      Type.Object(
+        { itemId: localId, displayName: Type.String() },
+        objectOptions,
+      ),
+    ),
+    referenceCount: revision,
+    losses: Type.Object(
+      {
+        notes: Type.Array(
+          Type.Object(
+            {
+              contributionId: localId,
+              body: Type.String(),
+              moveCount: revision,
+              itemId: Type.Optional(localId),
+            },
+            objectOptions,
+          ),
+        ),
+        scratch: Type.Optional(
+          Type.Object(
+            {
+              scratchId: identifier,
+              scratchRevision: positiveRevision,
+              stepCount: revision,
+              noteBody: Type.Optional(Type.String()),
+              intent: Type.Union([
+                Type.Literal('exploration'),
+                Type.Literal('inventory_revision'),
+              ]),
+              itemId: Type.Optional(localId),
+            },
+            objectOptions,
+          ),
+        ),
+        managementResume: Type.Optional(Type.Ref(ManagementResumeSchema)),
+        analysisResume: Type.Optional(Type.Ref(AnalysisResumeSchema)),
+        playout: Type.Optional(contextPlayoutWork),
+      },
+      objectOptions,
+    ),
+    retainedPlayout: Type.Optional(contextPlayoutWork),
+  },
+  { ...objectOptions, $id: 'ContextRemovalPreview' },
+);
+
+export const RemoveContextItemBodySchema = Type.Object(
+  {
+    expectedContextVersion: positiveRevision,
+    expectedDataRevision: revision,
+  },
+  { ...objectOptions, $id: 'RemoveContextItemBody' },
+);
+
+export const DeleteWorkingContextBodySchema = Type.Object(
+  {
+    expectedContextVersion: positiveRevision,
+    expectedDataRevision: revision,
+  },
+  { ...objectOptions, $id: 'DeleteWorkingContextBody' },
+);
+
+export const DeleteWorkingContextResultSchema = Type.Object(
+  {
+    contextId: localId,
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'DeleteWorkingContextResult' },
 );
 
 export const ProblemDetailsSchema = Type.Object(
@@ -2023,7 +2320,10 @@ export const WorkspaceRevisionImpactChangedEventSchema = Type.Object(
 export const WorkspaceContextCreatedEventSchema = Type.Object(
   {
     ...eventMetadata,
-    kind: Type.Literal('workspace.context-created'),
+    kind: Type.Union([
+      Type.Literal('workspace.context-created'),
+      Type.Literal('workspace.context-updated'),
+    ]),
     payload: Type.Object(
       { contextId: localId, contextVersion: positiveRevision },
       objectOptions,
@@ -2062,7 +2362,7 @@ export const WorkspaceResumeUpdatedEventSchema = Type.Object(
     kind: Type.Literal('workspace.resume-updated'),
     payload: Type.Object(
       {
-        contextId: localId,
+        contextId: Type.Optional(localId),
         area: Type.Union([Type.Literal('manage'), Type.Literal('analyze')]),
         resumeVersion: positiveRevision,
       },
@@ -2070,6 +2370,31 @@ export const WorkspaceResumeUpdatedEventSchema = Type.Object(
     ),
   },
   { ...objectOptions, $id: 'WorkspaceResumeUpdatedEvent' },
+);
+
+export const InventoryItemDeletedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('inventory.item-deleted'),
+    payload: Type.Object({ itemId: localId }, objectOptions),
+  },
+  { ...objectOptions, $id: 'InventoryItemDeletedEvent' },
+);
+export const WorkspaceContextDeletedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('workspace.context-deleted'),
+    payload: Type.Object({ contextId: localId }, objectOptions),
+  },
+  { ...objectOptions, $id: 'WorkspaceContextDeletedEvent' },
+);
+export const WorkspaceStartupUpdatedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('workspace.startup-updated'),
+    payload: Type.Object({ startupVersion: positiveRevision }, objectOptions),
+  },
+  { ...objectOptions, $id: 'WorkspaceStartupUpdatedEvent' },
 );
 
 export const ReplayGapEventSchema = Type.Object(
@@ -2091,6 +2416,9 @@ export const ReplayGapEventSchema = Type.Object(
 
 export const HostEventSchema = Type.Union(
   [
+    Type.Ref(InventoryItemDeletedEventSchema),
+    Type.Ref(WorkspaceContextDeletedEventSchema),
+    Type.Ref(WorkspaceStartupUpdatedEventSchema),
     Type.Ref(UiLanguageChangedEventSchema),
     Type.Ref(AnalysisScratchChangedEventSchema),
     Type.Ref(AnalysisContributionCreatedEventSchema),
@@ -2114,6 +2442,21 @@ export const EventHeadersSchema = Type.Object(
 );
 
 export const apiSchemas = [
+  InventoryItemDeletedEventSchema,
+  WorkspaceContextDeletedEventSchema,
+  WorkspaceStartupUpdatedEventSchema,
+  InventoryItemUsageSummarySchema,
+  InventoryItemDeletionPreviewSchema,
+  DeleteInventoryItemBodySchema,
+  DeleteInventoryItemResultSchema,
+  WorkScopeWorkspaceQuerySchema,
+  WorkScopeWorkspaceSchema,
+  StartupResumeSchema,
+  SetStartupResumeBodySchema,
+  ContextRemovalPreviewSchema,
+  RemoveContextItemBodySchema,
+  DeleteWorkingContextBodySchema,
+  DeleteWorkingContextResultSchema,
   UserPreferencesSchema,
   SetUiLanguageBodySchema,
   SetUiLanguageResultSchema,
@@ -2220,6 +2563,7 @@ export const apiSchemas = [
   WorkingContextRevisionImpactSummarySchema,
   WorkingContextWorkspaceSchema,
   CreateWorkingContextBodySchema,
+  UpdateWorkingContextMetadataBodySchema,
   CreateWorkingContextResultSchema,
   AddContextReferenceBodySchema,
   AddContextReferenceResultSchema,

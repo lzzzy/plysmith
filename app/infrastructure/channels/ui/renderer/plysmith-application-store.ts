@@ -65,6 +65,15 @@ import {
   type ValidateAnalysisSetupRequestDto,
   type ValidateAnalysisSetupResultDto,
   type WorkingContextWorkspaceDto,
+  type WorkScopeWorkspaceDto,
+  type StartupResumeDto,
+  type SetStartupResumeRequestDto,
+  type ContextRemovalPreviewDto,
+  type InventoryItemDeletionPreviewDto,
+  type RemoveContextItemRequestDto,
+  type DeleteWorkingContextRequestDto,
+  type DeleteInventoryItemRequestDto,
+  type UpdateWorkingContextMetadataRequestDto,
 } from '../../host_client/index.ts';
 import type {
   DesktopBootstrap,
@@ -73,6 +82,13 @@ import type {
 import { localizeSan } from './chess-display.ts';
 import { analysisPathPresentation } from './analysis-path-presentation.ts';
 import type { UiLocale } from './messages.ts';
+import {
+  EngineConfigurationDrafts,
+  mapEngineConfigurationIssues,
+  type EngineConfigurationDraftPatch,
+  type EngineConfigurationDraftsState,
+  type EngineConfigurationForm,
+} from './engine-configuration-drafts.ts';
 
 export type ActivityId = 'manage' | 'analyze' | 'playout' | 'settings';
 export type WorkScope = AnalysisWorkspaceDto['scope'];
@@ -105,8 +121,11 @@ export type ApplicationCommand =
   | 'load_revision_impact'
   | 'resolve_revision_impact'
   | 'create_context'
+  | 'update_context_metadata'
   | 'add_context_reference'
   | 'remove_context_item'
+  | 'delete_context'
+  | 'delete_inventory_item'
   | 'set_resume'
   | 'load_more_inventory'
   | 'load_more_contexts'
@@ -116,6 +135,7 @@ export type ApplicationCommand =
   | 'retry_playout'
   | 'pause_playout'
   | 'resume_playout'
+  | 'cancel_playout_completion'
   | 'stop_playout'
   | 'complete_playout'
   | 'discard_playout'
@@ -197,8 +217,38 @@ export interface PlysmithApplicationClient {
   getWorkingContextWorkspace(
     contextId: string,
   ): Promise<WorkingContextWorkspaceDto>;
+  getWorkScopeWorkspace(request: {
+    readonly scopeKind: WorkScope['kind'];
+    readonly contextId?: string;
+  }): Promise<WorkScopeWorkspaceDto>;
+  getStartupResume(): Promise<StartupResumeDto>;
+  setStartupResume(
+    request: SetStartupResumeRequestDto,
+  ): Promise<StartupResumeDto>;
+  previewContextItemRemoval(
+    contextId: string,
+    itemId: string,
+  ): Promise<ContextRemovalPreviewDto>;
+  previewWorkingContextDeletion(
+    contextId: string,
+  ): Promise<ContextRemovalPreviewDto>;
+  deleteWorkingContext(
+    contextId: string,
+    request: DeleteWorkingContextRequestDto,
+  ): Promise<{ readonly contextId: string; readonly dataRevision: number }>;
+  previewInventoryItemDeletion(
+    itemId: string,
+  ): Promise<InventoryItemDeletionPreviewDto>;
+  deleteInventoryItem(
+    itemId: string,
+    request: DeleteInventoryItemRequestDto,
+  ): Promise<{ readonly itemId: string; readonly dataRevision: number }>;
   createWorkingContext(
     request: CreateWorkingContextRequestDto,
+  ): Promise<CreateWorkingContextResultDto>;
+  updateWorkingContextMetadata(
+    contextId: string,
+    request: UpdateWorkingContextMetadataRequestDto,
   ): Promise<CreateWorkingContextResultDto>;
   addContextReference(
     contextId: string,
@@ -207,9 +257,9 @@ export interface PlysmithApplicationClient {
   removeContextItem(
     contextId: string,
     itemId: string,
+    request: RemoveContextItemRequestDto,
   ): Promise<RemoveContextItemResultDto>;
   setWorkScopeResume(
-    contextId: string,
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto>;
   listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto>;
@@ -226,6 +276,9 @@ export interface PlysmithApplicationClient {
   retryPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
   pausePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
   resumePlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
+  cancelPlayoutCompletion(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<PlayoutDto>;
   stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto>;
   completePlayout(
     request: CompletePlayoutRequestDto,
@@ -301,6 +354,43 @@ export interface ManageInventoryRevisionDraft {
   readonly preview: InventoryRevisionPreviewDto;
 }
 
+export type InventoryDetailsRead =
+  | { readonly kind: 'completed'; readonly record: AnalysisRecordDto }
+  | { readonly kind: 'failed'; readonly errorCode: string }
+  | { readonly kind: 'cancelled' };
+
+export interface AnalysisUnavailable {
+  readonly reason: 'removed_from_context' | 'deleted_from_inventory';
+  readonly itemId: string;
+  readonly displayName: string;
+}
+
+type DestructiveActionState = {
+  readonly status: 'loading' | 'ready' | 'error' | 'stale' | 'submitting';
+  readonly displayName: string;
+  readonly errorMessageId?: string;
+};
+
+export type DestructiveAction = DestructiveActionState &
+  (
+    | {
+        readonly kind: 'context_item';
+        readonly contextId: string;
+        readonly itemId: string;
+        readonly preview?: ContextRemovalPreviewDto;
+      }
+    | {
+        readonly kind: 'context';
+        readonly contextId: string;
+        readonly preview?: ContextRemovalPreviewDto;
+      }
+    | {
+        readonly kind: 'inventory';
+        readonly itemId: string;
+        readonly preview?: InventoryItemDeletionPreviewDto;
+      }
+  );
+
 interface BoundInventoryRevisionPreview {
   readonly scope: WorkScope;
   readonly scratchId: string;
@@ -320,18 +410,31 @@ export type PlysmithApplicationState =
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
       readonly analysis: AnalysisWorkspaceDto;
+      readonly analysisUnavailable?: AnalysisUnavailable;
       readonly analysisProviders: ListPositionAnalysisProvidersResultDto;
       readonly playoutProviders: ListMovePolicyProvidersResultDto;
       readonly engineProviders: ListEngineProviderConfigurationsResultDto;
+      readonly engineConfigurationDrafts: EngineConfigurationDraftsState;
       readonly playout: PlayoutDto | null;
       readonly playoutStart?: PlayoutStartSelection;
       readonly pendingPlayoutStart?: PlayoutStartSelection;
-      readonly completedPlayout?: CompletePlayoutResultDto;
+      readonly completedPlayout?: CompletePlayoutResultDto & {
+        readonly displayName: string;
+      };
       readonly completedPlayoutView?: PlayoutDto;
+      readonly pendingPlayoutCompletion?: {
+        readonly request: CompletePlayoutRequestDto;
+        readonly view: PlayoutDto;
+      };
       readonly inventoryRevisionPreview?: InventoryRevisionPreviewDto;
       readonly manageInventoryRevisionDraft?: ManageInventoryRevisionDraft;
       readonly revisionImpact?: RevisionImpactDetails;
       readonly contextWorkspace?: WorkingContextWorkspaceDto;
+      readonly scopeWorkspace: WorkScopeWorkspaceDto;
+      readonly startupNotice?: NonNullable<
+        StartupResumeDto['unavailableContext']
+      >;
+      readonly destructiveAction?: DestructiveAction;
       readonly activity: ActivityId;
       readonly scope: WorkScope;
       readonly inventoryQuery: string;
@@ -359,21 +462,35 @@ export class PlysmithApplicationStore {
   #analysisFocus: AnalysisFocus | undefined;
   #inventoryQuery = '';
   #inventoryContextOnly = false;
-  #selectedInventoryItemId: string | undefined;
+  // Undefined restores resume; null is an explicit empty management selection.
+  #selectedInventoryItemId: string | null | undefined;
+  readonly #engineConfigurationDrafts = new EngineConfigurationDrafts();
   #busyCommand: ApplicationCommand | undefined;
   #errorCode: string | undefined;
   #announcement: string | undefined;
   #pendingEventRevision: number | undefined;
   #pendingUnversionedEvent = false;
   #committedReadKey: string | undefined;
-  #freeAnalysisFocus: AnalysisFocus | undefined;
+  #startupNotice: StartupResumeDto['unavailableContext'];
+  #startupSavePromise: Promise<void> = Promise.resolve();
+  #destructiveAction: DestructiveAction | undefined;
+  #destructiveVersion = 0;
+  readonly #contextAnalysisItems = new Map<
+    string,
+    Pick<AnalysisUnavailable, 'itemId' | 'displayName'>
+  >();
+  readonly #analysisUnavailable = new Map<string, AnalysisUnavailable>();
   #inventoryRevisionPreview: BoundInventoryRevisionPreview | undefined;
   #manageInventoryRevisionDraft: ManageInventoryRevisionDraft | undefined;
   #revisionImpact: RevisionImpactDetails | undefined;
   #playoutStart: PlayoutStartSelection | undefined;
   #pendingPlayoutStart: PlayoutStartSelection | undefined;
-  #completedPlayout: CompletePlayoutResultDto | undefined;
+  #completedPlayout:
+    (CompletePlayoutResultDto & { readonly displayName: string }) | undefined;
   #completedPlayoutView: PlayoutDto | undefined;
+  #pendingPlayoutCompletion:
+    | { readonly request: CompletePlayoutRequestDto; readonly view: PlayoutDto }
+    | undefined;
   readonly #analysisConsumerId = `desktop-${crypto.randomUUID()}`;
 
   constructor(options: PlysmithApplicationStoreOptions) {
@@ -451,6 +568,19 @@ export class PlysmithApplicationStore {
       return;
     }
     if (lifecycle !== this.#lifecycle || this.#events !== events) return;
+    try {
+      const startup = await this.#client.getStartupResume();
+      if (lifecycle !== this.#lifecycle) return;
+      this.#scope = startup.scope;
+      this.#activity = startup.area;
+      this.#startupNotice = startup.unavailableContext;
+      this.#analysisFocus = undefined;
+      this.#selectedInventoryItemId = undefined;
+      this.#inventoryContextOnly = startup.scope.kind === 'context';
+    } catch (error) {
+      this.#setUnavailable(lifecycle, hostErrorCode(error));
+      return;
+    }
     await this.refresh();
     if (lifecycle !== this.#lifecycle) return;
     if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
@@ -466,11 +596,13 @@ export class PlysmithApplicationStore {
     const lifecycle = this.#lifecycle;
     this.#setRefreshing(true);
     this.#refreshPromise = (async () => {
+      let recoveredContextFocus = false;
       do {
         const startedAt = performance.now();
         this.#refreshAgain = false;
         const readVersion = ++this.#readVersion;
         const readKey = this.#readKey();
+        const analysisRequest = this.#analysisRequest();
         try {
           const client = this.#client;
           if (client === undefined) return;
@@ -483,8 +615,9 @@ export class PlysmithApplicationStore {
             diagnosticReportManifest,
             contexts,
             inventory,
-            analysis,
+            analysisResult,
             workspace,
+            scopeWorkspace,
             analysisProviders,
             playoutProviders,
             playout,
@@ -496,16 +629,71 @@ export class PlysmithApplicationStore {
             client.getDiagnosticReportManifest(),
             client.listWorkingContexts({ pageSize: '100' }),
             client.searchInventory(this.#inventoryRequest()),
-            client.getAnalysisWorkspace(this.#analysisRequest()),
+            client.getAnalysisWorkspace(analysisRequest).then(
+              (analysis) => ({ kind: 'completed' as const, analysis }),
+              (error: unknown) => ({ kind: 'failed' as const, error }),
+            ),
             contextId === undefined
               ? Promise.resolve(undefined)
               : client.getWorkingContextWorkspace(contextId),
+            client.getWorkScopeWorkspace(this.#playoutRequest()),
             client.listPositionAnalysisProviders(),
             client.listMovePolicyProviders(),
             client.getPlayout(this.#playoutRequest()),
             client.getEngineProviderConfigurations(),
           ]);
+          if (analysisResult.kind === 'failed') {
+            if (lifecycle !== this.#lifecycle) return;
+            if (
+              readVersion < this.#committedReadVersion ||
+              readKey !== this.#readKey()
+            ) {
+              if (readKey !== this.#readKey()) this.#refreshAgain = true;
+              continue;
+            }
+            // Recover an explicit focus only when fresh references prove its removal.
+            if (
+              !recoveredContextFocus &&
+              analysisRequest.scopeKind === 'context' &&
+              analysisRequest.itemId !== undefined &&
+              hostErrorCode(analysisResult.error) ===
+                'workspace.inventory_work_not_allowed' &&
+              workspace !== undefined &&
+              workspace.context.contextId === analysisRequest.contextId &&
+              !workspace.references.some(
+                (reference) => reference.itemId === analysisRequest.itemId,
+              ) &&
+              sameDataRevision(
+                status,
+                preferences,
+                contexts,
+                inventory,
+                undefined,
+                workspace,
+                playout,
+              ) &&
+              isCurrentOrNewerRead(this.#state, status, preferences)
+            ) {
+              const previous = this.#contextAnalysisItems.get(
+                workspace.context.contextId,
+              );
+              if (previous?.itemId === analysisRequest.itemId) {
+                this.#analysisUnavailable.set(workspace.context.contextId, {
+                  reason: 'removed_from_context',
+                  ...previous,
+                });
+              }
+              this.#analysisFocus = undefined;
+              recoveredContextFocus = true;
+              this.#refreshAgain = true;
+              continue;
+            }
+            throw analysisResult.error;
+          }
+          const analysis = analysisResult.analysis;
           if (
+            scopeWorkspace.dataRevision !== status.persistence.dataRevision ||
+            !sameScope(scopeWorkspace.scope, this.#scope) ||
             !sameDataRevision(
               status,
               preferences,
@@ -559,12 +747,30 @@ export class PlysmithApplicationStore {
           }
           this.#committedReadVersion = readVersion;
           this.#committedReadKey = readKey;
+          this.#updateAnalysisUnavailable(analysis, workspace);
+          const analysisUnavailable =
+            this.#visibleAnalysisUnavailable(analysis);
           this.#errorCode = undefined;
           this.#inventoryRevisionPreview = inventoryRevisionPreview;
           this.#acknowledgeEventsThrough(status.persistence.dataRevision);
-          const selectedInventoryItemId =
-            this.#selectedInventoryItemId ??
-            workspace?.managementResume?.selectedItemId;
+          if (this.#selectedInventoryItemId === undefined) {
+            this.#selectedInventoryItemId =
+              scopeWorkspace.managementResume?.selectedItemId ?? null;
+          }
+          if (
+            this.#destructiveAction?.status === 'ready' &&
+            this.#destructiveAction.preview?.dataRevision !==
+              status.persistence.dataRevision
+          ) {
+            this.#destructiveAction = {
+              ...this.#destructiveAction,
+              status: 'stale',
+            };
+          }
+          const selectedInventoryItemId = this.#selectedInventoryItemId;
+          this.#engineConfigurationDrafts.synchronize(
+            engineProviders.providers,
+          );
           if (
             this.#revisionImpact !== undefined &&
             !workspace?.pendingRevisionImpacts.some(
@@ -584,10 +790,22 @@ export class PlysmithApplicationStore {
               contexts,
               inventory,
               analysis,
+              scopeWorkspace,
+              ...(this.#startupNotice === undefined
+                ? {}
+                : { startupNotice: this.#startupNotice }),
+              ...(this.#destructiveAction === undefined
+                ? {}
+                : { destructiveAction: this.#destructiveAction }),
+              ...(analysisUnavailable === undefined
+                ? {}
+                : { analysisUnavailable }),
               analysisProviders,
               playoutProviders,
               playout,
               engineProviders,
+              engineConfigurationDrafts:
+                this.#engineConfigurationDrafts.snapshot,
               ...(this.#playoutStart === undefined
                 ? {}
                 : { playoutStart: this.#playoutStart }),
@@ -600,6 +818,9 @@ export class PlysmithApplicationStore {
               ...(this.#completedPlayoutView === undefined
                 ? {}
                 : { completedPlayoutView: this.#completedPlayoutView }),
+              ...(this.#pendingPlayoutCompletion === undefined
+                ? {}
+                : { pendingPlayoutCompletion: this.#pendingPlayoutCompletion }),
               ...(inventoryRevisionPreview === undefined
                 ? {}
                 : {
@@ -621,7 +842,7 @@ export class PlysmithApplicationStore {
               scope: this.#scope,
               inventoryQuery: this.#inventoryQuery,
               inventoryContextOnly: this.#inventoryContextOnly,
-              ...(selectedInventoryItemId === undefined
+              ...(selectedInventoryItemId === null
                 ? {}
                 : { selectedInventoryItemId }),
               refreshing: false,
@@ -667,13 +888,18 @@ export class PlysmithApplicationStore {
   }
 
   setActivity(activity: ActivityId): void {
+    if (
+      this.#busyCommand !== undefined ||
+      this.#pendingPlayoutCompletion !== undefined
+    )
+      return;
+    if (activity !== this.#activity) this.cancelDestructiveAction();
     const returningToContextAnalysis =
-      activity === 'analyze' &&
-      this.#activity !== 'analyze' &&
-      this.#scope.kind === 'context';
+      activity === 'analyze' && this.#activity !== 'analyze';
     this.#activity = activity;
     if (returningToContextAnalysis) this.#analysisFocus = undefined;
     this.#publishViewState();
+    void this.#persistStartup();
     if (returningToContextAnalysis) void this.refresh();
     if (activity === 'playout') void this.#prepareDefaultPlayout();
   }
@@ -689,10 +915,23 @@ export class PlysmithApplicationStore {
     | { readonly kind: 'failed'; readonly errorCode: string }
   > {
     const client = this.#client;
-    if (client === undefined || this.#readyState() === undefined) {
+    const state = this.#readyState();
+    if (client === undefined || state === undefined) {
       return Object.freeze({
         kind: 'failed' as const,
         errorCode: 'host.unavailable',
+      });
+    }
+    if (!sameScope(request.work.scope, state.scope)) {
+      return Object.freeze({ kind: 'cancelled' as const });
+    }
+    if (
+      request.work.subject.kind === 'inventory_item' &&
+      !this.canWorkWithInventoryItem(request.work.subject.itemId)
+    ) {
+      return Object.freeze({
+        kind: 'failed' as const,
+        errorCode: 'workspace.inventory_work_not_allowed',
       });
     }
     const lifecycle = this.#lifecycle;
@@ -721,15 +960,29 @@ export class PlysmithApplicationStore {
     const state = this.#readyState();
     if (state === undefined) return;
     const record = state.analysis.record;
+    const scratch = state.analysis.scratch;
     const start: StartPlayoutRequestDto['start'] =
-      record !== undefined && state.analysis.scratch === undefined
+      scratch?.origin.kind === 'inventory_anchor'
         ? {
             kind: 'inventory_anchor',
-            itemId: record.itemId,
-            revisionId: record.revisionId,
-            anchorId: record.currentAnchorId,
+            itemId: scratch.origin.itemId,
+            revisionId: scratch.origin.revisionId,
+            anchorId: scratch.origin.anchorId,
+            continuation: scratch.steps
+              .slice(0, scratch.cursor)
+              .map((step) => ({
+                kind: 'coordinates' as const,
+                value: `${step.move.from}${step.move.to}${promotionLetter(step.move.promotion)}`,
+              })),
           }
-        : { kind: 'fen', fen: state.analysis.currentState.fen };
+        : record !== undefined && scratch === undefined
+          ? {
+              kind: 'inventory_anchor',
+              itemId: record.itemId,
+              revisionId: record.revisionId,
+              anchorId: record.currentAnchorId,
+            }
+          : { kind: 'fen', fen: state.analysis.currentState.fen };
     const selection = Object.freeze({
       title: record?.displayName ?? 'Neue Partie',
       start,
@@ -775,6 +1028,7 @@ export class PlysmithApplicationStore {
     this.#completedPlayoutView = undefined;
     this.#activity = 'playout';
     this.#finishCommand();
+    await this.#persistStartup();
   }
 
   #openPreparedPlayout(selection: PlayoutStartSelection): void {
@@ -790,6 +1044,7 @@ export class PlysmithApplicationStore {
     this.#completedPlayoutView = undefined;
     this.#activity = 'playout';
     this.#publishViewState();
+    void this.#persistStartup();
   }
 
   async #prepareDefaultPlayout(): Promise<void> {
@@ -926,6 +1181,13 @@ export class PlysmithApplicationStore {
     );
   }
 
+  async cancelPlayoutCompletion(): Promise<void> {
+    await this.#runPlayoutCommand(
+      'cancel_playout_completion',
+      (client, request) => client.cancelPlayoutCompletion(request),
+    );
+  }
+
   async stopPlayout(): Promise<void> {
     await this.#runPlayoutCommand('stop_playout', (client, request) =>
       client.stopPlayout(request),
@@ -950,25 +1212,55 @@ export class PlysmithApplicationStore {
   async completePlayout(
     displayName: string,
     addToContext: boolean,
+    manualResult?: CompletePlayoutRequestDto['manualResult'],
   ): Promise<boolean> {
-    const request = this.#expectedPlayout();
-    const completedPlayoutView = this.#readyState()?.playout ?? undefined;
-    if (request === undefined || completedPlayoutView === undefined)
-      return false;
-    const result = await this.#runCommand('complete_playout', (client) =>
-      client.completePlayout({
-        ...request,
-        completionId: crypto.randomUUID(),
-        displayName: displayName.trim(),
-        languageTag: this.#readyState()?.preferences.uiLocale ?? 'de-DE',
-        ...(addToContext && this.#scope.kind === 'context'
-          ? { targetContextId: this.#scope.contextId }
-          : {}),
-      }),
+    if (this.#busyCommand !== undefined) return false;
+    if (this.#pendingPlayoutCompletion === undefined) {
+      const request = this.#expectedPlayout();
+      const view = this.#readyState()?.playout ?? undefined;
+      if (
+        request === undefined ||
+        view === undefined ||
+        displayName.trim() === ''
+      )
+        return false;
+      this.#pendingPlayoutCompletion = {
+        view,
+        request: {
+          ...request,
+          completionId: crypto.randomUUID(),
+          displayName: displayName.trim(),
+          languageTag: this.#readyState()?.preferences.uiLocale ?? 'de-DE',
+          ...(manualResult === undefined ? {} : { manualResult }),
+          ...(addToContext && this.#scope.kind === 'context'
+            ? { targetContextId: this.#scope.contextId }
+            : {}),
+        },
+      };
+    }
+    const pending = this.#pendingPlayoutCompletion;
+    const result = await this.#runCommand(
+      'complete_playout',
+      async (client) => {
+        try {
+          return await client.completePlayout(pending.request);
+        } catch (error) {
+          if (hostErrorCode(error) !== 'host.unavailable') throw error;
+          return client.completePlayout(pending.request);
+        }
+      },
     );
+    if (result === undefined && this.#errorCode !== 'host.unavailable') {
+      this.#pendingPlayoutCompletion = undefined;
+      this.#publishViewState();
+    }
     if (result === undefined) return false;
-    this.#completedPlayout = result;
-    this.#completedPlayoutView = completedPlayoutView;
+    this.#completedPlayout = {
+      ...result,
+      displayName: pending.request.displayName,
+    };
+    this.#completedPlayoutView = pending.view;
+    this.#pendingPlayoutCompletion = undefined;
     this.#playoutStart = undefined;
     this.#finishCommand();
     return true;
@@ -976,20 +1268,44 @@ export class PlysmithApplicationStore {
 
   async openCompletedPlayout(): Promise<void> {
     const completed = this.#completedPlayout;
-    if (completed === undefined) return;
-    this.#analysisFocus = Object.freeze({
-      itemId: completed.itemId,
-      revisionId: completed.revisionId,
-      anchorId: completed.rootAnchorId,
-    });
+    if (
+      completed === undefined ||
+      !this.canWorkWithInventoryItem(completed.itemId)
+    )
+      return;
+    const result = await this.#runCommand(
+      'set_resume',
+      (client) =>
+        client.setWorkScopeResume({
+          scope: this.#scope,
+          area: 'analyze',
+          expectedResumeVersion:
+            this.#readyState()?.scopeWorkspace.analysisResume?.resumeVersion ??
+            null,
+          mode: 'analyze',
+          itemId: completed.itemId,
+          revisionId: completed.revisionId,
+          anchorId: completed.rootAnchorId,
+        }),
+      false,
+    );
+    if (result === undefined) return;
+    this.#analysisFocus = undefined;
     this.#activity = 'analyze';
     this.#completedPlayout = undefined;
     this.#completedPlayoutView = undefined;
     this.#publishViewState();
     await this.refresh();
+    this.#finishCommand();
+    await this.#persistStartup();
   }
 
   async setScope(scope: WorkScope): Promise<void> {
+    if (
+      this.#busyCommand !== undefined ||
+      this.#pendingPlayoutCompletion !== undefined
+    )
+      return;
     if (
       scope.kind === this.#scope.kind &&
       (scope.kind === 'free' ||
@@ -998,12 +1314,10 @@ export class PlysmithApplicationStore {
     ) {
       return;
     }
-    if (this.#scope.kind === 'free') {
-      this.#freeAnalysisFocus = this.#analysisFocus;
-    }
+    this.cancelDestructiveAction();
+    this.#startupNotice = undefined;
     this.#scope = Object.freeze({ ...scope });
-    this.#analysisFocus =
-      scope.kind === 'free' ? this.#freeAnalysisFocus : undefined;
+    this.#analysisFocus = undefined;
     this.#selectedInventoryItemId = undefined;
     this.#revisionImpact = undefined;
     this.#playoutStart = undefined;
@@ -1013,19 +1327,29 @@ export class PlysmithApplicationStore {
     this.#inventoryContextOnly = scope.kind === 'context';
     this.#publishViewState();
     await this.refresh();
+    await this.#persistStartup();
     if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
+  }
+
+  async selectManagementScope(scope: WorkScope): Promise<void> {
+    if (this.#busyCommand !== undefined) return;
+    await this.setScope(scope);
+    this.#selectedInventoryItemId = null;
+    this.#revisionImpact = undefined;
+    this.#publishViewState();
+    await this.#persistManagementSelection();
   }
 
   async searchInventory(query: string): Promise<void> {
     this.#inventoryQuery = query.trim();
-    this.#selectedInventoryItemId = undefined;
+    this.#selectedInventoryItemId = null;
     this.#publishViewState();
     await this.refresh();
   }
 
   async setInventoryContextOnly(contextOnly: boolean): Promise<void> {
     this.#inventoryContextOnly = this.#scope.kind === 'context' && contextOnly;
-    this.#selectedInventoryItemId = undefined;
+    this.#selectedInventoryItemId = null;
     this.#publishViewState();
     await this.refresh();
   }
@@ -1053,14 +1377,30 @@ export class PlysmithApplicationStore {
       return;
     }
     const known = new Set(current.inventory.items.map((item) => item.itemId));
+    const items = [
+      ...current.inventory.items,
+      ...result.items.filter((item) => !known.has(item.itemId)),
+    ];
+    const itemIds = new Set(items.map((item) => item.itemId));
+    const ancestors = new Map(
+      [...current.inventory.ancestors, ...result.ancestors].map(
+        (item) => [item.itemId, item] as const,
+      ),
+    );
+    const edges = new Map(
+      [...current.inventory.provenanceEdges, ...result.provenanceEdges].map(
+        (edge) => [edge.itemId, edge] as const,
+      ),
+    );
     this.#setState(
       Object.freeze({
         ...current,
         inventory: Object.freeze({
-          items: Object.freeze([
-            ...current.inventory.items,
-            ...result.items.filter((item) => !known.has(item.itemId)),
-          ]),
+          items: Object.freeze(items),
+          ancestors: Object.freeze(
+            [...ancestors.values()].filter((item) => !itemIds.has(item.itemId)),
+          ),
+          provenanceEdges: Object.freeze([...edges.values()]),
           dataRevision: result.dataRevision,
           ...(result.nextCursor === undefined
             ? {}
@@ -1114,34 +1454,78 @@ export class PlysmithApplicationStore {
   }
 
   async selectInventoryItem(item: InventoryItem): Promise<void> {
-    this.#selectedInventoryItemId = item.itemId;
+    if (this.#busyCommand !== undefined) return;
+    this.cancelDestructiveAction();
+    this.#selectedInventoryItemId =
+      this.#selectedInventoryItemId === item.itemId ? null : item.itemId;
     if (this.#revisionImpact?.impact.itemId !== item.itemId) {
       this.#revisionImpact = undefined;
     }
     this.#publishViewState();
+    await this.#persistManagementSelection(
+      this.#selectedInventoryItemId === null ? undefined : item,
+    );
+  }
+
+  async readInventoryDetails(
+    item: Pick<InventoryItem, 'itemId' | 'currentRevisionId'>,
+  ): Promise<InventoryDetailsRead> {
+    const client = this.#client;
+    if (client === undefined) return { kind: 'cancelled' };
+    const lifecycle = this.#lifecycle;
+    try {
+      // Management reads do not open analysis or change its work scope/resume.
+      const record = await client.getInventoryRevision(
+        item.itemId,
+        item.currentRevisionId,
+        { scopeKind: 'free' },
+      );
+      if (lifecycle !== this.#lifecycle || client !== this.#client)
+        return { kind: 'cancelled' };
+      return { kind: 'completed', record };
+    } catch (error) {
+      if (lifecycle !== this.#lifecycle || client !== this.#client)
+        return { kind: 'cancelled' };
+      return { kind: 'failed', errorCode: hostErrorCode(error) };
+    }
+  }
+
+  async #persistManagementSelection(item?: InventoryItem): Promise<void> {
     if (
-      this.#scope.kind !== 'context' ||
+      this.#scope.kind === 'context' &&
+      item !== undefined &&
       !item.contextIds.includes(this.#scope.contextId)
     ) {
       return;
     }
-    if (this.#hasPendingRevisionImpact(item.itemId)) return;
+    if (item !== undefined && this.#hasPendingRevisionImpact(item.itemId))
+      return;
     const expectedResumeVersion =
-      this.#readyState()?.contextWorkspace?.managementResume?.resumeVersion ??
+      this.#readyState()?.scopeWorkspace.managementResume?.resumeVersion ??
       null;
-    const contextId = this.#scope.contextId;
     await this.#runCommand('set_resume', async (client) =>
-      client.setWorkScopeResume(contextId, {
+      client.setWorkScopeResume({
+        scope: this.#scope,
         area: 'manage',
         expectedResumeVersion,
         presentation: 'list',
-        selectedItemId: item.itemId,
-        selectedAnchorId: item.rootAnchorId,
+        ...(item === undefined
+          ? {}
+          : {
+              selectedItemId: item.itemId,
+              selectedAnchorId: item.rootAnchorId,
+            }),
       }),
     );
   }
 
   async openInventoryItem(item: InventoryItem): Promise<boolean> {
+    if (item.lifecycle !== 'active') return false;
+    if (
+      this.#scope.kind === 'context' &&
+      !item.contextIds.includes(this.#scope.contextId)
+    )
+      return false;
     if (this.#hasPendingRevisionImpact(item.itemId)) return false;
     const revisionId = this.#effectiveRevisionId(item);
     this.#analysisFocus = Object.freeze({
@@ -1151,21 +1535,13 @@ export class PlysmithApplicationStore {
     });
     this.#activity = 'analyze';
     this.#publishViewState();
-    if (
-      this.#scope.kind !== 'context' ||
-      !item.contextIds.includes(this.#scope.contextId)
-    ) {
-      await this.refresh();
-      return true;
-    }
     const expectedResumeVersion =
-      this.#readyState()?.contextWorkspace?.analysisResume?.resumeVersion ??
-      null;
-    const contextId = this.#scope.contextId;
+      this.#readyState()?.scopeWorkspace.analysisResume?.resumeVersion ?? null;
     const result = await this.#runCommand(
       'set_resume',
       async (client) =>
-        client.setWorkScopeResume(contextId, {
+        client.setWorkScopeResume({
+          scope: this.#scope,
           area: 'analyze',
           expectedResumeVersion,
           mode: 'analyze',
@@ -1179,21 +1555,8 @@ export class PlysmithApplicationStore {
     this.#analysisFocus = undefined;
     await this.refresh();
     this.#finishCommand();
+    await this.#persistStartup();
     return true;
-  }
-
-  async openCurrentRecordWithoutContext(): Promise<void> {
-    const record = this.#readyState()?.analysis.record;
-    if (record === undefined) return;
-    this.#scope = Object.freeze({ kind: 'free' });
-    this.#inventoryContextOnly = false;
-    this.#analysisFocus = Object.freeze({
-      itemId: record.itemId,
-      revisionId: record.revisionId,
-      anchorId: record.currentAnchorId,
-    });
-    this.#publishViewState();
-    await this.refresh();
   }
 
   async openRecordAnchor(anchorId: string): Promise<void> {
@@ -1206,21 +1569,17 @@ export class PlysmithApplicationStore {
       anchorId,
     });
     this.#publishViewState();
-    if (
-      state.scope.kind !== 'context' ||
-      record.readOnlyPreview ||
-      this.#hasPendingRevisionImpact(record.itemId)
-    ) {
+    if (this.#hasPendingRevisionImpact(record.itemId)) {
       await this.refresh();
       return;
     }
-    const contextId = state.scope.contextId;
     const expectedResumeVersion =
-      state.contextWorkspace?.analysisResume?.resumeVersion ?? null;
+      state.scopeWorkspace.analysisResume?.resumeVersion ?? null;
     const result = await this.#runCommand(
       'set_resume',
       (client) =>
-        client.setWorkScopeResume(contextId, {
+        client.setWorkScopeResume({
+          scope: state.scope,
           area: 'analyze',
           expectedResumeVersion,
           mode: 'analyze',
@@ -1236,10 +1595,29 @@ export class PlysmithApplicationStore {
     this.#finishCommand();
   }
 
+  canWorkWithInventoryItem(itemId: string): boolean {
+    const state = this.#readyState();
+    const known =
+      state === undefined
+        ? undefined
+        : [...state.inventory.items, ...state.inventory.ancestors].find(
+            (item) => item.itemId === itemId,
+          );
+    return (
+      state !== undefined &&
+      (known === undefined || known.lifecycle === 'active') &&
+      (state.scope.kind === 'free' ||
+        state.contextWorkspace?.references.some(
+          (reference) => reference.itemId === itemId,
+        ) === true)
+    );
+  }
+
   async openAnalysisTarget(target: AnalysisFocus): Promise<void> {
     const state = this.#readyState();
     const record = state?.analysis.record;
     if (state === undefined || record === undefined) return;
+    if (!this.canWorkWithInventoryItem(target.itemId)) return;
     this.#diagnose({
       level: 'debug',
       eventCode: 'renderer.analysis.navigation_requested',
@@ -1276,27 +1654,281 @@ export class PlysmithApplicationStore {
 
   async removeInventoryItemFromCurrentContext(
     item: InventoryItem,
+    preview: ContextRemovalPreviewDto,
   ): Promise<boolean> {
     if (this.#scope.kind !== 'context') return false;
     const contextId = this.#scope.contextId;
-    const result = await this.#runCommand('remove_context_item', (client) =>
-      client.removeContextItem(contextId, item.itemId),
+    const previous = this.#readyState()?.analysis;
+    const lifecycle = this.#lifecycle;
+    const wasOpen =
+      previous?.scope.kind === 'context' &&
+      previous.scope.contextId === contextId &&
+      (previous.record?.itemId === item.itemId ||
+        (previous.scratch?.origin.kind === 'inventory_anchor' &&
+          previous.scratch.origin.itemId === item.itemId));
+    const result = await this.#runCommand(
+      'remove_context_item',
+      async (client) => {
+        const removed = await client.removeContextItem(contextId, item.itemId, {
+          expectedDataRevision: preview.dataRevision,
+          expectedContextVersion: preview.contextVersion,
+        });
+        // Keep the prior identity before the command's refresh clears the workspace.
+        if (wasOpen && lifecycle === this.#lifecycle) {
+          this.#analysisUnavailable.set(contextId, {
+            reason: 'removed_from_context',
+            itemId: item.itemId,
+            displayName: previous.record?.displayName ?? item.displayName,
+          });
+        }
+        return removed;
+      },
     );
     return result !== undefined;
   }
 
-  async addCurrentRecordToContext(): Promise<void> {
-    const state = this.#readyState();
-    if (state?.scope.kind !== 'context' || state.analysis.record === undefined)
-      return;
-    const contextId = state.scope.contextId;
-    const record = state.analysis.record;
-    await this.#runCommand('add_context_reference', (client) =>
-      client.addContextReference(contextId, {
-        itemId: record.itemId,
-        anchorId: record.rootAnchorId,
-      }),
+  async prepareContextItemRemoval(item: InventoryItem): Promise<void> {
+    if (this.#scope.kind !== 'context') return;
+    await this.#prepareDestructiveAction({
+      kind: 'context_item',
+      contextId: this.#scope.contextId,
+      itemId: item.itemId,
+      displayName: item.displayName,
+      status: 'loading',
+    });
+  }
+
+  async prepareContextDeletion(contextId: string): Promise<void> {
+    const context = this.#readyState()?.contexts.contexts.find(
+      (entry) => entry.contextId === contextId,
     );
+    if (context === undefined) return;
+    await this.#prepareDestructiveAction({
+      kind: 'context',
+      contextId,
+      displayName: context.displayName,
+      status: 'loading',
+    });
+  }
+
+  async prepareInventoryItemDeletion(item: InventoryItem): Promise<void> {
+    await this.#prepareDestructiveAction({
+      kind: 'inventory',
+      itemId: item.itemId,
+      displayName: item.displayName,
+      status: 'loading',
+    });
+  }
+
+  cancelDestructiveAction(): void {
+    if (this.#destructiveAction?.status === 'submitting') return;
+    this.#destructiveVersion++;
+    this.#destructiveAction = undefined;
+    this.#publishViewState();
+  }
+
+  async #prepareDestructiveAction(action: DestructiveAction): Promise<void> {
+    const client = this.#client;
+    if (client === undefined || this.#busyCommand !== undefined) return;
+    const version = ++this.#destructiveVersion;
+    const lifecycle = this.#lifecycle;
+    this.#destructiveAction = action;
+    this.#publishViewState();
+    try {
+      const prepared: DestructiveAction =
+        action.kind === 'inventory'
+          ? {
+              ...action,
+              status: 'ready',
+              preview: await client.previewInventoryItemDeletion(action.itemId),
+            }
+          : {
+              ...action,
+              status: 'ready',
+              preview:
+                action.kind === 'context'
+                  ? await client.previewWorkingContextDeletion(action.contextId)
+                  : await client.previewContextItemRemoval(
+                      action.contextId,
+                      action.itemId,
+                    ),
+            };
+      if (version !== this.#destructiveVersion || lifecycle !== this.#lifecycle)
+        return;
+      const dataRevision = this.#readyState()?.status.persistence.dataRevision;
+      this.#destructiveAction =
+        prepared.preview!.dataRevision === dataRevision
+          ? prepared
+          : { ...prepared, status: 'stale' };
+    } catch {
+      if (version !== this.#destructiveVersion || lifecycle !== this.#lifecycle)
+        return;
+      this.#destructiveAction = {
+        ...action,
+        status: 'error',
+        errorMessageId: 'destructive.failed',
+      };
+    }
+    this.#publishViewState();
+  }
+
+  async confirmDestructiveAction(): Promise<boolean> {
+    const action = this.#destructiveAction;
+    const state = this.#readyState();
+    if (
+      action?.status !== 'ready' ||
+      action.preview === undefined ||
+      state === undefined ||
+      this.#busyCommand !== undefined
+    )
+      return false;
+    if (action.preview.dataRevision !== state.status.persistence.dataRevision) {
+      this.#destructiveAction = { ...action, status: 'stale' };
+      this.#publishViewState();
+      return false;
+    }
+    this.#destructiveAction = { ...action, status: 'submitting' };
+    const lifecycle = this.#lifecycle;
+    this.#publishViewState();
+    const result = await this.#runCommand(
+      action.kind === 'inventory'
+        ? 'delete_inventory_item'
+        : action.kind === 'context'
+          ? 'delete_context'
+          : 'remove_context_item',
+      async (client) => {
+        if (action.kind === 'inventory') {
+          if (action.preview === undefined) return undefined;
+          const removed = await client.deleteInventoryItem(action.itemId, {
+            expectedCurrentRevisionId: action.preview.currentRevisionId,
+            expectedDataRevision: action.preview.dataRevision,
+          });
+          const boundItem =
+            state.analysis.record?.itemId ??
+            (state.analysis.scratch?.origin.kind === 'inventory_anchor'
+              ? state.analysis.scratch.origin.itemId
+              : undefined);
+          if (boundItem === action.itemId) {
+            this.#analysisUnavailable.set(scopeKey(state.scope), {
+              reason: 'deleted_from_inventory',
+              itemId: action.itemId,
+              displayName: action.displayName,
+            });
+            this.#analysisFocus = undefined;
+          }
+          return removed;
+        }
+        if (action.preview === undefined) return undefined;
+        const confirmation = {
+          expectedContextVersion: action.preview.contextVersion,
+          expectedDataRevision: action.preview.dataRevision,
+        };
+        if (action.kind === 'context') {
+          const removed = await client.deleteWorkingContext(
+            action.contextId,
+            confirmation,
+          );
+          if (
+            this.#scope.kind === 'context' &&
+            this.#scope.contextId === action.contextId
+          ) {
+            this.#startupNotice = {
+              contextId: action.contextId,
+              displayName: action.displayName,
+              reason: 'deleted',
+            };
+            this.#scope = { kind: 'free' };
+            this.#analysisFocus = undefined;
+            this.#selectedInventoryItemId = undefined;
+            this.#inventoryContextOnly = false;
+            this.#playoutStart = undefined;
+            this.#pendingPlayoutStart = undefined;
+            this.#completedPlayout = undefined;
+            this.#completedPlayoutView = undefined;
+          }
+          return removed;
+        }
+        const removed = await client.removeContextItem(
+          action.contextId,
+          action.itemId,
+          confirmation,
+        );
+        const boundItem =
+          state.analysis.record?.itemId ??
+          (state.analysis.scratch?.origin.kind === 'inventory_anchor'
+            ? state.analysis.scratch.origin.itemId
+            : undefined);
+        if (boundItem === action.itemId) {
+          this.#analysisUnavailable.set(action.contextId, {
+            reason: 'removed_from_context',
+            itemId: action.itemId,
+            displayName: action.displayName,
+          });
+          this.#analysisFocus = undefined;
+        }
+        return removed;
+      },
+      false,
+    );
+    if (lifecycle !== this.#lifecycle) return false;
+    if (result === undefined) {
+      const conflict = this.#errorCode?.endsWith('_conflict') === true;
+      this.#destructiveAction = {
+        ...action,
+        status: conflict ? 'stale' : 'error',
+        errorMessageId: conflict ? 'destructive.stale' : 'destructive.failed',
+      };
+      this.#publishViewState();
+      return false;
+    }
+    this.#destructiveVersion++;
+    this.#destructiveAction = undefined;
+    this.#selectedInventoryItemId = null;
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
+  #persistStartup(): Promise<void> {
+    const client = this.#client;
+    if (client === undefined) return Promise.resolve();
+    const lifecycle = this.#lifecycle;
+    const scope = this.#scope;
+    const area = this.#activity;
+    const save = this.#startupSavePromise
+      .then(async () => {
+        if (
+          lifecycle !== this.#lifecycle ||
+          !sameScope(scope, this.#scope) ||
+          area !== this.#activity
+        )
+          return;
+        const current = await client.getStartupResume();
+        if (
+          lifecycle !== this.#lifecycle ||
+          !sameScope(scope, this.#scope) ||
+          area !== this.#activity
+        )
+          return;
+        if (
+          sameScope(current.scope, scope) &&
+          current.area === area &&
+          current.unavailableContext === undefined
+        )
+          return;
+        await client.setStartupResume({
+          scope,
+          area,
+          expectedStartupVersion: current.startupVersion,
+        });
+        if (lifecycle === this.#lifecycle) await this.refresh();
+      })
+      .catch((error: unknown) => {
+        if (lifecycle === this.#lifecycle)
+          this.#setReadyError(hostErrorCode(error));
+      });
+    this.#startupSavePromise = save;
+    return save;
   }
 
   async validateAnalysisSetup(
@@ -1504,7 +2136,6 @@ export class PlysmithApplicationStore {
     if (
       record === undefined ||
       record.historical ||
-      record.readOnlyPreview ||
       record.revisionId !== record.currentRevisionId ||
       record.cursor !== record.steps.length ||
       record.steps.length === 0 ||
@@ -1516,6 +2147,15 @@ export class PlysmithApplicationStore {
       'truncate_after',
       anchorBeforeMoveCount(record, record.steps.length - 1),
     );
+  }
+
+  async continueAnalysisExploration(): Promise<void> {
+    const state = this.#readyState();
+    if (!state?.analysis.allowedActions.includes('continue_exploration'))
+      return;
+    await this.#updateScratch('update_scratch', {
+      kind: 'continue_exploration',
+    });
   }
 
   async promoteAnalysisToInventoryRevision(): Promise<void> {
@@ -1837,11 +2477,7 @@ export class PlysmithApplicationStore {
       false,
     );
     if (result === undefined) return false;
-    this.#analysisFocus = Object.freeze({
-      itemId: result.itemId,
-      revisionId: result.revisionId,
-      anchorId: result.rootAnchorId,
-    });
+    this.#analysisFocus = undefined;
     this.#announcement = includesNote
       ? 'analysis.savedWithNote'
       : 'analysis.saved';
@@ -2004,12 +2640,22 @@ export class PlysmithApplicationStore {
       contextId: result.context.contextId,
     });
     this.#inventoryContextOnly = true;
-    this.#selectedInventoryItemId = undefined;
+    this.#selectedInventoryItemId = null;
     this.#analysisFocus = undefined;
     this.#announcement = 'context.created';
     await this.refresh();
     this.#finishCommand();
     return true;
+  }
+
+  async updateWorkingContextMetadata(
+    contextId: string,
+    request: UpdateWorkingContextMetadataRequestDto,
+  ): Promise<boolean> {
+    const result = await this.#runCommand('update_context_metadata', (client) =>
+      client.updateWorkingContextMetadata(contextId, request),
+    );
+    return result !== undefined;
   }
 
   async setUiLanguage(uiLocale: UiLocale): Promise<void> {
@@ -2115,6 +2761,79 @@ export class PlysmithApplicationStore {
     return result;
   }
 
+  selectEngineConfiguration(key: string): void {
+    if (this.#busyCommand !== undefined) return;
+    this.#engineConfigurationDrafts.select(key);
+    this.#publishViewState();
+  }
+
+  createEngineConfigurationDraft(
+    providerType: EngineConfigurationForm['providerType'],
+  ): void {
+    if (this.#busyCommand !== undefined) return;
+    this.#engineConfigurationDrafts.create(providerType);
+    this.#publishViewState();
+  }
+
+  updateEngineConfigurationDraft(
+    key: string,
+    patch: EngineConfigurationDraftPatch,
+  ): void {
+    if (this.#busyCommand !== undefined) return;
+    this.#engineConfigurationDrafts.update(key, patch);
+    this.#publishViewState();
+  }
+
+  discardEngineConfigurationDraft(key: string): void {
+    const state = this.#readyState();
+    if (state === undefined || this.#busyCommand !== undefined) return;
+    this.#engineConfigurationDrafts.discard(key);
+    this.#engineConfigurationDrafts.synchronize(
+      state.engineProviders.providers,
+    );
+    this.#publishViewState();
+  }
+
+  async saveEngineConfigurationDraft(key: string): Promise<boolean> {
+    if (this.#busyCommand !== undefined) return false;
+    const request = this.#engineConfigurationDrafts.prepareSave(key);
+    this.#publishViewState();
+    if (request === undefined) return false;
+    const lifecycle = this.#lifecycle;
+    const provider = await this.#runCommand(
+      'save_engine_provider',
+      async (client) => {
+        const preview = await client.previewEngineProviderConfiguration(
+          request.input,
+        );
+        if (lifecycle !== this.#lifecycle) return null;
+        if (preview.issues.length > 0) {
+          this.#engineConfigurationDrafts.setIssues(
+            key,
+            mapEngineConfigurationIssues(preview.issues),
+          );
+          return null;
+        }
+        return client.saveEngineProviderConfiguration(
+          request.input.instanceId,
+          request,
+        );
+      },
+      false,
+    );
+    if (provider === undefined) return false;
+    if (provider === null) {
+      this.#finishCommand();
+      return false;
+    }
+    this.#committedReadVersion = ++this.#readVersion;
+    this.#engineConfigurationDrafts.saved(key, provider);
+    this.#announcement = 'engines.savedPendingRestart';
+    await this.refresh();
+    this.#finishCommand();
+    return true;
+  }
+
   async saveEngineProviderConfiguration(
     input: EngineProviderConfigurationInputDto,
     expectedConfigurationRevision: string | null,
@@ -2148,6 +2867,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#announcement = 'engines.removedPendingRestart';
+    this.#engineConfigurationDrafts.removed(provider.instanceId);
     await this.refresh();
     this.#finishCommand();
     return true;
@@ -2160,6 +2880,9 @@ export class PlysmithApplicationStore {
 
   close(): void {
     this.#lifecycle += 1;
+    this.#busyCommand = undefined;
+    this.#destructiveAction = undefined;
+    this.#destructiveVersion += 1;
     this.#pendingEventRevision = undefined;
     this.#pendingUnversionedEvent = false;
     this.#events?.close();
@@ -2168,6 +2891,8 @@ export class PlysmithApplicationStore {
     this.#inventoryRevisionPreview = undefined;
     this.#manageInventoryRevisionDraft = undefined;
     this.#revisionImpact = undefined;
+    this.#contextAnalysisItems.clear();
+    this.#analysisUnavailable.clear();
     this.#listeners.clear();
   }
 
@@ -2195,7 +2920,6 @@ export class PlysmithApplicationStore {
     if (
       record === undefined ||
       record.historical ||
-      record.readOnlyPreview ||
       record.revisionId !== record.currentRevisionId
     ) {
       return;
@@ -2206,17 +2930,6 @@ export class PlysmithApplicationStore {
       matchesSavedMove(move, savedNextStep.move, state.preferences.uiLocale)
     ) {
       await this.openRecordAnchor(savedNextStep.anchorId);
-      return;
-    }
-    if (
-      record.itemType === 'analysis' &&
-      record.cursor === record.steps.length
-    ) {
-      await this.#startInventoryRevision(
-        'extend',
-        record.currentAnchorId,
-        move,
-      );
       return;
     }
     await this.#startScratch(
@@ -2271,7 +2984,6 @@ export class PlysmithApplicationStore {
   async #startInventoryRevision(
     mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata',
     anchorId: string,
-    firstMove?: MoveRequest,
     metadata?: {
       readonly displayName: string;
       readonly summary: string | null;
@@ -2287,7 +2999,6 @@ export class PlysmithApplicationStore {
       (existingScratch !== undefined &&
         existingScratch.intent.kind !== 'inventory_revision') ||
       record.historical ||
-      record.readOnlyPreview ||
       record.revisionId !== record.currentRevisionId
     ) {
       return;
@@ -2303,7 +3014,6 @@ export class PlysmithApplicationStore {
           expectedScratchId: existingScratch?.scratchId ?? null,
           expectedScratchRevision: existingScratch?.scratchRevision ?? null,
           ...(metadata === undefined ? {} : metadata),
-          ...(firstMove === undefined ? {} : { firstMove }),
         });
         const preview =
           mode === 'replace_move' && result.scratch.steps.length === 0
@@ -2365,11 +3075,13 @@ export class PlysmithApplicationStore {
       this.#finishCommand();
       return false;
     }
+    this.#clearAnalysisUnavailable(state.scope);
     this.#analysisFocus = undefined;
     this.#activity = 'analyze';
     this.#publishViewState();
     await this.refresh();
     this.#finishCommand();
+    await this.#persistStartup();
     return true;
   }
 
@@ -2456,7 +3168,11 @@ export class PlysmithApplicationStore {
 
   async #runPlayoutCommand(
     command:
-      'retry_playout' | 'pause_playout' | 'resume_playout' | 'stop_playout',
+      | 'retry_playout'
+      | 'pause_playout'
+      | 'resume_playout'
+      | 'stop_playout'
+      | 'cancel_playout_completion',
     action: (
       client: PlysmithApplicationClient,
       request: ExpectedPlayoutRequestDto,
@@ -2644,6 +3360,50 @@ export class PlysmithApplicationStore {
 
   #handleHostEvent(event: HostEvent): void {
     const state = this.#readyState();
+    if (event.kind === 'inventory.item-deleted' && state !== undefined) {
+      const itemId = event.payload.itemId;
+      const knownRemoval = this.#analysisUnavailable.get(scopeKey(state.scope));
+      const boundItem =
+        state.analysis.record?.itemId ??
+        (state.analysis.scratch?.origin.kind === 'inventory_anchor'
+          ? state.analysis.scratch.origin.itemId
+          : undefined);
+      if (boundItem === itemId || knownRemoval?.itemId === itemId) {
+        this.#analysisUnavailable.set(scopeKey(state.scope), {
+          reason: 'deleted_from_inventory',
+          itemId,
+          displayName:
+            state.analysis.record?.displayName ??
+            knownRemoval?.displayName ??
+            state.inventory.items.find((item) => item.itemId === itemId)
+              ?.displayName ??
+            itemId,
+        });
+        this.#analysisFocus = undefined;
+        this.#publishViewState();
+      }
+    }
+    if (
+      event.kind === 'workspace.context-deleted' &&
+      this.#scope.kind === 'context' &&
+      event.payload.contextId === this.#scope.contextId
+    ) {
+      this.#startupNotice = {
+        contextId: this.#scope.contextId,
+        reason: 'deleted',
+        ...(state?.contextWorkspace === undefined
+          ? {}
+          : { displayName: state.contextWorkspace.context.displayName }),
+      };
+      this.#scope = { kind: 'free' };
+      this.#analysisFocus = undefined;
+      this.#selectedInventoryItemId = undefined;
+      this.#inventoryContextOnly = false;
+      this.#playoutStart = undefined;
+      this.#pendingPlayoutStart = undefined;
+      this.#completedPlayout = undefined;
+      this.#completedPlayoutView = undefined;
+    }
     const scratchEventNeedsRefresh =
       event.kind === 'analysis.scratch-changed' &&
       state !== undefined &&
@@ -2712,9 +3472,87 @@ export class PlysmithApplicationStore {
     return true;
   }
 
+  #clearAnalysisUnavailable(scope: WorkScope): void {
+    this.#analysisUnavailable.delete(scopeKey(scope));
+    this.#contextAnalysisItems.delete(scopeKey(scope));
+  }
+
+  #updateAnalysisUnavailable(
+    analysis: AnalysisWorkspaceDto,
+    workspace: WorkingContextWorkspaceDto | undefined,
+  ): void {
+    if (analysis.scope.kind === 'free') {
+      if (analysis.record !== undefined || analysis.scratch !== undefined)
+        this.#analysisUnavailable.delete('free');
+      return;
+    }
+    if (
+      analysis.scope.kind !== 'context' ||
+      workspace?.context.contextId !== analysis.scope.contextId
+    )
+      return;
+    const contextId = analysis.scope.contextId;
+    const previous = this.#contextAnalysisItems.get(contextId);
+    const notice = this.#analysisUnavailable.get(contextId);
+    const hasContent =
+      analysis.record !== undefined || analysis.scratch !== undefined;
+    if (
+      hasContent ||
+      workspace.references.some(
+        (reference) => reference.itemId === notice?.itemId,
+      )
+    ) {
+      this.#analysisUnavailable.delete(contextId);
+    } else if (
+      notice?.reason !== 'deleted_from_inventory' &&
+      previous !== undefined &&
+      !workspace.references.some(
+        (reference) => reference.itemId === previous.itemId,
+      )
+    ) {
+      this.#analysisUnavailable.set(contextId, {
+        reason: 'removed_from_context',
+        ...previous,
+      });
+    }
+
+    // Only accepted content with a proven assignment can establish later removal.
+    const itemId =
+      analysis.record?.itemId ??
+      (analysis.scratch?.origin.kind === 'inventory_anchor'
+        ? analysis.scratch.origin.itemId
+        : undefined);
+    const reference = workspace.references.find(
+      (entry) => entry.itemId === itemId,
+    );
+    if (reference === undefined) {
+      this.#contextAnalysisItems.delete(contextId);
+    } else {
+      this.#contextAnalysisItems.set(contextId, {
+        itemId: reference.itemId,
+        displayName: analysis.record?.displayName ?? reference.displayName,
+      });
+    }
+  }
+
+  #visibleAnalysisUnavailable(
+    analysis: AnalysisWorkspaceDto,
+  ): AnalysisUnavailable | undefined {
+    if (
+      !sameScope(this.#scope, analysis.scope) ||
+      analysis.record !== undefined ||
+      analysis.scratch !== undefined
+    )
+      return undefined;
+    return this.#analysisUnavailable.get(scopeKey(this.#scope));
+  }
+
   #publishViewState(): void {
     if (this.#state.phase !== 'ready') return;
     const state = this.#state;
+    const analysisUnavailable = this.#visibleAnalysisUnavailable(
+      state.analysis,
+    );
     const inventoryRevisionPreview = this.#visibleInventoryRevisionPreview(
       state.analysis,
     );
@@ -2728,9 +3566,18 @@ export class PlysmithApplicationStore {
         contexts: state.contexts,
         inventory: state.inventory,
         analysis: state.analysis,
+        scopeWorkspace: state.scopeWorkspace,
+        ...(this.#startupNotice === undefined
+          ? {}
+          : { startupNotice: this.#startupNotice }),
+        ...(this.#destructiveAction === undefined
+          ? {}
+          : { destructiveAction: this.#destructiveAction }),
+        ...(analysisUnavailable === undefined ? {} : { analysisUnavailable }),
         analysisProviders: state.analysisProviders,
         playoutProviders: state.playoutProviders,
         engineProviders: state.engineProviders,
+        engineConfigurationDrafts: this.#engineConfigurationDrafts.snapshot,
         playout: state.playout,
         ...(this.#playoutStart === undefined
           ? {}
@@ -2744,6 +3591,9 @@ export class PlysmithApplicationStore {
         ...(this.#completedPlayoutView === undefined
           ? {}
           : { completedPlayoutView: this.#completedPlayoutView }),
+        ...(this.#pendingPlayoutCompletion === undefined
+          ? {}
+          : { pendingPlayoutCompletion: this.#pendingPlayoutCompletion }),
         ...(inventoryRevisionPreview === undefined
           ? {}
           : { inventoryRevisionPreview }),
@@ -2762,7 +3612,7 @@ export class PlysmithApplicationStore {
         scope: this.#scope,
         inventoryQuery: this.#inventoryQuery,
         inventoryContextOnly: this.#inventoryContextOnly,
-        ...(this.#selectedInventoryItemId === undefined
+        ...(this.#selectedInventoryItemId == null
           ? {}
           : { selectedInventoryItemId: this.#selectedInventoryItemId }),
         refreshing:
@@ -2888,7 +3738,7 @@ function sameDataRevision(
   preferences: UserPreferencesDto,
   contexts: ListWorkingContextsResultDto,
   inventory: SearchInventoryResultDto,
-  analysis: AnalysisWorkspaceDto,
+  analysis: AnalysisWorkspaceDto | undefined,
   workspace: WorkingContextWorkspaceDto | undefined,
   playout: PlayoutDto | null,
 ): boolean {
@@ -2897,7 +3747,7 @@ function sameDataRevision(
     preferences.dataRevision,
     contexts.dataRevision,
     inventory.dataRevision,
-    analysis.dataRevision,
+    ...(analysis === undefined ? [] : [analysis.dataRevision]),
     ...(playout === null ? [] : [playout.dataRevision]),
     ...(workspace === undefined ? [] : [workspace.dataRevision]),
   ];
@@ -2916,6 +3766,10 @@ function sameScope(left: WorkScope, right: WorkScope): boolean {
     (left.kind === 'free' ||
       (right.kind === 'context' && left.contextId === right.contextId))
   );
+}
+
+function scopeKey(scope: WorkScope): string {
+  return scope.kind === 'free' ? 'free' : scope.contextId;
 }
 
 function bindInventoryRevisionPreview(

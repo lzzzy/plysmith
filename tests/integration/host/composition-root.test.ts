@@ -106,7 +106,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 6,
+      schemaVersion: 7,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');
@@ -193,11 +193,21 @@ test('composition root wires the real store and use cases without listening', as
         draftId: stoppedPlayout.json().draft.draftId,
         expectedDraftRevision: stoppedPlayout.json().draft.draftRevision,
         completionId: 'composition-playout-completion',
+        manualResult: 'draw',
         displayName: 'Ausgespielte Testpartie',
         languageTag: 'de-DE',
       },
     });
     assert.equal(completedPlayout.statusCode, 200);
+    assert.deepEqual(completedPlayout.json().outcome, { kind: 'draw' });
+    assert.equal(completedPlayout.json().outcomeSource, 'manual');
+    const completedGame = await runtime.host.inject({
+      url: `/inventory/items/${completedPlayout.json().itemId}/revisions/${completedPlayout.json().revisionId}?scopeKind=free`,
+      headers,
+    });
+    assert.equal(completedGame.statusCode, 200);
+    assert.deepEqual(completedGame.json().game.outcome, { kind: 'draw' });
+    assert.equal(completedGame.json().game.outcomeSource, 'manual');
 
     const diagnosticSettings = await runtime.host.inject({
       url: '/diagnostics/settings',
@@ -334,10 +344,11 @@ test('composition root wires the real store and use cases without listening', as
 
     const resumed = await runtime.host.inject({
       method: 'PUT',
-      url: `/working-contexts/${contextId}/resume`,
+      url: '/workspace/resume',
       headers,
       payload: {
         area: 'analyze',
+        scope: { kind: 'context', contextId },
         expectedResumeVersion: null,
         mode: 'analyze',
         itemId: recordDto.itemId,
@@ -365,7 +376,7 @@ test('composition root wires the real store and use cases without listening', as
     });
     assert.equal(contextAnalysis.statusCode, 200);
     assert.equal(contextAnalysis.json().record.contextMember, true);
-    assert.equal(contextAnalysis.json().record.readOnlyPreview, false);
+    assert.equal(contextAnalysis.json().record.contextMember, true);
   } finally {
     await runtime.close();
   }

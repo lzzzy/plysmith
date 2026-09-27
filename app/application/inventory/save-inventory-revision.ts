@@ -78,6 +78,7 @@ export class SaveInventoryRevision implements SaveInventoryRevisionUseCase {
             return {
               ...(saved.noOp ? { scratch } : {}),
               result: saved,
+              persisted: true,
             };
           })
         : await this.#writer.saveInventoryRevision({

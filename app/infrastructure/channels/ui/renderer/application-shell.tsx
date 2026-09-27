@@ -133,7 +133,10 @@ function ApplicationFrame({
                   : { kind: 'context', contextId: value.slice(8) },
               );
             }}
-            disabled={state.busyCommand !== undefined}
+            disabled={
+              state.busyCommand !== undefined ||
+              state.pendingPlayoutCompletion !== undefined
+            }
           >
             <option value="free">
               {intl.formatMessage({ id: 'scope.free' })}
@@ -147,13 +150,6 @@ function ApplicationFrame({
               </option>
             ))}
           </select>
-          <span className={styles.scopeMeta}>
-            {state.scope.kind === 'free' ? (
-              <FormattedMessage id="scope.sessionResume" />
-            ) : (
-              <FormattedMessage id="scope.persistentResume" />
-            )}
-          </span>
           {state.refreshing && (
             <RefreshCw
               className={styles.spinning}
@@ -162,6 +158,20 @@ function ApplicationFrame({
             />
           )}
         </header>
+
+        {state.startupNotice !== undefined && (
+          <section className={styles.errorNotice} role="status">
+            <AlertTriangle aria-hidden="true" size={18} />
+            <FormattedMessage
+              id={
+                state.startupNotice.displayName === undefined
+                  ? 'startup.contextUnavailable'
+                  : 'startup.namedContextUnavailable'
+              }
+              values={{ name: state.startupNotice.displayName }}
+            />
+          </section>
+        )}
 
         {state.errorCode !== undefined && (
           <ErrorNotice errorCode={state.errorCode} />
@@ -255,9 +265,15 @@ function ErrorNotice({ errorCode }: { readonly errorCode: string }) {
 }
 
 function errorMessageId(errorCode: string): string {
+  if (errorCode === 'inventory.display_name_conflict')
+    return 'error.inventoryNameConflict';
   if (errorCode === 'chess.invalid_fen') return 'error.invalidFen';
   if (errorCode === 'chess.illegal_move') return 'error.illegalMove';
   if (errorCode === 'chess.invalid_move_input') return 'error.invalidMove';
+  if (errorCode === 'workspace.context_version_conflict')
+    return 'error.contextChanged';
+  if (errorCode === 'workspace.inventory_work_not_allowed')
+    return 'error.workOutsideContext';
   if (errorCode.endsWith('revision_conflict')) return 'error.revision';
   if (errorCode === 'workspace.reference_exists')
     return 'error.referenceExists';

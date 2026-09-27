@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildFixture, headers } from './fixtures.ts';
+import { buildReadOnlyFixture, headers } from './fixtures.ts';
 
-test('buildHost is ready for inject without opening a port', async (t) => {
-  const { host } = await buildFixture(t);
+test('buildHost is ready for inject without opening a port', async () => {
+  const { host } = await buildReadOnlyFixture();
   assert.equal(host.server.listening, false);
   for (const origin of [undefined, 'app://plysmith']) {
     const response = await host.inject({
@@ -21,8 +21,8 @@ test('buildHost is ready for inject without opening a port', async (t) => {
   }
 });
 
-test('every route checks authentication before body validation or use cases', async (t) => {
-  const { host, published } = await buildFixture(t);
+test('every route checks authentication before body validation or use cases', async () => {
+  const { host, published } = await buildReadOnlyFixture();
   for (const [method, url] of [
     ['GET', '/status'],
     ['GET', '/preferences'],
@@ -50,8 +50,8 @@ test('every route checks authentication before body validation or use cases', as
   assert.equal(published.length, 0);
 });
 
-test('rejects non-canonical hosts, DNS aliases and forwarded-host bypasses', async (t) => {
-  const { host } = await buildFixture(t);
+test('rejects non-canonical hosts, DNS aliases and forwarded-host bypasses', async () => {
+  const { host } = await buildReadOnlyFixture();
   for (const authority of [
     'localhost:43210',
     'evil.example',
@@ -80,8 +80,8 @@ test('rejects non-canonical hosts, DNS aliases and forwarded-host bypasses', asy
   }
 });
 
-test('rejects foreign and null origins even with a valid bearer token', async (t) => {
-  const { host } = await buildFixture(t);
+test('rejects foreign and null origins even with a valid bearer token', async () => {
+  const { host } = await buildReadOnlyFixture();
   for (const origin of [
     'null',
     'https://plysmith',
@@ -99,8 +99,8 @@ test('rejects foreign and null origins even with a valid bearer token', async (t
   }
 });
 
-test('does not accept tokens from query strings or malformed authorization', async (t) => {
-  const { host } = await buildFixture(t);
+test('does not accept tokens from query strings or malformed authorization', async () => {
+  const { host } = await buildReadOnlyFixture();
   for (const authorization of [
     '',
     'Basic test-only-host-token',
@@ -116,8 +116,8 @@ test('does not accept tokens from query strings or malformed authorization', asy
   }
 });
 
-test('valid browser preflight needs no token and grants only the route method and required headers', async (t) => {
-  const { host } = await buildFixture(t);
+test('valid browser preflight needs no token and grants only the route method and required headers', async () => {
+  const { host } = await buildReadOnlyFixture();
   const response = await host.inject({
     method: 'OPTIONS',
     url: '/preferences/ui-language',
@@ -142,8 +142,8 @@ test('valid browser preflight needs no token and grants only the route method an
   assert.equal(response.headers['access-control-allow-credentials'], undefined);
 });
 
-test('browser preflight covers every public use-case route including queries and context paths', async (t) => {
-  const { host } = await buildFixture(t);
+test('browser preflight covers every public use-case route including queries and context paths', async () => {
+  const { host } = await buildReadOnlyFixture();
   const cases = [
     ['/status', 'GET', 'GET'],
     ['/preferences', 'GET', 'GET'],
@@ -189,13 +189,23 @@ test('browser preflight covers every public use-case route including queries and
     ['/playout/pause', 'POST', 'POST'],
     ['/playout/resume', 'POST', 'POST'],
     ['/playout/stop', 'POST', 'POST'],
+    ['/playout/cancel-completion', 'POST', 'POST'],
     ['/playout/complete', 'POST', 'POST'],
     ['/working-contexts?pageSize=100', 'GET', 'GET, POST'],
     ['/working-contexts', 'POST', 'GET, POST'],
-    ['/working-contexts/1', 'GET', 'GET'],
+    ['/working-contexts/1', 'GET', 'GET, DELETE'],
+    ['/working-contexts/1', 'DELETE', 'GET, DELETE'],
+    ['/working-contexts/1/metadata', 'PUT', 'PUT'],
+    ['/working-contexts/1/deletion-preview', 'GET', 'GET'],
+    ['/working-contexts/1/items/2/removal-preview', 'GET', 'GET'],
+    ['/inventory/items/2/deletion-preview', 'GET', 'GET'],
+    ['/inventory/items/2', 'DELETE', 'DELETE'],
+    ['/workspace/scope?scopeKind=free', 'GET', 'GET'],
+    ['/workspace/startup', 'GET', 'GET, PUT'],
+    ['/workspace/startup', 'PUT', 'GET, PUT'],
     ['/working-contexts/1/items/2', 'DELETE', 'DELETE'],
     ['/working-contexts/1/references', 'POST', 'POST'],
-    ['/working-contexts/1/resume', 'PUT', 'PUT'],
+    ['/workspace/resume', 'PUT', 'PUT'],
   ] as const;
 
   for (const [url, method, allowedMethods] of cases) {
@@ -219,8 +229,8 @@ test('browser preflight covers every public use-case route including queries and
   }
 });
 
-test('preflight rejects invalid host, origin, method, header and unknown routes', async (t) => {
-  const { host } = await buildFixture(t);
+test('preflight rejects invalid host, origin, method, header and unknown routes', async () => {
+  const { host } = await buildReadOnlyFixture();
   const base = {
     host: headers.host,
     origin: 'app://plysmith',
@@ -253,6 +263,9 @@ test('preflight rejects invalid host, origin, method, header and unknown routes'
   assert.equal(unknown.statusCode, 403);
 
   for (const url of [
+    '/working-contexts/1/resume',
+    '/workspace/startup/extra',
+    '/inventory/items/1/deletion-preview/extra',
     '/working-contexts/1/unknown',
     '/working-contexts/1/items/2/extra',
     '/working-contexts/1/references/extra',

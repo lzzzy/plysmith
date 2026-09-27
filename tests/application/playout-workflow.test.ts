@@ -6,6 +6,7 @@ import { test, type TestContext } from 'node:test';
 
 import {
   ActiveMovePolicyDecisions,
+  CancelPlayoutCompletion,
   MovePolicyProviderError,
   CompletePlayout,
   PausePlayout,
@@ -87,9 +88,90 @@ function fixture(
     submit: new SubmitPlayoutMove(common),
     pause: new PausePlayout(common),
     stop: new StopPlayout(common),
+    cancelCompletion: new CancelPlayoutCompletion(common),
     complete: new CompletePlayout(common),
   };
 }
+
+test('cancels completion through persistence after context access and provider are unavailable', async (t) => {
+  const { store, stop, cancelCompletion } = fixture(t, async () =>
+    assert.fail('Cancellation must not call a provider'),
+  );
+  const rules = new ChessJsRulesAdapter();
+  const { context } = await store.createWorkingContext(
+    { displayName: 'Completion context' },
+    timestamp,
+  );
+  const scope = { kind: 'context' as const, contextId: context.contextId };
+  const source = await store.createAnalysisRecord({
+    displayName: 'Completion source',
+    languageTag: 'en-GB',
+    origin: { kind: 'initial_position' },
+    root: rules.initialState(),
+    steps: [],
+    occurredAt: timestamp,
+  });
+  await store.addContextReference(
+    {
+      contextId: context.contextId,
+      itemId: source.itemId,
+      anchorId: source.rootAnchorId,
+    },
+    timestamp,
+  );
+  const created = await store.createPlayout({
+    scope,
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: source.itemId,
+      revisionId: source.revisionId,
+      anchorId: source.rootAnchorId,
+    },
+    root: rules.initialState(),
+    playerSide: 'black',
+    policy: {
+      capability: 'best_move',
+      providerInstanceId: 'removed-engine',
+      providerFingerprint: 'removed-engine:v1',
+      providerType: 'test-engine',
+      providerDisplayName: 'Removed engine',
+    },
+    occurredAt: timestamp,
+  });
+  await store.removeContextItem(
+    {
+      contextId: context.contextId,
+      itemId: source.itemId,
+      expectedContextVersion: context.contextVersion,
+      expectedDataRevision: (await store.readStoreStatus()).dataRevision,
+    },
+    timestamp,
+  );
+  const stopped = await stop.execute({
+    scope,
+    draftId: created.draft.draftId,
+    expectedDraftRevision: created.draft.draftRevision,
+  });
+  const cancelled = await cancelCompletion.execute({
+    scope,
+    draftId: stopped.draft.draftId,
+    expectedDraftRevision: stopped.draft.draftRevision,
+  });
+  assert.deepEqual(cancelled.draft, {
+    ...stopped.draft,
+    draftRevision: stopped.draft.draftRevision + 1,
+    status: { kind: 'paused' },
+  });
+  assert.deepEqual(await store.readPlayout(scope), {
+    draft: cancelled.draft,
+    dataRevision: cancelled.dataRevision,
+  });
+  const inventory = await store.searchInventory({ pageSize: 20 });
+  assert.deepEqual(
+    inventory.items.map((item) => item.itemType),
+    ['analysis'],
+  );
+});
 
 test('binds the player to the opposite side when the provider moves first', async (t) => {
   let policyCalls = 0;
@@ -274,7 +356,6 @@ test('completes and persists a practice game after threefold repetition', async 
     itemId: completed.itemId,
     revisionId: completed.revisionId,
     anchorId: completed.rootAnchorId,
-    readOnlyPreview: false,
   });
 
   assert.deepEqual(opened?.game?.outcome, {
@@ -317,6 +398,7 @@ test('persists moves and completes one idempotent game record', async (t) => {
     draftId: stopped.draft.draftId,
     expectedDraftRevision: stopped.draft.draftRevision,
     completionId: 'complete-game-1',
+    manualResult: 'unfinished',
     displayName: 'Praxispartie nach 1. e4',
     languageTag: 'de-DE',
   } as const;
@@ -343,7 +425,6 @@ test('persists moves and completes one idempotent game record', async (t) => {
     itemId: completed.itemId,
     revisionId: completed.revisionId,
     anchorId: completed.rootAnchorId,
-    readOnlyPreview: false,
   });
   assert.deepEqual(
     opened?.steps.map((step) => step.move.san),
@@ -353,6 +434,7 @@ test('persists moves and completes one idempotent game record', async (t) => {
   assert.deepEqual(opened?.game, {
     playerSide: 'white',
     outcome: { kind: 'unfinished' },
+    outcomeSource: 'manual',
     policy: {
       capability: 'best_move',
       providerInstanceId: 'engine-main',
@@ -396,6 +478,7 @@ test('persists the selected Maia profile with the completed game', async (t) => 
     draftId: stopped.draft.draftId,
     expectedDraftRevision: stopped.draft.draftRevision,
     completionId: 'complete-maia-game',
+    manualResult: 'unfinished',
     displayName: 'Praxispartie gegen Maia 1500',
     languageTag: 'de-DE',
   });
@@ -403,7 +486,6 @@ test('persists the selected Maia profile with the completed game', async (t) => 
     itemId: completed.itemId,
     revisionId: completed.revisionId,
     anchorId: completed.rootAnchorId,
-    readOnlyPreview: false,
   });
 
   assert.deepEqual(opened?.game?.policy, {

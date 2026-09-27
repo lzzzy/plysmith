@@ -1,4 +1,5 @@
 import {
+  canContinueAnalysisExploration,
   currentAnalysisMoves,
   currentAnalysisState,
 } from '../../domain/analysis/index.ts';
@@ -7,6 +8,7 @@ import type { ChessState } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import { workingContextNotFound } from '../workspace/index.ts';
+import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
 import { inventoryItemNotFound } from '../inventory/inventory-problems.ts';
 import type {
   AnalysisRecordView,
@@ -61,8 +63,9 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
       );
     }
     if (request.scope.kind === 'free') {
-      const status = await this.#storeStatus.readStoreStatus();
-      const scratch = this.#freeSession.read();
+      const stored = await this.#freeSession.readWorkspace();
+      const status = { dataRevision: stored.dataRevision };
+      const scratch = stored.scratch;
       if (scratch !== undefined) {
         const record =
           scratch.origin.kind === 'inventory_anchor'
@@ -70,7 +73,6 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
                 itemId: scratch.origin.itemId,
                 revisionId: scratch.origin.revisionId,
                 anchorId: scratch.origin.anchorId,
-                readOnlyPreview: false,
               })
             : undefined;
         if (
@@ -82,6 +84,9 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
         return this.#build(
           {
             dataRevision: status.dataRevision,
+            ...(stored.resumeVersion === undefined
+              ? {}
+              : { resumeVersion: stored.resumeVersion }),
             scratch,
             ...(record === undefined ? {} : { record }),
           },
@@ -91,15 +96,20 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
       if (request.preview !== undefined) {
         const record = await this.#reader.readAnalysisRecord({
           ...request.preview,
-          readOnlyPreview: false,
         });
         if (record === undefined) throw inventoryItemNotFound();
         return this.#build(
-          { dataRevision: status.dataRevision, record },
+          {
+            dataRevision: status.dataRevision,
+            ...(stored.resumeVersion === undefined
+              ? {}
+              : { resumeVersion: stored.resumeVersion }),
+            record,
+          },
           request,
         );
       }
-      return this.#build({ dataRevision: status.dataRevision }, request);
+      return this.#build(stored, request);
     }
     const stored = await this.#reader.readContextAnalysisWorkspace(
       request.scope.contextId,
@@ -109,9 +119,9 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
       const record = await this.#reader.readAnalysisRecord({
         ...request.preview,
         contextId: request.scope.contextId,
-        readOnlyPreview: true,
       });
       if (record === undefined) throw inventoryItemNotFound();
+      assertInventoryWorkAccess(request.scope, record.contextMember);
       return this.#build(
         {
           dataRevision: stored.dataRevision,
@@ -122,6 +132,39 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
           record,
         },
         request,
+      );
+    }
+    if (
+      stored.scratch?.intent.kind === 'inventory_revision' &&
+      stored.scratch.intent.mode === 'metadata' &&
+      stored.record?.itemId.value === stored.scratch.intent.itemId.value &&
+      !stored.record.contextMember
+    ) {
+      // A global metadata draft occupies the slot without granting analysis access.
+      const workspace = this.#build(
+        {
+          dataRevision: stored.dataRevision,
+          contextName: stored.contextName,
+          ...(stored.resumeVersion === undefined
+            ? {}
+            : { resumeVersion: stored.resumeVersion }),
+        },
+        request,
+      );
+      return Object.freeze({
+        ...workspace,
+        legalMoves: Object.freeze([]),
+        allowedActions: Object.freeze([]),
+      });
+    }
+    if (stored.record !== undefined) {
+      assertInventoryWorkAccess(request.scope, stored.record.contextMember);
+    }
+    if (stored.scratch?.origin.kind === 'inventory_anchor') {
+      assertInventoryWorkAccess(
+        request.scope,
+        stored.record?.contextMember === true &&
+          stored.record.itemId.value === stored.scratch.origin.itemId.value,
       );
     }
     return this.#build(stored, request);
@@ -159,7 +202,7 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
       ...(stored.record === undefined ? {} : { record: stored.record }),
       currentState,
       legalMoves: legalMoves.value,
-      allowedActions: allowedActions(stored.scratch, stored.record),
+      allowedActions: allowedActions(stored.scratch),
     });
   }
 }
@@ -209,9 +252,7 @@ function stateAt(
 
 function allowedActions(
   scratch: StoredContextAnalysisWorkspace['scratch'],
-  record: AnalysisRecordView | undefined,
 ): AnalysisWorkspace['allowedActions'] {
-  if (record?.readOnlyPreview === true) return Object.freeze([]);
   if (scratch === undefined) {
     return Object.freeze(['start_scratch']);
   }
@@ -224,13 +265,15 @@ function allowedActions(
     actions.push('remove_last_move');
   }
   if (scratch.intent.kind === 'inventory_revision') {
+    if (canContinueAnalysisExploration(scratch))
+      actions.push('continue_exploration');
     return Object.freeze(actions);
   }
-  if (scratch.cursor > 0) {
-    actions.push('prepare_note', 'create_analysis_record');
-  }
+  actions.push('create_analysis_record');
+  if (scratch.cursor > 0) actions.push('prepare_note');
   if (scratch.noteDraft !== undefined) actions.push('clear_note');
   if (
+    scratch.cursor > 0 &&
     scratch.origin.kind === 'inventory_anchor' &&
     scratch.noteDraft?.body.trim()
   ) {

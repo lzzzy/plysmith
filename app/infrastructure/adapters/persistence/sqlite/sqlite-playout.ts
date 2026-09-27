@@ -12,7 +12,7 @@ import {
 import type {
   AppliedMove,
   HistoryKnowledge,
-  Position,
+  ChessState,
   PromotionPiece,
 } from '../../../../domain/chess_graph/index.ts';
 import {
@@ -20,6 +20,8 @@ import {
   completePlayoutDraft,
   createPlayoutDraft,
   restorePlayoutDraft,
+  validateInventorySourcePath,
+  isPlayoutClosureWithoutMoves,
   type HumanMovePolicyProfile,
   type MovePolicyBinding,
   type PlayoutDraft,
@@ -30,6 +32,8 @@ import {
 } from '../../../../domain/playout/index.ts';
 import { localId } from '../../../../domain/identity/index.ts';
 import type { WorkScope } from '../../../../domain/workspace/index.ts';
+import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
+import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import {
   deleteUnreferencedPositions,
   ensurePosition,
@@ -39,10 +43,7 @@ import {
   incrementDataRevision,
   readDataRevision,
 } from './sqlite-store-helpers.ts';
-import {
-  requireActiveContext,
-  resolveAnchorPosition,
-} from './sqlite-workspace.ts';
+import { requireActiveContext } from './sqlite-workspace.ts';
 
 interface DraftRow {
   readonly draftId: number;
@@ -134,7 +135,14 @@ export function createPlayout(
   if (request.scope.kind === 'context') {
     requireActiveContext(database, request.scope.contextId);
   }
-  validateOrigin(database, request.origin, request.root.position);
+  requireContextInventoryWorkAccess(
+    database,
+    request.scope,
+    request.origin.kind === 'inventory_anchor'
+      ? request.origin.itemId
+      : undefined,
+  );
+  validateOrigin(database, request.origin, request.root, request.sourcePath);
   const draftId = nextDraftId(database);
   let draft = createPlayoutDraft({
     draftId: localId('playout-draft', draftId),
@@ -170,6 +178,14 @@ export function replacePlayout(
     throw playoutConflict(request.expectedDraftRevision, current.draftRevision);
   }
   const draft = restorePlayoutDraft(request.draft);
+  if (!isPlayoutClosureWithoutMoves(mapDraft(database, current), draft)) {
+    const origin = mapOrigin(current);
+    requireContextInventoryWorkAccess(
+      database,
+      request.scope,
+      origin.kind === 'inventory_anchor' ? origin.itemId : undefined,
+    );
+  }
   const replacedPositionIds = readPlayoutPositionIds(
     database,
     draft.draftId.value,
@@ -195,20 +211,32 @@ export function discardPlayout(
   if (current.draftRevision !== request.expectedDraftRevision) {
     throw playoutConflict(request.expectedDraftRevision, current.draftRevision);
   }
-  const positionIds = readPlayoutPositionIds(database, current.draftId);
-  database
-    .prepare('DELETE FROM playout_ply WHERE draft_id = ?')
-    .run(current.draftId);
-  database
-    .prepare('DELETE FROM playout_source_ply WHERE draft_id = ?')
-    .run(current.draftId);
-  database
-    .prepare('DELETE FROM playout_draft WHERE draft_id = ?')
-    .run(current.draftId);
-  deleteUnreferencedPositions(database, positionIds);
+  removeDraft(database, current.draftId);
   return Object.freeze({
     dataRevision: incrementDataRevision(database, request.occurredAt),
   });
+}
+
+export function removeContextPlayoutDraft(
+  database: Database.Database,
+  contextId: number,
+): void {
+  const current = database
+    .prepare(
+      'SELECT draft_id AS draftId FROM playout_draft WHERE context_id = ?',
+    )
+    .get(contextId) as { readonly draftId: number } | undefined;
+  if (current !== undefined) removeDraft(database, current.draftId);
+}
+
+function removeDraft(database: Database.Database, draftId: number): void {
+  const positionIds = readPlayoutPositionIds(database, draftId);
+  database.prepare('DELETE FROM playout_ply WHERE draft_id = ?').run(draftId);
+  database
+    .prepare('DELETE FROM playout_source_ply WHERE draft_id = ?')
+    .run(draftId);
+  database.prepare('DELETE FROM playout_draft WHERE draft_id = ?').run(draftId);
+  deleteUnreferencedPositions(database, positionIds);
 }
 
 const draftSelectSql = `
@@ -709,19 +737,25 @@ function readPlayoutPositionIds(
 function validateOrigin(
   database: Database.Database,
   origin: PlayoutOrigin,
-  rootPosition: Position,
+  root: ChessState,
+  sourcePath: PlayoutDraft['sourcePath'],
 ): void {
   if (origin.kind !== 'inventory_anchor') return;
-  const positionId = resolveAnchorPosition(
-    database,
-    origin.itemId.value,
-    origin.revisionId.value,
-    origin.anchorId.value,
-  );
-  if (
-    positionId === undefined ||
-    positionId !== ensurePosition(database, rootPosition).value
-  ) {
+  const record = readAnalysisRecordView(database, origin);
+  if (record === undefined) throw invalidPlayout();
+  try {
+    validateInventorySourcePath(
+      {
+        root: record.sourcePath?.root ?? record.sourceLine?.root ?? record.root,
+        steps: [
+          ...(record.sourcePath?.steps ?? record.sourceLine?.steps ?? []),
+          ...record.steps.slice(0, record.cursor),
+        ],
+      },
+      sourcePath,
+      root,
+    );
+  } catch {
     throw invalidPlayout();
   }
 }

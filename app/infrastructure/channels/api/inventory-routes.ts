@@ -4,6 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import type { HostDependencies } from './host-dependencies.ts';
 import {
   analysisRecordDto,
+  inventoryItemDeletionPreviewDto,
+  deleteInventoryItemResultDto,
   inventoryRevisionPreviewDto,
   listInventoryRevisionsResultDto,
   parseLocalId,
@@ -14,6 +16,9 @@ import {
 } from './dto-mappers.ts';
 import {
   EmptyQuerySchema,
+  InventoryItemDeletionPreviewSchema,
+  DeleteInventoryItemBodySchema,
+  DeleteInventoryItemResultSchema,
   InventoryItemIdParamsSchema,
   InventoryRevisionParamsSchema,
   InventoryRevisionPreviewSchema,
@@ -37,6 +42,52 @@ export function registerInventoryRoutes(
   dependencies: HostDependencies,
 ) {
   const api = host.withTypeProvider<TypeBoxTypeProvider>();
+  api.get(
+    '/inventory/items/:itemId/deletion-preview',
+    {
+      schema: {
+        operationId: 'PreviewInventoryItemDeletion',
+        params: InventoryItemIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        response: {
+          200: Type.Ref(InventoryItemDeletionPreviewSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      inventoryItemDeletionPreviewDto(
+        await dependencies.previewInventoryItemDeletion.execute({
+          itemId: parseLocalId('inventory-item', request.params.itemId),
+        }),
+      ),
+  );
+  api.delete(
+    '/inventory/items/:itemId',
+    {
+      schema: {
+        operationId: 'DeleteInventoryItem',
+        params: InventoryItemIdParamsSchema,
+        querystring: EmptyQuerySchema,
+        body: DeleteInventoryItemBodySchema,
+        response: {
+          200: Type.Ref(DeleteInventoryItemResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      deleteInventoryItemResultDto(
+        await dependencies.deleteInventoryItem.execute({
+          itemId: parseLocalId('inventory-item', request.params.itemId),
+          expectedCurrentRevisionId: parseLocalId(
+            'item-revision',
+            request.body.expectedCurrentRevisionId,
+          ),
+          expectedDataRevision: request.body.expectedDataRevision,
+        }),
+      ),
+  );
   api.get(
     '/inventory',
     {

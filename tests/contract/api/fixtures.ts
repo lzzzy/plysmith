@@ -1,4 +1,4 @@
-import type { TestContext } from 'node:test';
+import { after, type TestContext } from 'node:test';
 import { GetSystemStatus } from '../../../app/application/system/index.ts';
 import {
   GetUserPreferences,
@@ -109,6 +109,14 @@ export function createFixture() {
     updateAnalysisNote: unavailableUseCase,
     deleteAnalysisNote: unavailableUseCase,
     searchInventory: unavailableUseCase,
+    getWorkScopeWorkspace: unavailableUseCase,
+    getStartupResume: unavailableUseCase,
+    setStartupResume: unavailableUseCase,
+    previewContextItemRemoval: unavailableUseCase,
+    previewWorkingContextDeletion: unavailableUseCase,
+    deleteWorkingContext: unavailableUseCase,
+    previewInventoryItemDeletion: unavailableUseCase,
+    deleteInventoryItem: unavailableUseCase,
     startInventoryRevision: unavailableUseCase,
     promoteAnalysisToInventoryRevision: unavailableUseCase,
     previewInventoryRevision: unavailableUseCase,
@@ -120,6 +128,7 @@ export function createFixture() {
     listWorkingContexts: unavailableUseCase,
     getWorkingContextWorkspace: unavailableUseCase,
     createWorkingContext: unavailableUseCase,
+    updateWorkingContextMetadata: unavailableUseCase,
     addContextReference: unavailableUseCase,
     removeContextItem: unavailableUseCase,
     setWorkScopeResume: unavailableUseCase,
@@ -133,6 +142,7 @@ export function createFixture() {
     pausePlayout: unavailableUseCase,
     resumePlayout: unavailableUseCase,
     stopPlayout: unavailableUseCase,
+    cancelPlayoutCompletion: unavailableUseCase,
     completePlayout: unavailableUseCase,
     discardPlayout: unavailableUseCase,
     getEngineProviderConfigurations: unavailableUseCase,
@@ -157,6 +167,24 @@ export async function buildFixture(
   t.after(() => host.close());
   return { ...fixture, host };
 }
+
+let readOnlyFixture: ReturnType<typeof createReadOnlyFixture> | undefined;
+
+async function createReadOnlyFixture() {
+  const fixture = createFixture();
+  const host = await buildHost(fixture.dependencies);
+  return { ...fixture, host };
+}
+
+// Only schema inspection and rejected requests share this immutable fixture.
+export function buildReadOnlyFixture() {
+  readOnlyFixture ??= createReadOnlyFixture();
+  return readOnlyFixture;
+}
+
+after(async () => {
+  if (readOnlyFixture) await (await readOnlyFixture).host.close();
+});
 
 export function languageEvent(sequence = 1): HostEvent {
   return {

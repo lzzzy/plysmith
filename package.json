@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.renderer.json && tsc --noEmit --pretty false -p tsconfig.tests.json && tsc --noEmit --pretty false -p tsconfig.tools.json",
     "lint": "eslint .",
     "format:check": "prettier --check .dependency-cruiser.cjs .prettierrc.json eslint.config.mjs package.json pnpm-workspace.yaml \"tsconfig*.json\" \"app/**/*.{ts,tsx,css,html}\" \"configuration/**/*.json\" \"contracts/**/*.{ts,json}\" \"tests/**/*.{ts,json}\" \"tools/**/*.ts\"",
-    "test": "node --test --test-isolation=none \"tests/**/*.test.ts\"",
+    "test": "node --test --test-concurrency=2 \"tests/**/*.test.ts\"",
     "check:boundaries": "depcruise --config .dependency-cruiser.cjs app contracts tests",
     "verify:host-client-browser": "node tools/verify-host-client-browser.ts",
     "verify:desktop-runtime": "node tools/verify-desktop-runtime.ts",

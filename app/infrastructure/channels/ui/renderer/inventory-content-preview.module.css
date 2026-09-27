@@ -1,0 +1,150 @@
+.content {
+  display: grid;
+  min-width: 0;
+  gap: 12px;
+  padding-block: 12px;
+  color: #343c46;
+  font-size: 12px;
+}
+
+.facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 8px;
+}
+
+.facts dt {
+  color: #626b75;
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.boardRegion {
+  display: grid;
+  width: min(100%, 280px);
+  min-width: 0;
+  gap: 8px;
+  justify-self: center;
+}
+
+.navigation {
+  display: grid;
+  grid-template-columns: 30px 30px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 4px;
+}
+
+.iconButton,
+.moveButton {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  color: #343c46;
+  background: #ffffff;
+  border: 1px solid #cbd0d7;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.iconButton {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.iconButton[data-disabled] {
+  color: #9ba3ad;
+  background: #eef1f4;
+  cursor: default;
+}
+
+.iconButton[data-hovered],
+.moveButton[data-hovered] {
+  background: #e9edf1;
+}
+
+.iconButton[data-focus-visible],
+.moveButton[data-focus-visible],
+.source summary:focus-visible {
+  outline: 2px solid #2f66bd;
+  outline-offset: 2px;
+}
+
+.cursor {
+  display: grid;
+  min-height: 36px;
+  align-content: center;
+  overflow-wrap: anywhere;
+  text-align: center;
+  font-size: 11px;
+}
+
+.cursor > span {
+  color: #626b75;
+}
+
+.line {
+  min-width: 0;
+}
+
+.line h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.moves {
+  display: flex;
+  max-height: 180px;
+  flex-wrap: wrap;
+  gap: 4px;
+  overflow-y: auto;
+  padding: 3px;
+}
+
+.moveButton {
+  max-width: 100%;
+  padding: 3px 6px;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.moveButton[aria-current='step'] {
+  color: #1d548d;
+  background: #e8f1fb;
+  border-color: #8eb1d7;
+}
+
+.empty,
+.sourceMoves {
+  margin: 0;
+  color: #626b75;
+}
+
+.source {
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid #d9dde3;
+  overflow-wrap: anywhere;
+}
+
+.source summary {
+  cursor: pointer;
+}
+
+.sourceMoves {
+  max-height: 140px;
+  overflow-y: auto;
+  margin-top: 8px;
+  line-height: 1.8;
+}

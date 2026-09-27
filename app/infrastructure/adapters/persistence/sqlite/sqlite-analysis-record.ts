@@ -26,12 +26,19 @@ import {
 import { ensurePosition, readChessState } from './sqlite-chess-state.ts';
 import { readContextScratch } from './sqlite-analysis-scratch.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
+import { readGameSourcePath } from './sqlite-game-source-path.ts';
+import {
+  validateInventorySourcePath,
+  validateSourcePath,
+} from '../../../../domain/playout/playout-draft.ts';
+import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 import {
   insertAnalysisNoteContribution,
   readAnalysisNoteMoves,
 } from './sqlite-analysis-note.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { inventoryDisplayNameConflict } from '../../../../application/inventory/index.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import {
   requireActiveContext,
@@ -61,8 +68,18 @@ export function createAnalysisRecord(
   request: PersistAnalysisRecordRequest,
 ): CreateAnalysisRecordResult {
   validateSourceScratch(database, request);
+  if (request.origin.kind === 'inventory_anchor') {
+    requireContextInventoryWorkAccess(
+      database,
+      request.sourceScope ??
+        (request.sourceContextId === undefined
+          ? { kind: 'free' }
+          : { kind: 'context', contextId: request.sourceContextId }),
+      request.origin.itemId,
+    );
+  }
   if (!inventoryDisplayNameIsAvailable(database, request.displayName)) {
-    throw invalidAnalysisRecord();
+    throw inventoryDisplayNameConflict();
   }
   if (request.targetContextId !== undefined) {
     requireActiveContext(database, request.targetContextId);
@@ -219,6 +236,17 @@ export function createAnalysisRecord(
   if (request.sourceContextId !== undefined) {
     deleteContextScratch(database, request.sourceContextId.value);
   }
+  if (request.sourceScope?.kind === 'free') {
+    upsertRecordResume(
+      database,
+      null,
+      itemId,
+      revisionId,
+      graph.endAnchorId,
+      request.occurredAt,
+    );
+    deleteContextScratch(database, null);
+  }
 
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   return Object.freeze({
@@ -243,7 +271,6 @@ export function readAnalysisRecordView(
     readonly revisionId: ItemRevisionId;
     readonly anchorId: AnchorId;
     readonly contextId?: WorkingContextId;
-    readonly readOnlyPreview: boolean;
   },
 ): AnalysisRecordView | undefined {
   return readAnalysisRecordViewInternal(database, request, new Set());
@@ -256,7 +283,6 @@ function readAnalysisRecordViewInternal(
     readonly revisionId: ItemRevisionId;
     readonly anchorId: AnchorId;
     readonly contextId?: WorkingContextId;
-    readonly readOnlyPreview: boolean;
   },
   ancestors: ReadonlySet<string>,
 ): AnalysisRecordView | undefined {
@@ -282,6 +308,7 @@ function readAnalysisRecordViewInternal(
                        game_origin.source_anchor_id) AS sourceAnchorId,
               game.player_side AS playerSide,
               game.result_kind AS resultKind,
+              game.result_source AS resultSource,
               game.result_reason AS resultReason,
               game.policy_capability AS policyCapability,
               game.provider_instance_id AS providerInstanceId,
@@ -325,6 +352,7 @@ function readAnalysisRecordViewInternal(
         sourceAnchorId: number | null;
         playerSide: 'white' | 'black' | null;
         resultKind: 'white_win' | 'black_win' | 'draw' | 'unfinished' | null;
+        resultSource: 'manual' | 'automatic' | null;
         resultReason:
           | 'checkmate'
           | 'stalemate'
@@ -410,11 +438,21 @@ function readAnalysisRecordViewInternal(
     throw invalidAnalysisRecord();
   }
   const origin = analysisRecordOrigin(header);
+  const sourcePath =
+    header.itemType === 'game'
+      ? readGameSourcePath(database, request.revisionId.value)
+      : undefined;
+  try {
+    validateSourcePath(sourcePath, states[0]);
+  } catch {
+    throw invalidAnalysisRecord();
+  }
   const sourceLine = readSourceLine(
     database,
     origin,
     nextAncestors,
     request.contextId,
+    sourcePath,
   );
   const contributions = readContributions(
     database,
@@ -445,12 +483,12 @@ function readAnalysisRecordViewInternal(
     ...(header.itemType === 'game' ? { game: gameDetails(header) } : {}),
     origin,
     ...(sourceLine === undefined ? {} : { sourceLine }),
+    ...(sourcePath === undefined ? {} : { sourcePath }),
     root: states[0],
     steps,
     cursor,
     contributions,
     contextMember,
-    readOnlyPreview: request.readOnlyPreview && !contextMember,
     historical: request.revisionId.value !== header.currentRevisionId,
   });
 }
@@ -458,6 +496,7 @@ function readAnalysisRecordViewInternal(
 function gameDetails(header: {
   readonly playerSide: 'white' | 'black' | null;
   readonly resultKind: 'white_win' | 'black_win' | 'draw' | 'unfinished' | null;
+  readonly resultSource: 'manual' | 'automatic' | null;
   readonly resultReason:
     | 'checkmate'
     | 'stalemate'
@@ -479,6 +518,7 @@ function gameDetails(header: {
   if (
     header.playerSide === null ||
     header.resultKind === null ||
+    header.resultSource === null ||
     header.policyCapability === null ||
     header.providerInstanceId === null ||
     header.providerFingerprint === null ||
@@ -500,7 +540,9 @@ function gameDetails(header: {
             header.resultReason === 'threefold_repetition' ||
             header.resultReason === 'seventy_five_move'
           ? ({ kind: 'draw', reason: header.resultReason } as const)
-          : undefined;
+          : header.resultSource === 'manual' && header.resultReason === null
+            ? ({ kind: 'draw' } as const)
+            : undefined;
   if (outcome === undefined) throw invalidAnalysisRecord();
   const binding = {
     providerInstanceId: header.providerInstanceId,
@@ -511,6 +553,7 @@ function gameDetails(header: {
   return Object.freeze({
     playerSide: header.playerSide,
     outcome: Object.freeze(outcome),
+    outcomeSource: header.resultSource,
     policy:
       header.policyCapability === 'best_move'
         ? Object.freeze({ ...binding, capability: 'best_move' as const })
@@ -550,6 +593,7 @@ function readSourceLine(
   origin: AnalysisRecordView['origin'],
   ancestors: ReadonlySet<string>,
   contextId: WorkingContextId | undefined,
+  sourcePath?: AnalysisRecordView['sourcePath'],
 ): AnalysisSourceLineView | undefined {
   if (origin.kind !== 'inventory_anchor') return undefined;
   const source = readAnalysisRecordViewInternal(
@@ -559,33 +603,53 @@ function readSourceLine(
       revisionId: origin.revisionId,
       anchorId: origin.anchorId,
       ...(contextId === undefined ? {} : { contextId }),
-      readOnlyPreview: true,
     },
     ancestors,
   );
   if (source === undefined) throw invalidAnalysisRecord();
+  const root =
+    source.sourcePath?.root ?? source.sourceLine?.root ?? source.root;
+  const steps = [
+    ...(source.sourceLine?.steps ?? source.sourcePath?.steps ?? []),
+    ...source.steps.slice(0, source.cursor).map((step) =>
+      Object.freeze({
+        ...step,
+        itemId: source.itemId,
+        revisionId: source.revisionId,
+      }),
+    ),
+  ];
+  if (sourcePath !== undefined) {
+    try {
+      validateInventorySourcePath(
+        { root, steps },
+        sourcePath,
+        sourcePath.steps.at(-1)?.after ?? sourcePath.root,
+      );
+    } catch {
+      throw invalidAnalysisRecord();
+    }
+    steps.push(...sourcePath.steps.slice(steps.length));
+  }
+  const rootTarget =
+    source.sourceLine !== undefined
+      ? source.sourceLine.rootTarget
+      : source.sourcePath !== undefined && source.sourcePath.steps.length > 0
+        ? undefined
+        : {
+            itemId: source.itemId,
+            revisionId: source.revisionId,
+            anchorId: source.rootAnchorId,
+          };
   return Object.freeze({
     sourceItemId: origin.itemId,
     sourceItemType: source.itemType,
     sourceRevisionId: origin.revisionId,
     sourceAnchorId: origin.anchorId,
     sourceDisplayName: source.displayName,
-    root: source.sourceLine?.root ?? source.root,
-    rootTarget: source.sourceLine?.rootTarget ?? {
-      itemId: source.itemId,
-      revisionId: source.revisionId,
-      anchorId: source.rootAnchorId,
-    },
-    steps: Object.freeze([
-      ...(source.sourceLine?.steps ?? []),
-      ...source.steps.slice(0, source.cursor).map((step) =>
-        Object.freeze({
-          ...step,
-          itemId: source.itemId,
-          revisionId: source.revisionId,
-        }),
-      ),
-    ]),
+    root,
+    ...(rootTarget === undefined ? {} : { rootTarget }),
+    steps: Object.freeze(steps),
     contributions: Object.freeze([
       ...(source.sourceLine?.contributions ?? []),
       ...source.contributions,
@@ -770,15 +834,20 @@ function validateSourceScratch(
   database: Database.Database,
   request: PersistAnalysisRecordRequest,
 ): void {
-  if (request.sourceContextId === undefined) return;
+  if (
+    request.sourceContextId === undefined &&
+    request.sourceScope === undefined
+  )
+    return;
   if (
     request.expectedScratchId === undefined ||
     request.expectedScratchRevision === undefined
   ) {
     throw invalidAnalysisRecord();
   }
-  requireActiveContext(database, request.sourceContextId);
-  const scratch = readContextScratch(database, request.sourceContextId);
+  if (request.sourceContextId !== undefined)
+    requireActiveContext(database, request.sourceContextId);
+  const scratch = readContextScratch(database, request.sourceContextId ?? null);
   if (scratch === undefined) throw analysisScratchNotFound();
   if (
     scratch.scratchId !== request.expectedScratchId ||
@@ -834,7 +903,7 @@ function insertTargetContext(
 
 function upsertRecordResume(
   database: Database.Database,
-  contextId: WorkingContextId,
+  contextId: WorkingContextId | null,
   itemId: InventoryItemId,
   revisionId: ItemRevisionId,
   anchorId: AnchorId,
@@ -850,9 +919,9 @@ function upsertRecordResume(
   const row = database
     .prepare(
       `SELECT resume_version AS resumeVersion
-         FROM workspace_analysis_resume WHERE context_id = ?`,
+         FROM workspace_analysis_resume WHERE context_id IS ?`,
     )
-    .get(contextId.value) as { resumeVersion: number } | undefined;
+    .get(contextId?.value ?? null) as { resumeVersion: number } | undefined;
   const resumeVersion = (row?.resumeVersion ?? 0) + 1;
   database
     .prepare(
@@ -860,7 +929,7 @@ function upsertRecordResume(
          (context_id, resume_version, item_id, revision_id, anchor_id,
           mode, current_position_id, analysis_scratch_draft_id, updated_at_utc)
        VALUES (?, ?, ?, ?, ?, 'analyze', ?, NULL, ?)
-       ON CONFLICT(context_id) DO UPDATE SET
+       ON CONFLICT DO UPDATE SET
          resume_version = excluded.resume_version,
          item_id = excluded.item_id,
          revision_id = excluded.revision_id,
@@ -871,7 +940,7 @@ function upsertRecordResume(
          updated_at_utc = excluded.updated_at_utc`,
     )
     .run(
-      contextId.value,
+      contextId?.value ?? null,
       resumeVersion,
       itemId.value,
       revisionId.value,

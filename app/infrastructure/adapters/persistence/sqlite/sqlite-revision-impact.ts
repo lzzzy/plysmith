@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 
 import {
   invalidRevisionImpactResolution,
+  inventoryDisplayNameConflict,
   revisionImpactConflict,
   revisionImpactNotFound,
   type InventoryRevisionContextImpactSummary,
@@ -23,7 +24,11 @@ import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
 import { removeContextItemUsage } from './sqlite-context-item.ts';
-import { incrementDataRevision } from './sqlite-store-helpers.ts';
+import { readInventoryItemUsage } from './sqlite-revision-impact-state.ts';
+import {
+  incrementDataRevision,
+  readDataRevision,
+} from './sqlite-store-helpers.ts';
 import { resolveAnchorPosition } from './sqlite-workspace.ts';
 
 export type RevisionImpactEntryDraftKind =
@@ -569,10 +574,20 @@ export function readPendingRevisionImpact(
     targetRevisionId: localId('item-revision', row.targetRevisionId),
     targetAnchorId: localId('anchor', row.targetAnchorId),
     impactVersion: row.impactVersion,
+    dataRevision: readDataRevision(database),
     referenceCount: row.referenceCount,
     contributionCount: row.contributionCount,
     managementResumeAffected: row.managementResumeAffected === 1,
     analysisResumeAffected: row.analysisResumeAffected === 1,
+    useTargetLoss: readInventoryItemUsage(database, {
+      itemId: row.itemId,
+      contextId: row.contextId,
+      impactId: impactId.value,
+    }),
+    removeFromContextLoss: readInventoryItemUsage(database, {
+      itemId: row.itemId,
+      contextId: row.contextId,
+    }),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -585,7 +600,10 @@ export function resolvePendingRevisionImpact(
 ): ResolvePendingRevisionImpactResult {
   const impact = readPendingRevisionImpact(database, request.impactId);
   if (impact === undefined) throw revisionImpactNotFound();
-  if (impact.impactVersion !== request.expectedImpactVersion) {
+  if (
+    impact.impactVersion !== request.expectedImpactVersion ||
+    impact.dataRevision !== request.expectedDataRevision
+  ) {
     throw revisionImpactConflict();
   }
   const currentRevision = database
@@ -615,7 +633,7 @@ export function resolvePendingRevisionImpact(
   } else if (request.resolution.kind === 'keep_copy') {
     const displayName = request.resolution.displayName.trim();
     if (!inventoryDisplayNameIsAvailable(database, displayName)) {
-      throw invalidRevisionImpactResolution();
+      throw inventoryDisplayNameConflict();
     }
     const copy = clonePinnedRevision(database, impact, displayName, occurredAt);
     moveContextToCopy(database, impact, copy, occurredAt);
@@ -1159,16 +1177,20 @@ function clonePinnedRevision(
          (revision_id, item_id, root_occurrence_id, origin_mode)
        VALUES (?, ?, ?, ?)`,
     )
-    .run(revisionId.value, itemId.value, rootOccurrenceId, source.originMode);
+    .run(revisionId.value, itemId.value, rootOccurrenceId, 'inventory_anchor');
   database
     .prepare(
       `INSERT INTO inventory_analysis_origin
          (analysis_revision_id, source_item_id, source_revision_id,
           source_anchor_id)
-       SELECT ?, source_item_id, source_revision_id, source_anchor_id
-         FROM inventory_analysis_origin WHERE analysis_revision_id = ?`,
+       VALUES (?, ?, ?, ?)`,
     )
-    .run(revisionId.value, impact.pinnedRevisionId.value);
+    .run(
+      revisionId.value,
+      impact.itemId.value,
+      impact.pinnedRevisionId.value,
+      rootAnchorForRevision(database, impact.itemId, impact.pinnedRevisionId),
+    );
   const rootAnchorId = mapAnchor(
     database,
     anchorMap,
@@ -1202,7 +1224,6 @@ function clonePinnedRevision(
     itemId,
     revisionId,
     anchorId: localId('anchor', rootAnchorId),
-    readOnlyPreview: false,
   });
   if (cloned === undefined) throw revisionImpactConflict();
   database

@@ -23,6 +23,7 @@ import {
   invalidAnalysisNote,
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
+import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
 
 export interface CreateAnalysisNoteUseCase {
   execute(
@@ -73,7 +74,7 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
         request.expectedScratchRevision,
       );
       const result = await this.#persist(request, scratch);
-      return { result };
+      return { result, persisted: true };
     });
   }
 
@@ -90,6 +91,12 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
       request.expectedScratchId,
       request.expectedScratchRevision,
     );
+    if (scratch.origin.kind === 'inventory_anchor') {
+      assertInventoryWorkAccess(
+        scope,
+        workspace?.record?.contextMember === true,
+      );
+    }
     return this.#persist(request, scratch, scope.contextId);
   }
 
@@ -121,6 +128,9 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
 
     const occurredAt = this.#clock.now();
     const result = await this.#writer.createAnalysisNote({
+      sourceScope: request.scope,
+      expectedScratchId: request.expectedScratchId,
+      expectedScratchRevision: request.expectedScratchRevision,
       ...(sourceContextId === undefined
         ? {}
         : {

@@ -29,6 +29,24 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
     correlationId: event.correlationId,
   };
   switch (event.kind) {
+    case 'inventory.item-deleted':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: { itemId: String(event.payload.itemId.value) },
+      };
+    case 'workspace.context-deleted':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: { contextId: String(event.payload.contextId.value) },
+      };
+    case 'workspace.startup-updated':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: { startupVersion: event.payload.startupVersion },
+      };
     case 'preference.ui-language-changed':
       return {
         ...metadata,
@@ -130,6 +148,7 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
         },
       };
     case 'workspace.context-created':
+    case 'workspace.context-updated':
       return {
         ...metadata,
         kind: event.kind,
@@ -161,7 +180,9 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
         ...metadata,
         kind: event.kind,
         payload: {
-          contextId: String(event.payload.contextId.value),
+          ...(event.payload.contextId === undefined
+            ? {}
+            : { contextId: String(event.payload.contextId.value) }),
           area: event.payload.area,
           resumeVersion: event.payload.resumeVersion,
         },

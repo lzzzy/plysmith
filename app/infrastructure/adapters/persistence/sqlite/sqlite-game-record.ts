@@ -9,9 +9,15 @@ import {
   type CompletePlayoutResult,
   type PersistCompletePlayoutRequest,
 } from '../../../../application/playout/index.ts';
-import type {
-  MovePolicyBinding,
-  PlayoutOutcome,
+import {
+  gameResultMatchesPlayout,
+  manualGameResult,
+  validateGameResult,
+  type GameResult,
+  type GameOutcome,
+  type GameOutcomeSource,
+  type PlayoutTerminalReason,
+  type MovePolicyBinding,
 } from '../../../../domain/playout/index.ts';
 import {
   localId,
@@ -24,15 +30,24 @@ import {
   validateLinearGraph,
 } from './sqlite-analysis-record.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { inventoryDisplayNameConflict } from '../../../../application/inventory/index.ts';
 import { readPlayout } from './sqlite-playout.ts';
 import { deleteUnreferencedPositions } from './sqlite-chess-state.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { requireActiveContext } from './sqlite-workspace.ts';
+import { persistGameSourcePath } from './sqlite-game-source-path.ts';
+import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 
 export function completePlayout(
   database: Database.Database,
   request: PersistCompletePlayoutRequest,
 ): CompletePlayoutResult {
+  try {
+    validateGameResult(request.game);
+  } catch {
+    throw invalidPlayout();
+  }
+  const manualResult = manualGameResult(request.game);
   const receipt = readPlayoutCompletion(database, {
     scope: request.scope,
     draftId: request.draftId,
@@ -40,11 +55,22 @@ export function completePlayout(
     completionId: request.completionId,
     displayName: request.game.displayName,
     languageTag: request.game.languageTag,
+    ...(manualResult === undefined ? {} : { manualResult }),
     ...(request.targetContextId === undefined
       ? {}
       : { targetContextId: request.targetContextId }),
   });
-  if (receipt !== undefined) return receipt;
+  if (receipt !== undefined) {
+    const expectedResult = resultValues(receipt);
+    if (
+      resultValues(request.game).some(
+        (value, index) => value !== expectedResult[index],
+      )
+    ) {
+      throw invalidPlayout();
+    }
+    return receipt;
+  }
   if (
     request.completionId.trim() !== request.completionId ||
     request.completionId.length < 1 ||
@@ -72,8 +98,15 @@ export function completePlayout(
   ) {
     throw invalidPlayout();
   }
+  requireContextInventoryWorkAccess(
+    database,
+    request.scope,
+    stored.draft.origin.kind === 'inventory_anchor'
+      ? stored.draft.origin.itemId
+      : undefined,
+  );
   if (!inventoryDisplayNameIsAvailable(database, request.game.displayName)) {
-    throw invalidPlayout();
+    throw inventoryDisplayNameConflict();
   }
   if (request.targetContextId !== undefined) {
     if (
@@ -114,16 +147,16 @@ export function completePlayout(
     Number(revisionInsert.lastInsertRowid),
   );
   const graph = insertLinearGraph(database, itemId, revisionId, request.game);
-  const result = resultValues(request.game.outcome);
+  const result = resultValues(request.game);
   database
     .prepare(
       `INSERT INTO inventory_game_revision
          (revision_id, item_id, root_occurrence_id, origin_mode, player_side,
-          result_kind, result_reason, policy_capability, provider_instance_id,
+          result_kind, result_reason, result_source, policy_capability, provider_instance_id,
           provider_fingerprint, provider_type, provider_display_name,
           profile_model_name, profile_selection_mode,
           profile_history_mode, profile_reproducibility)
-       SELECT ?, ?, a.occurrence_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       SELECT ?, ?, a.occurrence_id, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          FROM chess_anchor AS a
         WHERE a.anchor_id = ? AND a.anchor_kind = 'occurrence'`,
     )
@@ -162,6 +195,7 @@ export function completePlayout(
     revisionId,
     request.game.steps.length + 1,
   );
+  persistGameSourcePath(database, request.draftId.value, revisionId.value);
   database
     .prepare(
       'UPDATE inventory_item SET current_revision_id = ? WHERE item_id = ?',
@@ -230,6 +264,7 @@ export function completePlayout(
     graph.rootAnchorId.value,
     contextReferenceId ?? null,
     dataRevision,
+    request.game,
   );
 }
 
@@ -261,6 +296,9 @@ function gameMatchesDraft(
     return false;
   }
   return (
+    JSON.stringify(request.game.origin) === JSON.stringify(draft.origin) &&
+    JSON.stringify(request.game.sourcePath) ===
+      JSON.stringify(draft.sourcePath) &&
     request.game.root.fen === draft.root.fen &&
     request.game.playerSide === draft.playerSide &&
     request.game.policy.providerInstanceId ===
@@ -280,8 +318,7 @@ function gameMatchesDraft(
         step.after.fen === persisted.after.fen
       );
     }) &&
-    JSON.stringify(request.game.outcome) ===
-      JSON.stringify(draft.status.outcome)
+    gameResultMatchesPlayout(request.game, draft)
   );
 }
 
@@ -296,11 +333,16 @@ export function readPlayoutCompletion(
               expected_draft_revision AS expectedDraftRevision,
               display_name AS displayName, language_tag AS languageTag,
               target_context_id AS targetContextId,
-              item_id AS itemId, revision_id AS revisionId,
+              receipt.item_id AS itemId, receipt.revision_id AS revisionId,
               root_anchor_id AS rootAnchorId,
               context_reference_id AS contextReferenceId,
-              data_revision AS dataRevision
-         FROM playout_completion_receipt WHERE completion_id = ?`,
+              data_revision AS dataRevision,
+              game.result_kind AS resultKind,
+              game.result_reason AS resultReason,
+              game.result_source AS resultSource
+         FROM playout_completion_receipt AS receipt
+         JOIN inventory_game_revision AS game ON game.revision_id = receipt.revision_id
+        WHERE completion_id = ?`,
     )
     .get(request.completionId) as
     | {
@@ -316,9 +358,33 @@ export function readPlayoutCompletion(
         rootAnchorId: number;
         contextReferenceId: number | null;
         dataRevision: number;
+        resultKind: 'white_win' | 'black_win' | 'draw' | 'unfinished';
+        resultReason: PlayoutTerminalReason | null;
+        resultSource: GameOutcomeSource;
       }
     | undefined;
   if (row === undefined) return undefined;
+  const outcome: GameOutcome =
+    row.resultKind === 'white_win' || row.resultKind === 'black_win'
+      ? {
+          kind: 'win',
+          winner: row.resultKind === 'white_win' ? 'white' : 'black',
+        }
+      : row.resultKind === 'draw'
+        ? row.resultSource === 'manual'
+          ? { kind: 'draw' }
+          : {
+              kind: 'draw',
+              reason: row.resultReason as Exclude<
+                PlayoutTerminalReason,
+                'checkmate'
+              >,
+            }
+        : { kind: 'unfinished' };
+  const result = validateGameResult({
+    outcome,
+    outcomeSource: row.resultSource,
+  });
   const contextId =
     request.scope.kind === 'context' ? request.scope.contextId.value : null;
   if (
@@ -328,7 +394,8 @@ export function readPlayoutCompletion(
     row.expectedDraftRevision !== request.expectedDraftRevision ||
     row.displayName !== request.displayName ||
     row.languageTag !== request.languageTag ||
-    row.targetContextId !== (request.targetContextId?.value ?? null)
+    row.targetContextId !== (request.targetContextId?.value ?? null) ||
+    manualGameResult(result) !== request.manualResult
   ) {
     throw invalidPlayout();
   }
@@ -338,6 +405,7 @@ export function readPlayoutCompletion(
     row.rootAnchorId,
     row.contextReferenceId,
     row.dataRevision,
+    result,
   );
 }
 
@@ -347,6 +415,7 @@ function resultModel(
   rootAnchorId: number,
   contextReferenceId: number | null,
   dataRevision: number,
+  result: GameResult,
 ): CompletePlayoutResult {
   return Object.freeze({
     itemId: localId('inventory-item', itemId),
@@ -358,11 +427,12 @@ function resultModel(
           contextReferenceId: localId('context-reference', contextReferenceId),
         }),
     dataRevision,
+    ...validateGameResult(result),
   });
 }
 
 function resultValues(
-  outcome: PlayoutOutcome,
+  result: GameResult,
 ): readonly [
   'white_win' | 'black_win' | 'draw' | 'unfinished',
   (
@@ -373,15 +443,18 @@ function resultValues(
     | 'seventy_five_move'
     | null
   ),
+  GameOutcomeSource,
 ] {
-  if (outcome.kind === 'unfinished') return ['unfinished', null];
+  const { outcome, outcomeSource } = result;
+  if (outcome.kind === 'unfinished') return ['unfinished', null, outcomeSource];
   if (outcome.kind === 'win') {
     return [
       outcome.winner === 'white' ? 'white_win' : 'black_win',
-      'checkmate',
+      outcomeSource === 'automatic' ? 'checkmate' : null,
+      outcomeSource,
     ];
   }
-  return ['draw', outcome.reason];
+  return ['draw', outcome.reason ?? null, outcomeSource];
 }
 
 function insertContextReference(
@@ -446,9 +519,12 @@ function gameFingerprint(request: PersistCompletePlayoutRequest): Buffer {
       JSON.stringify({
         displayName: request.game.displayName,
         languageTag: request.game.languageTag,
+        origin: request.game.origin,
+        sourcePath: request.game.sourcePath,
         root: request.game.root.fen,
         moves: request.game.steps.map((step) => step.move),
         outcome: request.game.outcome,
+        outcomeSource: request.game.outcomeSource,
         policy: request.game.policy,
       }),
     )

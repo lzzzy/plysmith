@@ -22,6 +22,7 @@ import {
   invalidAnalysisRecord,
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
+import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
 
 export interface CreateAnalysisRecordUseCase {
   execute(
@@ -78,7 +79,7 @@ export class CreateAnalysisRecord implements CreateAnalysisRecordUseCase {
         request.expectedScratchRevision,
       );
       const result = await this.#persist(request, scratch);
-      return { result };
+      return { result, persisted: true };
     });
   }
 
@@ -97,6 +98,12 @@ export class CreateAnalysisRecord implements CreateAnalysisRecordUseCase {
       request.expectedScratchId,
       request.expectedScratchRevision,
     );
+    if (workspace.scratch.origin.kind === 'inventory_anchor') {
+      assertInventoryWorkAccess(
+        scope,
+        workspace.record?.contextMember === true,
+      );
+    }
     return this.#persist(request, workspace.scratch, scope.contextId);
   }
 
@@ -125,6 +132,9 @@ export class CreateAnalysisRecord implements CreateAnalysisRecordUseCase {
     );
     const occurredAt = this.#clock.now();
     const result = await this.#writer.createAnalysisRecord({
+      sourceScope: request.scope,
+      expectedScratchId: request.expectedScratchId,
+      expectedScratchRevision: request.expectedScratchRevision,
       ...(sourceContextId === undefined
         ? {}
         : {

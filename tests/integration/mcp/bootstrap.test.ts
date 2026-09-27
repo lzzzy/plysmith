@@ -10,6 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 import { parseApplicationHome } from '../../../app/bootstrap/mcp/main.ts';
+import type { PlayoutDto } from '../../../app/infrastructure/channels/host_client/index.ts';
 import {
   assertToolData,
   preferences,
@@ -17,6 +18,7 @@ import {
   systemStatus,
 } from '../../contract/mcp/helpers.ts';
 import { createHttpHostFixture } from './http-host-fixture.ts';
+import { createApplicationHostFixture } from './application-host-fixture.ts';
 
 const entryPoint = fileURLToPath(
   new URL('../../../app/bootstrap/mcp/main.ts', import.meta.url),
@@ -257,6 +259,8 @@ test(
               itemId: '1',
               revisionId: '1',
               rootAnchorId: '1',
+              outcome: { kind: 'unfinished' },
+              outcomeSource: 'manual',
               dataRevision: 7,
             },
           };
@@ -307,6 +311,7 @@ test(
           draftId: '1',
           expectedDraftRevision: 6,
           completionId: 'completion-1',
+          manualResult: 'unfinished',
           displayName: 'MCP practice game',
           languageTag: 'en-GB',
         },
@@ -334,6 +339,123 @@ test(
         { method: 'DELETE', url: '/playout' },
       ],
     );
+  },
+);
+
+test(
+  'stdio cancels real playout completion through HTTP and Application without resuming or changing moves',
+  { timeout: 60000 },
+  async (t) => {
+    const fixture = await createApplicationHostFixture(t);
+    const { client, stderr } = await attach(t, fixture.applicationHome);
+    const scope = { kind: 'free' as const };
+    const callPlayout = async (
+      name: string,
+      args: Record<string, unknown>,
+    ): Promise<PlayoutDto> => {
+      const result = await client.callTool({ name, arguments: args });
+      assert.notEqual(result.isError, true, JSON.stringify(result));
+      assert.ok(result.structuredContent);
+      return result.structuredContent as PlayoutDto;
+    };
+    const expected = (playout: PlayoutDto) => ({
+      scope,
+      draftId: playout.draft.draftId,
+      expectedDraftRevision: playout.draft.draftRevision,
+    });
+    const started = await callPlayout('start_playout', {
+      scope,
+      start: { kind: 'initial_position' },
+      providerInstanceId: 'uci-test',
+      capability: 'best_move',
+      opening: {
+        kind: 'user_move',
+        move: { kind: 'coordinates', value: 'e2e4' },
+      },
+    });
+    assert.equal(started.draft.status.kind, 'active');
+    assert.deepEqual(
+      started.draft.steps.map(({ actor, move }) => [actor, move.san]),
+      [
+        ['user', 'e4'],
+        ['provider', 'e5'],
+      ],
+    );
+    const providerTrace = await readFile(fixture.providerTracePath, 'utf8');
+    assert.equal(providerTrace.match(/^go /gm)?.length, 1);
+
+    const stopped = await callPlayout('stop_playout', expected(started));
+    assert.deepEqual(stopped, {
+      ...started,
+      dataRevision: started.dataRevision + 1,
+      draft: {
+        ...started.draft,
+        draftRevision: started.draft.draftRevision + 1,
+        status: { kind: 'stopped', outcome: { kind: 'unfinished' } },
+      },
+    });
+    const cancelled = await callPlayout(
+      'cancel_playout_completion',
+      expected(stopped),
+    );
+    assert.deepEqual(cancelled, {
+      ...stopped,
+      dataRevision: stopped.dataRevision + 1,
+      draft: {
+        ...stopped.draft,
+        draftRevision: stopped.draft.draftRevision + 1,
+        status: { kind: 'paused' },
+      },
+    });
+    assertToolData(
+      await client.callTool({ name: 'get_playout', arguments: { scope } }),
+      { playout: cancelled },
+    );
+    assert.equal(
+      await readFile(fixture.providerTracePath, 'utf8'),
+      providerTrace,
+    );
+
+    const stale = await client.callTool({
+      name: 'cancel_playout_completion',
+      arguments: expected(stopped),
+    });
+    assert.equal(stale.isError, true);
+    assert.ok(
+      stale.structuredContent && typeof stale.structuredContent === 'object',
+    );
+    assert.ok('code' in stale.structuredContent);
+    assert.equal(stale.structuredContent.code, 'playout.revision_conflict');
+    assert.ok('status' in stale.structuredContent);
+    assert.equal(stale.structuredContent.status, 409);
+    assertToolData(
+      await client.callTool({ name: 'get_playout', arguments: { scope } }),
+      { playout: cancelled },
+    );
+    assert.equal(
+      await readFile(fixture.providerTracePath, 'utf8'),
+      providerTrace,
+    );
+
+    const resumed = await callPlayout('resume_playout', expected(cancelled));
+    assert.deepEqual(resumed, {
+      ...cancelled,
+      dataRevision: cancelled.dataRevision + 1,
+      draft: {
+        ...cancelled.draft,
+        draftRevision: cancelled.draft.draftRevision + 1,
+        status: { kind: 'active' },
+      },
+    });
+    assertToolData(
+      await client.callTool({ name: 'get_playout', arguments: { scope } }),
+      { playout: resumed },
+    );
+    assert.equal(
+      await readFile(fixture.providerTracePath, 'utf8'),
+      providerTrace,
+    );
+    assert.equal(stderr(), '');
   },
 );
 

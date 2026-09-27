@@ -14,6 +14,7 @@ import {
 } from './sqlite-store-helpers.ts';
 
 interface InventoryRow {
+  readonly lifecycle: InventorySearchItem['lifecycle'];
   readonly itemId: number;
   readonly currentRevisionId: number;
   readonly rootAnchorId: number;
@@ -28,6 +29,7 @@ interface InventoryRow {
 
 interface InventoryCursor {
   readonly version: 1;
+  readonly dataRevision: number;
   readonly query: string | null;
   readonly contextId: number | null;
   readonly updatedAt: string;
@@ -41,6 +43,7 @@ export function searchInventory(
 ): SearchInventoryResult {
   const expectedQuery = request.query ?? null;
   const expectedContextId = request.contextId?.value ?? null;
+  const dataRevision = readDataRevision(database);
   const cursor =
     request.cursor === undefined
       ? undefined
@@ -49,6 +52,7 @@ export function searchInventory(
     request.cursor !== undefined &&
     (cursor === undefined ||
       cursor.query !== expectedQuery ||
+      cursor.dataRevision !== dataRevision ||
       cursor.contextId !== expectedContextId)
   ) {
     throw invalidInventorySearch();
@@ -76,12 +80,15 @@ export function searchInventory(
     page.map((row) => mapInventoryItem(row, contextsByItem.get(row.itemId))),
   );
   const last = page.at(-1);
+  const family = readProvenanceFamily(database, page);
   return Object.freeze({
     items,
+    ...family,
     ...(hasMore && last !== undefined
       ? {
           nextCursor: encodeCursor({
             version: 1,
+            dataRevision,
             query: expectedQuery,
             contextId: expectedContextId,
             updatedAt: last.updatedAt,
@@ -89,13 +96,14 @@ export function searchInventory(
           } satisfies InventoryCursor),
         }
       : {}),
-    dataRevision: readDataRevision(database),
+    dataRevision,
   });
 }
 
-function inventorySql(withTextQuery: boolean): string {
+function inventorySql(withTextQuery: boolean, byId = false): string {
   return `
     SELECT i.item_id AS itemId,
+           i.lifecycle AS lifecycle,
            i.current_revision_id AS currentRevisionId,
            COALESCE(root_anchor.anchor_id, item_anchor.anchor_id) AS rootAnchorId,
            i.item_type AS itemType,
@@ -135,7 +143,7 @@ function inventorySql(withTextQuery: boolean): string {
                ON search_document_fts.rowid = document.search_document_id`
           : ''
       }
-     WHERE i.lifecycle = 'active'
+     WHERE ${byId ? "i.lifecycle <> 'tombstone'" : "i.lifecycle = 'active'"}
        AND i.current_revision_id IS NOT NULL
        ${withTextQuery ? 'AND search_document_fts MATCH ?' : ''}
        AND (? IS NULL OR EXISTS (
@@ -145,8 +153,85 @@ function inventorySql(withTextQuery: boolean): string {
        ))
        AND (? IS NULL OR i.updated_at_utc < ?
             OR (i.updated_at_utc = ? AND i.item_id < ?))
+       ${byId ? 'AND i.item_id = ?' : ''}
      ORDER BY i.updated_at_utc DESC, i.item_id DESC
      LIMIT ?`;
+}
+
+function readProvenanceFamily(
+  database: Database.Database,
+  page: readonly InventoryRow[],
+): Pick<SearchInventoryResult, 'ancestors' | 'provenanceEdges'> {
+  const rows = new Map(page.map((row) => [row.itemId, row]));
+  const matches = new Set(rows.keys());
+  const edges = new Map<
+    number,
+    SearchInventoryResult['provenanceEdges'][number]
+  >();
+  const origin = database.prepare(`
+    SELECT source_item_id AS sourceItemId, source_revision_id AS sourceRevisionId,
+           source_anchor_id AS sourceAnchorId
+      FROM inventory_analysis_origin WHERE analysis_revision_id = ?
+    UNION ALL
+    SELECT source_item_id AS sourceItemId, source_revision_id AS sourceRevisionId,
+           source_anchor_id AS sourceAnchorId
+      FROM inventory_game_origin WHERE game_revision_id = ?`);
+  const item = database.prepare(inventorySql(false, true));
+  const resolved = new Set<number>();
+  for (const match of page) {
+    let current: InventoryRow | undefined = match;
+    const path = new Set<number>();
+    while (current !== undefined) {
+      if (path.has(current.itemId))
+        throw new Error('Inventory provenance contains a cycle.');
+      path.add(current.itemId);
+      if (resolved.has(current.itemId)) break;
+      const sources = origin.all(
+        current.currentRevisionId,
+        current.currentRevisionId,
+      ) as {
+        sourceItemId: number;
+        sourceRevisionId: number;
+        sourceAnchorId: number;
+      }[];
+      if (sources.length > 1)
+        throw new Error('Inventory provenance has multiple direct origins.');
+      const source = sources[0];
+      if (source === undefined) break;
+      edges.set(
+        current.itemId,
+        Object.freeze({
+          itemId: localId('inventory-item', current.itemId),
+          sourceItemId: localId('inventory-item', source.sourceItemId),
+          sourceRevisionId: localId('item-revision', source.sourceRevisionId),
+          sourceAnchorId: localId('anchor', source.sourceAnchorId),
+        }),
+      );
+      current =
+        rows.get(source.sourceItemId) ??
+        (item.get(null, null, null, '', '', 0, source.sourceItemId, 1) as
+          InventoryRow | undefined);
+      if (current === undefined)
+        throw new Error('Inventory provenance source is missing.');
+      rows.set(current.itemId, current);
+    }
+    for (const id of path) resolved.add(id);
+  }
+  const ancestors = [...rows.values()].filter(
+    (row) => !matches.has(row.itemId),
+  );
+  const memberships = readContextMemberships(
+    database,
+    ancestors.map((row) => row.itemId),
+  );
+  return {
+    ancestors: Object.freeze(
+      ancestors.map((row) =>
+        mapInventoryItem(row, memberships.get(row.itemId)),
+      ),
+    ),
+    provenanceEdges: Object.freeze([...edges.values()]),
+  };
 }
 
 function literalFtsQuery(query: string): string {
@@ -181,6 +266,7 @@ function mapInventoryItem(
   contextIds: readonly number[] = [],
 ): InventorySearchItem {
   return Object.freeze({
+    lifecycle: row.lifecycle,
     itemId: localId('inventory-item', row.itemId),
     currentRevisionId: localId('item-revision', row.currentRevisionId),
     rootAnchorId: localId('anchor', row.rootAnchorId),
@@ -200,6 +286,7 @@ function mapInventoryItem(
 function decodeInventoryCursor(cursor: string): InventoryCursor | undefined {
   const value = decodeCursor<Partial<InventoryCursor>>(cursor);
   return value?.version === 1 &&
+    Number.isSafeInteger(value.dataRevision) &&
     (typeof value.query === 'string' || value.query === null) &&
     (Number.isSafeInteger(value.contextId) || value.contextId === null) &&
     typeof value.updatedAt === 'string' &&

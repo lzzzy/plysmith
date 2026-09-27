@@ -1,0 +1,25 @@
+.summary {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.summary > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.summary dt {
+  overflow-wrap: anywhere;
+  color: #59636f;
+}
+
+.summary dd {
+  margin: 0;
+  color: #252c34;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}

@@ -30,7 +30,10 @@ export {
   ValidateAnalysisSetup,
   type ValidateAnalysisSetupUseCase,
 } from './validate-analysis-setup.ts';
-export { FreeAnalysisSession } from './free-analysis-session.ts';
+export {
+  FreeAnalysisSession,
+  type FreeAnalysisPersistence,
+} from './free-analysis-session.ts';
 export {
   ActivePositionAnalysisLanes,
   AnalyzePosition,
@@ -83,6 +86,7 @@ export type {
   PersistAnalysisRecordRequest,
   PersistUpdateAnalysisNoteRequest,
   StoredContextAnalysisWorkspace,
+  StoredFreeAnalysisWorkspace,
   UpdateAnalysisScratchAction,
   UpdateAnalysisScratchRequest,
   UpdateAnalysisScratchResult,

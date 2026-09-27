@@ -1,6 +1,26 @@
 import type { components } from '../../../../contracts/host/index.ts';
 
 export type SystemStatus = components['schemas']['SystemStatus'];
+export type ContextRemovalPreview =
+  components['schemas']['ContextRemovalPreview'];
+export type InventoryItemDeletionPreview =
+  components['schemas']['InventoryItemDeletionPreview'];
+export type WorkScopeWorkspace = components['schemas']['WorkScopeWorkspace'];
+export type StartupResume = components['schemas']['StartupResume'];
+export type SetStartupResumeRequest =
+  components['schemas']['SetStartupResumeBody'];
+export type DeleteWorkingContextRequest =
+  components['schemas']['DeleteWorkingContextBody'];
+export type DeleteInventoryItemRequest =
+  components['schemas']['DeleteInventoryItemBody'];
+export type RemoveContextItemRequest =
+  components['schemas']['RemoveContextItemBody'];
+export type DeleteWorkingContextResult =
+  components['schemas']['DeleteWorkingContextResult'];
+export type DeleteInventoryItemResult =
+  components['schemas']['DeleteInventoryItemResult'];
+export type GetWorkScopeWorkspaceRequest =
+  components['schemas']['WorkScopeWorkspaceQuery'];
 export type UserPreferences = components['schemas']['UserPreferences'];
 export type SetUiLanguageRequest = components['schemas']['SetUiLanguageBody'];
 export type SetUiLanguageResult = components['schemas']['SetUiLanguageResult'];
@@ -126,6 +146,29 @@ export interface HostClientFailure {
  * setUiLanguage must send at most once, including after a connection failure.
  */
 export interface HostClient {
+  getWorkScopeWorkspace(
+    request: GetWorkScopeWorkspaceRequest,
+  ): Promise<WorkScopeWorkspace>;
+  getStartupResume(): Promise<StartupResume>;
+  setStartupResume(request: SetStartupResumeRequest): Promise<StartupResume>;
+  previewContextItemRemoval(
+    contextId: string,
+    itemId: string,
+  ): Promise<ContextRemovalPreview>;
+  previewWorkingContextDeletion(
+    contextId: string,
+  ): Promise<ContextRemovalPreview>;
+  deleteWorkingContext(
+    contextId: string,
+    request: DeleteWorkingContextRequest,
+  ): Promise<DeleteWorkingContextResult>;
+  previewInventoryItemDeletion(
+    itemId: string,
+  ): Promise<InventoryItemDeletionPreview>;
+  deleteInventoryItem(
+    itemId: string,
+    request: DeleteInventoryItemRequest,
+  ): Promise<DeleteInventoryItemResult>;
   getSystemStatus(): Promise<SystemStatus>;
   getUserPreferences(): Promise<UserPreferences>;
   setUiLanguage(request: SetUiLanguageRequest): Promise<SetUiLanguageResult>;
@@ -203,6 +246,10 @@ export interface HostClient {
   createWorkingContext(
     request: CreateWorkingContextRequest,
   ): Promise<CreateWorkingContextResult>;
+  updateWorkingContextMetadata(
+    contextId: string,
+    request: components['schemas']['UpdateWorkingContextMetadataBody'],
+  ): Promise<CreateWorkingContextResult>;
   addContextReference(
     contextId: string,
     request: AddContextReferenceRequest,
@@ -210,9 +257,9 @@ export interface HostClient {
   removeContextItem(
     contextId: string,
     itemId: string,
+    request: RemoveContextItemRequest,
   ): Promise<RemoveContextItemResult>;
   setWorkScopeResume(
-    contextId: string,
     request: SetWorkScopeResumeRequest,
   ): Promise<SetWorkScopeResumeResult>;
   listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResult>;
@@ -230,6 +277,7 @@ export interface HostClient {
   pausePlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
   resumePlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
   stopPlayout(request: ExpectedPlayoutRequest): Promise<Playout>;
+  cancelPlayoutCompletion(request: ExpectedPlayoutRequest): Promise<Playout>;
   completePlayout(
     request: CompletePlayoutRequest,
   ): Promise<CompletePlayoutResult>;

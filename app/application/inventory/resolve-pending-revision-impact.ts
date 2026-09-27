@@ -34,6 +34,8 @@ export class ResolvePendingRevisionImpact implements ResolvePendingRevisionImpac
     request: ResolvePendingRevisionImpactRequest,
   ): Promise<ResolvePendingRevisionImpactResult> {
     if (
+      !Number.isSafeInteger(request.expectedDataRevision) ||
+      request.expectedDataRevision < 0 ||
       !Number.isSafeInteger(request.expectedImpactVersion) ||
       request.expectedImpactVersion < 1 ||
       (request.resolution.kind === 'keep_copy' &&

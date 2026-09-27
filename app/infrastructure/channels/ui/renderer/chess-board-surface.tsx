@@ -71,6 +71,7 @@ export function ChessBoardSurface({
   ariaReadOnly,
   className,
   isInteractive = true,
+  showCoordinates = true,
   orientation = 'white',
   selectedSquare,
   getSquareClassName,
@@ -83,6 +84,7 @@ export function ChessBoardSurface({
   readonly ariaReadOnly?: boolean;
   readonly className?: string;
   readonly isInteractive?: boolean;
+  readonly showCoordinates?: boolean;
   readonly orientation?: ChessBoardOrientation;
   readonly selectedSquare?: string;
   readonly getSquareClassName?: (square: string) => string;
@@ -165,12 +167,12 @@ export function ChessBoardSurface({
                     <ChessPieceGlyph symbol={piece.symbol} />
                   </span>
                 )}
-                {file === files[0] && (
+                {showCoordinates && file === files[0] && (
                   <span className={styles.rankLabel} aria-hidden="true">
                     {rank}
                   </span>
                 )}
-                {rank === ranks[7] && (
+                {showCoordinates && rank === ranks[7] && (
                   <span className={styles.fileLabel} aria-hidden="true">
                     {file}
                   </span>

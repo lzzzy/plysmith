@@ -288,6 +288,38 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/inventory/items/{itemId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete: operations["DeleteInventoryItem"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/inventory/items/{itemId}/deletion-preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["PreviewInventoryItemDeletion"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/inventory/items/{itemId}/revision-edits": {
         readonly parameters: {
             readonly query?: never;
@@ -395,6 +427,22 @@ export interface paths {
         readonly put?: never;
         readonly post: operations["StartPlayout"];
         readonly delete: operations["DiscardPlayout"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/playout/cancel-completion": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["CancelPlayoutCompletion"];
+        readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -586,6 +634,22 @@ export interface paths {
         readonly get: operations["GetWorkingContextWorkspace"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete: operations["DeleteWorkingContext"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/working-contexts/{contextId}/deletion-preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["PreviewWorkingContextDeletion"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -608,6 +672,38 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/working-contexts/{contextId}/items/{itemId}/removal-preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["PreviewContextItemRemoval"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/working-contexts/{contextId}/metadata": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put: operations["UpdateWorkingContextMetadata"];
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/working-contexts/{contextId}/references": {
         readonly parameters: {
             readonly query?: never;
@@ -624,7 +720,7 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/working-contexts/{contextId}/resume": {
+    readonly "/workspace/resume": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -666,6 +762,38 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["ResolvePendingRevisionImpact"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/workspace/scope": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["GetWorkScopeWorkspace"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/workspace/startup": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["GetStartupResume"];
+        readonly put: operations["SetStartupResume"];
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -766,6 +894,9 @@ export interface components {
             readonly game?: {
                 readonly outcome: {
                     /** @enum {string} */
+                    readonly kind: "draw";
+                } | {
+                    /** @enum {string} */
                     readonly kind: "win";
                     readonly winner: "white" | "black";
                 } | {
@@ -776,6 +907,7 @@ export interface components {
                     /** @enum {string} */
                     readonly kind: "unfinished";
                 };
+                readonly outcomeSource: "manual" | "automatic";
                 readonly playerSide: "white" | "black";
                 readonly policy: components["schemas"]["MovePolicyBinding"];
             };
@@ -784,12 +916,12 @@ export interface components {
             readonly itemType: "analysis" | "game";
             readonly languageTag: string;
             readonly origin: components["schemas"]["AnalysisOrigin"];
-            readonly readOnlyPreview: boolean;
             readonly revisionId: string;
             readonly revisionNumber: number;
             readonly root: components["schemas"]["ChessState"];
             readonly rootAnchorId: string;
             readonly sourceLine?: components["schemas"]["AnalysisSourceLine"];
+            readonly sourcePath?: components["schemas"]["PlayoutSourcePath"];
             readonly steps: readonly components["schemas"]["AnalysisRecordStep"][];
             readonly summary?: string;
         };
@@ -877,7 +1009,7 @@ export interface components {
         readonly AnalysisSourceLine: {
             readonly contributions: readonly components["schemas"]["AnalysisContribution"][];
             readonly root: components["schemas"]["ChessState"];
-            readonly rootTarget: {
+            readonly rootTarget?: {
                 readonly anchorId: string;
                 readonly itemId: string;
                 readonly revisionId: string;
@@ -889,11 +1021,11 @@ export interface components {
             readonly sourceRevisionId: string;
             readonly steps: readonly {
                 readonly after: components["schemas"]["ChessState"];
-                readonly anchorId: string;
+                readonly anchorId?: string;
                 readonly before: components["schemas"]["ChessState"];
-                readonly itemId: string;
+                readonly itemId?: string;
                 readonly move: components["schemas"]["CanonicalMove"];
-                readonly revisionId: string;
+                readonly revisionId?: string;
             }[];
         };
         readonly AnalysisStep: {
@@ -909,7 +1041,7 @@ export interface components {
             readonly wins: number;
         };
         readonly AnalysisWorkspace: {
-            readonly allowedActions: readonly ("start_scratch" | "apply_move" | "move_cursor" | "remove_last_move" | "prepare_note" | "clear_note" | "discard_scratch" | "create_analysis_note" | "create_analysis_record")[];
+            readonly allowedActions: readonly ("start_scratch" | "apply_move" | "move_cursor" | "remove_last_move" | "prepare_note" | "clear_note" | "continue_exploration" | "discard_scratch" | "create_analysis_note" | "create_analysis_record")[];
             readonly contextName?: string;
             readonly currentState: components["schemas"]["ChessState"];
             readonly dataRevision: number;
@@ -939,6 +1071,17 @@ export interface components {
                 readonly kind: "human_policy";
             };
             readonly providerInstanceId: string;
+            readonly work: {
+                readonly scope: components["schemas"]["WorkScope"];
+                readonly subject: {
+                    /** @enum {string} */
+                    readonly kind: "position";
+                } | {
+                    readonly itemId: string;
+                    /** @enum {string} */
+                    readonly kind: "inventory_item";
+                };
+            };
         };
         readonly CanonicalMove: {
             readonly from: string;
@@ -974,6 +1117,7 @@ export interface components {
             readonly draftId: string;
             readonly expectedDraftRevision: number;
             readonly languageTag: string;
+            readonly manualResult?: "white_win" | "black_win" | "draw" | "unfinished";
             readonly scope: components["schemas"]["WorkScope"];
             readonly targetContextId?: string;
         };
@@ -981,6 +1125,22 @@ export interface components {
             readonly contextReferenceId?: string;
             readonly dataRevision: number;
             readonly itemId: string;
+            readonly outcome: {
+                /** @enum {string} */
+                readonly kind: "draw";
+            } | {
+                /** @enum {string} */
+                readonly kind: "win";
+                readonly winner: "white" | "black";
+            } | {
+                /** @enum {string} */
+                readonly kind: "draw";
+                readonly reason: "stalemate" | "insufficient_material" | "threefold_repetition" | "seventy_five_move";
+            } | {
+                /** @enum {string} */
+                readonly kind: "unfinished";
+            };
+            readonly outcomeSource: "manual" | "automatic";
             readonly revisionId: string;
             readonly rootAnchorId: string;
         };
@@ -1000,6 +1160,49 @@ export interface components {
             readonly itemId: string;
             readonly itemType: "game" | "analysis" | "source";
             readonly referenceId: string;
+        };
+        readonly ContextRemovalPreview: {
+            readonly contextId: string;
+            readonly contextName: string;
+            readonly contextVersion: number;
+            readonly dataRevision: number;
+            readonly items: readonly {
+                readonly displayName: string;
+                readonly itemId: string;
+            }[];
+            readonly losses: {
+                readonly analysisResume?: components["schemas"]["AnalysisResume"];
+                readonly managementResume?: components["schemas"]["ManagementResume"];
+                readonly notes: readonly {
+                    readonly body: string;
+                    readonly contributionId: string;
+                    readonly itemId?: string;
+                    readonly moveCount: number;
+                }[];
+                readonly playout?: {
+                    readonly draftId: string;
+                    readonly draftRevision: number;
+                    readonly moveCount: number;
+                    readonly sourceItemId?: string;
+                    readonly status: "active" | "awaiting_policy" | "paused" | "stopped" | "terminal";
+                };
+                readonly scratch?: {
+                    readonly intent: "exploration" | "inventory_revision";
+                    readonly itemId?: string;
+                    readonly noteBody?: string;
+                    readonly scratchId: string;
+                    readonly scratchRevision: number;
+                    readonly stepCount: number;
+                };
+            };
+            readonly referenceCount: number;
+            readonly retainedPlayout?: {
+                readonly draftId: string;
+                readonly draftRevision: number;
+                readonly moveCount: number;
+                readonly sourceItemId?: string;
+                readonly status: "active" | "awaiting_policy" | "paused" | "stopped" | "terminal";
+            };
         };
         readonly ContributionIdParams: {
             readonly contributionId: string;
@@ -1084,6 +1287,22 @@ export interface components {
             readonly expectedContributionVersion: number;
             readonly scope: components["schemas"]["WorkScope"];
         };
+        readonly DeleteInventoryItemBody: {
+            readonly expectedCurrentRevisionId: string;
+            readonly expectedDataRevision: number;
+        };
+        readonly DeleteInventoryItemResult: {
+            readonly dataRevision: number;
+            readonly itemId: string;
+        };
+        readonly DeleteWorkingContextBody: {
+            readonly expectedContextVersion: number;
+            readonly expectedDataRevision: number;
+        };
+        readonly DeleteWorkingContextResult: {
+            readonly contextId: string;
+            readonly dataRevision: number;
+        };
         readonly DiagnosticLogLevel: "off" | "error" | "info" | "debug";
         readonly DiagnosticReportManifest: {
             readonly excludedCategories: readonly ("secrets_and_credentials" | "active_configuration" | "database_and_backups" | "local_paths" | "chess_and_user_content" | "external_identities" | "provider_payloads" | "memory_and_raw_errors")[];
@@ -1162,7 +1381,7 @@ export interface components {
             readonly scopeKind: "free" | "context";
         };
         readonly GetPlayoutResult: components["schemas"]["PlayoutResult"] | null;
-        readonly HostEvent: components["schemas"]["UiLanguageChangedEvent"] | components["schemas"]["AnalysisScratchChangedEvent"] | components["schemas"]["AnalysisContributionCreatedEvent"] | components["schemas"]["AnalysisContributionChangedEvent"] | components["schemas"]["InventoryItemCreatedEvent"] | components["schemas"]["InventoryRevisionSavedEvent"] | components["schemas"]["PlayoutChangedEvent"] | components["schemas"]["WorkspaceRevisionImpactChangedEvent"] | components["schemas"]["WorkspaceContextCreatedEvent"] | components["schemas"]["WorkspaceReferenceAddedEvent"] | components["schemas"]["WorkspaceItemRemovedEvent"] | components["schemas"]["WorkspaceResumeUpdatedEvent"] | components["schemas"]["ReplayGapEvent"];
+        readonly HostEvent: components["schemas"]["InventoryItemDeletedEvent"] | components["schemas"]["WorkspaceContextDeletedEvent"] | components["schemas"]["WorkspaceStartupUpdatedEvent"] | components["schemas"]["UiLanguageChangedEvent"] | components["schemas"]["AnalysisScratchChangedEvent"] | components["schemas"]["AnalysisContributionCreatedEvent"] | components["schemas"]["AnalysisContributionChangedEvent"] | components["schemas"]["InventoryItemCreatedEvent"] | components["schemas"]["InventoryRevisionSavedEvent"] | components["schemas"]["PlayoutChangedEvent"] | components["schemas"]["WorkspaceRevisionImpactChangedEvent"] | components["schemas"]["WorkspaceContextCreatedEvent"] | components["schemas"]["WorkspaceReferenceAddedEvent"] | components["schemas"]["WorkspaceItemRemovedEvent"] | components["schemas"]["WorkspaceResumeUpdatedEvent"] | components["schemas"]["ReplayGapEvent"];
         readonly HumanMovePolicyProfile: {
             readonly historyMode: "known_position_history" | "position_only";
             readonly modelName: string;
@@ -1183,8 +1402,53 @@ export interface components {
             readonly sequence: number;
             readonly subscriptionRevision: number;
         };
+        readonly InventoryItemDeletedEvent: {
+            readonly correlationId: string;
+            readonly dataRevision: number;
+            readonly eventId: string;
+            /** @enum {string} */
+            readonly kind: "inventory.item-deleted";
+            readonly occurredAt: string;
+            readonly payload: {
+                readonly itemId: string;
+            };
+            readonly sequence: number;
+            readonly subscriptionRevision: number;
+        };
+        readonly InventoryItemDeletionPreview: {
+            readonly contexts: readonly {
+                readonly activeNoteCount: number;
+                readonly analysisResumeAffected: boolean;
+                readonly contextId: string;
+                readonly contextName: string;
+                readonly managementResumeAffected: boolean;
+                readonly noteMoveCount: number;
+                readonly referenceCount: number;
+                readonly scratchCount: number;
+                readonly scratchMoveCount: number;
+                readonly scratchNoteCount: number;
+            }[];
+            readonly currentRevisionId: string;
+            readonly dataRevision: number;
+            readonly displayName: string;
+            readonly global: components["schemas"]["InventoryItemUsageSummary"];
+            readonly itemId: string;
+            readonly itemType: "game" | "analysis" | "source";
+            readonly retainedDerivedItemCount: number;
+            readonly retainedPlayoutCount: number;
+        };
         readonly InventoryItemIdParams: {
             readonly itemId: string;
+        };
+        readonly InventoryItemUsageSummary: {
+            readonly activeNoteCount: number;
+            readonly analysisResumeAffected: boolean;
+            readonly managementResumeAffected: boolean;
+            readonly noteMoveCount: number;
+            readonly referenceCount: number;
+            readonly scratchCount: number;
+            readonly scratchMoveCount: number;
+            readonly scratchNoteCount: number;
         };
         readonly InventoryRevisionContextImpactSummary: {
             readonly analysisResumeCount: number;
@@ -1267,6 +1531,7 @@ export interface components {
             readonly itemId: string;
             readonly itemType: "game" | "analysis" | "source";
             readonly languageTag: string;
+            readonly lifecycle: "active" | "archived" | "trashed" | "tombstone";
             readonly originKind: "manual" | "structured_import" | "playout" | "live_observed" | "live_played";
             readonly rootAnchorId: string;
             readonly summary?: string;
@@ -1353,15 +1618,18 @@ export interface components {
             readonly contextName: string;
             readonly contributionCount: number;
             readonly createdAt: string;
+            readonly dataRevision: number;
             readonly impactId: string;
             readonly impactVersion: number;
             readonly itemId: string;
             readonly managementResumeAffected: boolean;
             readonly pinnedRevisionId: string;
             readonly referenceCount: number;
+            readonly removeFromContextLoss: components["schemas"]["InventoryItemUsageSummary"];
             readonly targetAnchorId: string;
             readonly targetRevisionId: string;
             readonly updatedAt: string;
+            readonly useTargetLoss: components["schemas"]["InventoryItemUsageSummary"];
         };
         readonly PlayoutChangedEvent: {
             readonly correlationId: string;
@@ -1545,6 +1813,10 @@ export interface components {
             readonly expectedScratchRevision: number;
             readonly scope: components["schemas"]["WorkScope"];
         };
+        readonly RemoveContextItemBody: {
+            readonly expectedContextVersion: number;
+            readonly expectedDataRevision: number;
+        };
         readonly RemoveContextItemResult: {
             readonly contextId: string;
             readonly dataRevision: number;
@@ -1567,6 +1839,7 @@ export interface components {
             readonly subscriptionRevision: number;
         };
         readonly ResolvePendingRevisionImpactBody: {
+            readonly expectedDataRevision: number;
             readonly expectedImpactVersion: number;
             readonly resolution: {
                 /** @enum {string} */
@@ -1615,9 +1888,16 @@ export interface components {
             readonly revisionNumber: number;
         };
         readonly SearchInventoryResult: {
+            readonly ancestors: readonly components["schemas"]["InventorySearchItem"][];
             readonly dataRevision: number;
             readonly items: readonly components["schemas"]["InventorySearchItem"][];
             readonly nextCursor?: string;
+            readonly provenanceEdges: readonly {
+                readonly itemId: string;
+                readonly sourceAnchorId: string;
+                readonly sourceItemId: string;
+                readonly sourceRevisionId: string;
+            }[];
         };
         readonly SetDiagnosticLogLevelBody: {
             readonly expectedConfigurationRevision: string;
@@ -1626,6 +1906,11 @@ export interface components {
         readonly SetDiagnosticLogLevelResult: {
             readonly changed: boolean;
             readonly settings: components["schemas"]["DiagnosticSettings"];
+        };
+        readonly SetStartupResumeBody: {
+            readonly area: "manage" | "analyze" | "playout" | "settings";
+            readonly expectedStartupVersion: number | null;
+            readonly scope: components["schemas"]["WorkScope"];
         };
         readonly SetUiLanguageBody: {
             readonly expectedRevision: number;
@@ -1640,6 +1925,7 @@ export interface components {
             readonly area: "manage";
             readonly expectedResumeVersion: number | null;
             readonly presentation: "list" | "atlas";
+            readonly scope: components["schemas"]["WorkScope"];
             readonly selectedAnchorId?: string;
             readonly selectedItemId?: string;
         } | {
@@ -1650,6 +1936,7 @@ export interface components {
             readonly itemId?: string;
             readonly mode: "analyze" | "edit_inventory" | "edit_overlay";
             readonly revisionId?: string;
+            readonly scope: components["schemas"]["WorkScope"];
         };
         readonly SetWorkScopeResumeResult: {
             /** @enum {string} */
@@ -1722,7 +2009,7 @@ export interface components {
                 })[];
                 readonly rootFen: string;
             };
-            readonly start: {
+            readonly start: ({
                 /** @enum {string} */
                 readonly kind: "initial_position";
             } | {
@@ -1739,6 +2026,33 @@ export interface components {
                 /** @enum {string} */
                 readonly kind: "inventory_anchor";
                 readonly revisionId: string;
+            }) | {
+                readonly anchorId: string;
+                readonly continuation: readonly ({
+                    /** @enum {string} */
+                    readonly kind: "coordinates";
+                    readonly value: string;
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "notation";
+                    readonly locale: "de-DE" | "en-GB";
+                    readonly value: string;
+                })[];
+                readonly itemId: string;
+                /** @enum {string} */
+                readonly kind: "inventory_anchor";
+                readonly revisionId: string;
+            };
+        };
+        readonly StartupResume: {
+            readonly area: "manage" | "analyze" | "playout" | "settings";
+            readonly dataRevision: number;
+            readonly scope: components["schemas"]["WorkScope"];
+            readonly startupVersion: number | null;
+            readonly unavailableContext?: {
+                readonly contextId: string;
+                readonly displayName?: string;
+                readonly reason: "deleted" | "missing";
             };
         };
         readonly StockfishUciEngineProviderConfigurationInput: {
@@ -1861,6 +2175,9 @@ export interface components {
                 readonly kind: "clear_note";
             } | {
                 /** @enum {string} */
+                readonly kind: "continue_exploration";
+            } | {
+                /** @enum {string} */
                 readonly kind: "discard";
             };
             readonly expectedScratchId: string | null;
@@ -1872,6 +2189,11 @@ export interface components {
             readonly discarded: boolean;
             readonly resumeVersion?: number;
             readonly scratch?: components["schemas"]["AnalysisScratch"];
+        };
+        readonly UpdateWorkingContextMetadataBody: {
+            readonly displayName: string;
+            readonly expectedContextVersion: number;
+            readonly purpose?: string | null;
         };
         readonly UserPreferences: {
             readonly dataRevision: number;
@@ -1941,16 +2263,38 @@ export interface components {
             /** @enum {string} */
             readonly kind: "context";
         };
+        readonly WorkScopeWorkspace: {
+            readonly analysisResume?: components["schemas"]["AnalysisResume"];
+            readonly dataRevision: number;
+            readonly managementResume?: components["schemas"]["ManagementResume"];
+            readonly scope: components["schemas"]["WorkScope"];
+        };
+        readonly WorkScopeWorkspaceQuery: {
+            readonly contextId?: string;
+            readonly scopeKind: "free" | "context";
+        };
         readonly WorkspaceContextCreatedEvent: {
             readonly correlationId: string;
             readonly dataRevision: number;
             readonly eventId: string;
-            /** @enum {string} */
-            readonly kind: "workspace.context-created";
+            readonly kind: "workspace.context-created" | "workspace.context-updated";
             readonly occurredAt: string;
             readonly payload: {
                 readonly contextId: string;
                 readonly contextVersion: number;
+            };
+            readonly sequence: number;
+            readonly subscriptionRevision: number;
+        };
+        readonly WorkspaceContextDeletedEvent: {
+            readonly correlationId: string;
+            readonly dataRevision: number;
+            readonly eventId: string;
+            /** @enum {string} */
+            readonly kind: "workspace.context-deleted";
+            readonly occurredAt: string;
+            readonly payload: {
+                readonly contextId: string;
             };
             readonly sequence: number;
             readonly subscriptionRevision: number;
@@ -1992,7 +2336,7 @@ export interface components {
             readonly occurredAt: string;
             readonly payload: {
                 readonly area: "manage" | "analyze";
-                readonly contextId: string;
+                readonly contextId?: string;
                 readonly resumeVersion: number;
             };
             readonly sequence: number;
@@ -2010,6 +2354,19 @@ export interface components {
                 readonly impactId: string;
                 readonly itemId: string;
                 readonly status: "open" | "resolved";
+            };
+            readonly sequence: number;
+            readonly subscriptionRevision: number;
+        };
+        readonly WorkspaceStartupUpdatedEvent: {
+            readonly correlationId: string;
+            readonly dataRevision: number;
+            readonly eventId: string;
+            /** @enum {string} */
+            readonly kind: "workspace.startup-updated";
+            readonly occurredAt: string;
+            readonly payload: {
+                readonly startupVersion: number;
             };
             readonly sequence: number;
             readonly subscriptionRevision: number;
@@ -2384,6 +2741,17 @@ export interface operations {
                         readonly kind: "human_policy";
                     };
                     readonly providerInstanceId: string;
+                    readonly work: {
+                        readonly scope: components["schemas"]["WorkScope"];
+                        readonly subject: {
+                            /** @enum {string} */
+                            readonly kind: "position";
+                        } | {
+                            readonly itemId: string;
+                            /** @enum {string} */
+                            readonly kind: "inventory_item";
+                        };
+                    };
                 };
             };
         };
@@ -2762,6 +3130,9 @@ export interface operations {
                     } | {
                         /** @enum {string} */
                         readonly kind: "clear_note";
+                    } | {
+                        /** @enum {string} */
+                        readonly kind: "continue_exploration";
                     } | {
                         /** @enum {string} */
                         readonly kind: "discard";
@@ -4254,6 +4625,219 @@ export interface operations {
             };
         };
     };
+    readonly DeleteInventoryItem: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly itemId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly expectedCurrentRevisionId: string;
+                    readonly expectedDataRevision: number;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteInventoryItemResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly PreviewInventoryItemDeletion: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly itemId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InventoryItemDeletionPreview"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     readonly StartInventoryRevision: {
         readonly parameters: {
             readonly query?: never;
@@ -5074,7 +5658,7 @@ export interface operations {
                         })[];
                         readonly rootFen: string;
                     };
-                    readonly start: {
+                    readonly start: ({
                         /** @enum {string} */
                         readonly kind: "initial_position";
                     } | {
@@ -5087,6 +5671,22 @@ export interface operations {
                         readonly setup: components["schemas"]["AnalysisSetup"];
                     } | {
                         readonly anchorId: string;
+                        readonly itemId: string;
+                        /** @enum {string} */
+                        readonly kind: "inventory_anchor";
+                        readonly revisionId: string;
+                    }) | {
+                        readonly anchorId: string;
+                        readonly continuation: readonly ({
+                            /** @enum {string} */
+                            readonly kind: "coordinates";
+                            readonly value: string;
+                        } | {
+                            /** @enum {string} */
+                            readonly kind: "notation";
+                            readonly locale: "de-DE" | "en-GB";
+                            readonly value: string;
+                        })[];
                         readonly itemId: string;
                         /** @enum {string} */
                         readonly kind: "inventory_anchor";
@@ -5297,6 +5897,115 @@ export interface operations {
             };
         };
     };
+    readonly CancelPlayoutCompletion: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly draftId: string;
+                    readonly expectedDraftRevision: number;
+                    readonly scope: components["schemas"]["WorkScope"];
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PlayoutResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     readonly CompletePlayout: {
         readonly parameters: {
             readonly query?: never;
@@ -5312,6 +6021,7 @@ export interface operations {
                     readonly draftId: string;
                     readonly expectedDraftRevision: number;
                     readonly languageTag: string;
+                    readonly manualResult?: "white_win" | "black_win" | "draw" | "unfinished";
                     readonly scope: components["schemas"]["WorkScope"];
                     readonly targetContextId?: string;
                 };
@@ -6693,7 +7403,331 @@ export interface operations {
             };
         };
     };
+    readonly DeleteWorkingContext: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly contextId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly expectedContextVersion: number;
+                    readonly expectedDataRevision: number;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteWorkingContextResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly PreviewWorkingContextDeletion: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly contextId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ContextRemovalPreview"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
     readonly RemoveContextItem: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly contextId: string;
+                readonly itemId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly expectedContextVersion: number;
+                    readonly expectedDataRevision: number;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RemoveContextItemResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly PreviewContextItemRemoval: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -6711,7 +7745,118 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["RemoveContextItemResult"];
+                    readonly "application/json": components["schemas"]["ContextRemovalPreview"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly UpdateWorkingContextMetadata: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly contextId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly displayName: string;
+                    readonly expectedContextVersion: number;
+                    readonly purpose?: string | null;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CreateWorkingContextResult"];
                 };
             };
             /** @description A safe, stable Plysmith problem. */
@@ -6911,9 +8056,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
-            readonly path: {
-                readonly contextId: string;
-            };
+            readonly path?: never;
             readonly cookie?: never;
         };
         readonly requestBody: {
@@ -6923,6 +8066,7 @@ export interface operations {
                     readonly area: "manage";
                     readonly expectedResumeVersion: number | null;
                     readonly presentation: "list" | "atlas";
+                    readonly scope: components["schemas"]["WorkScope"];
                     readonly selectedAnchorId?: string;
                     readonly selectedItemId?: string;
                 } | {
@@ -6933,6 +8077,7 @@ export interface operations {
                     readonly itemId?: string;
                     readonly mode: "analyze" | "edit_inventory" | "edit_overlay";
                     readonly revisionId?: string;
+                    readonly scope: components["schemas"]["WorkScope"];
                 };
             };
         };
@@ -7144,6 +8289,7 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
+                    readonly expectedDataRevision: number;
                     readonly expectedImpactVersion: number;
                     readonly resolution: {
                         /** @enum {string} */
@@ -7167,6 +8313,320 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ResolvePendingRevisionImpactResult"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly GetWorkScopeWorkspace: {
+        readonly parameters: {
+            readonly query: {
+                readonly contextId?: string;
+                readonly scopeKind: "free" | "context";
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WorkScopeWorkspace"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly GetStartupResume: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StartupResume"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 406: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 413: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 415: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description A safe, stable Plysmith problem. */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    readonly SetStartupResume: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly area: "manage" | "analyze" | "playout" | "settings";
+                    readonly expectedStartupVersion: number | null;
+                    readonly scope: components["schemas"]["WorkScope"];
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Default Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["StartupResume"];
                 };
             };
             /** @description A safe, stable Plysmith problem. */

@@ -84,7 +84,9 @@ export class StartInventoryRevision implements StartInventoryRevisionUseCase {
       record === undefined ||
       (record.itemType === 'game' && request.mode !== 'metadata') ||
       record.historical ||
-      record.readOnlyPreview ||
+      (request.scope.kind === 'context' &&
+        !record.contextMember &&
+        request.mode !== 'metadata') ||
       record.currentRevisionId.value !== request.baseRevisionId.value
     ) {
       throw invalidInventoryRevision();

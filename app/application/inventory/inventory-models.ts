@@ -14,6 +14,7 @@ import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
 
 export interface InventorySearchItem {
+  readonly lifecycle: 'active' | 'archived' | 'trashed' | 'tombstone';
   readonly itemId: InventoryItemId;
   readonly currentRevisionId: ItemRevisionId;
   readonly rootAnchorId: AnchorId;
@@ -41,6 +42,13 @@ export interface SearchInventoryRequest {
 
 export interface SearchInventoryResult {
   readonly items: readonly InventorySearchItem[];
+  readonly ancestors: readonly InventorySearchItem[];
+  readonly provenanceEdges: readonly {
+    readonly itemId: InventoryItemId;
+    readonly sourceItemId: InventoryItemId;
+    readonly sourceRevisionId: ItemRevisionId;
+    readonly sourceAnchorId: AnchorId;
+  }[];
   readonly nextCursor?: string;
   readonly dataRevision: number;
 }
@@ -176,12 +184,63 @@ export interface PendingRevisionImpact {
   readonly targetRevisionId: ItemRevisionId;
   readonly targetAnchorId: AnchorId;
   readonly impactVersion: number;
+  readonly dataRevision: number;
   readonly referenceCount: number;
   readonly contributionCount: number;
   readonly managementResumeAffected: boolean;
   readonly analysisResumeAffected: boolean;
+  readonly useTargetLoss: InventoryItemUsageSummary;
+  readonly removeFromContextLoss: InventoryItemUsageSummary;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface InventoryItemUsageSummary {
+  readonly referenceCount: number;
+  readonly activeNoteCount: number;
+  readonly noteMoveCount: number;
+  readonly scratchCount: number;
+  readonly scratchMoveCount: number;
+  readonly scratchNoteCount: number;
+  readonly managementResumeAffected: boolean;
+  readonly analysisResumeAffected: boolean;
+}
+
+export interface InventoryItemContextUsage extends InventoryItemUsageSummary {
+  readonly contextId: WorkingContextId;
+  readonly contextName: string;
+}
+
+export interface PreviewInventoryItemDeletionRequest {
+  readonly itemId: InventoryItemId;
+}
+
+export interface InventoryItemDeletionPreview {
+  readonly itemId: InventoryItemId;
+  readonly currentRevisionId: ItemRevisionId;
+  readonly displayName: string;
+  readonly itemType: InventorySearchItem['itemType'];
+  readonly contexts: readonly InventoryItemContextUsage[];
+  readonly global: InventoryItemUsageSummary;
+  readonly retainedDerivedItemCount: number;
+  readonly retainedPlayoutCount: number;
+  readonly dataRevision: number;
+}
+
+export interface DeleteInventoryItemRequest {
+  readonly itemId: InventoryItemId;
+  readonly expectedCurrentRevisionId: ItemRevisionId;
+  readonly expectedDataRevision: number;
+}
+
+export interface DeleteInventoryItemResult {
+  readonly itemId: InventoryItemId;
+  readonly dataRevision: number;
+}
+
+export interface InventoryItemDeleted extends DeleteInventoryItemResult {
+  readonly kind: 'inventory.item-deleted';
+  readonly occurredAt: string;
 }
 
 export type RevisionImpactResolution =
@@ -192,6 +251,7 @@ export type RevisionImpactResolution =
 export interface ResolvePendingRevisionImpactRequest {
   readonly impactId: RevisionImpactId;
   readonly expectedImpactVersion: number;
+  readonly expectedDataRevision: number;
   readonly resolution: RevisionImpactResolution;
 }
 

@@ -10,7 +10,6 @@ import {
   ArrowLeft,
   ArrowRight,
   AlertTriangle,
-  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Button, Radio, RadioGroup } from 'react-aria-components';
 import { FormattedDate, FormattedMessage, useIntl } from 'react-intl';
+import type { AnalyzePositionRequestDto } from '../../host_client/index.ts';
 
 import { ChessBoard } from './chess-board.tsx';
 import { localizeSan } from './chess-display.ts';
@@ -97,7 +97,10 @@ export function AnalysisView({
           )
         : record.game.outcome.kind === 'draw'
           ? intl.formatMessage({
-              id: `playout.result.draw.${record.game.outcome.reason}`,
+              id:
+                'reason' in record.game.outcome
+                  ? `playout.result.draw.${record.game.outcome.reason}`
+                  : 'playout.result.draw',
             })
           : intl.formatMessage({ id: 'playout.result.unfinished' });
   const pendingRevisionImpact =
@@ -115,6 +118,11 @@ export function AnalysisView({
       ? 'analysis.newAnalysisPath'
       : `inventory.mode.${revisionIntent.mode}`;
   const revisionPreview = state.inventoryRevisionPreview;
+  const explorationStartsAtLineEnd =
+    scratch?.origin.kind === 'inventory_anchor' &&
+    record !== undefined &&
+    scratch.origin.anchorId ===
+      (record.steps.at(-1)?.anchorId ?? record.rootAnchorId);
   const revisionCandidate =
     record === undefined || revisionPreview === undefined
       ? undefined
@@ -158,8 +166,7 @@ export function AnalysisView({
   const visibleScratchEntries =
     pathNoteDraft === undefined ? scratchEntries : [];
   const isBusy = state.busyCommand !== undefined || state.refreshing;
-  const canChangeNotes =
-    record?.readOnlyPreview !== true && pendingRevisionImpact === undefined;
+  const canChangeNotes = pendingRevisionImpact === undefined;
   const lineStartNoteTarget = path.hasSourcePrefix
     ? path.sourceRootTarget
     : path.recordRootTarget;
@@ -190,6 +197,35 @@ export function AnalysisView({
     Math.min(selectedPositionIndex, Math.max(0, path.positions.length - 1)),
   );
   const activePosition = path.positions[activePositionIndex];
+  const positionAnalysisWork = useMemo<
+    AnalyzePositionRequestDto['work']
+  >(() => {
+    const itemId =
+      activePosition?.target?.itemId ??
+      (activePositionIndex < sourceEntries.length
+        ? record?.sourceLine?.sourceItemId
+        : undefined) ??
+      (scratch?.origin.kind === 'inventory_anchor'
+        ? scratch.origin.itemId
+        : record?.itemId);
+    return {
+      scope: state.scope,
+      subject:
+        itemId === undefined
+          ? { kind: 'position' }
+          : { kind: 'inventory_item', itemId },
+    };
+  }, [
+    activePosition,
+    activePositionIndex,
+    sourceEntries.length,
+    record,
+    scratch,
+    state.scope,
+  ]);
+  const canAnalyzePosition =
+    positionAnalysisWork.subject.kind === 'position' ||
+    store.canWorkWithInventoryItem(positionAnalysisWork.subject.itemId);
   const positionAnalysisFocus = useMemo(() => {
     const root = path.positions[0]?.state;
     if (root === undefined || activePosition === undefined) return undefined;
@@ -233,7 +269,6 @@ export function AnalysisView({
     scratch === undefined &&
     record !== undefined &&
     !record.historical &&
-    !record.readOnlyPreview &&
     record.revisionId === record.currentRevisionId &&
     pendingRevisionImpact === undefined &&
     atWorkspacePosition;
@@ -389,7 +424,7 @@ export function AnalysisView({
         recordTitle,
         destination,
         recordNoteScope,
-        recordNoteBody,
+        scratch !== undefined && scratch.cursor > 0 ? recordNoteBody : '',
       )
     ) {
       setRecordTitle('');
@@ -446,6 +481,7 @@ export function AnalysisView({
   }
 
   function startCreateNote(target: AnalysisNoteTarget) {
+    if (!store.canWorkWithInventoryItem(target.itemId)) return;
     setNoteEditor({
       kind: 'create',
       targetKey: targetKey(target),
@@ -564,6 +600,7 @@ export function AnalysisView({
         <div className={styles.moveActions}>
           {entry.noteTarget !== undefined &&
             canChangeNotes &&
+            store.canWorkWithInventoryItem(entry.noteTarget.itemId) &&
             pathNoteDraft === undefined && (
               <Button
                 className={styles.addNoteButton!}
@@ -625,30 +662,33 @@ export function AnalysisView({
                 <time dateTime={contribution.updatedAt}>
                   <FormattedDate value={contribution.updatedAt} />
                 </time>
-                {canChangeNotes && !editing && !deleting && (
-                  <span className={styles.noteActions}>
-                    <Button
-                      className={styles.noteIconButton!}
-                      aria-label={intl.formatMessage({
-                        id: 'analysis.editNote',
-                      })}
-                      onPress={() => startEditNote(target, contribution)}
-                      isDisabled={isBusy}
-                    >
-                      <Pencil aria-hidden="true" size={13} />
-                    </Button>
-                    <Button
-                      className={styles.noteIconButton!}
-                      aria-label={intl.formatMessage({
-                        id: 'analysis.deleteNote',
-                      })}
-                      onPress={() => startDeleteNote(target, contribution)}
-                      isDisabled={isBusy}
-                    >
-                      <Trash2 aria-hidden="true" size={13} />
-                    </Button>
-                  </span>
-                )}
+                {canChangeNotes &&
+                  store.canWorkWithInventoryItem(target.itemId) &&
+                  !editing &&
+                  !deleting && (
+                    <span className={styles.noteActions}>
+                      <Button
+                        className={styles.noteIconButton!}
+                        aria-label={intl.formatMessage({
+                          id: 'analysis.editNote',
+                        })}
+                        onPress={() => startEditNote(target, contribution)}
+                        isDisabled={isBusy}
+                      >
+                        <Pencil aria-hidden="true" size={13} />
+                      </Button>
+                      <Button
+                        className={styles.noteIconButton!}
+                        aria-label={intl.formatMessage({
+                          id: 'analysis.deleteNote',
+                        })}
+                        onPress={() => startDeleteNote(target, contribution)}
+                        isDisabled={isBusy}
+                      >
+                        <Trash2 aria-hidden="true" size={13} />
+                      </Button>
+                    </span>
+                  )}
               </div>
               {editing ? (
                 renderNoteForm(target, activeEditor)
@@ -883,20 +923,14 @@ export function AnalysisView({
     <main className={styles.analysisView}>
       <header className={styles.viewHeader}>
         <div>
-          <span className={styles.eyebrow}>
-            {record === undefined ? (
-              <FormattedMessage id="analysis.eyebrow" />
-            ) : (
-              <>
-                <InventoryTypeIcon itemType={record.itemType} size={12} />
-                <FormattedMessage id={`itemType.${record.itemType}`} />
-              </>
-            )}
-          </span>
+          {record !== undefined && (
+            <span className={styles.eyebrow}>
+              <InventoryTypeIcon itemType={record.itemType} size={12} />
+              <FormattedMessage id={`itemType.${record.itemType}`} />
+            </span>
+          )}
           <h1>
-            {record?.displayName ?? (
-              <FormattedMessage id="analysis.untitledWorkspace" />
-            )}
+            {record?.displayName ?? <FormattedMessage id="activity.analyze" />}
           </h1>
           {record?.game !== undefined && gameResult !== undefined && (
             <p
@@ -944,6 +978,45 @@ export function AnalysisView({
         </div>
       </header>
 
+      {state.analysisUnavailable !== undefined && (
+        <section
+          className={styles.revisionNotice}
+          aria-labelledby="analysis-unavailable-title"
+          role="status"
+        >
+          <AlertTriangle aria-hidden="true" size={19} />
+          <div>
+            <strong id="analysis-unavailable-title">
+              <FormattedMessage
+                id={
+                  state.analysisUnavailable.reason === 'deleted_from_inventory'
+                    ? 'analysis.deletedFromInventory'
+                    : 'analysis.removedFromContext'
+                }
+              />
+            </strong>
+            <p>
+              <FormattedMessage
+                id={
+                  state.analysisUnavailable.reason === 'deleted_from_inventory'
+                    ? 'analysis.deletedFromInventoryDetail'
+                    : 'analysis.removedFromContextDetail'
+                }
+                values={{ name: state.analysisUnavailable.displayName }}
+              />
+            </p>
+          </div>
+          <Button
+            className={styles.impactButton!}
+            onPress={() => store.setActivity('manage')}
+            isDisabled={isBusy}
+          >
+            <FormattedMessage id="activity.manage" />
+            <ArrowRight aria-hidden="true" size={15} />
+          </Button>
+        </section>
+      )}
+
       {pendingRevisionImpact !== undefined && (
         <section
           className={styles.revisionNotice}
@@ -971,42 +1044,6 @@ export function AnalysisView({
             <FormattedMessage id="revisionImpact.review" />
             <ArrowRight aria-hidden="true" size={15} />
           </Button>
-        </section>
-      )}
-
-      {record?.readOnlyPreview === true && state.scope.kind === 'context' && (
-        <section
-          className={styles.previewNotice}
-          aria-labelledby="preview-title"
-        >
-          <div>
-            <strong id="preview-title">
-              <FormattedMessage
-                id="analysis.outsideContext"
-                values={{ context: state.analysis.contextName }}
-              />
-            </strong>
-            <p>
-              <FormattedMessage id="analysis.previewReadonly" />
-            </p>
-          </div>
-          <div className={styles.noticeActions}>
-            <Button
-              className={styles.primaryButton!}
-              onPress={() => void store.openCurrentRecordWithoutContext()}
-            >
-              <ArrowRight aria-hidden="true" size={16} />
-              <FormattedMessage id="analysis.openWithoutContext" />
-            </Button>
-            <Button
-              className={styles.primaryButton!}
-              onPress={() => void store.addCurrentRecordToContext()}
-              isDisabled={isBusy}
-            >
-              <BookOpen aria-hidden="true" size={16} />
-              <FormattedMessage id="analysis.useInContext" />
-            </Button>
-          </div>
         </section>
       )}
 
@@ -1045,6 +1082,7 @@ export function AnalysisView({
             <div className={styles.cursorControls}>
               {lineStartNoteTarget !== undefined &&
                 canChangeNotes &&
+                store.canWorkWithInventoryItem(lineStartNoteTarget.itemId) &&
                 pathNoteDraft === undefined && (
                   <Button
                     className={styles.addNoteButton!}
@@ -1097,7 +1135,10 @@ export function AnalysisView({
                   isDisabled={
                     navigationLocked ||
                     scratch !== undefined ||
-                    path.sourceOriginTarget === undefined
+                    path.sourceOriginTarget === undefined ||
+                    !store.canWorkWithInventoryItem(
+                      path.sourceOriginTarget.itemId,
+                    )
                   }
                 >
                   <span className={styles.sourceIdentity}>
@@ -1184,7 +1225,6 @@ export function AnalysisView({
               (path.hasStoredPrefix || path.hasSourcePrefix) && (
                 <li
                   className={styles.pathBoundary}
-                  role="separator"
                   aria-label={intl.formatMessage({
                     id: scratchBoundaryMessageId,
                   })}
@@ -1312,6 +1352,18 @@ export function AnalysisView({
                     </div>
                   </div>
                 )}
+                {state.analysis.allowedActions.includes(
+                  'continue_exploration',
+                ) && (
+                  <Button
+                    className={styles.secondaryButton!}
+                    onPress={() => void store.continueAnalysisExploration()}
+                    isDisabled={isBusy}
+                  >
+                    <GitBranch aria-hidden="true" size={16} />
+                    <FormattedMessage id="analysis.continueExploration" />
+                  </Button>
+                )}
                 <Button
                   className={styles.discardButton!}
                   onPress={() => void store.discardAnalysisScratch()}
@@ -1358,7 +1410,7 @@ export function AnalysisView({
                       </span>
                     )}
                   </button>
-                  {!analysisDetailsOpen && scratch.cursor > 0 && (
+                  {!analysisDetailsOpen && (
                     <Button
                       className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
                       onPress={() => {
@@ -1389,7 +1441,13 @@ export function AnalysisView({
                         isDisabled={isBusy}
                       >
                         <GitBranch aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.replaceMainLine" />
+                        <FormattedMessage
+                          id={
+                            explorationStartsAtLineEnd
+                              ? 'inventory.mode.extend'
+                              : 'analysis.replaceMainLine'
+                          }
+                        />
                       </Button>
                     )}
                   {scratch.origin.kind === 'inventory_anchor' &&
@@ -1412,7 +1470,7 @@ export function AnalysisView({
                       </div>
                     )}
 
-                  {scratch.cursor > 0 && !showSaveRecord && (
+                  {!showSaveRecord && (
                     <Button
                       className={styles.primaryButton!}
                       onPress={() => setShowSaveRecord(true)}
@@ -1423,7 +1481,7 @@ export function AnalysisView({
                     </Button>
                   )}
 
-                  {scratch.cursor > 0 && showSaveRecord && (
+                  {showSaveRecord && (
                     <form className={styles.saveForm} onSubmit={saveRecord}>
                       <label htmlFor="analysis-title">
                         <FormattedMessage id="analysis.recordTitle" />
@@ -1435,21 +1493,25 @@ export function AnalysisView({
                         autoFocus
                         disabled={isBusy}
                       />
-                      <label htmlFor="analysis-record-note">
-                        <FormattedMessage id="analysis.recordNote" />
-                      </label>
-                      <textarea
-                        id="analysis-record-note"
-                        value={recordNoteBody}
-                        onChange={(event) =>
-                          setRecordNoteBody(event.target.value)
-                        }
-                        rows={3}
-                        disabled={isBusy}
-                        placeholder={intl.formatMessage({
-                          id: 'analysis.recordNotePlaceholder',
-                        })}
-                      />
+                      {scratch.cursor > 0 && (
+                        <>
+                          <label htmlFor="analysis-record-note">
+                            <FormattedMessage id="analysis.recordNote" />
+                          </label>
+                          <textarea
+                            id="analysis-record-note"
+                            value={recordNoteBody}
+                            onChange={(event) =>
+                              setRecordNoteBody(event.target.value)
+                            }
+                            rows={3}
+                            disabled={isBusy}
+                            placeholder={intl.formatMessage({
+                              id: 'analysis.recordNotePlaceholder',
+                            })}
+                          />
+                        </>
+                      )}
                       {state.scope.kind === 'context' && (
                         <RadioGroup
                           className={styles.destinationGroup!}
@@ -1516,9 +1578,10 @@ export function AnalysisView({
               </section>
             )}
         </section>
-        {positionAnalysisFocus !== undefined && (
+        {positionAnalysisFocus !== undefined && canAnalyzePosition && (
           <PositionAnalysisPanel
             focus={positionAnalysisFocus}
+            work={positionAnalysisWork}
             locale={state.preferences.uiLocale}
             providers={state.analysisProviders}
             store={store}

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  cancelCompletionRequest,
+  pausedPlayoutDto,
+  playoutRevisionConflict,
+} from '../playout-fixtures.ts';
+import {
   CallToolResultSchema,
   ErrorCode,
   McpError,
@@ -16,6 +21,69 @@ import {
   revisionConflict,
   systemStatus,
 } from './helpers.ts';
+
+test('cancel completion forwards the expected request once and returns the paused host view', async (t) => {
+  const { client, calls } = await connectMcp(t, {
+    cancelPlayoutCompletion: async () => pausedPlayoutDto,
+  });
+  const result = await client.callTool({
+    name: 'cancel_playout_completion',
+    arguments: cancelCompletionRequest,
+  });
+  assertToolData(result, pausedPlayoutDto);
+  assert.deepEqual(calls, [
+    { method: 'cancelPlayoutCompletion', request: cancelCompletionRequest },
+  ]);
+  const { tools } = await client.listTools();
+  const cancel = tools.find(({ name }) => name === 'cancel_playout_completion');
+  const stop = tools.find(({ name }) => name === 'stop_playout');
+  assert.deepEqual(cancel?.inputSchema, stop?.inputSchema);
+  assert.deepEqual(cancel?.outputSchema, stop?.outputSchema);
+  assert.deepEqual(cancel?.annotations, stop?.annotations);
+});
+
+test('cancel completion preserves stale conflicts without retrying the write', async (t) => {
+  const { client, calls } = await connectMcp(t, {
+    cancelPlayoutCompletion: async () => {
+      throw { problem: playoutRevisionConflict };
+    },
+  });
+  const result = await client.callTool({
+    name: 'cancel_playout_completion',
+    arguments: cancelCompletionRequest,
+  });
+  assert.equal(result.isError, true);
+  assertToolData(result, playoutRevisionConflict);
+  assert.deepEqual(calls, [
+    { method: 'cancelPlayoutCompletion', request: cancelCompletionRequest },
+  ]);
+});
+
+test('cancel completion rejects malformed and undeclared arguments without host calls', async (t) => {
+  const { client, calls } = await connectMcp(t);
+  for (const args of [
+    {},
+    { ...cancelCompletionRequest, expectedDraftRevision: 0 },
+    { ...cancelCompletionRequest, expectedDraftRevision: 1.5 },
+    { ...cancelCompletionRequest, draftId: '07' },
+    { ...cancelCompletionRequest, scope: { kind: 'context' } },
+    { ...cancelCompletionRequest, scope: { kind: 'free', contextId: '5' } },
+    { ...cancelCompletionRequest, resume: true },
+    { ...cancelCompletionRequest, outcome: { kind: 'unfinished' } },
+  ]) {
+    const result = await client.callTool({
+      name: 'cancel_playout_completion',
+      arguments: args,
+    });
+    assert.equal(result.isError, true, JSON.stringify(args));
+    assert.ok(
+      result.structuredContent && typeof result.structuredContent === 'object',
+    );
+    assert.ok('code' in result.structuredContent);
+    assert.equal(result.structuredContent.code, 'request.invalid');
+  }
+  assert.deepEqual(calls, []);
+});
 
 test('MCP advertises the explicit playout-capable allowlist and two fixed resources', async (t) => {
   const { client, calls } = await connectMcp(t);
@@ -47,8 +115,17 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'list_inventory_revisions',
       'get_pending_revision_impact',
       'resolve_pending_revision_impact',
+      'get_work_scope_workspace',
+      'get_startup_resume',
+      'set_startup_resume',
+      'preview_context_item_removal',
+      'preview_working_context_deletion',
+      'delete_working_context',
+      'preview_inventory_item_deletion',
+      'delete_inventory_item',
       'list_working_contexts',
       'get_working_context_workspace',
+      'update_working_context_metadata',
       'create_working_context',
       'add_context_reference',
       'remove_context_item',
@@ -63,6 +140,7 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'pause_playout',
       'resume_playout',
       'stop_playout',
+      'cancel_playout_completion',
       'complete_playout',
       'discard_playout',
     ],
@@ -141,6 +219,7 @@ test('position analysis tools use the shared host contract without exposing prov
   };
   const request = {
     consumerId: 'mcp-test',
+    work: { scope: { kind: 'free' }, subject: { kind: 'position' } },
     laneId: 'maia-1500',
     providerInstanceId: 'maia-1500',
     candidateCount: 3,
@@ -226,6 +305,47 @@ test('position analysis tools use the shared host contract without exposing prov
     JSON.stringify([providers, analysis]),
     /executable|arguments|weightFilePath|threads|hashMb/,
   );
+});
+
+test('context metadata MCP forwards one version checked shared host operation', async (t) => {
+  const result = {
+    context: {
+      contextId: '5',
+      displayName: 'Renamed',
+      lifecycle: 'active' as const,
+      contextVersion: 3,
+      referenceCount: 1,
+      pendingRevisionImpactCount: 0,
+      createdAt: '2026-09-27T12:00:00.000Z',
+      updatedAt: '2026-09-27T12:00:00.000Z',
+    },
+    dataRevision: 4,
+  };
+  const { client, calls } = await connectMcp(t, {
+    updateWorkingContextMetadata: async () => result,
+  });
+  const args = {
+    contextId: '5',
+    expectedContextVersion: 2,
+    displayName: 'Renamed',
+    purpose: null,
+  };
+  assertToolData(
+    await client.callTool({
+      name: 'update_working_context_metadata',
+      arguments: args,
+    }),
+    result,
+  );
+  assert.deepEqual(calls, [
+    { method: 'updateWorkingContextMetadata', request: args },
+  ]);
+  const invalid = await client.callTool({
+    name: 'update_working_context_metadata',
+    arguments: { ...args, expectedContextVersion: 0 },
+  });
+  assert.equal(invalid.isError, true);
+  assert.equal(calls.length, 1);
 });
 
 test('playout discovery and empty scoped read expose no engine configuration', async (t) => {
@@ -544,7 +664,12 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       contributionVersion: 3,
       dataRevision: 9,
     }),
-    searchInventory: async () => ({ items: [], dataRevision: 5 }),
+    searchInventory: async () => ({
+      items: [],
+      ancestors: [],
+      provenanceEdges: [],
+      dataRevision: 5,
+    }),
     listWorkingContexts: async () => ({
       contexts: [context],
       dataRevision: 5,
@@ -641,11 +766,19 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       { displayName: 'Mein Repertoire', purpose: 'Eröffnungen ausbauen' },
     ],
     ['add_context_reference', { contextId: '1', itemId: '1', anchorId: '1' }],
-    ['remove_context_item', { contextId: '1', itemId: '1' }],
+    [
+      'remove_context_item',
+      {
+        contextId: '1',
+        itemId: '1',
+        expectedContextVersion: 1,
+        expectedDataRevision: 5,
+      },
+    ],
     [
       'set_work_scope_resume',
       {
-        contextId: '1',
+        scope: { kind: 'context', contextId: '1' },
         area: 'manage',
         expectedResumeVersion: null,
         presentation: 'list',
@@ -705,12 +838,17 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     },
     {
       method: 'removeContextItem',
-      request: { contextId: '1', itemId: '1' },
+      request: {
+        contextId: '1',
+        itemId: '1',
+        expectedContextVersion: 1,
+        expectedDataRevision: 5,
+      },
     },
     {
       method: 'setWorkScopeResume',
       request: {
-        contextId: '1',
+        scope: { kind: 'context', contextId: '1' },
         area: 'manage',
         expectedResumeVersion: null,
         presentation: 'list',
@@ -845,7 +983,6 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       cursor: 0,
       contributions: [],
       contextMember: true,
-      readOnlyPreview: true,
       historical: true,
     }),
     listInventoryRevisions: async () => ({
@@ -872,6 +1009,27 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       targetRevisionId: '8',
       targetAnchorId: '5',
       impactVersion: 1,
+      dataRevision: 8,
+      useTargetLoss: {
+        referenceCount: 0,
+        activeNoteCount: 0,
+        noteMoveCount: 0,
+        scratchCount: 0,
+        scratchMoveCount: 0,
+        scratchNoteCount: 0,
+        managementResumeAffected: false,
+        analysisResumeAffected: false,
+      },
+      removeFromContextLoss: {
+        referenceCount: 1,
+        activeNoteCount: 0,
+        noteMoveCount: 0,
+        scratchCount: 0,
+        scratchMoveCount: 0,
+        scratchNoteCount: 0,
+        managementResumeAffected: false,
+        analysisResumeAffected: false,
+      },
       referenceCount: 0,
       contributionCount: 0,
       managementResumeAffected: false,
@@ -947,6 +1105,7 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       {
         impactId: '10',
         expectedImpactVersion: 1,
+        expectedDataRevision: 8,
         resolution: { kind: 'use_target' },
       },
     ],
@@ -996,6 +1155,7 @@ test('inventory revision tools expose preview-bound writes and historical reads 
       request: {
         impactId: '10',
         expectedImpactVersion: 1,
+        expectedDataRevision: 8,
         resolution: { kind: 'use_target' },
       },
     },
@@ -1174,6 +1334,30 @@ test('an absent expected scratch is preserved as revision zero', async (t) => {
   assert.equal(result.isError, true);
   assertToolData(result, scratchConflict);
   assert.equal(calls.length, 1);
+});
+
+test('continue exploration forwards the explicit free or context action once', async (t) => {
+  const { client, calls } = await connectMcp(t, {
+    updateAnalysisScratch: async () => ({ discarded: false, dataRevision: 4 }),
+  });
+  for (const scope of [{ kind: 'free' }, { kind: 'context', contextId: '1' }]) {
+    const request = {
+      scope,
+      expectedScratchId: 'existing-six-move-draft',
+      expectedScratchRevision: 7,
+      action: { kind: 'continue_exploration' },
+    };
+    const result = await client.callTool({
+      name: 'update_analysis_scratch',
+      arguments: request,
+    });
+    assert.notEqual(result.isError, true);
+    assert.deepEqual(calls.at(-1), {
+      method: 'updateAnalysisScratch',
+      request,
+    });
+  }
+  assert.equal(calls.length, 2);
 });
 
 test('resources preserve structured host problems in MCP error data', async (t) => {

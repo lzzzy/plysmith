@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowLeft,
   ArrowRight,
   CircleStop,
   Pause,
@@ -11,7 +12,10 @@ import {
 import { Button, Dialog, Modal, ModalOverlay } from 'react-aria-components';
 import { FormattedMessage, useIntl } from 'react-intl';
 
-import type { AnalysisWorkspaceDto } from '../../host_client/index.ts';
+import type {
+  AnalysisWorkspaceDto,
+  CompletePlayoutRequestDto,
+} from '../../host_client/index.ts';
 import { ChessBoard } from './chess-board.tsx';
 import {
   type PlysmithApplicationState,
@@ -19,6 +23,8 @@ import {
 } from './plysmith-application-store.ts';
 import styles from './playout-view.module.css';
 import { playoutMoveRows } from './playout-presentation.ts';
+import { sideName } from './chess-display.ts';
+import { GameOutcomeLabel } from './game-outcome-label.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
 
@@ -37,7 +43,11 @@ export function PlayoutView({
   const saved =
     state.completedPlayout !== undefined &&
     state.completedPlayoutView !== undefined;
-  const playout = state.completedPlayoutView ?? state.playout ?? undefined;
+  const playout =
+    state.completedPlayoutView ??
+    state.pendingPlayoutCompletion?.view ??
+    state.playout ??
+    undefined;
   const isBusy = state.busyCommand !== undefined || state.refreshing;
   const [reviewPosition, setReviewPosition] = useState<ReviewPosition>({
     kind: 'playout',
@@ -116,7 +126,11 @@ export function PlayoutView({
                 <FormattedMessage id="playout.game" />
               </span>
               <h2 id="playout-line-title">
-                <FormattedMessage id="playout.moves" />
+                {saved ? (
+                  state.completedPlayout?.displayName
+                ) : (
+                  <FormattedMessage id="playout.moves" />
+                )}
               </h2>
             </div>
             <StatusBadge
@@ -141,7 +155,44 @@ export function PlayoutView({
             </span>
             <strong>{draft.policy.providerDisplayName}</strong>
           </div>
+          {saved && (
+            <dl className={styles.gameFacts}>
+              <div>
+                <dt>
+                  <FormattedMessage id="inventory.content.playerSide" />
+                </dt>
+                <dd>
+                  {sideName(draft.playerSide, state.preferences.uiLocale)}
+                </dd>
+              </div>
+              {state.completedPlayout !== undefined && (
+                <div>
+                  <dt>
+                    <FormattedMessage id="inventory.content.outcome" />
+                  </dt>
+                  <dd>
+                    <GameOutcomeLabel
+                      outcome={state.completedPlayout.outcome}
+                    />
+                  </dd>
+                </div>
+              )}
+              {state.completedPlayout !== undefined && (
+                <div>
+                  <dt>
+                    <FormattedMessage id="playout.resultSource" />
+                  </dt>
+                  <dd>
+                    <FormattedMessage
+                      id={`playout.resultSource.${state.completedPlayout.outcomeSource}`}
+                    />
+                  </dd>
+                </div>
+              )}
+            </dl>
+          )}
           <PlayoutActions
+            key={draft.draftId}
             state={state}
             store={store}
             draft={draft}
@@ -230,9 +281,6 @@ function ViewHeader() {
   return (
     <header className={styles.viewHeader}>
       <div>
-        <span className={styles.eyebrow}>
-          <FormattedMessage id="playout.eyebrow" />
-        </span>
         <h1>
           <FormattedMessage id="playout.title" />
         </h1>
@@ -565,7 +613,7 @@ function StatusBadge({
   readonly saved: boolean;
 }) {
   return (
-    <span className={styles.statusBadge}>
+    <span className={styles.statusBadge} role="status">
       {busy && (
         <RefreshCw className={styles.spinning} aria-hidden="true" size={13} />
       )}
@@ -598,34 +646,40 @@ function PlayoutActions({
   readonly onReturnToGame: () => void;
 }) {
   const intl = useIntl();
-  const [title, setTitle] = useState('');
-  const [addToContext, setAddToContext] = useState(
-    state.scope.kind === 'context',
+  const [title, setTitle] = useState(
+    state.pendingPlayoutCompletion?.request.displayName ?? '',
   );
+  const [addToContext, setAddToContext] = useState(
+    state.pendingPlayoutCompletion === undefined
+      ? state.scope.kind === 'context'
+      : state.pendingPlayoutCompletion.request.targetContextId !== undefined,
+  );
+  const [manualResult, setManualResult] = useState<
+    NonNullable<CompletePlayoutRequestDto['manualResult']>
+  >(state.pendingPlayoutCompletion?.request.manualResult ?? 'unfinished');
   const completed =
     draft.status.kind === 'stopped' || draft.status.kind === 'terminal';
+  const completionPending = state.pendingPlayoutCompletion !== undefined;
 
   if (saved) {
+    const canOpen =
+      state.completedPlayout !== undefined &&
+      store.canWorkWithInventoryItem(state.completedPlayout.itemId);
     return (
-      <div className={styles.savedActions} role="status">
-        <div className={styles.savedHeading}>
-          <Save aria-hidden="true" size={20} />
-          <div>
-            <strong>
-              <FormattedMessage id="playout.saved" />
-            </strong>
-            <span>
-              <FormattedMessage id="playout.savedDetail" />
-            </span>
-          </div>
-        </div>
+      <div className={styles.savedActions}>
         <Button
           className={styles.primaryButton!}
           isDisabled={isBusy}
-          onPress={() => void store.openCompletedPlayout()}
+          onPress={() =>
+            canOpen
+              ? void store.openCompletedPlayout()
+              : store.setActivity('manage')
+          }
         >
           <ArrowRight aria-hidden="true" size={16} />
-          <FormattedMessage id="playout.openAnalysis" />
+          <FormattedMessage
+            id={canOpen ? 'activity.analyze' : 'activity.manage'}
+          />
         </Button>
       </div>
     );
@@ -638,15 +692,13 @@ function PlayoutActions({
           <strong>
             <FormattedMessage id="playout.review" />
           </strong>
-          <span>
-            <FormattedMessage id="playout.reviewDetail" />
-          </span>
         </div>
         <label>
           <span>
             <FormattedMessage id="playout.gameTitle" />
           </span>
           <input
+            disabled={isBusy || completionPending}
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             maxLength={200}
@@ -655,10 +707,53 @@ function PlayoutActions({
             })}
           />
         </label>
+        {draft.status.kind === 'stopped' ? (
+          <label>
+            <span>
+              <FormattedMessage id="inventory.content.outcome" />
+            </span>
+            <select
+              value={manualResult}
+              disabled={isBusy || completionPending}
+              onChange={(event) =>
+                setManualResult(event.target.value as typeof manualResult)
+              }
+            >
+              <option value="unfinished">
+                {intl.formatMessage({ id: 'playout.result.unfinished' })}
+              </option>
+              <option value="white_win">
+                {intl.formatMessage(
+                  { id: 'playout.result.win' },
+                  { side: sideName('white', state.preferences.uiLocale) },
+                )}
+              </option>
+              <option value="black_win">
+                {intl.formatMessage(
+                  { id: 'playout.result.win' },
+                  { side: sideName('black', state.preferences.uiLocale) },
+                )}
+              </option>
+              <option value="draw">
+                {intl.formatMessage({ id: 'playout.result.draw' })}
+              </option>
+            </select>
+          </label>
+        ) : draft.status.kind === 'terminal' ? (
+          <div className={styles.providerLine}>
+            <span>
+              <FormattedMessage id="inventory.content.outcome" />
+            </span>
+            <strong>
+              <GameOutcomeLabel outcome={draft.status.outcome} />
+            </strong>
+          </div>
+        ) : null}
         {state.scope.kind === 'context' && (
           <label className={styles.contextChoice}>
             <input
               type="checkbox"
+              disabled={isBusy || completionPending}
               checked={addToContext}
               onChange={(event) => setAddToContext(event.target.checked)}
             />
@@ -669,15 +764,33 @@ function PlayoutActions({
         )}
         <Button
           className={styles.primaryButton!}
-          isDisabled={isBusy || title.trim() === ''}
-          onPress={() => void store.completePlayout(title, addToContext)}
+          isDisabled={isBusy || (!completionPending && title.trim() === '')}
+          onPress={() =>
+            void store.completePlayout(
+              title,
+              addToContext,
+              draft.status.kind === 'stopped' ? manualResult : undefined,
+            )
+          }
         >
           <Save aria-hidden="true" size={16} />
-          <FormattedMessage id="playout.save" />
+          <FormattedMessage
+            id={completionPending ? 'playout.retryCompletion' : 'playout.save'}
+          />
         </Button>
+        {draft.status.kind === 'stopped' && (
+          <Button
+            className={styles.secondaryButton!}
+            isDisabled={isBusy || completionPending}
+            onPress={() => void store.cancelPlayoutCompletion()}
+          >
+            <ArrowLeft aria-hidden="true" size={16} />
+            <FormattedMessage id="playout.cancelCompletion" />
+          </Button>
+        )}
         <Button
           className={styles.dangerButton!}
-          isDisabled={isBusy}
+          isDisabled={isBusy || completionPending}
           onPress={() => void store.discardPlayout()}
         >
           <Trash2 aria-hidden="true" size={16} />

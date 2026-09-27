@@ -36,6 +36,7 @@ export {
   playoutNotFound,
 } from './playout-problems.ts';
 export {
+  CancelPlayoutCompletion,
   DiscardPlayout,
   CompletePlayout,
   GetPlayout,

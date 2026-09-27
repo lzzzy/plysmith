@@ -273,6 +273,17 @@ export function stopPlayoutDraft(draft: PlayoutDraft): PlayoutDraft {
   });
 }
 
+export function cancelPlayoutCompletion(draft: PlayoutDraft): PlayoutDraft {
+  if (draft.status.kind !== 'stopped') {
+    throw new Error('Only completion preparation can be cancelled.');
+  }
+  return freezeDraft({
+    ...draft,
+    draftRevision: draft.draftRevision + 1,
+    status: { kind: 'paused' },
+  });
+}
+
 export function completePlayoutDraft(
   draft: PlayoutDraft,
   terminal: {
@@ -333,7 +344,7 @@ function validateHumanProfile(profile: HumanMovePolicyProfile): void {
   }
 }
 
-function validateSourcePath(
+export function validateSourcePath(
   sourcePath: PlayoutSourcePath | undefined,
   playoutRoot: ChessState,
 ): void {
@@ -355,6 +366,66 @@ function validateSourcePath(
   if (!sameChessState(current, playoutRoot)) {
     throw new Error('A playout source path must end at the playout root.');
   }
+}
+
+export function validateInventorySourcePath(
+  source: { readonly root: ChessState; readonly steps: readonly AppliedMove[] },
+  sourcePath: PlayoutSourcePath | undefined,
+  playoutRoot: ChessState,
+): void {
+  const sourceEnd = source.steps.at(-1)?.after ?? source.root;
+  if (sourcePath === undefined) {
+    if (!sameChessState(sourceEnd, playoutRoot)) {
+      throw new Error('An inventory continuation requires its source path.');
+    }
+    return;
+  }
+  validateSourcePath(sourcePath, playoutRoot);
+  if (
+    !sameChessState(sourcePath.root, source.root) ||
+    sourcePath.steps.length < source.steps.length
+  ) {
+    throw new Error('A source path must preserve the inventory history.');
+  }
+  for (const [index, step] of source.steps.entries()) {
+    const candidate = sourcePath.steps[index];
+    if (
+      candidate === undefined ||
+      !sameChessState(candidate.before, step.before) ||
+      !sameChessState(candidate.after, step.after) ||
+      candidate.move.from !== step.move.from ||
+      candidate.move.to !== step.move.to ||
+      candidate.move.promotion !== step.move.promotion ||
+      candidate.move.san !== step.move.san
+    ) {
+      throw new Error('A source path must preserve the inventory history.');
+    }
+  }
+}
+
+export function isPlayoutClosureWithoutMoves(
+  previous: PlayoutDraft,
+  next: PlayoutDraft,
+): boolean {
+  return (
+    (next.status.kind === 'paused' || next.status.kind === 'stopped') &&
+    sameChessState(previous.root, next.root) &&
+    previous.steps.length === next.steps.length &&
+    previous.steps.every((step, index) => {
+      const candidate = next.steps[index];
+      return (
+        candidate !== undefined &&
+        candidate.actor === step.actor &&
+        candidate.decisionId === step.decisionId &&
+        sameChessState(candidate.before, step.before) &&
+        sameChessState(candidate.after, step.after) &&
+        candidate.move.from === step.move.from &&
+        candidate.move.to === step.move.to &&
+        candidate.move.promotion === step.move.promotion &&
+        candidate.move.san === step.move.san
+      );
+    })
+  );
 }
 
 function sameChessState(left: ChessState, right: ChessState): boolean {

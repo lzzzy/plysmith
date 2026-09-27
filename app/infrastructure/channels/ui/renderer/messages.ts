@@ -1,36 +1,97 @@
 export const messages = {
   'de-DE': {
+    'loss.references': 'Gebundene Verwendungen',
+    'loss.none':
+      'Keine gebundenen Notizen oder Analysearbeitsstände betroffen.',
+    'loss.notes': 'Gebundene Notizen',
+    'loss.noteMoves': 'Züge in Notizen',
+    'loss.scratch': 'Ungespeicherte Analysen',
+    'loss.scratchMoves': 'Züge in ungespeicherten Analysen',
+    'loss.scratchNotes': 'Notizen in ungespeicherten Analysen',
+    'loss.managementResume': 'Gemerkte Verwaltungsauswahl',
+    'loss.analysisResume': 'Gemerkte Analysepositionen',
+    'manage.deletedSource': 'gelöscht',
+    'manage.deleteInventoryItem': 'Aus Bestand löschen',
+    'manage.deleteContext': 'Arbeitskontext löschen',
+    'destructive.context_item.title': '„{name}“ aus Arbeitskontext entfernen?',
+    'destructive.context.title': 'Arbeitskontext „{name}“ löschen?',
+    'destructive.inventory.title': '„{name}“ aus Bestand löschen?',
+    'destructive.context_item.detail':
+      'Diese gebundenen Inhalte werden aus „{name}“ entfernt:',
+    'destructive.context.detail':
+      'Diese eigene Arbeit in „{name}“ wird gelöscht:',
+    'destructive.inventory.detail':
+      'Nur dieser Bestandseintrag wird gelöscht. Seine folgenden Verwendungen und gebundenen Inhalte werden entfernt:',
+    'destructive.context_item.confirm': 'Entfernen bestätigen',
+    'destructive.context.confirm': 'Arbeitskontext löschen',
+    'destructive.inventory.confirm': 'Bestandseintrag löschen',
+    'destructive.loading': 'Verlustvorschau wird geladen …',
+    'destructive.submitting': 'Aktion wird ausgeführt …',
+    'destructive.stale':
+      'Die Daten haben sich geändert. Lade die Vorschau erneut und prüfe die aktuellen Folgen.',
+    'destructive.failed':
+      'Die Aktion konnte nicht abgeschlossen werden. Lade die Vorschau erneut.',
+    'destructive.retry': 'Vorschau erneut laden',
+    'destructive.retainedDerived':
+      'Erhaltene abgeleitete Bestandseinträge: {count, number}.',
+    'destructive.retainedPlayouts':
+      'Erhaltene laufende Partien: {count, number}.',
+    'destructive.retainedInventory':
+      'Erhaltene Bestandseinträge: {count, number}.',
+    'destructive.lostPlayout':
+      'Gelöschte laufende Partien: {count, number}; enthaltene Züge: {moves, number}.',
+    'destructive.retainedPlayout':
+      'Erhaltene laufende Partien: {count, number}; enthaltene Züge: {moves, number}.',
+    'revisionImpact.confirm': 'Entscheidung bestätigen',
+    'revisionImpact.confirmDetail':
+      'Die oben gezählten Folgen dieser Option werden verbindlich angewendet.',
+    'revisionImpact.useTargetConsequences':
+      'Nicht mehr passende Notizen werden archiviert; die übrigen hier gezählten Bindungen und Entwürfe werden entfernt oder zurückgesetzt.',
+    'revisionImpact.keepCopyConsequences':
+      'Diese Inhalte bleiben an der eigenen Kopie erhalten:',
+    'revisionImpact.removeConsequences':
+      'Diese Inhalte werden aus dem Arbeitskontext entfernt. Der Bestandseintrag bleibt erhalten:',
+    'revisionImpact.resolveFailed':
+      'Die Entscheidung konnte nicht angewendet werden. Prüfe die aktuelle Vorschau und versuche es erneut.',
     'activity.manage': 'Verwalten',
     'activity.analyze': 'Analysieren',
     'activity.playout': 'Ausspielen',
     'activity.live': 'Live',
     'activity.settings': 'Einstellungen',
     'scope.label': 'Arbeitskontext',
-    'scope.free': 'Ohne Context',
-    'scope.sessionResume': 'Fokus nur für diese Sitzung',
-    'scope.persistentResume': 'Bereichsstand wird gemerkt',
-    'manage.eyebrow': 'Bestand und Arbeitskontexte',
-    'manage.title': 'Verwalten',
+    'scope.free': 'Gesamter Bestand',
+    'startup.contextUnavailable':
+      'Der zuletzt verwendete Arbeitskontext ist nicht mehr vorhanden. Gesamter Bestand wurde mit seinem eigenen Arbeitsstand geöffnet.',
+    'startup.namedContextUnavailable':
+      'Der Arbeitskontext „{name}“ ist nicht mehr vorhanden. Gesamter Bestand wurde mit seinem eigenen Arbeitsstand geöffnet.',
+    'analysis.deletedFromInventory': 'Geöffneter Eintrag gelöscht',
+    'analysis.deletedFromInventoryDetail':
+      '„{name}“ wurde aus dem Bestand gelöscht. Deshalb ist hier keine Analyse mehr geöffnet.',
+
     'manage.newAnalysis': 'Neue Analyse',
     'manage.newGame': 'Neue Partie',
     'manage.resultCount':
       '{count, plural, =0 {Keine Ergebnisse} one {# Ergebnis} other {# Ergebnisse}}',
-    'manage.workScope': 'Aktiver Ausschnitt',
-    'manage.contexts': 'Working Contexts',
-    'manage.createContext': 'Working Context anlegen',
-    'manage.newContext': 'Neuer Working Context',
+
+    'manage.contexts': 'Arbeitskontexte',
+    'manage.createContext': 'Arbeitskontext anlegen',
+    'manage.newContext': 'Neuer Arbeitskontext',
     'manage.contextName': 'Name',
-    'manage.contextPurpose': 'Zweck',
-    'manage.contextDetails': 'Context-Details',
-    'manage.contextBoundary': 'Abgrenzung',
+    'manage.contextPurpose': 'Beschreibung',
+    'manage.saveContext': 'Änderungen speichern',
+    'manage.expandFamily': 'Herkunftsfamilie „{name}“ aufklappen',
+    'manage.collapseFamily': 'Herkunftsfamilie „{name}“ zuklappen',
+    'manage.sourceContext': 'Ursprung',
+    'manage.outsideContext': 'Nicht in diesem Arbeitskontext',
+
     'manage.contents': 'Inhalt',
-    'manage.nextStep': 'Nächster Schritt',
+
     'manage.referenceCount':
       '{count, plural, =0 {Keine Referenzen} one {# Referenz} other {# Referenzen}}',
-    'manage.inventory': 'Bestand',
+
     'manage.allInventory': 'Gesamter Bestand',
     'manage.inventoryScope': 'Bestandsumfang',
-    'manage.inContext': 'In diesem Context',
+    'manage.inContext': 'In diesem Arbeitskontext',
     'manage.inventoryOnly': 'Nur Bestand',
     'manage.search': 'Bestand durchsuchen',
     'manage.searchPlaceholder': 'Titel suchen',
@@ -38,25 +99,23 @@ export const messages = {
     'manage.noResults': 'Noch nichts gefunden',
     'manage.noResultsDetail':
       'Beginne eine eigene Analyse oder ändere den Suchbegriff.',
-    'manage.loadMoreContexts': 'Weitere Contexte laden',
+    'manage.loadMoreContexts': 'Weitere Arbeitskontexte laden',
     'manage.loadMoreInventory': 'Weitere Bestände laden',
-    'manage.selection': 'Auswahl',
+
     'manage.details': 'Details',
     'manage.origin': 'Herkunft',
-    'manage.language': 'Sprache',
-    'manage.revision': 'Revision',
+
     'manage.openAnalysisDraftTitle': 'Offene Analyse fortsetzen?',
     'manage.openAnalysisDraftDetail':
-      'In diesem Context ist noch ein Analyseentwurf offen. Entscheiden Sie zuerst, ob Sie ihn fortsetzen oder verwerfen möchten.',
+      'In diesem Arbeitskontext ist noch ein Analyseentwurf offen. Entscheiden Sie zuerst, ob Sie ihn fortsetzen oder verwerfen möchten.',
     'manage.continueAnalysisDraft': 'Vorhandene Analyse fortsetzen',
     'manage.discardDraftAndOpenItem': 'Entwurf verwerfen und Eintrag öffnen',
-    'manage.useInContext': 'Im Context verwenden',
-    'manage.removeFromContext': 'Aus Context entfernen',
-    'manage.removeFromContextTitle': 'Aus diesem Context entfernen?',
+    'manage.useInContext': 'Im Arbeitskontext verwenden',
+    'manage.removeFromContext': 'Aus Arbeitskontext entfernen',
+    'manage.removeFromContextTitle': 'Aus diesem Arbeitskontext entfernen?',
     'manage.removeFromContextDetail':
-      'Der Eintrag bleibt im Bestand. Contextbezogene Notizen und Arbeitsstände werden aus diesem Context entfernt.',
-    'manage.freeSummary':
-      'Der gesamte Bestand ist zugänglich. Der aktuelle Fokus bleibt temporär.',
+      'Der Eintrag bleibt im Bestand. Kontextbezogene Notizen und Arbeitsstände werden aus diesem Arbeitskontext entfernt.',
+
     'analysisSetup.eyebrow': 'Bestand',
     'analysisSetup.title': 'Neue Analyse',
     'analysisSetup.intro':
@@ -117,7 +176,7 @@ export const messages = {
       'Die Zugnummer ist ungültig.',
     'analysisSetup.issue.invalid_position':
       'Die Figuren ergeben keine unterstützte Schachstellung.',
-    'playout.eyebrow': 'Praxispartie',
+
     'playout.title': 'Ausspielen',
     'playout.game': 'Partie',
     'playout.moves': 'Zugfolge',
@@ -137,23 +196,18 @@ export const messages = {
       'Um eine neue Partie aus der Grundstellung zu beginnen, muss die laufende Partie verworfen werden.',
     'playout.replace.initialConfirm': 'Partie verwerfen und neu beginnen',
     'playout.saved': 'Partie gespeichert',
-    'playout.savedDetail':
-      'Die Partie liegt jetzt als eigener Bestandseintrag vor.',
-    'playout.openAnalysis': 'In Analyse öffnen',
     'playout.opponent': 'Gegner',
     'playout.status.active': 'Am Zug',
     'playout.status.ready': 'Startbereit',
     'playout.status.awaiting_policy': 'Engine am Zug',
     'playout.status.paused': 'Pausiert',
-    'playout.status.stopped': 'Beendet',
+    'playout.status.stopped': 'Abschluss vorbereiten',
     'playout.status.terminal': 'Abgeschlossen',
     'playout.status.waiting': 'Bitte warten',
     'playout.review': 'Partie abschließen',
-    'playout.reviewDetail':
-      'Prüfen Sie die Zugfolge, bevor die Partie gespeichert wird.',
     'playout.gameTitle': 'Titel der Partie',
     'playout.gameTitlePlaceholder': 'Zum Beispiel: Trainingspartie Französisch',
-    'playout.addToContext': 'Zusätzlich in diesem Context verwenden',
+    'playout.addToContext': 'Zusätzlich in diesem Arbeitskontext verwenden',
     'playout.save': 'Partie speichern',
     'playout.discard': 'Partie verwerfen',
     'playout.resume': 'Weiterspielen',
@@ -165,6 +219,11 @@ export const messages = {
       'Eigene Seite: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'Bestzug',
     'playout.result.win': '{side} gewinnt',
+    'playout.result.draw': 'Remis',
+    'playout.retryCompletion': 'Speichern erneut bestätigen',
+    'playout.resultSource': 'Ergebnisfestlegung',
+    'playout.resultSource.manual': 'Manuell festgelegt',
+    'playout.resultSource.automatic': 'Automatisch ermittelt',
     'playout.result.draw.stalemate': 'Remis durch Patt',
     'playout.result.draw.insufficient_material':
       'Remis durch unzureichendes Material',
@@ -175,17 +234,13 @@ export const messages = {
     'side.white': 'Weiß',
     'side.black': 'Schwarz',
     'analysisSetup.issue.invalid_fen': 'Die FEN ist ungültig.',
-    'analysis.eyebrow': 'Brett und Pfad',
-    'analysis.untitledWorkspace': 'Eigene Analyse',
+
     'analysis.savedPosition': 'Gespeicherter Stand',
     'analysis.scratchRevision': 'Entwurf r{revision}',
-    'analysis.outsideContext': 'Nicht in {context}',
-    'analysis.previewReadonly':
-      'Diese Vorschau verändert weder den Context noch das Bestandsobjekt.',
+
     'analysis.pendingRevisionDetail':
-      'Bis zur Entscheidung betrachten Sie in diesem Context weiterhin Revision {revision}.',
-    'analysis.openWithoutContext': 'Ohne Context öffnen',
-    'analysis.useInContext': 'Im Context verwenden',
+      'Bis zur Entscheidung betrachten Sie in diesem Arbeitskontext weiterhin Revision {revision}.',
+
     'analysis.board': 'Stellung',
     'analysis.boardLabel': 'Schachbrett',
     'board.flip': 'Brett drehen',
@@ -194,6 +249,13 @@ export const messages = {
     'analysis.choosePromotion': 'Umwandlungsfigur wählen',
     'analysis.path': 'Ausgangsstellung',
     'analysis.previousMove': 'Einen Zug zurück',
+    'analysis.removedFromContext':
+      'Geöffnete Analyse aus Arbeitskontext entfernt',
+    'analysis.removedFromContextDetail':
+      '„{name}“ wurde aus diesem Arbeitskontext entfernt. Der Eintrag bleibt im gesamten Bestand erhalten.',
+    'analysisSetup.startFailed':
+      'Die neue Analyse konnte nicht gestartet werden. Wiederholen Sie den Start oder brechen Sie ab.',
+    'playout.cancelCompletion': 'Zur Partie zurück',
     'analysis.nextMove': 'Einen Zug vor',
     'analysis.addNoteAtPathStart': 'Notiz an der Ausgangsstellung hinzufügen',
     'analysis.moveList': 'Zugfolge',
@@ -219,7 +281,8 @@ export const messages = {
     'draft.unsavedChange': 'Ungespeicherte Änderung',
     'draft.reviewChange': 'Änderung prüfen…',
     'analysis.replaceMainLine': 'Hauptvariante ab hier ersetzen',
-    'analysis.contextNote': 'Nur in diesem Context',
+    'analysis.continueExploration': 'Als Analysepfad weiterführen',
+    'analysis.contextNote': 'Nur in diesem Arbeitskontext',
     'analysis.generalNote': 'Allgemein',
     'analysis.notePlaceholder': 'Was ist an dieser Fortsetzung wichtig?',
     'analysis.prepareNote': 'Pfad in Notiz übernehmen',
@@ -279,7 +342,7 @@ export const messages = {
       'Die Bewertung kennt nicht die vollständige Partievorgeschichte.',
     'positionAnalysis.wdlLabel':
       'Aus Sicht von {side}: {wins} Prozent Gewinn, {draws} Prozent Remis, {losses} Prozent Verlust',
-    'context.created': 'Working Context wurde angelegt.',
+    'context.created': 'Arbeitskontext wurde angelegt.',
     'inventory.rename': 'Umbenennen',
     'inventory.displayName': 'Titel',
     'inventory.summary': 'Beschreibung',
@@ -316,39 +379,39 @@ export const messages = {
       'Die Revisionsentscheidung wurde gespeichert.',
     'revisionImpact.available': 'Neue Fassung verfügbar',
     'revisionImpact.availableDetail':
-      '{count, plural, one {Eine Auswirkung muss für diesen Context geklärt werden.} other {# Auswirkungen müssen für diesen Context geklärt werden.}}',
+      '{count, plural, one {Eine Auswirkung muss für diesen Arbeitskontext geklärt werden.} other {# Auswirkungen müssen für diesen Arbeitskontext geklärt werden.}}',
     'revisionImpact.review': 'Änderung prüfen',
     'revisionImpact.badge':
       '{count, plural, one {Eine offene Revisionsklärung} other {# offene Revisionsklärungen}}',
     'revisionImpact.required': 'Klärung erforderlich',
     'revisionImpact.loading': 'Die Revisionsklärung wird geladen.',
-    'revisionImpact.eyebrow': 'Working Context aktualisieren',
+    'revisionImpact.eyebrow': 'Arbeitskontext aktualisieren',
     'revisionImpact.title': 'Neue Fassung klären',
     'revisionImpact.intro':
-      'Für „{name}“ liegt eine neue Fassung vor. Bis zu Ihrer Entscheidung verwendet dieser Context weiterhin Revision {revision}.',
+      'Für „{name}“ liegt eine neue Fassung vor. Bis zu Ihrer Entscheidung verwendet dieser Arbeitskontext weiterhin Revision {revision}.',
     'revisionImpact.oldRevision': 'Bisherige Fassung · Revision {revision}',
     'revisionImpact.newRevision': 'Neue Fassung · Revision {revision}',
     'revisionImpact.changeOverview': 'Änderung im Bestand',
     'revisionImpact.previousLine': 'Bisherige Fassung',
     'revisionImpact.targetLine': 'Neue Fassung',
     'revisionImpact.initialPosition': 'Ausgangsstellung',
-    'revisionImpact.choose': 'Wie soll dieser Context weiterarbeiten?',
+    'revisionImpact.choose': 'Wie soll dieser Arbeitskontext weiterarbeiten?',
     'revisionImpact.chooseDetail':
-      'Die Entscheidung gilt für diese Analyse und alle dazugehörigen Notizen und gemerkten Positionen in diesem Context.',
+      'Die Entscheidung gilt für diese Analyse und alle dazugehörigen Notizen und gemerkten Positionen in diesem Arbeitskontext.',
     'revisionImpact.useTarget': 'Neue Fassung verwenden',
     'revisionImpact.useTargetDetail':
-      'Der Context wechselt auf die neue Fassung der Analyse.',
+      'Der Arbeitskontext wechselt auf die neue Fassung der Analyse.',
     'revisionImpact.useTargetAction': 'Neue Fassung verwenden',
     'revisionImpact.keepCopy': 'Bisherige Fassung als eigene Analyse behalten',
     'revisionImpact.keepCopyDetail':
-      'Die bisherige Fassung wird unter einem neuen Namen kopiert und in diesem Context weiterverwendet.',
+      'Die bisherige Fassung wird unter einem neuen Namen kopiert und in diesem Arbeitskontext weiterverwendet.',
     'revisionImpact.copyName': '{name} (Kopie)',
     'revisionImpact.copyNameLabel': 'Name der neuen Analyse',
     'revisionImpact.keepCopyAction': 'Analyse behalten',
-    'revisionImpact.remove': 'Analyse aus Context entfernen',
+    'revisionImpact.remove': 'Analyse aus Arbeitskontext entfernen',
     'revisionImpact.removeDetail':
-      'Die Analyse und ihre contextbezogenen Inhalte werden aus diesem Context entfernt. Der Bestand bleibt erhalten.',
-    'revisionImpact.removeAction': 'Aus Context entfernen',
+      'Die Analyse und ihre kontextbezogenen Inhalte werden aus diesem Arbeitskontext entfernt. Der Bestand bleibt erhalten.',
+    'revisionImpact.removeAction': 'Aus Arbeitskontext entfernen',
     'piece.queen': 'Dame',
     'piece.rook': 'Turm',
     'piece.bishop': 'Läufer',
@@ -358,10 +421,21 @@ export const messages = {
     'itemType.source': 'Quelle',
     'origin.manual': 'Manuell',
     'origin.structured_import': 'Strukturierter Import',
-    'origin.playout': 'Ausgespielt',
+    'origin.playout': 'Ausspielen',
+    'manage.previewLoading': 'Inhalt wird geladen.',
+    'manage.previewUnavailable': 'Diese Fassung ist nicht mehr verfügbar.',
+    'manage.previewFailed': 'Der Inhalt konnte nicht geladen werden.',
+    'inventory.content.playerSide': 'Eigene Seite',
+    'inventory.content.outcome': 'Ergebnis',
+    'inventory.content.noMoves': 'Keine Züge',
+    'manage.empty.search': 'Keine Treffer',
+    'manage.empty.context': 'Noch keine Einträge in diesem Arbeitskontext',
+    'manage.empty.inventory': 'Noch keine Einträge im Bestand',
+    'manage.clearSearch': 'Suche zurücksetzen',
+    'manage.showAllInventory': 'Gesamten Bestand anzeigen',
     'origin.live_observed': 'Live beobachtet',
     'origin.live_played': 'Live gespielt',
-    'settings.eyebrow': 'Anwendung',
+
     'settings.title': 'Einstellungen',
     'language.title': 'Sprache',
     'language.controlLabel': 'Sprache auswählen',
@@ -383,7 +457,14 @@ export const messages = {
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
     'engines.maiaWeights': 'Maia-Gewichtedatei',
-    'engines.save': 'Engine speichern',
+    'engines.save': 'Geänderte Konfiguration speichern',
+    'engines.unsaved': 'Ungespeichert',
+    'engines.newDraft': 'Neu',
+    'engines.discard': 'Änderungen verwerfen',
+    'engines.validation.required': 'Dieses Feld ist erforderlich.',
+    'engines.validation.maxLength': 'Höchstens {max} Zeichen eingeben.',
+    'engines.validation.integerRange':
+      'Eine ganze Zahl zwischen {min} und {max} eingeben.',
     'engines.remove': 'Engine entfernen',
     'engines.restartRequired':
       'Die Änderung ist gespeichert. Starten Sie Plysmith neu, damit sie wirksam wird.',
@@ -472,42 +553,108 @@ export const messages = {
     'error.illegalMove':
       'Dieser Zug ist in der aktuellen Stellung nicht erlaubt.',
     'error.invalidMove': 'Der Zug konnte nicht eindeutig gelesen werden.',
-    'error.referenceExists': 'Dieses Objekt wird im Context bereits verwendet.',
+    'error.referenceExists':
+      'Dieses Objekt wird im Arbeitskontext bereits verwendet.',
+    'error.contextChanged':
+      'Der Arbeitskontext wurde zwischenzeitlich geändert. Ihre Eingabe bleibt erhalten; prüfen Sie den aktuellen Stand vor dem Speichern.',
+    'error.workOutsideContext':
+      'Dieser Eintrag gehört nicht zum gewählten Arbeitskontext. Nehmen Sie ihn zuerst dort auf oder wechseln Sie den Arbeitskontext.',
     'error.engineTimeout':
       'Die gewählte Engine hat nicht rechtzeitig geantwortet.',
     'error.engine':
       'Die gewählte Engine konnte keinen gültigen Zug liefern. Prüfen Sie ihre Dateien und Einstellungen.',
     'error.generic': 'Die Aktion konnte nicht abgeschlossen werden.',
+    'error.inventoryNameConflict':
+      'Eine aktive Analyse mit diesem Namen ist bereits im Bestand. Wählen Sie einen anderen Namen; Ihr Entwurf bleibt erhalten.',
   },
   'en-GB': {
+    'loss.none': 'No associated notes or analysis work states are affected.',
+    'loss.references': 'Bound references',
+    'loss.notes': 'Bound notes',
+    'loss.noteMoves': 'Moves in notes',
+    'loss.scratch': 'Unsaved analyses',
+    'loss.scratchMoves': 'Moves in unsaved analyses',
+    'loss.scratchNotes': 'Notes in unsaved analyses',
+    'loss.managementResume': 'Saved management selections',
+    'loss.analysisResume': 'Saved analysis positions',
+    'manage.deletedSource': 'deleted',
+    'manage.deleteInventoryItem': 'Delete from inventory',
+    'manage.deleteContext': 'Delete working context',
+    'destructive.context_item.title': 'Remove “{name}” from working context?',
+    'destructive.context.title': 'Delete working context “{name}”?',
+    'destructive.inventory.title': 'Delete “{name}” from inventory?',
+    'destructive.context_item.detail':
+      'These bound contents will be removed from “{name}”:',
+    'destructive.context.detail':
+      'This work belonging to “{name}” will be deleted:',
+    'destructive.inventory.detail':
+      'Only this inventory item will be deleted. Its following references and bound contents will be removed:',
+    'destructive.context_item.confirm': 'Confirm removal',
+    'destructive.context.confirm': 'Delete working context',
+    'destructive.inventory.confirm': 'Delete inventory item',
+    'destructive.loading': 'Loading loss preview …',
+    'destructive.submitting': 'Applying action …',
+    'destructive.stale':
+      'The data has changed. Reload the preview and review the current consequences.',
+    'destructive.failed':
+      'The action could not be completed. Reload the preview.',
+    'destructive.retry': 'Reload preview',
+    'destructive.retainedDerived':
+      'Derived inventory items retained: {count, number}.',
+    'destructive.retainedPlayouts': 'Ongoing games retained: {count, number}.',
+    'destructive.retainedInventory':
+      'Inventory items retained: {count, number}.',
+    'destructive.lostPlayout':
+      'Ongoing games deleted: {count, number}; moves in them: {moves, number}.',
+    'destructive.retainedPlayout':
+      'Ongoing games retained: {count, number}; moves in them: {moves, number}.',
+    'revisionImpact.confirm': 'Confirm decision',
+    'revisionImpact.confirmDetail':
+      'The consequences counted above for this option will be applied.',
+    'revisionImpact.useTargetConsequences':
+      'Notes that no longer fit will be archived; the other bindings and drafts counted here will be removed or reset.',
+    'revisionImpact.keepCopyConsequences':
+      'These contents are retained on your own copy:',
+    'revisionImpact.removeConsequences':
+      'These contents are removed from the working context. The inventory item is retained:',
+    'revisionImpact.resolveFailed':
+      'The decision could not be applied. Review the current preview and try again.',
     'activity.manage': 'Manage',
     'activity.analyze': 'Analyse',
     'activity.playout': 'Play out',
     'activity.live': 'Live',
     'activity.settings': 'Settings',
     'scope.label': 'Working context',
-    'scope.free': 'Without context',
-    'scope.sessionResume': 'Focus lasts for this session',
-    'scope.persistentResume': 'Area position is remembered',
-    'manage.eyebrow': 'Inventory and working contexts',
-    'manage.title': 'Manage',
+    'scope.free': 'All inventory',
+    'startup.contextUnavailable':
+      'The last working context no longer exists. All inventory has been opened with its own work state.',
+    'startup.namedContextUnavailable':
+      'The working context “{name}” no longer exists. All inventory has been opened with its own work state.',
+    'analysis.deletedFromInventory': 'Open item deleted',
+    'analysis.deletedFromInventoryDetail':
+      '“{name}” was deleted from inventory. That is why no analysis is open here.',
+
     'manage.newAnalysis': 'New analysis',
     'manage.newGame': 'New game',
     'manage.resultCount':
       '{count, plural, =0 {No results} one {# result} other {# results}}',
-    'manage.workScope': 'Active scope',
+
     'manage.contexts': 'Working contexts',
     'manage.createContext': 'Create working context',
     'manage.newContext': 'New working context',
     'manage.contextName': 'Name',
-    'manage.contextPurpose': 'Purpose',
-    'manage.contextDetails': 'Context details',
-    'manage.contextBoundary': 'Boundary',
+    'manage.contextPurpose': 'Description',
+    'manage.saveContext': 'Save changes',
+    'manage.expandFamily': 'Expand provenance family “{name}”',
+    'manage.collapseFamily': 'Collapse provenance family “{name}”',
+    'manage.sourceContext': 'Source',
+    'manage.outsideContext': 'Not in this working context',
+
     'manage.contents': 'Contents',
-    'manage.nextStep': 'Next step',
+
     'manage.referenceCount':
       '{count, plural, =0 {No references} one {# reference} other {# references}}',
-    'manage.inventory': 'Inventory',
+
     'manage.allInventory': 'All inventory',
     'manage.inventoryScope': 'Inventory scope',
     'manage.inContext': 'In this context',
@@ -520,11 +667,10 @@ export const messages = {
       'Start your own analysis or change the search term.',
     'manage.loadMoreContexts': 'Load more contexts',
     'manage.loadMoreInventory': 'Load more inventory',
-    'manage.selection': 'Selection',
+
     'manage.details': 'Details',
     'manage.origin': 'Origin',
-    'manage.language': 'Language',
-    'manage.revision': 'Revision',
+
     'manage.openAnalysisDraftTitle': 'Continue the open analysis?',
     'manage.openAnalysisDraftDetail':
       'An analysis draft is still open in this context. Decide first whether to continue or discard it.',
@@ -535,8 +681,7 @@ export const messages = {
     'manage.removeFromContextTitle': 'Remove from this context?',
     'manage.removeFromContextDetail':
       'The item remains in the inventory. Context-specific notes and work state are removed from this context.',
-    'manage.freeSummary':
-      'All inventory is available. The current focus remains temporary.',
+
     'analysisSetup.eyebrow': 'Inventory',
     'analysisSetup.title': 'New analysis',
     'analysisSetup.intro':
@@ -597,7 +742,7 @@ export const messages = {
       'The move number is invalid.',
     'analysisSetup.issue.invalid_position':
       'The pieces do not form a supported chess position.',
-    'playout.eyebrow': 'Practice game',
+
     'playout.title': 'Play out',
     'playout.game': 'Game',
     'playout.moves': 'Moves',
@@ -617,19 +762,15 @@ export const messages = {
       'To start a new game from the initial position, the current game must be discarded.',
     'playout.replace.initialConfirm': 'Discard game and start a new one',
     'playout.saved': 'Game saved',
-    'playout.savedDetail':
-      'The game is now available as its own inventory item.',
-    'playout.openAnalysis': 'Open in analysis',
     'playout.opponent': 'Opponent',
     'playout.status.active': 'Your move',
     'playout.status.ready': 'Ready',
     'playout.status.awaiting_policy': 'Engine to move',
     'playout.status.paused': 'Paused',
-    'playout.status.stopped': 'Stopped',
+    'playout.status.stopped': 'Preparing completion',
     'playout.status.terminal': 'Finished',
     'playout.status.waiting': 'Please wait',
     'playout.review': 'Complete game',
-    'playout.reviewDetail': 'Review the moves before saving the game.',
     'playout.gameTitle': 'Game title',
     'playout.gameTitlePlaceholder': 'For example: French practice game',
     'playout.addToContext': 'Also use in this context',
@@ -644,6 +785,11 @@ export const messages = {
       'Your side: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'best move',
     'playout.result.win': '{side} wins',
+    'playout.result.draw': 'Draw',
+    'playout.retryCompletion': 'Confirm save again',
+    'playout.resultSource': 'Result source',
+    'playout.resultSource.manual': 'Set manually',
+    'playout.resultSource.automatic': 'Determined automatically',
     'playout.result.draw.stalemate': 'Draw by stalemate',
     'playout.result.draw.insufficient_material':
       'Draw by insufficient material',
@@ -653,17 +799,13 @@ export const messages = {
     'side.white': 'White',
     'side.black': 'Black',
     'analysisSetup.issue.invalid_fen': 'The FEN is invalid.',
-    'analysis.eyebrow': 'Board and path',
-    'analysis.untitledWorkspace': 'Own analysis',
+
     'analysis.savedPosition': 'Saved position',
     'analysis.scratchRevision': 'Draft r{revision}',
-    'analysis.outsideContext': 'Not in {context}',
-    'analysis.previewReadonly':
-      'This preview changes neither the context nor the inventory record.',
+
     'analysis.pendingRevisionDetail':
       'Until you decide, this context continues to show revision {revision}.',
-    'analysis.openWithoutContext': 'Open without context',
-    'analysis.useInContext': 'Use in context',
+
     'analysis.board': 'Position',
     'analysis.boardLabel': 'Chess board',
     'board.flip': 'Flip board',
@@ -672,6 +814,12 @@ export const messages = {
     'analysis.choosePromotion': 'Choose promotion piece',
     'analysis.path': 'Starting position',
     'analysis.previousMove': 'Previous move',
+    'analysis.removedFromContext': 'Open analysis removed from working context',
+    'analysis.removedFromContextDetail':
+      '“{name}” was removed from this working context. The entry remains in the full inventory.',
+    'analysisSetup.startFailed':
+      'The new analysis could not be started. Retry the start or cancel.',
+    'playout.cancelCompletion': 'Return to game',
     'analysis.nextMove': 'Next move',
     'analysis.addNoteAtPathStart': 'Add note at the starting position',
     'analysis.moveList': 'Move sequence',
@@ -697,6 +845,7 @@ export const messages = {
     'draft.unsavedChange': 'Unsaved change',
     'draft.reviewChange': 'Review change…',
     'analysis.replaceMainLine': 'Replace main line from here',
+    'analysis.continueExploration': 'Continue as analysis path',
     'analysis.contextNote': 'This context only',
     'analysis.generalNote': 'General',
     'analysis.notePlaceholder': 'What matters about this continuation?',
@@ -831,10 +980,21 @@ export const messages = {
     'itemType.source': 'Source',
     'origin.manual': 'Manual',
     'origin.structured_import': 'Structured import',
-    'origin.playout': 'Played out',
+    'origin.playout': 'Play out',
+    'manage.previewLoading': 'Loading content.',
+    'manage.previewUnavailable': 'This version is no longer available.',
+    'manage.previewFailed': 'The content could not be loaded.',
+    'inventory.content.playerSide': 'Your side',
+    'inventory.content.outcome': 'Result',
+    'inventory.content.noMoves': 'No moves',
+    'manage.empty.search': 'No matches',
+    'manage.empty.context': 'No entries in this working context yet',
+    'manage.empty.inventory': 'No inventory entries yet',
+    'manage.clearSearch': 'Clear search',
+    'manage.showAllInventory': 'Show all inventory',
     'origin.live_observed': 'Observed live',
     'origin.live_played': 'Played live',
-    'settings.eyebrow': 'Application',
+
     'settings.title': 'Settings',
     'language.title': 'Language',
     'language.controlLabel': 'Choose language',
@@ -856,7 +1016,14 @@ export const messages = {
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
     'engines.maiaWeights': 'Maia weights file',
-    'engines.save': 'Save engine',
+    'engines.save': 'Save changed configuration',
+    'engines.unsaved': 'Unsaved',
+    'engines.newDraft': 'New',
+    'engines.discard': 'Discard changes',
+    'engines.validation.required': 'This field is required.',
+    'engines.validation.maxLength': 'Enter at most {max} characters.',
+    'engines.validation.integerRange':
+      'Enter a whole number between {min} and {max}.',
     'engines.remove': 'Remove engine',
     'engines.restartRequired':
       'The change is saved. Restart Plysmith for it to take effect.',
@@ -941,10 +1108,16 @@ export const messages = {
     'error.illegalMove': 'That move is not legal in the current position.',
     'error.invalidMove': 'The move could not be read unambiguously.',
     'error.referenceExists': 'This record is already used in the context.',
+    'error.contextChanged':
+      'The working context changed in the meantime. Your input is retained; review the current state before saving.',
+    'error.workOutsideContext':
+      'This record is not in the selected working context. Add it there first or switch working context.',
     'error.engineTimeout': 'The selected engine did not respond in time.',
     'error.engine':
       'The selected engine could not provide a valid move. Check its files and settings.',
     'error.generic': 'The action could not be completed.',
+    'error.inventoryNameConflict':
+      'An active analysis with this name already exists in the inventory. Choose another name; your draft is preserved.',
   },
 } as const;
 

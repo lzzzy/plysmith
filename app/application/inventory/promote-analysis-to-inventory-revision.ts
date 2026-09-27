@@ -67,7 +67,7 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
       record === undefined ||
       record.itemType !== 'analysis' ||
       record.historical ||
-      record.readOnlyPreview ||
+      (request.scope.kind === 'context' && !record.contextMember) ||
       record.currentRevisionId.value !== request.baseRevisionId.value
     ) {
       throw invalidInventoryRevision();
@@ -84,7 +84,11 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
           displayName: record.displayName,
           ...(record.summary === undefined ? {} : { summary: record.summary }),
         },
-        mode: 'truncate_after',
+        mode:
+          request.anchorId.value ===
+          (record.steps.at(-1)?.anchorId ?? record.rootAnchorId).value
+            ? 'extend'
+            : 'truncate_after',
         anchorId: request.anchorId,
       });
     } catch {

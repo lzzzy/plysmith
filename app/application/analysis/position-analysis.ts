@@ -5,6 +5,11 @@ import type {
 } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
+import {
+  requireInventoryWorkAccess,
+  type InventoryWorkAccess,
+  type InventoryWorkAccessReader,
+} from '../workspace/inventory-work-access.ts';
 
 export type PositionAnalysisCapability =
   'objective_position_analysis' | 'human_policy_analysis';
@@ -112,6 +117,7 @@ export type PositionAnalysisMode =
   | { readonly kind: 'human_policy' };
 
 export interface PositionAnalysisRequest {
+  readonly work: InventoryWorkAccess;
   readonly consumerId: string;
   readonly laneId: string;
   readonly providerInstanceId: string;
@@ -208,21 +214,25 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
   readonly #rules: ChessRulesPort;
   readonly #providers: PositionAnalysisRegistry;
   readonly #lanes: ActivePositionAnalysisLanes;
+  readonly #workspace: InventoryWorkAccessReader;
 
   constructor(dependencies: {
     readonly rules: ChessRulesPort;
     readonly providers: PositionAnalysisRegistry;
     readonly lanes: ActivePositionAnalysisLanes;
+    readonly workspace: InventoryWorkAccessReader;
   }) {
     this.#rules = dependencies.rules;
     this.#providers = dependencies.providers;
     this.#lanes = dependencies.lanes;
+    this.#workspace = dependencies.workspace;
   }
 
   async execute(
     request: PositionAnalysisRequest,
   ): Promise<PositionAnalysisSnapshot> {
     validateRequest(request);
+    await this.#requireAccess(request.work);
     validateFocus(this.#rules, request.focus);
     validatePositionAnalysisProviderRequest(this.#rules, request);
     const capability =
@@ -249,6 +259,7 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
       ) {
         throw new PositionAnalysisProviderError('provider_protocol_error');
       }
+      await this.#requireAccess(request.work);
       return snapshot;
     } catch (error) {
       if (error instanceof ApplicationProblem) throw error;
@@ -258,6 +269,14 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
           : 'provider_protocol_error';
       throw positionAnalysisProblem(code);
     }
+  }
+
+  #requireAccess(work: InventoryWorkAccess): Promise<void> {
+    return requireInventoryWorkAccess(
+      this.#workspace,
+      work.scope,
+      work.subject.kind === 'inventory_item' ? work.subject.itemId : undefined,
+    );
   }
 }
 

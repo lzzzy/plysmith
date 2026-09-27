@@ -29,9 +29,13 @@ interface StoredPathStep {
   readonly after: PathState;
 }
 
-interface SourcePathStep extends StoredPathStep {
-  readonly itemId: string;
-  readonly revisionId: string;
+interface SourcePathStep {
+  readonly before: PathState;
+  readonly move: PathMove;
+  readonly after: PathState;
+  readonly itemId?: string;
+  readonly revisionId?: string;
+  readonly anchorId?: string;
 }
 
 interface ScratchPathStep {
@@ -55,13 +59,18 @@ interface StoredPath {
     readonly sourceAnchorId: string;
     readonly sourceDisplayName: string;
     readonly root: PathState;
-    readonly rootTarget: {
+    readonly rootTarget?: {
       readonly itemId: string;
       readonly revisionId: string;
       readonly anchorId: string;
     };
     readonly steps: readonly SourcePathStep[];
     readonly contributions: readonly PathContribution[];
+  };
+  readonly sourcePath?: {
+    readonly displayName: string;
+    readonly root: PathState;
+    readonly steps: readonly ScratchPathStep[];
   };
   readonly steps: readonly StoredPathStep[];
 }
@@ -137,27 +146,34 @@ export function analysisPathPresentation(source: {
   readonly scratch?: ScratchPath;
 }): AnalysisPathPresentation {
   const { record, scratch } = source;
-  const sourceEntries = (record?.sourceLine?.steps ?? []).map(
-    (step, index, all) =>
-      Object.freeze({
-        kind: 'source' as const,
-        before: step.before,
-        move: step.move,
-        after: step.after,
-        positionIndex: index + 1,
-        current: false,
-        branchOrigin: index === all.length - 1,
-        noteTarget: noteTarget(
-          step.itemId,
-          step.revisionId,
-          step.anchorId,
-          step.after,
-          record?.sourceLine?.contributions ?? [],
-        ),
-      }),
+  const sourceSteps: readonly SourcePathStep[] =
+    record?.sourceLine?.steps ?? record?.sourcePath?.steps ?? [];
+  const sourceEntries = sourceSteps.map((step, index, all) =>
+    Object.freeze({
+      kind: 'source' as const,
+      before: step.before,
+      move: step.move,
+      after: step.after,
+      positionIndex: index + 1,
+      current: false,
+      branchOrigin: index === all.length - 1,
+      ...(step.itemId !== undefined &&
+      step.revisionId !== undefined &&
+      step.anchorId !== undefined
+        ? {
+            noteTarget: noteTarget(
+              step.itemId,
+              step.revisionId,
+              step.anchorId,
+              step.after,
+              record?.sourceLine?.contributions ?? [],
+            ),
+          }
+        : {}),
+    }),
   );
   const sourceRootTarget =
-    record?.sourceLine === undefined
+    record?.sourceLine?.rootTarget === undefined
       ? undefined
       : noteTarget(
           record.sourceLine.rootTarget.itemId,
@@ -209,9 +225,11 @@ export function analysisPathPresentation(source: {
     return Object.freeze({
       entries,
       positions: pathPositions(
-        record?.sourceLine?.root ?? record?.root,
+        record?.sourceLine?.root ?? record?.sourcePath?.root ?? record?.root,
         entries,
-        record?.sourceLine === undefined ? recordRootTarget : sourceRootTarget,
+        record?.sourceLine === undefined && record?.sourcePath === undefined
+          ? recordRootTarget
+          : sourceRootTarget,
         sourceEntries.length,
         recordRootTarget,
       ),
@@ -220,9 +238,12 @@ export function analysisPathPresentation(source: {
       analysisOriginPositionIndex:
         record === undefined ? undefined : sourceEntries.length,
       rootCurrent: record?.cursor === 0,
-      sourceDisplayName: record?.sourceLine?.sourceDisplayName,
+      sourceDisplayName:
+        record?.sourceLine?.sourceDisplayName ??
+        record?.sourcePath?.displayName,
       sourceItemType: record?.sourceLine?.sourceItemType,
-      hasSourcePrefix: record?.sourceLine !== undefined,
+      hasSourcePrefix:
+        record?.sourceLine !== undefined || record?.sourcePath !== undefined,
       hasStoredPrefix: false,
       scratchCursor: undefined,
       scratchLength: undefined,
@@ -302,11 +323,11 @@ export function analysisPathPresentation(source: {
     entries,
     positions: pathPositions(
       attachedRecord
-        ? (record!.sourceLine?.root ?? record!.root)
+        ? (record!.sourceLine?.root ?? record!.sourcePath?.root ?? record!.root)
         : scratch.root,
       entries,
       attachedRecord
-        ? record!.sourceLine === undefined
+        ? record!.sourceLine === undefined && record!.sourcePath === undefined
           ? recordRootTarget
           : sourceRootTarget
         : undefined,
@@ -321,12 +342,15 @@ export function analysisPathPresentation(source: {
     rootCurrent:
       scratch.cursor === 0 && (!attachedRecord || recordOriginCursor === 0),
     sourceDisplayName: attachedRecord
-      ? record!.sourceLine?.sourceDisplayName
+      ? (record!.sourceLine?.sourceDisplayName ??
+        record!.sourcePath?.displayName)
       : undefined,
     sourceItemType: attachedRecord
       ? record!.sourceLine?.sourceItemType
       : undefined,
-    hasSourcePrefix: attachedRecord && record!.sourceLine !== undefined,
+    hasSourcePrefix:
+      attachedRecord &&
+      (record!.sourceLine !== undefined || record!.sourcePath !== undefined),
     hasStoredPrefix,
     scratchCursor: scratch.cursor,
     scratchLength: scratch.steps.length,

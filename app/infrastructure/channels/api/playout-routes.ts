@@ -149,6 +149,16 @@ export function registerPlayoutRoutes(
     ),
   );
   api.post(
+    '/playout/cancel-completion',
+    expectedRoute('CancelPlayoutCompletion'),
+    async (request) =>
+      playoutResultDto(
+        await dependencies.cancelPlayoutCompletion.execute(
+          expected(request.body),
+        ),
+      ),
+  );
+  api.post(
     '/playout/complete',
     {
       schema: {
@@ -166,6 +176,9 @@ export function registerPlayoutRoutes(
         await dependencies.completePlayout.execute({
           ...expected(request.body),
           completionId: request.body.completionId,
+          ...(request.body.manualResult === undefined
+            ? {}
+            : { manualResult: request.body.manualResult }),
           displayName: request.body.displayName,
           languageTag: request.body.languageTag,
           ...(request.body.targetContextId === undefined

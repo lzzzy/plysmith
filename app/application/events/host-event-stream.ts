@@ -15,6 +15,8 @@ import type {
 import type {
   AnalysisRecordCreated,
   InventoryChangedPublisher,
+  InventoryItemDeleted,
+  InventoryItemDeletedPublisher,
   InventoryRevisionSaved,
   InventoryRevisionSavedPublisher,
   RevisionImpactChanged,
@@ -35,6 +37,9 @@ export type HostEvent =
   | AnalysisContributionCreatedHostEvent
   | AnalysisContributionChangedHostEvent
   | InventoryItemCreatedHostEvent
+  | InventoryItemDeletedHostEvent
+  | WorkspaceContextDeletedHostEvent
+  | WorkspaceStartupUpdatedHostEvent
   | InventoryRevisionSavedHostEvent
   | PlayoutChangedHostEvent
   | WorkspaceRevisionImpactChangedHostEvent
@@ -86,6 +91,27 @@ export interface InventoryItemCreatedHostEvent extends HostEventMetadata {
   readonly payload: Pick<AnalysisRecordCreated, 'itemId' | 'revisionId'>;
 }
 
+export interface InventoryItemDeletedHostEvent extends HostEventMetadata {
+  readonly kind: 'inventory.item-deleted';
+  readonly payload: Pick<InventoryItemDeleted, 'itemId'>;
+}
+
+export interface WorkspaceContextDeletedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.context-deleted';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.context-deleted' }>,
+    'contextId'
+  >;
+}
+
+export interface WorkspaceStartupUpdatedHostEvent extends HostEventMetadata {
+  readonly kind: 'workspace.startup-updated';
+  readonly payload: Pick<
+    Extract<WorkspaceChanged, { kind: 'workspace.startup-updated' }>,
+    'startupVersion'
+  >;
+}
+
 export interface InventoryRevisionSavedHostEvent extends HostEventMetadata {
   readonly kind: 'inventory.revision-saved';
   readonly payload: Pick<InventoryRevisionSaved, 'itemId' | 'revisionId'>;
@@ -105,9 +131,12 @@ export interface WorkspaceRevisionImpactChangedHostEvent extends HostEventMetada
 }
 
 export interface WorkspaceContextCreatedHostEvent extends HostEventMetadata {
-  readonly kind: 'workspace.context-created';
+  readonly kind: 'workspace.context-created' | 'workspace.context-updated';
   readonly payload: Pick<
-    Extract<WorkspaceChanged, { kind: 'workspace.context-created' }>,
+    Extract<
+      WorkspaceChanged,
+      { kind: 'workspace.context-created' | 'workspace.context-updated' }
+    >,
     'contextId' | 'contextVersion'
   >;
 }
@@ -172,6 +201,7 @@ export class HostEventStream
     AnalysisContributionCreatedPublisher,
     AnalysisContributionChangedPublisher,
     InventoryChangedPublisher,
+    InventoryItemDeletedPublisher,
     InventoryRevisionSavedPublisher,
     PlayoutChangedPublisher,
     RevisionImpactChangedPublisher,
@@ -204,6 +234,7 @@ export class HostEventStream
   publish(event: AnalysisContributionCreated): void;
   publish(event: AnalysisContributionChanged): void;
   publish(event: AnalysisRecordCreated): void;
+  publish(event: InventoryItemDeleted): void;
   publish(event: InventoryRevisionSaved): void;
   publish(event: PlayoutChanged): void;
   publish(event: RevisionImpactChanged): void;
@@ -215,6 +246,7 @@ export class HostEventStream
       | AnalysisContributionCreated
       | AnalysisContributionChanged
       | AnalysisRecordCreated
+      | InventoryItemDeleted
       | InventoryRevisionSaved
       | PlayoutChanged
       | RevisionImpactChanged
@@ -331,6 +363,7 @@ export class HostEventStream
 }
 
 type PublishableEvent =
+  | InventoryItemDeleted
   | UiLanguageChanged
   | AnalysisScratchChanged
   | AnalysisContributionCreated
@@ -346,6 +379,24 @@ function toHostEvent(
   metadata: HostEventMetadata,
 ): Exclude<HostEvent, ReplayGapHostEvent> {
   switch (event.kind) {
+    case 'inventory.item-deleted':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({ itemId: event.itemId }),
+      });
+    case 'workspace.context-deleted':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({ contextId: event.contextId }),
+      });
+    case 'workspace.startup-updated':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({ startupVersion: event.startupVersion }),
+      });
     case 'preference.ui-language-changed':
       return Object.freeze({
         ...metadata,
@@ -426,6 +477,7 @@ function toHostEvent(
         }),
       });
     case 'workspace.context-created':
+    case 'workspace.context-updated':
       return Object.freeze({
         ...metadata,
         kind: event.kind,
@@ -457,7 +509,9 @@ function toHostEvent(
         ...metadata,
         kind: event.kind,
         payload: Object.freeze({
-          contextId: event.contextId,
+          ...(event.contextId === undefined
+            ? {}
+            : { contextId: event.contextId }),
           area: event.area,
           resumeVersion: event.resumeVersion,
         }),

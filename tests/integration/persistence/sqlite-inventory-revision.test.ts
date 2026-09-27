@@ -9,6 +9,7 @@ import {
   CreateAnalysisRecord,
   CreatePositionNote,
   FreeAnalysisSession,
+  GetAnalysisWorkspace,
   UpdateAnalysisScratch,
 } from '../../../app/application/analysis/index.ts';
 import {
@@ -73,7 +74,10 @@ function inspectStore<T>(
 }
 
 function useCases(store: SqlitePersistenceAdapter) {
-  const freeSession = new FreeAnalysisSession();
+  const freeSession = new FreeAnalysisSession({
+    persistence: store,
+    clock: { now: () => timestamp },
+  });
   const rules = new ChessJsRulesAdapter();
   let scratchSequence = 0;
   const clock = { now: () => timestamp };
@@ -172,6 +176,7 @@ function useCases(store: SqlitePersistenceAdapter) {
 async function createFrenchLine(
   cases: ReturnType<typeof useCases>,
   displayName = 'Französisch',
+  moves: readonly string[] = ['e4', 'e6', 'd4', 'd5'],
 ) {
   const scope = freeWorkScope();
   let current = await cases.update.execute({
@@ -180,7 +185,7 @@ async function createFrenchLine(
     expectedScratchRevision: null,
     action: { kind: 'start', origin: { kind: 'initial_position' } },
   });
-  for (const value of ['e4', 'e6', 'd4', 'd5'] as const) {
+  for (const value of moves) {
     current = await cases.update.execute({
       scope,
       expectedScratchId: current.scratch?.scratchId ?? '',
@@ -261,7 +266,18 @@ test('publishes an immutable extension with stable prefix anchors', async (t) =>
   const saved = await appendMove(cases, first, firstEnd, 'Nc3');
   assert.equal(saved.revisionNumber, 2);
   assert.equal(saved.impacts.length, 0);
-  assert.equal(saved.dataRevision, beforeSave.dataRevision + 1);
+  assert.equal(saved.dataRevision, beforeSave.dataRevision + 2);
+  assert.equal(
+    (await store.readStoreStatus()).dataRevision,
+    saved.dataRevision,
+  );
+  const resumed = await store.readFreeAnalysisWorkspace();
+  assert.equal(resumed.scratch, undefined);
+  assert.equal(resumed.record?.revisionId.value, saved.revisionId.value);
+  assert.equal(
+    resumed.record?.currentAnchorId.value,
+    saved.currentAnchorId.value,
+  );
 
   const historical = await cases.getRevision.execute({
     scope: freeWorkScope(),
@@ -352,6 +368,262 @@ test('promotes an explored continuation to a revision draft without replaying it
   );
 });
 
+for (const inContext of [false, true]) {
+  for (const rootOnly of [false, true]) {
+    test(`promotes end exploration explicitly and saves once (context: ${inContext}, root-only: ${rootOnly})`, async (t) => {
+      const store = storeFixture(t);
+      const cases = useCases(store);
+      const first = await createFrenchLine(
+        cases,
+        'Source',
+        rootOnly ? [] : undefined,
+      );
+      const context = inContext
+        ? await addIndependentContextUse(cases, first, 'Exploration')
+        : undefined;
+      const scope =
+        context === undefined
+          ? freeWorkScope()
+          : contextWorkScope(context.context.contextId);
+      const anchorId = first.steps.at(-1)?.anchorId ?? first.rootAnchorId;
+      const origin = {
+        kind: 'inventory_anchor' as const,
+        itemId: first.itemId,
+        revisionId: first.revisionId,
+        anchorId,
+      };
+      const explored = await cases.update.execute({
+        scope,
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        action: {
+          kind: 'start',
+          origin,
+          firstMove: {
+            kind: 'notation',
+            value: rootOnly ? 'e4' : 'Nc3',
+            locale: 'en-GB',
+          },
+        },
+      });
+      const scratch = explored.scratch!;
+      assert.equal(scratch.intent.kind, 'exploration');
+      const readSource = () =>
+        cases.getRevision.execute({
+          scope,
+          itemId: first.itemId,
+          revisionId: first.revisionId,
+          anchorId: first.rootAnchorId,
+        });
+      const assertSourceUnchanged = async () => {
+        const source = await readSource();
+        assert.equal(source.currentRevisionId.value, first.revisionId.value);
+        assert.deepEqual(source.root, first.root);
+        assert.deepEqual(source.steps, first.steps);
+        assert.deepEqual(source.origin, first.origin);
+      };
+      await assertSourceUnchanged();
+      const request = {
+        scope,
+        itemId: first.itemId,
+        baseRevisionId: first.revisionId,
+        anchorId,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+      };
+      await assert.rejects(
+        cases.promoteRevision.execute({
+          ...request,
+          expectedScratchRevision: scratch.scratchRevision - 1,
+        }),
+        { problemCode: 'analysis.scratch_revision_conflict' },
+      );
+      const promoted = await cases.promoteRevision.execute(request);
+      assert.equal(promoted.scratch.intent.kind, 'inventory_revision');
+      assert.deepEqual(promoted.scratch.origin, origin);
+      assert.deepEqual(promoted.scratch.root, scratch.root);
+      assert.deepEqual(promoted.scratch.steps, scratch.steps);
+      assert.equal(promoted.scratch.scratchId, scratch.scratchId);
+      assert.equal(
+        promoted.scratch.scratchRevision,
+        scratch.scratchRevision + 1,
+      );
+      assert.equal(promoted.scratch.cursor, scratch.cursor);
+      const expected = {
+        scope,
+        expectedScratchId: promoted.scratch.scratchId,
+        expectedScratchRevision: promoted.scratch.scratchRevision,
+      };
+      const preview = await cases.previewRevision.execute(expected);
+      assert.equal(preview.mode, 'extend');
+      assert.equal(preview.preservedMoveCount, first.steps.length);
+      assert.deepEqual(preview.removedSteps, []);
+      assert.deepEqual(preview.addedSteps, scratch.steps);
+      await assertSourceUnchanged();
+      const saveRequest = {
+        ...expected,
+        previewFingerprint: preview.previewFingerprint,
+      };
+      const saved = await cases.saveRevision.execute(saveRequest);
+      assert.equal(saved.revisionNumber, 2);
+      const current = await cases.getRevision.execute({
+        scope,
+        itemId: first.itemId,
+        revisionId: saved.revisionId,
+        anchorId: saved.currentAnchorId,
+      });
+      assert.deepEqual(current.root, first.root);
+      assert.deepEqual(current.steps.slice(0, first.steps.length), first.steps);
+      assert.deepEqual(
+        current.steps.map((step) => step.move),
+        [...first.steps, ...scratch.steps].map((step) => step.move),
+      );
+      const beforeRetry = await store.readStoreStatus();
+      await assert.rejects(cases.saveRevision.execute(saveRequest), {
+        problemCode: 'analysis.scratch_not_found',
+      });
+      assert.deepEqual(await store.readStoreStatus(), beforeRetry);
+      assert.deepEqual(
+        (
+          await cases.listRevisions.execute({ itemId: first.itemId })
+        ).revisions.map((revision) => revision.changeKind),
+        ['extend', 'created'],
+      );
+    });
+  }
+
+  test(`continues an existing six-move revision as exploration and saves a genuine derived analysis (context: ${inContext})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const first = await createFrenchLine(cases);
+    const context = inContext
+      ? await addIndependentContextUse(cases, first, 'Existing draft')
+      : undefined;
+    const scope =
+      context === undefined
+        ? freeWorkScope()
+        : contextWorkScope(context.context.contextId);
+    const anchorId = first.steps.at(-1)!.anchorId;
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: first.itemId,
+      baseRevisionId: first.revisionId,
+      anchorId,
+      mode: 'extend',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    let scratch = started.scratch;
+    for (const value of ['Nc3', 'Nf6', 'Bg5', 'Be7', 'e5', 'Nfd7']) {
+      scratch = (
+        await cases.update.execute({
+          scope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          action: {
+            kind: 'apply_move',
+            move: { kind: 'notation', value, locale: 'en-GB' },
+          },
+        })
+      ).scratch!;
+    }
+    scratch = (
+      await cases.update.execute({
+        scope,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+        action: { kind: 'move_cursor', cursor: 2 },
+      })
+    ).scratch!;
+    const request = {
+      scope,
+      expectedScratchId: scratch.scratchId,
+      expectedScratchRevision: scratch.scratchRevision,
+      action: { kind: 'continue_exploration' as const },
+    };
+    const continued = (await cases.update.execute(request)).scratch!;
+    assert.deepEqual(continued, {
+      ...scratch,
+      scratchRevision: scratch.scratchRevision + 1,
+      intent: { kind: 'exploration' },
+    });
+    await assert.rejects(cases.update.execute(request), {
+      problemCode: 'analysis.scratch_revision_conflict',
+    });
+    const completed = (
+      await cases.update.execute({
+        scope,
+        expectedScratchId: continued.scratchId,
+        expectedScratchRevision: continued.scratchRevision,
+        action: { kind: 'move_cursor', cursor: 6 },
+      })
+    ).scratch!;
+    const promoted = await cases.promoteRevision.execute({
+      scope,
+      itemId: first.itemId,
+      baseRevisionId: first.revisionId,
+      anchorId,
+      expectedScratchId: completed.scratchId,
+      expectedScratchRevision: completed.scratchRevision,
+    });
+    const back = (
+      await cases.update.execute({
+        scope,
+        expectedScratchId: promoted.scratch.scratchId,
+        expectedScratchRevision: promoted.scratch.scratchRevision,
+        action: { kind: 'continue_exploration' },
+      })
+    ).scratch!;
+    assert.deepEqual(back.steps, scratch.steps);
+    assert.equal(back.scratchId, scratch.scratchId);
+    const child = await cases.createRecord.execute({
+      scope,
+      expectedScratchId: back.scratchId,
+      expectedScratchRevision: back.scratchRevision,
+      displayName: 'Derived exploration',
+      languageTag: 'en-GB',
+    });
+    const derived = await cases.getRevision.execute({
+      scope: freeWorkScope(),
+      itemId: child.itemId,
+      revisionId: child.revisionId,
+      anchorId: child.rootAnchorId,
+    });
+    assert.notEqual(child.itemId.value, first.itemId.value);
+    assert.deepEqual(derived.root, scratch.root);
+    assert.deepEqual(
+      derived.steps.map((step) => step.move),
+      scratch.steps.map((step) => step.move),
+    );
+    assert.deepEqual(derived.origin, scratch.origin);
+    assert.deepEqual(derived.sourceLine?.root, first.root);
+    assert.deepEqual(
+      derived.sourceLine?.steps,
+      first.steps.map((step) => ({
+        ...step,
+        itemId: first.itemId,
+        revisionId: first.revisionId,
+      })),
+    );
+    assert.deepEqual(derived.sourceLine?.sourceAnchorId, anchorId);
+    const source = await cases.getRevision.execute({
+      scope,
+      itemId: first.itemId,
+      revisionId: first.revisionId,
+      anchorId: first.rootAnchorId,
+    });
+    assert.equal(source.currentRevisionId.value, first.revisionId.value);
+    assert.deepEqual(source.root, first.root);
+    assert.deepEqual(source.steps, first.steps);
+    assert.deepEqual(source.origin, first.origin);
+    assert.equal(
+      (await cases.listRevisions.execute({ itemId: first.itemId })).revisions
+        .length,
+      1,
+    );
+  });
+}
+
 test('renames an analysis without changing its line and advances compatible contexts', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
@@ -418,14 +690,119 @@ test('renames an analysis without changing its line and advances compatible cont
   }
 });
 
+test('allows global metadata maintenance from an unassigned context without granting analysis membership', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createFrenchLine(cases);
+  const context = await cases.createContext.execute({
+    displayName: 'Unassigned context',
+  });
+  const scope = contextWorkScope(context.context.contextId);
+  const started = await cases.startRevision.execute({
+    scope,
+    itemId: base.itemId,
+    baseRevisionId: base.revisionId,
+    anchorId: base.rootAnchorId,
+    mode: 'metadata',
+    displayName: 'Renamed globally',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const expected = {
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  };
+  const getWorkspace = new GetAnalysisWorkspace({
+    reader: store,
+    freeSession: cases.freeSession,
+    rules: new ChessJsRulesAdapter(),
+    storeStatus: store,
+  });
+  const beforeRead = await store.readStoreStatus();
+  const openWorkspace = await getWorkspace.execute({ scope });
+  assert.equal(openWorkspace.record, undefined);
+  assert.equal(openWorkspace.scratch, undefined);
+  assert.deepEqual(openWorkspace.allowedActions, []);
+  assert.equal(
+    openWorkspace.currentState.fen,
+    new ChessJsRulesAdapter().initialState().fen,
+  );
+  assert.deepEqual(await store.readStoreStatus(), beforeRead);
+  assert.equal(
+    (await store.readContextAnalysisWorkspace(context.context.contextId))
+      ?.scratch?.scratchId,
+    started.scratch.scratchId,
+  );
+  await assert.rejects(
+    getWorkspace.execute({
+      scope,
+      preview: {
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: base.rootAnchorId,
+      },
+    }),
+    { problemCode: 'workspace.inventory_work_not_allowed' },
+  );
+  const preview = await cases.previewRevision.execute(expected);
+  const saved = await cases.saveRevision.execute({
+    ...expected,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  const revised = await cases.getRevision.execute({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    revisionId: saved.revisionId,
+  });
+  assert.equal(revised.displayName, 'Renamed globally');
+  assert.deepEqual(revised.steps, base.steps);
+  const workspace = await store.readWorkingContextWorkspace(
+    context.context.contextId,
+  );
+  assert.deepEqual(workspace?.references, []);
+  assert.equal(workspace?.analysisResume?.itemId, undefined);
+  const discarded = await cases.startRevision.execute({
+    scope,
+    itemId: base.itemId,
+    baseRevisionId: saved.revisionId,
+    anchorId: base.rootAnchorId,
+    mode: 'metadata',
+    displayName: 'Not saved',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  await cases.update.execute({
+    scope,
+    expectedScratchId: discarded.scratch.scratchId,
+    expectedScratchRevision: discarded.scratch.scratchRevision,
+    action: { kind: 'discard' },
+  });
+  assert.equal(
+    (await store.readWorkingContextWorkspace(context.context.contextId))
+      ?.analysisResume?.itemId,
+    undefined,
+  );
+});
+
 test('rejects duplicate active analysis names', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
   await createFrenchLine(cases, 'Französisch');
 
-  await assert.rejects(createFrenchLine(cases, ' FRANZÖSISCH '), {
-    problemCode: 'analysis.invalid_record',
+  await assert.rejects(createFrenchLine(cases, 'FRANZÖSISCH'), {
+    problemCode: 'inventory.display_name_conflict',
   });
+  const scratch = await cases.freeSession.read();
+  assert.ok(scratch);
+  const saved = await cases.createRecord.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: scratch.scratchId,
+    expectedScratchRevision: scratch.scratchRevision,
+    displayName: 'French alternative',
+    languageTag: 'de-DE',
+  });
+  assert.ok(saved.itemId);
 });
 
 test('rejects renaming an analysis to another active analysis name', async (t) => {
@@ -450,7 +827,7 @@ test('rejects renaming an analysis to another active analysis name', async (t) =
       expectedScratchId: started.scratch.scratchId,
       expectedScratchRevision: started.scratch.scratchRevision,
     }),
-    { problemCode: 'inventory.invalid_revision' },
+    { problemCode: 'inventory.display_name_conflict' },
   );
 });
 
@@ -486,7 +863,7 @@ test('pins an affected context until all replace impacts are resolved', async (t
     },
   });
   await cases.setResume.execute({
-    contextId: contextB.context.contextId,
+    scope: { kind: 'context', contextId: contextB.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',
@@ -601,6 +978,7 @@ test('pins an affected context until all replace impacts are resolved', async (t
   await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: { kind: 'use_target' },
   });
 
@@ -696,6 +1074,7 @@ test('moves an impacted reference to the changed line and keeps surviving refere
   await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: { kind: 'use_target' },
   });
 
@@ -765,9 +1144,39 @@ test('keeps the previous version as a separately named analysis in the context',
   const impactId = saved.impacts[0]?.impactId;
   assert.ok(impactId);
   const impact = await cases.getImpact.execute({ impactId });
+  const beforeConflict = {
+    status: await store.readStoreStatus(),
+    context: await cases.getContext.execute({
+      contextId: context.context.contextId,
+    }),
+    inventory: await store.searchInventory({ pageSize: 10 }),
+  };
+  await assert.rejects(
+    cases.resolveImpact.execute({
+      impactId,
+      expectedImpactVersion: impact.impactVersion,
+      expectedDataRevision: impact.dataRevision,
+      resolution: {
+        kind: 'keep_copy',
+        displayName: first.displayName.toUpperCase(),
+      },
+    }),
+    { problemCode: 'inventory.display_name_conflict' },
+  );
+  assert.deepEqual(await cases.getImpact.execute({ impactId }), impact);
+  assert.deepEqual(await store.readStoreStatus(), beforeConflict.status);
+  assert.deepEqual(
+    await cases.getContext.execute({ contextId: context.context.contextId }),
+    beforeConflict.context,
+  );
+  assert.deepEqual(
+    await store.searchInventory({ pageSize: 10 }),
+    beforeConflict.inventory,
+  );
   const resolution = await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: {
       kind: 'keep_copy',
       displayName: 'Französisch – bisherige Fassung',
@@ -840,7 +1249,7 @@ test('removes an affected analysis and its context content from the context', as
     noteScope: { kind: 'context', contextId: context.context.contextId },
   });
   await cases.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',
@@ -878,6 +1287,7 @@ test('removes an affected analysis and its context content from the context', as
   const resolution = await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: { kind: 'remove_from_context' },
   });
 
@@ -907,7 +1317,6 @@ test('supports root-only truncation and keeps a true no-op unpublished', async (
   const cases = useCases(store);
   const first = await createFrenchLine(cases);
   const scope = freeWorkScope();
-  const beforeNoOp = await store.readStoreStatus();
   const noOpScratch = await cases.startRevision.execute({
     scope,
     itemId: first.itemId,
@@ -917,6 +1326,7 @@ test('supports root-only truncation and keeps a true no-op unpublished', async (
     expectedScratchId: null,
     expectedScratchRevision: null,
   });
+  const beforeNoOp = await store.readStoreStatus();
   const noOpPreview = await cases.previewRevision.execute({
     scope,
     expectedScratchId: noOpScratch.scratch.scratchId,
@@ -932,7 +1342,7 @@ test('supports root-only truncation and keeps a true no-op unpublished', async (
   assert.equal(noOp.noOp, true);
   assert.deepEqual(await store.readStoreStatus(), beforeNoOp);
   assert.equal(
-    cases.freeSession.read()?.scratchId,
+    (await cases.freeSession.read())?.scratchId,
     noOpScratch.scratch.scratchId,
   );
   await cases.update.execute({
@@ -1015,7 +1425,10 @@ test('rejects a preview after a newly affected dependency appears', async (t) =>
     }),
     { problemCode: 'inventory.preview_conflict' },
   );
-  assert.equal(cases.freeSession.read()?.scratchId, started.scratch.scratchId);
+  assert.equal(
+    (await cases.freeSession.read())?.scratchId,
+    started.scratch.scratchId,
+  );
   assert.equal(
     (await cases.listRevisions.execute({ itemId: first.itemId })).revisions
       .length,
@@ -1088,7 +1501,7 @@ test('the publishing context follows a truncation without reviewing its own chan
     noteScope: { kind: 'context', contextId: context.context.contextId },
   });
   await cases.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',
@@ -1266,6 +1679,7 @@ test('using the new version discards a competing context revision draft', async 
   await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: { kind: 'use_target' },
   });
   const workspace = await cases.getContext.execute({
@@ -1374,10 +1788,16 @@ test('rejects context writes while a revision impact is open', async (t) => {
     }),
     { problemCode: 'workspace.impact_conflict' },
   );
+  const removal = await store.previewContextItemRemoval({
+    contextId: context.context.contextId,
+    itemId: first.itemId,
+  });
   await assert.rejects(
     cases.removeItem.execute({
       contextId: context.context.contextId,
       itemId: first.itemId,
+      expectedDataRevision: removal.dataRevision,
+      expectedContextVersion: removal.contextVersion,
     }),
     { problemCode: 'workspace.impact_conflict' },
   );
@@ -1436,6 +1856,7 @@ test('copies a later pinned revision without reviving archived notes', async (t)
   await cases.resolveImpact.execute({
     impactId: firstImpactId,
     expectedImpactVersion: firstImpact.impactVersion,
+    expectedDataRevision: firstImpact.dataRevision,
     resolution: { kind: 'use_target' },
   });
 
@@ -1474,6 +1895,7 @@ test('copies a later pinned revision without reviving archived notes', async (t)
   const resolution = await cases.resolveImpact.execute({
     impactId: secondImpactId,
     expectedImpactVersion: secondImpact.impactVersion,
+    expectedDataRevision: secondImpact.dataRevision,
     resolution: {
       kind: 'keep_copy',
       displayName: 'Französisch – zweite Fassung',
@@ -1496,6 +1918,27 @@ test('copies a later pinned revision without reviving archived notes', async (t)
     secondRecord.steps.map((step) => step.move.san),
   );
   assert.equal(copied.contributions.length, 0);
+  assert.deepEqual(copied.origin, {
+    kind: 'inventory_anchor',
+    itemId: secondRecord.itemId,
+    revisionId: secondRecord.revisionId,
+    anchorId: secondRecord.rootAnchorId,
+  });
+  const family = await store.searchInventory({
+    pageSize: 1,
+    query: copied.displayName,
+  });
+  assert.deepEqual(
+    family.provenanceEdges.find(
+      (edge) => edge.itemId.value === copied.itemId.value,
+    ),
+    {
+      itemId: copied.itemId,
+      sourceItemId: secondRecord.itemId,
+      sourceRevisionId: secondRecord.revisionId,
+      sourceAnchorId: secondRecord.rootAnchorId,
+    },
+  );
 
   inspectStore(store, (database) => {
     const counts = database
@@ -1556,7 +1999,7 @@ test('keeps an unaffected analysis usable while another analysis needs review', 
     anchorId: unaffected.rootAnchorId,
   });
   const affectedResume = await cases.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',
@@ -1591,7 +2034,7 @@ test('keeps an unaffected analysis usable while another analysis needs review', 
   assert.ok(impactId);
 
   const switched = await cases.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: affectedResume.resume.resumeVersion,
     mode: 'analyze',
@@ -1620,6 +2063,7 @@ test('keeps an unaffected analysis usable while another analysis needs review', 
   await cases.resolveImpact.execute({
     impactId,
     expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
     resolution: { kind: 'use_target' },
   });
   const workspace = await cases.getContext.execute({
@@ -1654,7 +2098,7 @@ test('rejects a historical analysis resume when the context follows a newer revi
 
   await assert.rejects(
     cases.setResume.execute({
-      contextId: context.context.contextId,
+      scope: { kind: 'context', contextId: context.context.contextId },
       area: 'analyze',
       expectedResumeVersion: null,
       mode: 'analyze',
@@ -1682,7 +2126,7 @@ test('rejects a historical analysis resume when the context follows a newer revi
     { problemCode: 'analysis.invalid_update' },
   );
   const resumed = await cases.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',

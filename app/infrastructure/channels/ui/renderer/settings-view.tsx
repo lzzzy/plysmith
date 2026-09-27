@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   Activity,
   Bug,
@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import {
@@ -28,7 +29,10 @@ import {
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
 import type { UiLocale } from './messages.ts';
-import type { EngineProviderConfigurationInputDto } from '../../host_client/index.ts';
+import {
+  type EngineConfigurationDraft,
+  type EngineConfigurationField,
+} from './engine-configuration-drafts.ts';
 import styles from './settings-view.module.css';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
@@ -48,51 +52,22 @@ export function SettingsView({
     state.diagnostics.configuredLevel,
   );
   const [reportReviewOpen, setReportReviewOpen] = useState(false);
-  const [selectedEngineId, setSelectedEngineId] = useState(
-    state.engineProviders.providers[0]?.instanceId ?? '',
-  );
-  const configuredEngine = state.engineProviders.providers.find(
-    (provider) => provider.instanceId === selectedEngineId,
-  );
-  const [engineDraft, setEngineDraft] =
-    useState<EngineProviderConfigurationInputDto>(() =>
-      engineInput(configuredEngine),
-    );
-  const loadedEngineRevision = useRef(engineRevision(configuredEngine));
-  const [engineIssues, setEngineIssues] = useState<readonly string[]>([]);
+
   useEffect(() => {
     setDraftLocale(state.preferences.uiLocale);
   }, [state.preferences.uiLocale]);
   useEffect(() => {
     setDraftDiagnosticLevel(state.diagnostics.configuredLevel);
   }, [state.diagnostics.configuredLevel]);
-  useEffect(() => {
-    const revision = engineRevision(configuredEngine);
-    if (
-      configuredEngine === undefined ||
-      revision === loadedEngineRevision.current
-    ) {
-      return;
-    }
-    loadedEngineRevision.current = revision;
-    setEngineDraft(engineInput(configuredEngine));
-    setEngineIssues([]);
-  }, [configuredEngine]);
 
   const saving = state.busyCommand === 'set_language';
   const savingDiagnostics = state.busyCommand === 'set_diagnostic_log_level';
   const creatingReport = state.busyCommand === 'create_diagnostic_report';
-  const savingEngine =
-    state.busyCommand === 'preview_engine_provider' ||
-    state.busyCommand === 'save_engine_provider' ||
-    state.busyCommand === 'remove_engine_provider';
+
   return (
     <main className={styles.settingsView}>
       <header className={styles.pageHeader}>
         <div>
-          <span className={styles.eyebrow}>
-            <FormattedMessage id="settings.eyebrow" />
-          </span>
           <h1>
             <FormattedMessage id="settings.title" />
           </h1>
@@ -154,315 +129,7 @@ export function SettingsView({
         </div>
       </section>
 
-      <section
-        className={styles.settingsSection}
-        aria-labelledby="engine-title"
-      >
-        <div className={styles.sectionHeading}>
-          <span className={`${styles.sectionIcon} ${styles.engineIcon}`}>
-            <Cpu aria-hidden="true" size={19} />
-          </span>
-          <div>
-            <h2 id="engine-title">
-              <FormattedMessage id="engines.title" />
-            </h2>
-            <p>
-              <FormattedMessage id="engines.description" />
-            </p>
-          </div>
-        </div>
-        <div className={styles.engineForm}>
-          <div className={styles.engineChooser}>
-            <label>
-              <span>
-                <FormattedMessage id="engines.configuration" />
-              </span>
-              <select
-                value={selectedEngineId}
-                disabled={savingEngine}
-                onChange={(event) => {
-                  const instanceId = event.target.value;
-                  const selected = state.engineProviders.providers.find(
-                    (provider) => provider.instanceId === instanceId,
-                  );
-                  if (selected === undefined) return;
-                  setSelectedEngineId(instanceId);
-                  loadedEngineRevision.current = engineRevision(selected);
-                  setEngineDraft(engineInput(selected));
-                  setEngineIssues([]);
-                }}
-              >
-                {state.engineProviders.providers.length === 0 && (
-                  <option value="">
-                    {intl.formatMessage({ id: 'engines.noneConfigured' })}
-                  </option>
-                )}
-                {state.engineProviders.providers.map((provider) => (
-                  <option key={provider.instanceId} value={provider.instanceId}>
-                    {provider.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className={styles.engineCreateActions}>
-              <Button
-                className={styles.primaryButton!}
-                isDisabled={savingEngine}
-                onPress={() => {
-                  const draft = newEngineInput(
-                    'stockfish-uci',
-                    state.engineProviders.providers.map(
-                      (provider) => provider.instanceId,
-                    ),
-                  );
-                  setSelectedEngineId('');
-                  loadedEngineRevision.current = undefined;
-                  setEngineDraft(draft);
-                  setEngineIssues([]);
-                }}
-              >
-                <Plus aria-hidden="true" size={16} />
-                <FormattedMessage id="engines.addStockfish" />
-              </Button>
-              <Button
-                className={styles.primaryButton!}
-                isDisabled={savingEngine}
-                onPress={() => {
-                  const draft = newEngineInput(
-                    'maia-chess',
-                    state.engineProviders.providers.map(
-                      (provider) => provider.instanceId,
-                    ),
-                  );
-                  setSelectedEngineId('');
-                  loadedEngineRevision.current = undefined;
-                  setEngineDraft(draft);
-                  setEngineIssues([]);
-                }}
-              >
-                <Plus aria-hidden="true" size={16} />
-                <FormattedMessage id="engines.addMaia" />
-              </Button>
-            </div>
-          </div>
-          <label className={styles.wideField}>
-            <span>
-              <FormattedMessage id="engines.executable" />
-            </span>
-            <div className={styles.pathRow}>
-              <input value={engineDraft.executablePath} readOnly />
-              <Button
-                className={styles.primaryButton!}
-                isDisabled={savingEngine}
-                onPress={() =>
-                  void store.chooseEngineExecutable().then((selected) => {
-                    if (selected !== undefined) {
-                      setEngineDraft((current) => ({
-                        ...current,
-                        executablePath: selected,
-                      }));
-                      setEngineIssues([]);
-                    }
-                  })
-                }
-              >
-                <FolderOpen aria-hidden="true" size={16} />
-                <FormattedMessage id="engines.choose" />
-              </Button>
-            </div>
-          </label>
-          <label>
-            <span>
-              <FormattedMessage id="engines.displayName" />
-            </span>
-            <input
-              value={engineDraft.displayName}
-              onChange={(event) => {
-                const displayName = event.target.value;
-                setEngineDraft((current) => ({
-                  ...current,
-                  displayName,
-                  instanceId:
-                    configuredEngine === undefined
-                      ? engineInstanceId(
-                          displayName,
-                          current.providerType,
-                          state.engineProviders.providers.map(
-                            (provider) => provider.instanceId,
-                          ),
-                        )
-                      : current.instanceId,
-                }));
-              }}
-            />
-          </label>
-          {engineDraft.providerType === 'stockfish-uci' ? (
-            <>
-              <label>
-                <span>
-                  <FormattedMessage id="engines.moveTime" />
-                </span>
-                <input
-                  type="number"
-                  min={10}
-                  max={600000}
-                  value={engineDraft.moveTimeMs}
-                  onChange={(event) =>
-                    setEngineDraft((current) =>
-                      current.providerType === 'stockfish-uci'
-                        ? {
-                            ...current,
-                            moveTimeMs: Number(event.target.value),
-                          }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-              <label>
-                <span>
-                  <FormattedMessage id="engines.threads" />
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={256}
-                  value={engineDraft.threads}
-                  onChange={(event) =>
-                    setEngineDraft((current) =>
-                      current.providerType === 'stockfish-uci'
-                        ? { ...current, threads: Number(event.target.value) }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-              <label>
-                <span>
-                  <FormattedMessage id="engines.hash" />
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={65536}
-                  value={engineDraft.hashMb}
-                  onChange={(event) =>
-                    setEngineDraft((current) =>
-                      current.providerType === 'stockfish-uci'
-                        ? { ...current, hashMb: Number(event.target.value) }
-                        : current,
-                    )
-                  }
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <label className={styles.wideField}>
-                <span>
-                  <FormattedMessage id="engines.maiaWeights" />
-                </span>
-                <div className={styles.pathRow}>
-                  <input value={engineDraft.weightsPath} readOnly />
-                  <Button
-                    className={styles.primaryButton!}
-                    isDisabled={savingEngine}
-                    onPress={() =>
-                      void store.chooseEngineWeights().then((selected) => {
-                        if (selected !== undefined) {
-                          setEngineDraft((current) =>
-                            withMaiaWeights(current, selected),
-                          );
-                          setEngineIssues([]);
-                        }
-                      })
-                    }
-                  >
-                    <FolderOpen aria-hidden="true" size={16} />
-                    <FormattedMessage id="engines.choose" />
-                  </Button>
-                </div>
-              </label>
-            </>
-          )}
-          {engineIssues.length > 0 && (
-            <p className={styles.engineError} role="alert">
-              <FormattedMessage id={`engines.issue.${engineIssues[0]}`} />
-            </p>
-          )}
-          {configuredEngine?.restartRequired && (
-            <p className={styles.restartNotice} role="status">
-              <RefreshCw aria-hidden="true" size={15} />
-              <FormattedMessage id="engines.restartRequired" />
-            </p>
-          )}
-          <div className={styles.engineActions}>
-            {configuredEngine !== undefined && (
-              <Button
-                className={styles.dangerButton!}
-                isDisabled={savingEngine}
-                onPress={() => {
-                  const removedInstanceId = configuredEngine.instanceId;
-                  void store
-                    .removeEngineProviderConfiguration(configuredEngine)
-                    .then((removed) => {
-                      if (!removed) return;
-                      const next = state.engineProviders.providers.find(
-                        (provider) => provider.instanceId !== removedInstanceId,
-                      );
-                      setSelectedEngineId(next?.instanceId ?? '');
-                      loadedEngineRevision.current = engineRevision(next);
-                      setEngineDraft(engineInput(next));
-                      setEngineIssues([]);
-                    });
-                }}
-              >
-                <Trash2 aria-hidden="true" size={16} />
-                <FormattedMessage id="engines.remove" />
-              </Button>
-            )}
-            <Button
-              className={styles.primaryButton!}
-              isDisabled={
-                savingEngine ||
-                engineDraft.executablePath.length === 0 ||
-                (engineDraft.providerType === 'maia-chess' &&
-                  engineDraft.weightsPath.length === 0) ||
-                engineDraft.displayName.trim().length === 0
-              }
-              onPress={() =>
-                void store
-                  .previewEngineProviderConfiguration(engineDraft)
-                  .then(async (preview) => {
-                    if (preview === undefined) return;
-                    setEngineIssues(preview.issues);
-                    if (!preview.valid) return;
-                    const saved = await store.saveEngineProviderConfiguration(
-                      engineDraft,
-                      configuredEngine?.configurationRevision ?? null,
-                    );
-                    if (saved) {
-                      setSelectedEngineId(engineDraft.instanceId);
-                    }
-                  })
-              }
-            >
-              {savingEngine ? (
-                <RefreshCw
-                  aria-hidden="true"
-                  className={styles.spinning}
-                  size={16}
-                />
-              ) : (
-                <CheckCircle2 aria-hidden="true" size={16} />
-              )}
-              <FormattedMessage
-                id={savingEngine ? 'state.saving' : 'engines.save'}
-              />
-            </Button>
-          </div>
-        </div>
-      </section>
+      <EngineSettings state={state} store={store} />
 
       <section
         className={styles.settingsSection}
@@ -705,114 +372,304 @@ export function SettingsView({
   );
 }
 
-function engineRevision(
-  configured: ReadyState['engineProviders']['providers'][number] | undefined,
-): string | undefined {
-  return configured === undefined
-    ? undefined
-    : `${configured.instanceId}\u0000${configured.configurationRevision}`;
-}
-
-function engineInput(
-  configured: ReadyState['engineProviders']['providers'][number] | undefined,
-): EngineProviderConfigurationInputDto {
-  if (configured !== undefined) {
-    if (configured.providerType === 'maia-chess') {
-      return {
-        instanceId: configured.instanceId,
-        providerType: configured.providerType,
-        displayName: configured.displayName,
-        executablePath: configured.executablePath,
-        weightsPath: configured.weightsPath,
-        startupTimeoutMs: configured.startupTimeoutMs,
-        moveTimeoutMs: configured.moveTimeoutMs,
-        stopTimeoutMs: configured.stopTimeoutMs,
-        maxOutputBytes: configured.maxOutputBytes,
-      };
-    }
-    return {
-      instanceId: configured.instanceId,
-      providerType: configured.providerType,
-      displayName: configured.displayName,
-      executablePath: configured.executablePath,
-      arguments: [...configured.arguments],
-      threads: configured.threads,
-      hashMb: configured.hashMb,
-      moveTimeMs: configured.moveTimeMs,
-      startupTimeoutMs: configured.startupTimeoutMs,
-      moveTimeoutMs: configured.moveTimeoutMs,
-      stopTimeoutMs: configured.stopTimeoutMs,
-      maxOutputBytes: configured.maxOutputBytes,
-    };
-  }
-  return newEngineInput('stockfish-uci');
-}
-
-function newEngineInput(
-  providerType: 'stockfish-uci' | 'maia-chess',
-  usedInstanceIds: readonly string[] = [],
-): EngineProviderConfigurationInputDto {
-  if (providerType === 'maia-chess') {
-    const displayName = 'Maia 1500';
-    return {
-      instanceId: engineInstanceId(displayName, providerType, usedInstanceIds),
-      providerType,
-      displayName,
-      executablePath: '',
-      weightsPath: '',
-      startupTimeoutMs: 30_000,
-      moveTimeoutMs: 30_000,
-      stopTimeoutMs: 1_000,
-      maxOutputBytes: 1_048_576,
-    };
-  }
-  const displayName = 'Stockfish';
-  return {
-    instanceId: engineInstanceId(displayName, providerType, usedInstanceIds),
-    providerType,
-    displayName,
-    executablePath: '',
-    arguments: [],
-    threads: 1,
-    hashMb: 64,
-    moveTimeMs: 500,
-    startupTimeoutMs: 5_000,
-    moveTimeoutMs: 10_000,
-    stopTimeoutMs: 1_000,
-    maxOutputBytes: 1_048_576,
+function EngineSettings({
+  state,
+  store,
+}: {
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
+}) {
+  const intl = useIntl();
+  const { entries, selectedKey } = state.engineConfigurationDrafts;
+  const selected = entries.find((entry) => entry.key === selectedKey);
+  const configuredEngine =
+    selected?.baseline === null
+      ? undefined
+      : state.engineProviders.providers.find(
+          (provider) => provider.instanceId === selected?.form.instanceId,
+        );
+  const busy =
+    state.busyCommand === 'preview_engine_provider' ||
+    state.busyCommand === 'save_engine_provider' ||
+    state.busyCommand === 'remove_engine_provider';
+  const update = (field: EngineConfigurationField, value: string) => {
+    if (selected !== undefined)
+      store.updateEngineConfigurationDraft(selected.key, { [field]: value });
   };
+  const fieldAttributes = (field: EngineConfigurationField) => ({
+    id: `engine-${field}`,
+    'aria-invalid':
+      selected?.issues.some((issue) => issue.field === field) || undefined,
+    'aria-describedby': selected?.issues.some((issue) => issue.field === field)
+      ? `engine-${field}-error`
+      : undefined,
+  });
+  return (
+    <section className={styles.settingsSection} aria-labelledby="engine-title">
+      <div className={styles.sectionHeading}>
+        <span className={`${styles.sectionIcon} ${styles.engineIcon}`}>
+          <Cpu aria-hidden="true" size={19} />
+        </span>
+        <div>
+          <h2 id="engine-title">
+            <FormattedMessage id="engines.title" />
+          </h2>
+          <p>
+            <FormattedMessage id="engines.description" />
+          </p>
+        </div>
+      </div>
+      <div className={styles.engineForm}>
+        <div className={styles.engineChooser}>
+          <label>
+            <span>
+              <FormattedMessage id="engines.configuration" />
+            </span>
+            <select
+              value={selectedKey ?? ''}
+              disabled={busy}
+              onChange={(event) =>
+                store.selectEngineConfiguration(event.target.value)
+              }
+            >
+              {entries.length === 0 && (
+                <option value="">
+                  {intl.formatMessage({ id: 'engines.noneConfigured' })}
+                </option>
+              )}
+              {entries.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.form.displayName ||
+                    (entry.form.providerType === 'stockfish-uci'
+                      ? 'Stockfish'
+                      : 'Maia Chess')}
+                  {entry.baseline === null
+                    ? ` (${intl.formatMessage({ id: 'engines.newDraft' })})`
+                    : ''}
+                  {entry.dirty
+                    ? ` * ${intl.formatMessage({ id: 'engines.unsaved' })}`
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className={styles.engineCreateActions}>
+            <Button
+              className={styles.primaryButton!}
+              isDisabled={busy}
+              onPress={() =>
+                store.createEngineConfigurationDraft('stockfish-uci')
+              }
+            >
+              <Plus aria-hidden="true" size={16} />
+              <FormattedMessage id="engines.addStockfish" />
+            </Button>
+            <Button
+              className={styles.primaryButton!}
+              isDisabled={busy}
+              onPress={() => store.createEngineConfigurationDraft('maia-chess')}
+            >
+              <Plus aria-hidden="true" size={16} />
+              <FormattedMessage id="engines.addMaia" />
+            </Button>
+          </div>
+        </div>
+        {selected !== undefined && (
+          <>
+            <div className={styles.wideField}>
+              <label htmlFor="engine-executablePath">
+                <FormattedMessage id="engines.executable" />
+              </label>
+              <div className={styles.pathRow}>
+                <input
+                  {...fieldAttributes('executablePath')}
+                  value={selected.form.executablePath}
+                  readOnly
+                />
+                <Button
+                  className={styles.primaryButton!}
+                  isDisabled={busy}
+                  onPress={() => {
+                    const key = selected.key;
+                    void store.chooseEngineExecutable().then((path) => {
+                      if (path !== undefined)
+                        store.updateEngineConfigurationDraft(key, {
+                          executablePath: path,
+                        });
+                    });
+                  }}
+                >
+                  <FolderOpen aria-hidden="true" size={16} />
+                  <FormattedMessage id="engines.choose" />
+                </Button>
+              </div>
+              <EngineFieldError draft={selected} field="executablePath" />
+            </div>
+            <div className={styles.engineField}>
+              <label htmlFor="engine-displayName">
+                <FormattedMessage id="engines.displayName" />
+              </label>
+              <input
+                {...fieldAttributes('displayName')}
+                disabled={busy}
+                value={selected.form.displayName}
+                onChange={(event) => update('displayName', event.target.value)}
+              />
+              <EngineFieldError draft={selected} field="displayName" />
+            </div>
+            {selected.form.providerType === 'stockfish-uci' ? (
+              (['moveTimeMs', 'threads', 'hashMb'] as const).map((field) => (
+                <div className={styles.engineField} key={field}>
+                  <label htmlFor={`engine-${field}`}>
+                    <FormattedMessage
+                      id={
+                        field === 'moveTimeMs'
+                          ? 'engines.moveTime'
+                          : field === 'hashMb'
+                            ? 'engines.hash'
+                            : 'engines.threads'
+                      }
+                    />
+                  </label>
+                  <input
+                    {...fieldAttributes(field)}
+                    type="text"
+                    inputMode="numeric"
+                    disabled={busy}
+                    value={
+                      selected.form.providerType === 'stockfish-uci'
+                        ? selected.form[field]
+                        : ''
+                    }
+                    onChange={(event) => update(field, event.target.value)}
+                  />
+                  <EngineFieldError draft={selected} field={field} />
+                </div>
+              ))
+            ) : (
+              <div className={styles.wideField}>
+                <label htmlFor="engine-weightsPath">
+                  <FormattedMessage id="engines.maiaWeights" />
+                </label>
+                <div className={styles.pathRow}>
+                  <input
+                    {...fieldAttributes('weightsPath')}
+                    value={selected.form.weightsPath}
+                    readOnly
+                  />
+                  <Button
+                    className={styles.primaryButton!}
+                    isDisabled={busy}
+                    onPress={() => {
+                      const key = selected.key;
+                      void store.chooseEngineWeights().then((path) => {
+                        if (path !== undefined)
+                          store.updateEngineConfigurationDraft(key, {
+                            weightsPath: path,
+                          });
+                      });
+                    }}
+                  >
+                    <FolderOpen aria-hidden="true" size={16} />
+                    <FormattedMessage id="engines.choose" />
+                  </Button>
+                </div>
+                <EngineFieldError draft={selected} field="weightsPath" />
+              </div>
+            )}
+            {selected.issues
+              .filter((issue) => issue.field === undefined)
+              .map((issue, index) => (
+                <p key={index} className={styles.engineError} role="alert">
+                  <FormattedMessage
+                    id={issue.messageId}
+                    values={issue.values ?? {}}
+                  />
+                </p>
+              ))}
+            {configuredEngine?.restartRequired && (
+              <p className={styles.restartNotice} role="status">
+                <RefreshCw aria-hidden="true" size={15} />
+                <FormattedMessage id="engines.restartRequired" />
+              </p>
+            )}
+            <div className={styles.engineActions}>
+              {selected.dirty && (
+                <span className={styles.draftStatus} role="status">
+                  <FormattedMessage id="engines.unsaved" />
+                </span>
+              )}
+              {configuredEngine !== undefined && (
+                <Button
+                  className={styles.dangerButton!}
+                  isDisabled={busy}
+                  onPress={() =>
+                    void store.removeEngineProviderConfiguration(
+                      configuredEngine,
+                    )
+                  }
+                >
+                  <Trash2 aria-hidden="true" size={16} />
+                  <FormattedMessage id="engines.remove" />
+                </Button>
+              )}
+              <Button
+                className={styles.secondaryButton!}
+                isDisabled={busy || !selected.dirty}
+                onPress={() =>
+                  store.discardEngineConfigurationDraft(selected.key)
+                }
+              >
+                <Undo2 aria-hidden="true" size={16} />
+                <FormattedMessage id="engines.discard" />
+              </Button>
+              <Button
+                className={styles.primaryButton!}
+                isDisabled={busy || !selected.dirty}
+                onPress={() =>
+                  void store.saveEngineConfigurationDraft(selected.key)
+                }
+              >
+                {busy ? (
+                  <RefreshCw
+                    aria-hidden="true"
+                    className={styles.spinning}
+                    size={16}
+                  />
+                ) : (
+                  <CheckCircle2 aria-hidden="true" size={16} />
+                )}
+                <FormattedMessage id={busy ? 'state.saving' : 'engines.save'} />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
-function withMaiaWeights(
-  current: EngineProviderConfigurationInputDto,
-  weightsPath: string,
-): EngineProviderConfigurationInputDto {
-  if (current.providerType !== 'maia-chess') return current;
-  return {
-    ...current,
-    weightsPath,
-  };
-}
-
-function engineInstanceId(
-  displayName: string,
-  providerType: 'stockfish-uci' | 'maia-chess',
-  usedInstanceIds: readonly string[],
-): string {
-  const base =
-    displayName
-      .trim()
-      .replace(/ß/g, 'ss')
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') ||
-    (providerType === 'maia-chess' ? 'maia' : 'stockfish');
-  if (!usedInstanceIds.includes(base)) return base;
-  let suffix = 2;
-  while (usedInstanceIds.includes(`${base}-${suffix}`)) suffix += 1;
-  return `${base}-${suffix}`;
+function EngineFieldError({
+  draft,
+  field,
+}: {
+  readonly draft: EngineConfigurationDraft;
+  readonly field: EngineConfigurationField;
+}) {
+  const issues = draft.issues.filter((issue) => issue.field === field);
+  return issues.length === 0 ? null : (
+    <span
+      id={`engine-${field}-error`}
+      className={styles.fieldError}
+      role="alert"
+    >
+      {issues.map((issue, index) => (
+        <span key={index}>
+          <FormattedMessage id={issue.messageId} values={issue.values ?? {}} />
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function ReportCategoryList({

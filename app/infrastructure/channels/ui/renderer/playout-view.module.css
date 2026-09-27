@@ -25,6 +25,11 @@
 }
 .panelHeading h2 {
   font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.panelHeading > div {
+  min-width: 0;
+  flex: 1;
 }
 .eyebrow,
 .fieldLabel {
@@ -63,6 +68,7 @@
 
 .statusBadge {
   display: inline-flex;
+  flex-shrink: 0;
   min-height: 28px;
   align-items: center;
   gap: 6px;
@@ -157,6 +163,33 @@
 }
 .providerLine strong {
   color: #29313a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.gameFacts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 16px;
+  border-top: 1px solid #e0e4e9;
+  font-size: 12px;
+}
+.gameFacts div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.gameFacts dt {
+  color: #66717d;
+}
+.gameFacts dd {
+  margin: 0;
+  color: #29313a;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .runningActions,
@@ -170,27 +203,6 @@
 
 .reviewActions {
   background: #fffaf0;
-}
-.savedActions {
-  background: #edf7f1;
-}
-.savedHeading {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 10px;
-  color: #315f4d;
-}
-.savedHeading div {
-  display: grid;
-  gap: 3px;
-}
-.savedHeading strong {
-  font-size: 15px;
-}
-.savedHeading span {
-  color: #5f6f68;
-  font-size: 12px;
 }
 .reviewHeading {
   display: grid;
@@ -213,13 +225,18 @@
 .reviewActions input:not([type]) {
   width: 100%;
 }
-.reviewActions input {
+.reviewActions input,
+.reviewActions select {
+  width: 100%;
+  min-width: 0;
   min-height: 42px;
   box-sizing: border-box;
   padding: 0 11px;
   border: 1px solid #bcc5cf;
   border-radius: 5px;
   font: inherit;
+  background: #fff;
+  color: #29313a;
 }
 .contextChoice {
   grid-template-columns: auto 1fr;

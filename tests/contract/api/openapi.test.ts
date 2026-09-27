@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { FastifyInstance } from 'fastify';
-import { buildFixture } from './fixtures.ts';
+import { buildFixture, buildReadOnlyFixture } from './fixtures.ts';
 
 type ApiDocument = Extract<
   ReturnType<FastifyInstance['swagger']>,
@@ -13,8 +13,8 @@ type ApiResponse = NonNullable<
   >['responses']
 >[string];
 
-test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer security', async (t) => {
-  const { host } = await buildFixture(t);
+test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer security', async () => {
+  const { host } = await buildReadOnlyFixture();
   const api = host.swagger();
   assert.ok('openapi' in api);
   assert.equal(api.openapi, '3.0.3');
@@ -37,6 +37,8 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/events',
     '/inventory',
     '/inventory/analysis-records',
+    '/inventory/items/{itemId}',
+    '/inventory/items/{itemId}/deletion-preview',
     '/inventory/items/{itemId}/revision-edits',
     '/inventory/items/{itemId}/revision-edits/promote-analysis',
     '/inventory/items/{itemId}/revisions',
@@ -44,6 +46,7 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/inventory/revision-edits/preview',
     '/inventory/revision-edits/save',
     '/playout',
+    '/playout/cancel-completion',
     '/playout/complete',
     '/playout/moves',
     '/playout/pause',
@@ -56,11 +59,16 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/status',
     '/working-contexts',
     '/working-contexts/{contextId}',
+    '/working-contexts/{contextId}/deletion-preview',
     '/working-contexts/{contextId}/items/{itemId}',
+    '/working-contexts/{contextId}/items/{itemId}/removal-preview',
+    '/working-contexts/{contextId}/metadata',
     '/working-contexts/{contextId}/references',
-    '/working-contexts/{contextId}/resume',
+    '/workspace/resume',
     '/workspace/revision-impacts/{impactId}',
     '/workspace/revision-impacts/{impactId}/resolution',
+    '/workspace/scope',
+    '/workspace/startup',
   ]);
   const expected = [
     ['/status', 'get', 'GetSystemStatus'],
@@ -129,17 +137,43 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     ['/playout/pause', 'post', 'PausePlayout'],
     ['/playout/resume', 'post', 'ResumePlayout'],
     ['/playout/stop', 'post', 'StopPlayout'],
+    ['/playout/cancel-completion', 'post', 'CancelPlayoutCompletion'],
     ['/playout/complete', 'post', 'CompletePlayout'],
     ['/working-contexts', 'get', 'ListWorkingContexts'],
     ['/working-contexts', 'post', 'CreateWorkingContext'],
     ['/working-contexts/{contextId}', 'get', 'GetWorkingContextWorkspace'],
+    [
+      '/working-contexts/{contextId}/metadata',
+      'put',
+      'UpdateWorkingContextMetadata',
+    ],
     [
       '/working-contexts/{contextId}/items/{itemId}',
       'delete',
       'RemoveContextItem',
     ],
     ['/working-contexts/{contextId}/references', 'post', 'AddContextReference'],
-    ['/working-contexts/{contextId}/resume', 'put', 'SetWorkScopeResume'],
+    ['/workspace/resume', 'put', 'SetWorkScopeResume'],
+    ['/workspace/scope', 'get', 'GetWorkScopeWorkspace'],
+    ['/workspace/startup', 'get', 'GetStartupResume'],
+    ['/workspace/startup', 'put', 'SetStartupResume'],
+    [
+      '/working-contexts/{contextId}/items/{itemId}/removal-preview',
+      'get',
+      'PreviewContextItemRemoval',
+    ],
+    [
+      '/working-contexts/{contextId}/deletion-preview',
+      'get',
+      'PreviewWorkingContextDeletion',
+    ],
+    ['/working-contexts/{contextId}', 'delete', 'DeleteWorkingContext'],
+    [
+      '/inventory/items/{itemId}/deletion-preview',
+      'get',
+      'PreviewInventoryItemDeletion',
+    ],
+    ['/inventory/items/{itemId}', 'delete', 'DeleteInventoryItem'],
     [
       '/workspace/revision-impacts/{impactId}',
       'get',
@@ -170,8 +204,8 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
   });
 });
 
-test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union', async (t) => {
-  const { host } = await buildFixture(t);
+test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union', async () => {
+  const { host } = await buildReadOnlyFixture();
   const api = host.swagger();
   assert.ok('openapi' in api);
   for (const name of [
@@ -222,6 +256,14 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
     'AddContextReferenceResult',
     'RemoveContextItemResult',
     'WorkspaceItemRemovedEvent',
+    'ContextRemovalPreview',
+    'InventoryItemDeletionPreview',
+    'WorkScopeWorkspace',
+    'StartupResume',
+    'SetStartupResumeBody',
+    'RemoveContextItemBody',
+    'DeleteWorkingContextBody',
+    'DeleteInventoryItemBody',
   ]) {
     const schema:
       | NonNullable<NonNullable<ApiDocument['components']>['schemas']>[string]
@@ -240,6 +282,9 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
   );
   assert.deepEqual(api.components?.schemas?.HostEvent, {
     anyOf: [
+      { $ref: '#/components/schemas/InventoryItemDeletedEvent' },
+      { $ref: '#/components/schemas/WorkspaceContextDeletedEvent' },
+      { $ref: '#/components/schemas/WorkspaceStartupUpdatedEvent' },
       { $ref: '#/components/schemas/UiLanguageChangedEvent' },
       { $ref: '#/components/schemas/AnalysisScratchChangedEvent' },
       { $ref: '#/components/schemas/AnalysisContributionCreatedEvent' },
@@ -277,7 +322,7 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
 });
 
 test('the generated contract is deterministic and excludes runtime tokens and fingerprints', async (t) => {
-  const first = await buildFixture(t);
+  const first = await buildReadOnlyFixture();
   const second = await buildFixture(t, {
     security: { hostToken: 'another-test-token' },
     contractFingerprint: 'different-runtime-fingerprint',

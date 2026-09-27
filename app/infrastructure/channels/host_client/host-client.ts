@@ -18,6 +18,26 @@ import {
 } from './host-client-problem.ts';
 
 export type SystemStatusDto = components['schemas']['SystemStatus'];
+export type ContextRemovalPreviewDto =
+  components['schemas']['ContextRemovalPreview'];
+export type InventoryItemDeletionPreviewDto =
+  components['schemas']['InventoryItemDeletionPreview'];
+export type WorkScopeWorkspaceDto = components['schemas']['WorkScopeWorkspace'];
+export type StartupResumeDto = components['schemas']['StartupResume'];
+export type SetStartupResumeRequestDto =
+  components['schemas']['SetStartupResumeBody'];
+export type DeleteWorkingContextRequestDto =
+  components['schemas']['DeleteWorkingContextBody'];
+export type DeleteInventoryItemRequestDto =
+  components['schemas']['DeleteInventoryItemBody'];
+export type RemoveContextItemRequestDto =
+  components['schemas']['RemoveContextItemBody'];
+export type DeleteWorkingContextResultDto =
+  components['schemas']['DeleteWorkingContextResult'];
+export type DeleteInventoryItemResultDto =
+  components['schemas']['DeleteInventoryItemResult'];
+export type GetWorkScopeWorkspaceRequestDto =
+  components['schemas']['WorkScopeWorkspaceQuery'];
 export type UserPreferencesDto = components['schemas']['UserPreferences'];
 export type SetUiLanguageResultDto =
   components['schemas']['SetUiLanguageResult'];
@@ -103,6 +123,8 @@ export type WorkingContextWorkspaceDto =
   components['schemas']['WorkingContextWorkspace'];
 export type CreateWorkingContextRequestDto =
   components['schemas']['CreateWorkingContextBody'];
+export type UpdateWorkingContextMetadataRequestDto =
+  components['schemas']['UpdateWorkingContextMetadataBody'];
 export type CreateWorkingContextResultDto =
   components['schemas']['CreateWorkingContextResult'];
 export type AddContextReferenceRequestDto =
@@ -154,6 +176,123 @@ export class PlysmithHostClient {
       baseUrl: connection.endpoint,
       fetch: createHostFetch(connection, options),
     });
+  }
+
+  async getWorkScopeWorkspace(
+    request: GetWorkScopeWorkspaceRequestDto,
+  ): Promise<WorkScopeWorkspaceDto> {
+    try {
+      const result = await this.#client.GET('/workspace/scope', {
+        params: { query: request },
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getStartupResume(): Promise<StartupResumeDto> {
+    try {
+      const result = await this.#client.GET('/workspace/startup');
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async setStartupResume(
+    request: SetStartupResumeRequestDto,
+  ): Promise<StartupResumeDto> {
+    try {
+      const result = await this.#client.PUT('/workspace/startup', {
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewContextItemRemoval(
+    contextId: string,
+    itemId: string,
+  ): Promise<ContextRemovalPreviewDto> {
+    try {
+      const result = await this.#client.GET(
+        '/working-contexts/{contextId}/items/{itemId}/removal-preview',
+        { params: { path: { contextId, itemId } } },
+      );
+      return unwrap<ContextRemovalPreviewDto>(
+        result.data as unknown as ContextRemovalPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewWorkingContextDeletion(
+    contextId: string,
+  ): Promise<ContextRemovalPreviewDto> {
+    try {
+      const result = await this.#client.GET(
+        '/working-contexts/{contextId}/deletion-preview',
+        { params: { path: { contextId } } },
+      );
+      return unwrap<ContextRemovalPreviewDto>(
+        result.data as unknown as ContextRemovalPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async deleteWorkingContext(
+    contextId: string,
+    request: DeleteWorkingContextRequestDto,
+  ): Promise<DeleteWorkingContextResultDto> {
+    try {
+      const result = await this.#client.DELETE(
+        '/working-contexts/{contextId}',
+        { params: { path: { contextId } }, body: request },
+      );
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewInventoryItemDeletion(
+    itemId: string,
+  ): Promise<InventoryItemDeletionPreviewDto> {
+    try {
+      const result = await this.#client.GET(
+        '/inventory/items/{itemId}/deletion-preview',
+        { params: { path: { itemId } } },
+      );
+      return unwrap<InventoryItemDeletionPreviewDto>(
+        result.data as unknown as InventoryItemDeletionPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async deleteInventoryItem(
+    itemId: string,
+    request: DeleteInventoryItemRequestDto,
+  ): Promise<DeleteInventoryItemResultDto> {
+    try {
+      const result = await this.#client.DELETE('/inventory/items/{itemId}', {
+        params: { path: { itemId } },
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
   }
 
   async getSystemStatus(): Promise<SystemStatusDto> {
@@ -595,6 +734,27 @@ export class PlysmithHostClient {
     }
   }
 
+  async updateWorkingContextMetadata(
+    contextId: string,
+    request: UpdateWorkingContextMetadataRequestDto,
+  ): Promise<CreateWorkingContextResultDto> {
+    try {
+      const result = await this.#client.PUT(
+        '/working-contexts/{contextId}/metadata',
+        {
+          params: { path: { contextId } },
+          body: request,
+        },
+      );
+      return unwrap<CreateWorkingContextResultDto>(
+        result.data as unknown as CreateWorkingContextResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
   async createWorkingContext(
     request: CreateWorkingContextRequestDto,
   ): Promise<CreateWorkingContextResultDto> {
@@ -632,11 +792,12 @@ export class PlysmithHostClient {
   async removeContextItem(
     contextId: string,
     itemId: string,
+    request: RemoveContextItemRequestDto,
   ): Promise<RemoveContextItemResultDto> {
     try {
       const result = await this.#client.DELETE(
         '/working-contexts/{contextId}/items/{itemId}',
-        { params: { path: { contextId, itemId } } },
+        { params: { path: { contextId, itemId } }, body: request },
       );
       return unwrap<RemoveContextItemResultDto>(
         result.data as RemoveContextItemResultDto | undefined,
@@ -648,14 +809,12 @@ export class PlysmithHostClient {
   }
 
   async setWorkScopeResume(
-    contextId: string,
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto> {
     try {
-      const result = await this.#client.PUT(
-        '/working-contexts/{contextId}/resume',
-        { params: { path: { contextId } }, body: request },
-      );
+      const result = await this.#client.PUT('/workspace/resume', {
+        body: request,
+      });
       return unwrap<SetWorkScopeResumeResultDto>(
         result.data as unknown as SetWorkScopeResumeResultDto | undefined,
         result.error,
@@ -736,6 +895,12 @@ export class PlysmithHostClient {
 
   async stopPlayout(request: ExpectedPlayoutRequestDto): Promise<PlayoutDto> {
     return this.#playoutCommand('/playout/stop', request);
+  }
+
+  async cancelPlayoutCompletion(
+    request: ExpectedPlayoutRequestDto,
+  ): Promise<PlayoutDto> {
+    return this.#playoutCommand('/playout/cancel-completion', request);
   }
 
   async completePlayout(
@@ -831,7 +996,11 @@ export class PlysmithHostClient {
 
   async #playoutCommand(
     path:
-      '/playout/retry' | '/playout/pause' | '/playout/resume' | '/playout/stop',
+      | '/playout/retry'
+      | '/playout/pause'
+      | '/playout/resume'
+      | '/playout/stop'
+      | '/playout/cancel-completion',
     request: ExpectedPlayoutRequestDto,
   ): Promise<PlayoutDto> {
     try {

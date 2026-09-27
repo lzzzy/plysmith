@@ -27,6 +27,7 @@ import {
 } from '../../../../domain/identity/index.ts';
 import { readContextScratch } from './sqlite-analysis-scratch.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
+import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { assertNoOpenRevisionImpact } from './sqlite-revision-impact-state.ts';
 import {
@@ -46,6 +47,14 @@ export function createAnalysisNote(
     );
   }
   validateSourceScratch(database, request);
+  requireContextInventoryWorkAccess(
+    database,
+    request.sourceScope ??
+      (request.sourceContextId === undefined
+        ? { kind: 'free' }
+        : { kind: 'context', contextId: request.sourceContextId }),
+    request.origin.itemId,
+  );
   const positionId = resolveAnchorPosition(
     database,
     request.origin.itemId.value,
@@ -80,6 +89,16 @@ export function createAnalysisNote(
         );
   if (request.sourceContextId !== undefined) {
     deleteContextScratch(database, request.sourceContextId.value);
+  }
+  if (request.sourceScope?.kind === 'free') {
+    restoreContextResume(
+      database,
+      null,
+      request.origin,
+      positionId,
+      request.occurredAt,
+    );
+    deleteContextScratch(database, null);
   }
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   return Object.freeze({
@@ -338,15 +357,20 @@ function validateSourceScratch(
   database: Database.Database,
   request: PersistAnalysisNoteRequest,
 ): void {
-  if (request.sourceContextId === undefined) return;
+  if (
+    request.sourceContextId === undefined &&
+    request.sourceScope === undefined
+  )
+    return;
   if (
     request.expectedScratchId === undefined ||
     request.expectedScratchRevision === undefined
   ) {
     throw invalidAnalysisNote();
   }
-  requireActiveContext(database, request.sourceContextId);
-  const scratch = readContextScratch(database, request.sourceContextId);
+  if (request.sourceContextId !== undefined)
+    requireActiveContext(database, request.sourceContextId);
+  const scratch = readContextScratch(database, request.sourceContextId ?? null);
   if (scratch === undefined) throw analysisScratchNotFound();
   if (
     scratch.scratchId !== request.expectedScratchId ||
@@ -523,7 +547,7 @@ function noteMutationResult(
 
 function restoreContextResume(
   database: Database.Database,
-  contextId: WorkingContextId,
+  contextId: WorkingContextId | null,
   origin: PersistAnalysisNoteRequest['origin'],
   positionId: number,
   occurredAt: string,
@@ -532,9 +556,9 @@ function restoreContextResume(
     .prepare(
       `SELECT resume_version AS resumeVersion
          FROM workspace_analysis_resume
-        WHERE context_id = ? AND analysis_scratch_draft_id IS NOT NULL`,
+        WHERE context_id IS ? AND analysis_scratch_draft_id IS NOT NULL`,
     )
-    .get(contextId.value) as { resumeVersion: number } | undefined;
+    .get(contextId?.value ?? null) as { resumeVersion: number } | undefined;
   if (current === undefined) throw invalidAnalysisNote();
   const resumeVersion = current.resumeVersion + 1;
   const changed = database
@@ -543,7 +567,7 @@ function restoreContextResume(
           SET resume_version = ?, item_id = ?, revision_id = ?, anchor_id = ?,
               mode = 'analyze', current_position_id = ?,
               analysis_scratch_draft_id = NULL, updated_at_utc = ?
-        WHERE context_id = ? AND analysis_scratch_draft_id IS NOT NULL`,
+        WHERE context_id IS ? AND analysis_scratch_draft_id IS NOT NULL`,
     )
     .run(
       resumeVersion,
@@ -552,8 +576,10 @@ function restoreContextResume(
       origin.anchorId.value,
       positionId,
       occurredAt,
-      contextId.value,
+      contextId?.value ?? null,
     );
   if (changed.changes !== 1) throw invalidAnalysisNote();
-  return Object.freeze({ contextId, resumeVersion });
+  return contextId === null
+    ? undefined
+    : Object.freeze({ contextId, resumeVersion });
 }

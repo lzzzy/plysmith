@@ -1,9 +1,37 @@
 import { ApplicationProblem } from '../problems/application-problem.ts';
 
+export function invalidRemovalConfirmation(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.invalid_removal_confirmation',
+    'Removal requires the versions from its current preview.',
+  );
+}
+
+export function removalPreviewConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.removal_preview_conflict',
+    'The affected work has changed. Read the removal preview again.',
+  );
+}
+
+export function startupRevisionConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.startup_revision_conflict',
+    'The startup preference has changed. Read it again.',
+  );
+}
+
 export function invalidWorkingContext(): ApplicationProblem {
   return new ApplicationProblem(
     'workspace.invalid_context',
     'The working context input is invalid.',
+  );
+}
+
+export function workingContextVersionConflict(): ApplicationProblem {
+  return new ApplicationProblem(
+    'workspace.context_version_conflict',
+    'The working context has changed. Read the current context first.',
   );
 }
 

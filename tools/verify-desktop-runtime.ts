@@ -79,10 +79,30 @@ try {
     });
   });
 
+  const navigation = window.getByRole('navigation', { name: 'Plysmith' });
+  await navigation.waitFor();
+  if (process.argv.includes('--ux-followup')) {
+    await window
+      .getByText(
+        /nicht mehr vorhanden.*eigenen Arbeitsstand|no longer exists.*own work/i,
+      )
+      .waitFor();
+    const restoredBoard = window.getByRole('grid', {
+      name: /Schachbrett|Chess board/,
+    });
+    await restoredBoard.waitFor();
+    assert.equal(await restoredBoard.getByRole('gridcell').count(), 64);
+    await verifyAccessibility(window, 'startup-fallback-analysis');
+    await window.screenshot({
+      path: path.join(verificationDirectory, 'startup-fallback-analysis.png'),
+      fullPage: true,
+    });
+  }
+  await navigation.getByRole('button', { name: /Verwalten|Manage/ }).click();
   await Promise.race([
     Promise.any([
-      window.getByRole('heading', { name: 'Verwalten' }).waitFor(),
-      window.getByRole('heading', { name: 'Manage' }).waitFor(),
+      window.getByRole('heading', { name: 'Arbeitskontexte' }).waitFor(),
+      window.getByRole('heading', { name: 'Working contexts' }).waitFor(),
     ]),
     window
       .getByText(
@@ -137,6 +157,94 @@ try {
     fullPage: true,
   });
 
+  const inventoryRows = window
+    .locator('section')
+    .filter({ has: window.locator('#inventory-title') })
+    .locator('button[aria-pressed]');
+  let verifiedInventoryPreview = false;
+  if ((await inventoryRows.count()) > 0) {
+    const selectedRow = inventoryRows.first();
+    if ((await selectedRow.getAttribute('aria-pressed')) !== 'true') {
+      await selectedRow.click();
+    }
+    const preview = window.locator('[data-inventory-content-preview]');
+    await preview.waitFor();
+    await verifyInventoryPreviewSeparator(preview);
+    const previewBoard = preview.getByRole('grid');
+    await verifySquareBoard(previewBoard);
+    assert.equal(await previewBoard.getAttribute('aria-readonly'), 'true');
+    const rootSquares = await previewBoard
+      .getByRole('gridcell')
+      .allTextContents();
+    const next = preview.getByRole('button', {
+      name: /Einen Zug vor|Next move/,
+    });
+    if (await next.isEnabled()) {
+      await next.click();
+      assert.notDeepEqual(
+        await previewBoard.getByRole('gridcell').allTextContents(),
+        rootSquares,
+      );
+      await preview
+        .getByRole('button', { name: /Ausgangsstellung|Starting position/ })
+        .click();
+      assert.deepEqual(
+        await previewBoard.getByRole('gridcell').allTextContents(),
+        rootSquares,
+      );
+    }
+    await verifyAccessibility(window, 'inventory-details');
+    await window.evaluate(() => {
+      const browser = globalThis as unknown as {
+        scrollTo(x: number, y: number): void;
+      };
+      browser.scrollTo(0, 0);
+    });
+    await window.screenshot({
+      path: path.join(verificationDirectory, 'inventory-details.png'),
+      fullPage: true,
+    });
+    const originalViewport = await window.evaluate(() => {
+      const browser = globalThis as unknown as {
+        readonly innerWidth: number;
+        readonly innerHeight: number;
+      };
+      return { width: browser.innerWidth, height: browser.innerHeight };
+    });
+    await window.setViewportSize({ width: 390, height: 844 });
+    await verifyInventoryPreviewSeparator(preview);
+    await verifySquareBoard(previewBoard);
+    assert.equal(
+      await window.evaluate(() => {
+        const browser = globalThis as unknown as {
+          readonly document: {
+            readonly documentElement: { scrollWidth: number };
+          };
+          readonly innerWidth: number;
+        };
+        return (
+          browser.document.documentElement.scrollWidth <= browser.innerWidth
+        );
+      }),
+      true,
+    );
+    await verifyAccessibility(window, 'inventory-details-narrow');
+    await window.evaluate(() => {
+      const browser = globalThis as unknown as {
+        scrollTo(x: number, y: number): void;
+      };
+      browser.scrollTo(0, 0);
+    });
+    await window.screenshot({
+      path: path.join(verificationDirectory, 'inventory-details-narrow.png'),
+      fullPage: true,
+    });
+    await window.setViewportSize(originalViewport);
+    await selectedRow.click();
+    await window.locator('#work-scope:enabled').waitFor();
+    verifiedInventoryPreview = true;
+  }
+
   await activityNavigation
     .getByRole('button', { name: /Analysieren|Analyse/ })
     .click();
@@ -183,7 +291,24 @@ try {
     await activityNavigation.getByRole('button', { name: 'Live' }).isDisabled(),
     true,
   );
+  const continuationList = window.getByRole('list', {
+    name: /Fortsetzungszüge|Continuation moves/,
+  });
+  assert.equal(await continuationList.getAttribute('tabindex'), '0');
+  await continuationList.focus();
+  assert.equal(
+    await continuationList.evaluate(
+      (element) => element === element.ownerDocument.activeElement,
+    ),
+    true,
+  );
   await verifyAccessibility(window, 'analysis');
+  await window.evaluate(() => {
+    const browser = globalThis as unknown as {
+      scrollTo(x: number, y: number): void;
+    };
+    browser.scrollTo(0, 0);
+  });
   await window.screenshot({
     path: path.join(verificationDirectory, 'analysis.png'),
     fullPage: true,
@@ -225,7 +350,70 @@ try {
   assert.equal(await applyButton.isEnabled(), true);
   await selectedLabel.click();
   assert.equal(await applyButton.isDisabled(), true);
+  const engineName = window.getByLabel(/Anzeigename|Display name/);
+  if (await engineName.isVisible()) {
+    const originalName = await engineName.inputValue();
+    await engineName.fill(`${originalName} draft`);
+    const enginePicker = window.getByRole('combobox', {
+      name: /Konfiguration|Configuration/,
+    });
+    const selectedEngine = await enginePicker.inputValue();
+    const otherEngine = await enginePicker
+      .locator('option')
+      .evaluateAll(
+        (options, selected) =>
+          options
+            .find((option) => option.getAttribute('value') !== selected)
+            ?.getAttribute('value'),
+        selectedEngine,
+      );
+    if (otherEngine !== undefined && otherEngine !== null) {
+      await enginePicker.selectOption(otherEngine);
+      await enginePicker.selectOption(selectedEngine);
+      assert.equal(await engineName.inputValue(), `${originalName} draft`);
+    }
+    await activityNavigation
+      .getByRole('button', { name: /Analysieren|Analyse/ })
+      .click();
+    await activityRail
+      .getByRole('button', { name: /Einstellungen|Settings/ })
+      .click();
+    assert.equal(await engineName.inputValue(), `${originalName} draft`);
+    const discardEngine = window.getByRole('button', {
+      name: /Änderungen verwerfen|Discard changes/,
+    });
+    await discardEngine.click();
+    assert.equal(await engineName.inputValue(), originalName);
+    const threads = window.getByLabel('Threads', { exact: true });
+    if (await threads.isVisible()) {
+      const originalThreads = await threads.inputValue();
+      if (originalThreads === '0')
+        await engineName.fill(`${originalName} validation`);
+      await threads.fill('0');
+      await window
+        .getByRole('button', {
+          name: /Geänderte Konfiguration speichern|Save changed configuration/,
+        })
+        .click();
+      assert.equal(await threads.inputValue(), '0');
+      assert.equal(await threads.getAttribute('aria-invalid'), 'true');
+      assert.equal(
+        await window.locator('#engine-threads-error').isVisible(),
+        true,
+      );
+      await verifyAccessibility(window, 'settings-invalid-draft');
+      await discardEngine.click();
+      assert.equal(await threads.inputValue(), originalThreads);
+      assert.equal(await threads.getAttribute('aria-invalid'), null);
+    }
+  }
   await verifyAccessibility(window, 'settings');
+  await window.evaluate(() => {
+    const browser = globalThis as unknown as {
+      scrollTo(x: number, y: number): void;
+    };
+    browser.scrollTo(0, 0);
+  });
   await window.screenshot({
     path: path.join(verificationDirectory, 'settings.png'),
     fullPage: true,
@@ -263,11 +451,15 @@ try {
     JSON.stringify({
       title: await window.title(),
       locale: expectedLocale,
+      verifiedInventoryPreview,
       screenshots: [
         'manage.png',
         'analysis.png',
         'settings.png',
         'analysis-narrow.png',
+        ...(verifiedInventoryPreview
+          ? ['inventory-details.png', 'inventory-details-narrow.png']
+          : []),
       ].map((file) => path.join(verificationDirectory, file)),
     }),
   );
@@ -309,6 +501,32 @@ async function verifyAccessibility(page: Page, view: string): Promise<void> {
     accessibility.violations.map(({ id }) => id),
     [],
   );
+}
+
+async function verifyInventoryPreviewSeparator(
+  preview: Locator,
+): Promise<void> {
+  const borders = await preview.evaluate((element) => {
+    const metadataRow = element.previousElementSibling?.querySelector(
+      ':scope > div:last-child',
+    );
+    if (metadataRow === undefined || metadataRow === null) return undefined;
+    const browser = globalThis as unknown as {
+      getComputedStyle(element: unknown): {
+        readonly borderTopWidth: string;
+        readonly borderBottomWidth: string;
+      };
+    };
+    return {
+      metadataBottom: Number.parseFloat(
+        browser.getComputedStyle(metadataRow).borderBottomWidth,
+      ),
+      previewTop: Number.parseFloat(
+        browser.getComputedStyle(element).borderTopWidth,
+      ),
+    };
+  });
+  assert.deepEqual(borders, { metadataBottom: 1, previewTop: 0 });
 }
 
 async function verifySquareBoard(board: Locator): Promise<void> {

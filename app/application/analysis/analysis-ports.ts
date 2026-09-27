@@ -30,7 +30,6 @@ export interface ContextAnalysisReader {
     readonly revisionId: ItemRevisionId;
     readonly anchorId: AnchorId;
     readonly contextId?: WorkingContextId;
-    readonly readOnlyPreview: boolean;
   }): Promise<AnalysisRecordView | undefined>;
 }
 

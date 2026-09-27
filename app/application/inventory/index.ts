@@ -2,6 +2,7 @@ export {
   GetInventoryRevision,
   type GetInventoryRevisionUseCase,
 } from './get-inventory-revision.ts';
+export { inventoryDisplayNameConflict } from './inventory-problems.ts';
 export {
   GetPendingRevisionImpact,
   type GetPendingRevisionImpactUseCase,
@@ -36,6 +37,13 @@ export {
 } from './start-inventory-revision.ts';
 export type {
   AnalysisRecordCreated,
+  DeleteInventoryItemRequest,
+  DeleteInventoryItemResult,
+  InventoryItemDeleted,
+  InventoryItemDeletionPreview,
+  InventoryItemContextUsage,
+  InventoryItemUsageSummary,
+  PreviewInventoryItemDeletionRequest,
   InventoryRevisionContextImpactSummary,
   InventoryRevisionFollowingContextSummary,
   InventoryRevisionPreview,
@@ -62,6 +70,9 @@ export type {
 export type {
   InventoryChangedPublisher,
   InventoryClock,
+  InventoryLifecycleReader,
+  InventoryLifecycleWriter,
+  InventoryItemDeletedPublisher,
   InventoryReader,
   InventoryRevisionReader,
   InventoryRevisionSavedPublisher,
@@ -73,8 +84,18 @@ export {
   invalidRevisionImpactResolution,
   invalidInventorySearch,
   inventoryItemNotFound,
+  invalidInventoryDeletion,
+  inventoryDeletionConflict,
   inventoryPreviewConflict,
   inventoryRevisionConflict,
   revisionImpactConflict,
   revisionImpactNotFound,
 } from './inventory-problems.ts';
+export {
+  DeleteInventoryItem,
+  type DeleteInventoryItemUseCase,
+} from './delete-inventory-item.ts';
+export {
+  PreviewInventoryItemDeletion,
+  type PreviewInventoryItemDeletionUseCase,
+} from './preview-inventory-item-deletion.ts';

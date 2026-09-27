@@ -10,6 +10,46 @@ export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
 
 const catalog = {
+  'inventory.display_name_conflict': [
+    409,
+    'Inventory name conflict',
+    'An active analysis already uses this name. Choose another name.',
+  ],
+  'inventory.invalid_deletion': [
+    400,
+    'Invalid inventory deletion',
+    'The inventory deletion request is invalid.',
+  ],
+  'inventory.deletion_conflict': [
+    409,
+    'Inventory deletion conflict',
+    'Read the current deletion preview before deleting the item.',
+  ],
+  'workspace.invalid_removal_confirmation': [
+    400,
+    'Invalid removal confirmation',
+    'Removal requires the versions from its current preview.',
+  ],
+  'workspace.removal_preview_conflict': [
+    409,
+    'Removal preview conflict',
+    'Read the current removal preview before removing work.',
+  ],
+  'workspace.startup_revision_conflict': [
+    409,
+    'Startup revision conflict',
+    'Read the current startup preference before changing it.',
+  ],
+  'workspace.inventory_work_not_allowed': [
+    403,
+    'Inventory work not allowed',
+    'Assign the item to the selected working context before working with it.',
+  ],
+  'workspace.context_version_conflict': [
+    409,
+    'Working context version conflict',
+    'Read the current context before submitting another change.',
+  ],
   'request.invalid': [
     400,
     'Invalid request',
@@ -442,7 +482,13 @@ export function installProblemHandling(
         case 'analysis.position_interrupted':
         case 'inventory.revision_conflict':
         case 'inventory.preview_conflict':
+        case 'inventory.deletion_conflict':
+        case 'inventory.display_name_conflict':
+        case 'workspace.removal_preview_conflict':
+        case 'workspace.startup_revision_conflict':
         case 'workspace.impact_conflict':
+        case 'workspace.context_version_conflict':
+        case 'workspace.inventory_work_not_allowed':
           return replyWithProblem(
             request,
             reply,
@@ -460,6 +506,8 @@ export function installProblemHandling(
         case 'chess.invalid_line':
         case 'inventory.invalid_search':
         case 'inventory.invalid_revision':
+        case 'inventory.invalid_deletion':
+        case 'workspace.invalid_removal_confirmation':
         case 'workspace.invalid_context':
         case 'workspace.invalid_page':
         case 'workspace.invalid_resume':

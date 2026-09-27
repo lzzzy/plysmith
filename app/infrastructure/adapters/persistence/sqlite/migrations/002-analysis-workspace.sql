@@ -256,7 +256,8 @@ CREATE INDEX workspace_contribution_by_anchor
     ON workspace_contribution (anchor_id, scope_kind, context_id, contribution_type, updated_at_utc DESC, contribution_id DESC);
 
 CREATE TABLE workspace_management_resume (
-    context_id INTEGER PRIMARY KEY,
+    resume_id INTEGER PRIMARY KEY,
+    context_id INTEGER UNIQUE,
     resume_version INTEGER NOT NULL CHECK (resume_version > 0),
     presentation TEXT NOT NULL CHECK (presentation IN ('list', 'atlas')),
     selected_item_id INTEGER,
@@ -267,9 +268,13 @@ CREATE TABLE workspace_management_resume (
     FOREIGN KEY (selected_anchor_id) REFERENCES chess_anchor (anchor_id) ON DELETE RESTRICT
 ) STRICT;
 
+CREATE UNIQUE INDEX workspace_one_free_management_resume
+    ON workspace_management_resume ((1)) WHERE context_id IS NULL;
+
 CREATE TABLE analysis_scratch_draft (
     scratch_draft_id INTEGER PRIMARY KEY CHECK (scratch_draft_id > 0),
-    context_id INTEGER NOT NULL UNIQUE,
+    scratch_key TEXT NOT NULL CHECK (length(trim(scratch_key)) > 0),
+    context_id INTEGER UNIQUE,
     origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'position_setup', 'inventory_anchor')),
     origin_item_id INTEGER,
     origin_revision_id INTEGER,
@@ -294,6 +299,9 @@ CREATE TABLE analysis_scratch_draft (
     FOREIGN KEY (root_position_id) REFERENCES chess_position (position_id) ON DELETE RESTRICT
 ) STRICT;
 
+CREATE UNIQUE INDEX analysis_one_free_scratch
+    ON analysis_scratch_draft ((1)) WHERE context_id IS NULL;
+
 CREATE TABLE analysis_scratch_step (
     scratch_draft_id INTEGER NOT NULL,
     step_index INTEGER NOT NULL CHECK (step_index >= 0),
@@ -314,7 +322,8 @@ CREATE TABLE analysis_scratch_step (
 ) STRICT;
 
 CREATE TABLE workspace_analysis_resume (
-    context_id INTEGER PRIMARY KEY,
+    resume_id INTEGER PRIMARY KEY,
+    context_id INTEGER UNIQUE,
     resume_version INTEGER NOT NULL CHECK (resume_version > 0),
     item_id INTEGER,
     revision_id INTEGER,
@@ -332,6 +341,17 @@ CREATE TABLE workspace_analysis_resume (
     FOREIGN KEY (anchor_id) REFERENCES chess_anchor (anchor_id) ON DELETE RESTRICT,
     FOREIGN KEY (current_position_id) REFERENCES chess_position (position_id) ON DELETE RESTRICT,
     FOREIGN KEY (analysis_scratch_draft_id) REFERENCES analysis_scratch_draft (scratch_draft_id) ON DELETE RESTRICT
+) STRICT;
+
+CREATE UNIQUE INDEX workspace_one_free_analysis_resume
+    ON workspace_analysis_resume ((1)) WHERE context_id IS NULL;
+
+CREATE TABLE workspace_startup_resume (
+    startup_id INTEGER PRIMARY KEY CHECK (startup_id = 1),
+    context_id INTEGER,
+    area TEXT NOT NULL CHECK (area IN ('manage', 'analyze', 'playout', 'settings')),
+    startup_version INTEGER NOT NULL CHECK (startup_version > 0),
+    updated_at_utc TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at_utc) IS updated_at_utc)
 ) STRICT;
 
 CREATE TABLE search_document (

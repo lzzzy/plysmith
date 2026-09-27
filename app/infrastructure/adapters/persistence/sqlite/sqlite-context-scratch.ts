@@ -4,12 +4,12 @@ import { deleteUnreferencedPositions } from './sqlite-chess-state.ts';
 
 export function deleteContextScratch(
   database: Database.Database,
-  contextId: number,
+  contextId: number | null,
 ): void {
   const row = database
     .prepare(
       `SELECT scratch_draft_id AS scratchId
-         FROM analysis_scratch_draft WHERE context_id = ?`,
+         FROM analysis_scratch_draft WHERE context_id IS ?`,
     )
     .get(contextId) as { scratchId: number } | undefined;
   if (row === undefined) return;

@@ -39,6 +39,7 @@ import {
   requireActiveContext,
   resolveAnchorPosition,
 } from './sqlite-workspace.ts';
+import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 
 interface ScratchRow {
   readonly scratchId: number;
@@ -81,7 +82,7 @@ interface ScratchStepRow {
 
 export function readContextScratch(
   database: Database.Database,
-  contextId: WorkingContextId,
+  contextId: WorkingContextId | null,
 ): AnalysisScratch | undefined {
   const row = database
     .prepare(
@@ -103,9 +104,9 @@ export function readContextScratch(
               cut_anchor_id AS cutAnchorId, return_anchor_id AS returnAnchorId,
               candidate_display_name AS candidateDisplayName,
               candidate_summary_text AS candidateSummary
-         FROM analysis_scratch_draft WHERE context_id = ?`,
+         FROM analysis_scratch_draft WHERE context_id IS ?`,
     )
-    .get(contextId.value) as ScratchRow | undefined;
+    .get(contextId?.value ?? null) as ScratchRow | undefined;
   if (row === undefined) return undefined;
   const stepRows = database
     .prepare(
@@ -197,13 +198,26 @@ export function readContextScratch(
 
 export function replaceContextAnalysisScratch(
   database: Database.Database,
-  request: Parameters<
-    ContextAnalysisWriter['replaceContextAnalysisScratch']
-  >[0],
+  request: Omit<
+    Parameters<ContextAnalysisWriter['replaceContextAnalysisScratch']>[0],
+    'contextId'
+  > & { readonly contextId: WorkingContextId | null },
 ): Awaited<ReturnType<ContextAnalysisWriter['replaceContextAnalysisScratch']>> {
-  requireActiveContext(database, request.contextId);
+  if (request.contextId !== null)
+    requireActiveContext(database, request.contextId);
   const itemId = scratchItemId(request.scratch);
   if (itemId !== undefined) {
+    requireContextInventoryWorkAccess(
+      database,
+      request.contextId === null ||
+        (request.scratch.intent.kind === 'inventory_revision' &&
+          request.scratch.intent.mode === 'metadata')
+        ? { kind: 'free' }
+        : { kind: 'context', contextId: request.contextId },
+      localId('inventory-item', itemId),
+    );
+  }
+  if (itemId !== undefined && request.contextId !== null) {
     assertNoOpenRevisionImpact(database, request.contextId.value, itemId);
     requireEffectiveContextRevision(
       database,
@@ -211,7 +225,10 @@ export function replaceContextAnalysisScratch(
       request.scratch,
     );
   }
-  const current = currentScratchIdentity(database, request.contextId.value);
+  const current = currentScratchIdentity(
+    database,
+    request.contextId?.value ?? null,
+  );
   assertExpectedScratch(
     request.expectedScratchId,
     request.expectedScratchRevision,
@@ -250,7 +267,7 @@ export function replaceContextAnalysisScratch(
       )
       .run(
         request.scratch.scratchId,
-        request.contextId.value,
+        request.contextId?.value ?? null,
         request.scratch.origin.kind,
         request.scratch.origin.kind === 'inventory_anchor'
           ? request.scratch.origin.itemId.value
@@ -306,18 +323,19 @@ export function replaceContextAnalysisScratch(
   ).value;
   const resumeVersion = upsertScratchResume(
     database,
-    request.contextId.value,
+    request.contextId?.value ?? null,
     scratchId,
     request.scratch.origin,
     request.scratch.intent,
     currentPositionId,
     request.occurredAt,
   );
-  releaseObsoleteResumeImpact(
-    database,
-    request.contextId.value,
-    'analysis_resume',
-  );
+  if (request.contextId !== null)
+    releaseObsoleteResumeImpact(
+      database,
+      request.contextId.value,
+      'analysis_resume',
+    );
   deleteUnreferencedPositions(database, replacedPositionIds);
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   const scratch = readContextScratch(database, request.contextId);
@@ -327,12 +345,17 @@ export function replaceContextAnalysisScratch(
 
 export function discardContextAnalysisScratch(
   database: Database.Database,
-  request: Parameters<
-    ContextAnalysisWriter['discardContextAnalysisScratch']
-  >[0],
+  request: Omit<
+    Parameters<ContextAnalysisWriter['discardContextAnalysisScratch']>[0],
+    'contextId'
+  > & { readonly contextId: WorkingContextId | null },
 ): Awaited<ReturnType<ContextAnalysisWriter['discardContextAnalysisScratch']>> {
-  requireActiveContext(database, request.contextId);
-  const current = currentScratchIdentity(database, request.contextId.value);
+  if (request.contextId !== null)
+    requireActiveContext(database, request.contextId);
+  const current = currentScratchIdentity(
+    database,
+    request.contextId?.value ?? null,
+  );
   if (current === undefined) throw analysisScratchNotFound();
   assertExpectedScratch(
     request.expectedScratchId,
@@ -341,11 +364,11 @@ export function discardContextAnalysisScratch(
   );
   const resumeVersion = clearScratchResume(
     database,
-    request.contextId.value,
+    request.contextId?.value ?? null,
     current,
     request.occurredAt,
   );
-  deleteContextScratch(database, request.contextId.value);
+  deleteContextScratch(database, request.contextId?.value ?? null);
   return Object.freeze({
     dataRevision: incrementDataRevision(database, request.occurredAt),
     resumeVersion,
@@ -385,7 +408,7 @@ function writeScratchSteps(
 
 function upsertScratchResume(
   database: Database.Database,
-  contextId: number,
+  contextId: number | null,
   scratchId: number,
   origin: AnalysisScratchOrigin,
   intent: AnalysisScratchIntent,
@@ -395,7 +418,7 @@ function upsertScratchResume(
   const current = database
     .prepare(
       `SELECT resume_version AS resumeVersion
-         FROM workspace_analysis_resume WHERE context_id = ?`,
+         FROM workspace_analysis_resume WHERE context_id IS ?`,
     )
     .get(contextId) as { resumeVersion: number } | undefined;
   const resumeVersion = (current?.resumeVersion ?? 0) + 1;
@@ -405,7 +428,7 @@ function upsertScratchResume(
          (context_id, resume_version, item_id, revision_id, anchor_id,
           mode, current_position_id, analysis_scratch_draft_id, updated_at_utc)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(context_id) DO UPDATE SET
+       ON CONFLICT DO UPDATE SET
          resume_version = excluded.resume_version,
          item_id = excluded.item_id,
          revision_id = excluded.revision_id,
@@ -468,6 +491,11 @@ function requireEffectiveContextRevision(
   scratch: AnalysisScratch,
 ): void {
   if (scratch.origin.kind !== 'inventory_anchor') return;
+  if (
+    scratch.intent.kind === 'inventory_revision' &&
+    scratch.intent.mode === 'metadata'
+  )
+    return;
   const row = database
     .prepare(
       `SELECT coalesce(member.pinned_revision_id, item.current_revision_id)
@@ -503,7 +531,7 @@ function scratchIntentValues(
 
 function currentScratchIdentity(
   database: Database.Database,
-  contextId: number,
+  contextId: number | null,
 ):
   | {
       readonly scratchId: number;
@@ -526,7 +554,7 @@ function currentScratchIdentity(
               origin_revision_id AS originRevisionId,
               origin_anchor_id AS originAnchorId,
               return_anchor_id AS returnAnchorId
-         FROM analysis_scratch_draft WHERE context_id = ?`,
+         FROM analysis_scratch_draft WHERE context_id IS ?`,
     )
     .get(contextId) as
     | {
@@ -544,10 +572,24 @@ function currentScratchIdentity(
 
 function clearScratchResume(
   database: Database.Database,
-  contextId: number,
+  contextId: number | null,
   scratch: NonNullable<ReturnType<typeof currentScratchIdentity>>,
   occurredAt: string,
 ): number {
+  const member =
+    scratch.originItemId === null
+      ? undefined
+      : contextId === null
+        ? database
+            .prepare(
+              "SELECT 1 FROM inventory_item WHERE item_id = ? AND lifecycle = 'active'",
+            )
+            .get(scratch.originItemId)
+        : database
+            .prepare(
+              'SELECT 1 FROM workspace_context_item WHERE context_id = ? AND item_id = ?',
+            )
+            .get(contextId, scratch.originItemId);
   const returnPositionId =
     scratch.originItemId === null ||
     scratch.originRevisionId === null ||
@@ -567,12 +609,14 @@ function clearScratchResume(
               item_id = ?, revision_id = ?, anchor_id = ?,
               mode = 'analyze', current_position_id = ?,
               analysis_scratch_draft_id = NULL, updated_at_utc = ?
-        WHERE context_id = ? AND analysis_scratch_draft_id = ?`,
+        WHERE context_id IS ? AND analysis_scratch_draft_id = ?`,
     )
     .run(
-      scratch.originItemId,
-      scratch.originRevisionId,
-      scratch.returnAnchorId ?? scratch.originAnchorId,
+      member === undefined ? null : scratch.originItemId,
+      member === undefined ? null : scratch.originRevisionId,
+      member === undefined
+        ? null
+        : (scratch.returnAnchorId ?? scratch.originAnchorId),
       returnPositionId,
       occurredAt,
       contextId,
@@ -582,7 +626,7 @@ function clearScratchResume(
   const resume = database
     .prepare(
       `SELECT resume_version AS resumeVersion
-         FROM workspace_analysis_resume WHERE context_id = ?`,
+         FROM workspace_analysis_resume WHERE context_id IS ?`,
     )
     .get(contextId) as { readonly resumeVersion: number } | undefined;
   if (resume === undefined) throw invalidAnalysisUpdate();

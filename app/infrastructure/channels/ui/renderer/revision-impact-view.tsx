@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
   Check,
   Copy,
+  RefreshCw,
   Trash2,
   X,
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import type {
   RevisionImpactDetails,
 } from './plysmith-application-store.ts';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
+import { LossSummary } from './loss-summary.tsx';
 import styles from './revision-impact-view.module.css';
 
 export function RevisionImpactView({
@@ -32,6 +34,7 @@ export function RevisionImpactView({
       className={styles.overlay!}
       isOpen
       isDismissable={!isBusy}
+      isKeyboardDismissDisabled={isBusy}
       onOpenChange={(open) => {
         if (!open) store.closeRevisionImpact();
       }}
@@ -93,6 +96,23 @@ export function RevisionImpactResolutionPanel({
 }) {
   const intl = useIntl();
   const [copyName, setCopyName] = useState('');
+  const [choice, setChoice] = useState<{
+    readonly impactId: string;
+    readonly impactVersion: number;
+    readonly dataRevision: number;
+    readonly kind: 'use_target' | 'remove_from_context';
+  }>();
+  const [submitting, setSubmitting] = useState(false);
+  const [failedDetails, setFailedDetails] = useState<RevisionImpactDetails>();
+  const needsReload = failedDetails === details;
+  const pending = useRef(false);
+  const busy = isBusy || submitting;
+  const activeChoice =
+    choice?.impactId === details.impact.impactId &&
+    choice.impactVersion === details.impact.impactVersion &&
+    choice.dataRevision === details.impact.dataRevision
+      ? choice.kind
+      : undefined;
 
   useEffect(() => {
     setCopyName(
@@ -103,21 +123,53 @@ export function RevisionImpactResolutionPanel({
     );
   }, [details.impact.impactId, details.impact.impactVersion, intl]);
 
-  const resolve = (
+  const resolve = async (
     resolution:
       | { readonly kind: 'use_target' }
       | { readonly kind: 'keep_copy'; readonly displayName: string }
       | { readonly kind: 'remove_from_context' },
-  ) =>
-    store.resolveRevisionImpact({
-      expectedImpactVersion: details.impact.impactVersion,
-      resolution,
+  ) => {
+    if (busy || pending.current || needsReload) return;
+    const current = store.getSnapshot();
+    if (
+      current.phase !== 'ready' ||
+      current.revisionImpact?.impact.impactId !== details.impact.impactId ||
+      current.revisionImpact.impact.impactVersion !==
+        details.impact.impactVersion ||
+      current.revisionImpact.impact.dataRevision !== details.impact.dataRevision
+    )
+      return;
+    pending.current = true;
+    setSubmitting(true);
+    setFailedDetails(undefined);
+    try {
+      const resolved = await store.resolveRevisionImpact({
+        expectedImpactVersion: details.impact.impactVersion,
+        expectedDataRevision: details.impact.dataRevision,
+        resolution,
+      });
+      if (!resolved) setFailedDetails(details);
+    } finally {
+      pending.current = false;
+      setSubmitting(false);
+      setChoice(undefined);
+    }
+  };
+
+  function choose(kind: 'use_target' | 'remove_from_context') {
+    if (busy || needsReload) return;
+    setChoice({
+      impactId: details.impact.impactId,
+      impactVersion: details.impact.impactVersion,
+      dataRevision: details.impact.dataRevision,
+      kind,
     });
+  }
 
   async function keepCopy(event: FormEvent) {
     event.preventDefault();
     const displayName = copyName.trim();
-    if (displayName === '') return;
+    if (displayName === '' || busy || activeChoice !== undefined) return;
     await resolve({ kind: 'keep_copy', displayName });
   }
 
@@ -163,13 +215,14 @@ export function RevisionImpactResolutionPanel({
               <FormattedMessage id="revisionImpact.useTarget" />
             </strong>
             <p>
-              <FormattedMessage id="revisionImpact.useTargetDetail" />
+              <FormattedMessage id="revisionImpact.useTargetConsequences" />
             </p>
+            <LossSummary summary={details.impact.useTargetLoss} />
           </div>
           <Button
             className={styles.primaryButton!}
-            onPress={() => void resolve({ kind: 'use_target' })}
-            isDisabled={isBusy}
+            onPress={() => choose('use_target')}
+            isDisabled={busy || needsReload || activeChoice !== undefined}
           >
             <Check aria-hidden="true" size={16} />
             <FormattedMessage id="revisionImpact.useTargetAction" />
@@ -182,8 +235,9 @@ export function RevisionImpactResolutionPanel({
               <FormattedMessage id="revisionImpact.keepCopy" />
             </strong>
             <p>
-              <FormattedMessage id="revisionImpact.keepCopyDetail" />
+              <FormattedMessage id="revisionImpact.keepCopyConsequences" />
             </p>
+            <LossSummary summary={details.impact.removeFromContextLoss} />
             <label className={styles.copyName}>
               <span>
                 <FormattedMessage id="revisionImpact.copyNameLabel" />
@@ -191,7 +245,7 @@ export function RevisionImpactResolutionPanel({
               <input
                 value={copyName}
                 onChange={(event) => setCopyName(event.target.value)}
-                disabled={isBusy}
+                disabled={busy || needsReload || activeChoice !== undefined}
                 maxLength={200}
               />
             </label>
@@ -199,7 +253,12 @@ export function RevisionImpactResolutionPanel({
           <button
             type="submit"
             className={styles.primaryButton}
-            disabled={isBusy || copyName.trim() === ''}
+            disabled={
+              busy ||
+              needsReload ||
+              activeChoice !== undefined ||
+              copyName.trim() === ''
+            }
           >
             <Copy aria-hidden="true" size={16} />
             <FormattedMessage id="revisionImpact.keepCopyAction" />
@@ -212,18 +271,74 @@ export function RevisionImpactResolutionPanel({
               <FormattedMessage id="revisionImpact.remove" />
             </strong>
             <p>
-              <FormattedMessage id="revisionImpact.removeDetail" />
+              <FormattedMessage id="revisionImpact.removeConsequences" />
             </p>
+            <LossSummary summary={details.impact.removeFromContextLoss} />
           </div>
           <Button
             className={styles.removeButton!}
-            onPress={() => void resolve({ kind: 'remove_from_context' })}
-            isDisabled={isBusy}
+            onPress={() => choose('remove_from_context')}
+            isDisabled={busy || needsReload || activeChoice !== undefined}
           >
             <Trash2 aria-hidden="true" size={16} />
             <FormattedMessage id="revisionImpact.removeAction" />
           </Button>
         </div>
+        {needsReload && (
+          <div>
+            <p role="alert">
+              <FormattedMessage id="revisionImpact.resolveFailed" />
+            </p>
+            <Button
+              className={styles.secondaryButton!}
+              isDisabled={busy}
+              onPress={() =>
+                void store.openRevisionImpact(details.impact.impactId)
+              }
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+              <FormattedMessage id="destructive.retry" />
+            </Button>
+          </div>
+        )}
+        {activeChoice !== undefined && (
+          <section
+            className={styles.confirmation}
+            aria-labelledby="revision-confirmation-title"
+          >
+            <strong id="revision-confirmation-title">
+              <FormattedMessage
+                id={
+                  activeChoice === 'use_target'
+                    ? 'revisionImpact.useTarget'
+                    : 'revisionImpact.remove'
+                }
+              />
+            </strong>
+            <p>
+              <FormattedMessage id="revisionImpact.confirmDetail" />
+            </p>
+            <div className={styles.confirmationActions}>
+              <Button
+                className={styles.secondaryButton!}
+                autoFocus
+                isDisabled={busy}
+                onPress={() => setChoice(undefined)}
+              >
+                <X aria-hidden="true" size={16} />
+                <FormattedMessage id="action.cancel" />
+              </Button>
+              <Button
+                className={styles.removeButton!}
+                isDisabled={busy}
+                onPress={() => void resolve({ kind: activeChoice })}
+              >
+                <Check aria-hidden="true" size={16} />
+                <FormattedMessage id="revisionImpact.confirm" />
+              </Button>
+            </div>
+          </section>
+        )}
       </section>
     </div>
   );

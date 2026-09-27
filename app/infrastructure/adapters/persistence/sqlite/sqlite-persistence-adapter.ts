@@ -3,6 +3,7 @@ import { dirname, isAbsolute } from 'node:path';
 import Database from 'better-sqlite3';
 import type {
   AnalysisRecordWriter,
+  FreeAnalysisPersistence,
   AnalysisNoteWriter,
   ContextAnalysisReader,
   ContextAnalysisWriter,
@@ -14,6 +15,8 @@ import type {
 } from '../../../../application/analysis/index.ts';
 import type {
   InventoryReader,
+  InventoryLifecycleReader,
+  InventoryLifecycleWriter,
   InventoryRevisionReader,
   InventoryRevisionWriter,
   SearchInventoryRequest,
@@ -43,9 +46,16 @@ import type {
   SetWorkScopeResumeRequest,
   WorkingContextReader,
   WorkingContextWriter,
+  StartupResumePort,
+  WorkScopeWorkspaceReader,
+  ContextRemovalPreviewReader,
+  WorkingContextDeletionWriter,
 } from '../../../../application/workspace/index.ts';
 import type { AnalysisScratch } from '../../../../domain/analysis/index.ts';
-import type { WorkingContextId } from '../../../../domain/identity/index.ts';
+import type {
+  PlayoutDraftId,
+  WorkingContextId,
+} from '../../../../domain/identity/index.ts';
 import type { WorkingContextDraft } from '../../../../domain/workspace/index.ts';
 import { migrateStore } from './migrate.ts';
 import {
@@ -62,13 +72,21 @@ import {
   discardContextAnalysisScratch as discardAnalysisScratch,
   replaceContextAnalysisScratch as replaceAnalysisScratch,
 } from './sqlite-analysis-scratch.ts';
-import { readContextAnalysisWorkspace } from './sqlite-context-analysis.ts';
+import {
+  readContextAnalysisWorkspace,
+  readFreeAnalysisWorkspace,
+} from './sqlite-context-analysis.ts';
+import {
+  previewInventoryItemDeletion,
+  deleteInventoryItem as writeDeleteInventoryItem,
+} from './sqlite-inventory-lifecycle.ts';
 import { searchInventory as searchInventoryRows } from './sqlite-inventory.ts';
 import {
   createPlayout as writePlayout,
   discardPlayout as writeDiscardPlayout,
   readPlayout as readPlayoutRow,
   replacePlayout as writeReplacePlayout,
+  removeContextPlayoutDraft,
 } from './sqlite-playout.ts';
 import {
   completePlayout as writeCompletePlayout,
@@ -88,10 +106,17 @@ import { SqlitePersistenceProblem } from './sqlite-persistence-problem.ts';
 import {
   addContextReference as writeContextReference,
   createWorkingContext as writeWorkingContext,
+  updateWorkingContextMetadata as writeWorkingContextMetadata,
   listWorkingContexts as listContextRows,
   readWorkingContextWorkspace,
   removeContextItem as writeRemoveContextItem,
   setWorkScopeResume as writeWorkScopeResume,
+  readWorkScopeWorkspace,
+  readStartupResume,
+  setStartupResume as writeStartupResume,
+  previewContextItemRemoval,
+  previewWorkingContextDeletion,
+  deleteWorkingContext as writeDeleteWorkingContext,
 } from './sqlite-workspace.ts';
 
 const readPreferencesSql = `
@@ -114,6 +139,13 @@ export class SqlitePersistenceAdapter
     PreferencesUnitOfWork,
     StoreStatusReader,
     InventoryReader,
+    InventoryLifecycleReader,
+    InventoryLifecycleWriter,
+    StartupResumePort,
+    WorkScopeWorkspaceReader,
+    ContextRemovalPreviewReader,
+    WorkingContextDeletionWriter,
+    FreeAnalysisPersistence,
     InventoryRevisionReader,
     InventoryRevisionWriter,
     WorkingContextReader,
@@ -160,6 +192,113 @@ export class SqlitePersistenceAdapter
 
   async readUserPreferences(): Promise<UserPreferences> {
     return this.#readSnapshot((reader) => readPreferences(reader));
+  }
+
+  async previewInventoryItemDeletion(
+    request: Parameters<
+      InventoryLifecycleReader['previewInventoryItemDeletion']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      previewInventoryItemDeletion(reader, request),
+    );
+  }
+
+  deleteInventoryItem(
+    request: Parameters<InventoryLifecycleWriter['deleteInventoryItem']>[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeDeleteInventoryItem(this.#writer, request, occurredAt),
+    );
+  }
+
+  async readWorkScopeWorkspace(
+    scope: Parameters<WorkScopeWorkspaceReader['readWorkScopeWorkspace']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      readWorkScopeWorkspace(reader, scope),
+    );
+  }
+
+  async readStartupResume() {
+    return this.#readSnapshot(readStartupResume);
+  }
+
+  setStartupResume(
+    request: Parameters<StartupResumePort['setStartupResume']>[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeStartupResume(this.#writer, request, occurredAt),
+    );
+  }
+
+  async previewContextItemRemoval(
+    request: Parameters<
+      ContextRemovalPreviewReader['previewContextItemRemoval']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      previewContextItemRemoval(reader, request),
+    );
+  }
+
+  async previewWorkingContextDeletion(
+    request: Parameters<
+      ContextRemovalPreviewReader['previewWorkingContextDeletion']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      previewWorkingContextDeletion(reader, request),
+    );
+  }
+
+  deleteWorkingContext(
+    request: Parameters<
+      WorkingContextDeletionWriter['deleteWorkingContext']
+    >[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() => {
+      let removedPlayoutDraftId: PlayoutDraftId | null = null;
+      const result = writeDeleteWorkingContext(
+        this.#writer,
+        request,
+        occurredAt,
+        (contextId) => {
+          removedPlayoutDraftId =
+            readPlayoutRow(this.#writer, { kind: 'context', contextId })?.draft
+              .draftId ?? null;
+          removeContextPlayoutDraft(this.#writer, contextId.value);
+        },
+      );
+      return { ...result, removedPlayoutDraftId };
+    });
+  }
+
+  async readFreeAnalysisWorkspace() {
+    return this.#readSnapshot(readFreeAnalysisWorkspace);
+  }
+
+  replaceFreeAnalysisScratch(
+    request: Parameters<
+      FreeAnalysisPersistence['replaceFreeAnalysisScratch']
+    >[0],
+  ) {
+    return this.#enqueueWrite(() =>
+      replaceAnalysisScratch(this.#writer, { ...request, contextId: null }),
+    );
+  }
+
+  discardFreeAnalysisScratch(
+    request: Parameters<
+      FreeAnalysisPersistence['discardFreeAnalysisScratch']
+    >[0],
+  ) {
+    return this.#enqueueWrite(() =>
+      discardAnalysisScratch(this.#writer, { ...request, contextId: null }),
+    );
   }
 
   async readStoreStatus(): Promise<StoreStatus> {
@@ -254,6 +393,17 @@ export class SqlitePersistenceAdapter
   ) {
     return this.#readSnapshot((reader) =>
       readPlayoutCompletionRow(reader, request),
+    );
+  }
+
+  updateWorkingContextMetadata(
+    request: Parameters<
+      WorkingContextWriter['updateWorkingContextMetadata']
+    >[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeWorkingContextMetadata(this.#writer, request, occurredAt),
     );
   }
 

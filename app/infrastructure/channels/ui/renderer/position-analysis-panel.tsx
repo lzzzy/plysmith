@@ -33,11 +33,13 @@ type LaneState<T> =
 
 export function PositionAnalysisPanel({
   focus,
+  work,
   locale,
   providers,
   store,
 }: {
   readonly focus: AnalysisFocus;
+  readonly work: AnalyzePositionRequestDto['work'];
   readonly locale: UiLocale;
   readonly providers: ListPositionAnalysisProvidersResultDto;
   readonly store: PlysmithApplicationStore;
@@ -73,11 +75,11 @@ export function PositionAnalysisPanel({
   const [sortBy, setSortBy] = useState('stockfish');
   const [retry, setRetry] = useState(0);
   const initializedHumanSelection = useRef(humanProviders.length > 0);
-  const focusRef = useRef(focus);
+  const requestRef = useRef({ focus, work });
 
   useEffect(() => {
-    focusRef.current = focus;
-  }, [focus]);
+    requestRef.current = { focus, work };
+  }, [focus, work]);
 
   useEffect(() => {
     setObjectiveProviderId((current) =>
@@ -118,8 +120,9 @@ export function PositionAnalysisPanel({
     sortBy === 'stockfish' || selectedHumanProviderIds.has(sortBy)
       ? sortBy
       : 'stockfish';
-  const objectiveKey = `${focus.focusKey}|${objectiveProvider?.instanceId ?? '-'}|${budget}|${retry}`;
-  const humanKey = `${focus.focusKey}|${selectedHumanKey}|${retry}`;
+  const workKey = JSON.stringify(work);
+  const objectiveKey = `${workKey}|${focus.focusKey}|${objectiveProvider?.instanceId ?? '-'}|${budget}|${retry}`;
+  const humanKey = `${workKey}|${focus.focusKey}|${selectedHumanKey}|${retry}`;
   const extraKey = `${objectiveKey}|${humanKey}`;
   const [objectiveState, setObjectiveState] = useState<{
     readonly key: string;
@@ -144,7 +147,7 @@ export function PositionAnalysisPanel({
         laneId: 'objective',
         providerInstanceId: objectiveProviderId,
         candidateCount: 5,
-        focus: focusRef.current,
+        ...requestRef.current,
         mode: { kind: 'objective', budget },
       })
       .then((result) => {
@@ -179,7 +182,7 @@ export function PositionAnalysisPanel({
           laneId: `human-${providerId}`,
           providerInstanceId: providerId,
           candidateCount: 5,
-          focus: focusRef.current,
+          ...requestRef.current,
           mode: { kind: 'human_policy' },
         })
         .then((result) => {
@@ -254,7 +257,7 @@ export function PositionAnalysisPanel({
           laneId: 'objective',
           providerInstanceId: objectiveProviderId,
           candidateCount: batch.length,
-          focus: focusRef.current,
+          ...requestRef.current,
           mode: { kind: 'objective', budget, rootMoves: batch },
         });
         if (!current) return;
@@ -422,6 +425,7 @@ export function PositionAnalysisPanel({
       <ol
         className={styles.groups}
         aria-label={intl.formatMessage({ id: 'positionAnalysis.moves' })}
+        tabIndex={0}
       >
         {groups.map((group) => (
           <li key={group.key} className={styles.group}>

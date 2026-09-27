@@ -155,7 +155,7 @@ export function promoteAnalysisExplorationToRevision(input: {
   const { scratch, plan } = input;
   if (
     scratch.intent.kind !== 'exploration' ||
-    plan.mode !== 'truncate_after' ||
+    (plan.mode !== 'truncate_after' && plan.mode !== 'extend') ||
     scratch.origin.kind !== 'inventory_anchor' ||
     scratch.origin.itemId.value !== plan.intent.itemId.value ||
     scratch.origin.revisionId.value !== plan.intent.baseRevisionId.value ||

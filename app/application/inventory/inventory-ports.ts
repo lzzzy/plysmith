@@ -9,6 +9,11 @@ import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { AnalysisRecordView } from '../analysis/analysis-models.ts';
 import type {
   AnalysisRecordCreated,
+  DeleteInventoryItemRequest,
+  DeleteInventoryItemResult,
+  InventoryItemDeleted,
+  InventoryItemDeletionPreview,
+  PreviewInventoryItemDeletionRequest,
   InventoryRevisionPreview,
   InventoryRevisionSaved,
   ListInventoryRevisionsResult,
@@ -80,4 +85,21 @@ export interface InventoryRevisionWriter {
 
 export interface InventoryClock {
   now(): string;
+}
+
+export interface InventoryLifecycleReader {
+  previewInventoryItemDeletion(
+    request: PreviewInventoryItemDeletionRequest,
+  ): Promise<InventoryItemDeletionPreview | undefined>;
+}
+
+export interface InventoryLifecycleWriter {
+  deleteInventoryItem(
+    request: DeleteInventoryItemRequest,
+    occurredAt: string,
+  ): Promise<DeleteInventoryItemResult>;
+}
+
+export interface InventoryItemDeletedPublisher {
+  publish(event: InventoryItemDeleted): void;
 }

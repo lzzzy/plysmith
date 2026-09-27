@@ -4,6 +4,7 @@ import type {
   AddContextReferenceRequest,
   AddContextReferenceResult,
   CreateWorkingContextResult,
+  UpdateWorkingContextMetadataRequest,
   RemoveContextItemRequest,
   RemoveContextItemResult,
   SetWorkScopeResumeRequest,
@@ -28,6 +29,10 @@ export interface WorkingContextReader {
 }
 
 export interface WorkingContextWriter {
+  updateWorkingContextMetadata(
+    request: UpdateWorkingContextMetadataRequest,
+    occurredAt: string,
+  ): Promise<CreateWorkingContextResult>;
   createWorkingContext(
     draft: WorkingContextDraft,
     occurredAt: string,

@@ -9,6 +9,10 @@ import type {
   WorkingContextWriter,
 } from './workspace-ports.ts';
 import { invalidResume } from './workspace-problems.ts';
+import {
+  requireInventoryWorkAccess,
+  type InventoryWorkAccessReader,
+} from './inventory-work-access.ts';
 
 export interface SetWorkScopeResumeUseCase {
   execute(
@@ -17,12 +21,12 @@ export interface SetWorkScopeResumeUseCase {
 }
 
 export class SetWorkScopeResume implements SetWorkScopeResumeUseCase {
-  readonly #writer: WorkingContextWriter;
+  readonly #writer: WorkingContextWriter & InventoryWorkAccessReader;
   readonly #clock: WorkspaceClock;
   readonly #events: WorkspaceChangedPublisher;
 
   constructor(dependencies: {
-    readonly writer: WorkingContextWriter;
+    readonly writer: WorkingContextWriter & InventoryWorkAccessReader;
     readonly clock: WorkspaceClock;
     readonly events: WorkspaceChangedPublisher;
   }) {
@@ -35,13 +39,22 @@ export class SetWorkScopeResume implements SetWorkScopeResumeUseCase {
     request: SetWorkScopeResumeRequest,
   ): Promise<SetWorkScopeResumeResult> {
     validateResume(request);
+    if (request.area === 'analyze') {
+      await requireInventoryWorkAccess(
+        this.#writer,
+        request.scope,
+        request.itemId,
+      );
+    }
     const occurredAt = this.#clock.now();
     const result = await this.#writer.setWorkScopeResume(request, occurredAt);
     const event: WorkspaceChanged = Object.freeze({
       kind: 'workspace.resume-updated',
       occurredAt,
       dataRevision: result.dataRevision,
-      contextId: request.contextId,
+      ...(request.scope.kind === 'context'
+        ? { contextId: request.scope.contextId }
+        : {}),
       area: result.area,
       resumeVersion: result.resume.resumeVersion,
     });
@@ -52,6 +65,13 @@ export class SetWorkScopeResume implements SetWorkScopeResumeUseCase {
 
 function validateResume(request: SetWorkScopeResumeRequest): void {
   const expected = request.expectedResumeVersion;
+  if (
+    request.scope.kind === 'free' &&
+    request.area === 'analyze' &&
+    request.mode === 'edit_overlay'
+  ) {
+    throw invalidResume();
+  }
   if (expected !== null && (!Number.isSafeInteger(expected) || expected < 1)) {
     throw invalidResume();
   }

@@ -6,6 +6,7 @@ import type {
   AnalysisResume,
   ContextReferenceSummary,
   CreateWorkingContextResult,
+  UpdateWorkingContextMetadataRequest,
   ManagementResume,
   RemoveContextItemRequest,
   RemoveContextItemResult,
@@ -14,6 +15,14 @@ import type {
   WorkingContextSummary,
   WorkingContextRevisionImpactSummary,
   WorkingContextWorkspace,
+  WorkScopeWorkspace,
+  StartupResume,
+  SetStartupResumeRequest,
+  ContextRemovalPreview,
+  ContextWorkLosses,
+  ContextPlayoutWork,
+  DeleteWorkingContextRequest,
+  DeleteWorkingContextResult,
 } from '../../../../application/workspace/index.ts';
 import {
   contextReferenceConflict,
@@ -22,12 +31,21 @@ import {
   invalidWorkspacePage,
   resumeRevisionConflict,
   workingContextNotFound,
+  workingContextVersionConflict,
 } from '../../../../application/workspace/index.ts';
 import {
   localId,
+  type InventoryItemId,
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
-import type { WorkingContextDraft } from '../../../../domain/workspace/index.ts';
+import type {
+  WorkingContextDraft,
+  WorkScope,
+} from '../../../../domain/workspace/index.ts';
+import {
+  removalPreviewConflict,
+  startupRevisionConflict,
+} from '../../../../application/workspace/workspace-problems.ts';
 import {
   decodeCursor,
   encodeCursor,
@@ -35,6 +53,7 @@ import {
   readDataRevision,
 } from './sqlite-store-helpers.ts';
 import { removeContextItemUsage } from './sqlite-context-item.ts';
+import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import {
   assertNoOpenRevisionImpact,
   releaseObsoleteResumeImpact,
@@ -101,6 +120,36 @@ export function createWorkingContext(
   );
   const dataRevision = incrementDataRevision(database, occurredAt);
   const context = readWorkingContextSummary(database, contextId);
+  if (context === undefined) throw workingContextNotFound();
+  return Object.freeze({ context, dataRevision });
+}
+
+export function updateWorkingContextMetadata(
+  database: Database.Database,
+  request: UpdateWorkingContextMetadataRequest,
+  occurredAt: string,
+): CreateWorkingContextResult {
+  const current = readWorkingContextSummary(database, request.contextId);
+  if (current?.lifecycle !== 'active') throw workingContextNotFound();
+  const changed = database
+    .prepare(
+      `UPDATE workspace_working_context
+        SET display_name = ?, purpose = ?, context_version = context_version + 1,
+            updated_at_utc = ?
+      WHERE context_id = ? AND context_version = ?`,
+    )
+    .run(
+      request.displayName,
+      request.purpose === undefined
+        ? (current.purpose ?? null)
+        : request.purpose,
+      occurredAt,
+      request.contextId.value,
+      request.expectedContextVersion,
+    );
+  if (changed.changes !== 1) throw workingContextVersionConflict();
+  const dataRevision = incrementDataRevision(database, occurredAt);
+  const context = readWorkingContextSummary(database, request.contextId);
   if (context === undefined) throw workingContextNotFound();
   return Object.freeze({ context, dataRevision });
 }
@@ -173,7 +222,7 @@ export function readWorkingContextWorkspace(
   contextId: WorkingContextId,
 ): WorkingContextWorkspace | undefined {
   const context = readWorkingContextSummary(database, contextId);
-  if (context === undefined) return undefined;
+  if (context?.lifecycle !== 'active') return undefined;
   const references = database
     .prepare(
       `SELECT r.reference_id AS referenceId,
@@ -299,6 +348,7 @@ export function removeContextItem(
   occurredAt: string,
 ): RemoveContextItemResult {
   requireActiveContext(database, request.contextId);
+  assertRemovalVersions(database, request);
   assertNoOpenRevisionImpact(
     database,
     request.contextId.value,
@@ -342,37 +392,54 @@ export function setWorkScopeResume(
   request: SetWorkScopeResumeRequest,
   occurredAt: string,
 ): SetWorkScopeResumeResult {
-  requireActiveContext(database, request.contextId);
+  const contextId =
+    request.scope.kind === 'context' ? request.scope.contextId.value : null;
+  if (request.scope.kind === 'context')
+    requireActiveContext(database, request.scope.contextId);
   if (request.area === 'manage') {
-    if (request.selectedItemId !== undefined) {
+    if (request.selectedItemId !== undefined && contextId !== null) {
       assertNoOpenRevisionImpact(
         database,
-        request.contextId.value,
+        contextId,
         request.selectedItemId.value,
       );
     }
     const currentVersion = currentResumeVersion(
       database,
       'workspace_management_resume',
-      request.contextId.value,
+      contextId,
     );
     assertResumeRevision(request.expectedResumeVersion, currentVersion);
     if (
       request.selectedItemId !== undefined &&
       request.selectedAnchorId !== undefined
     ) {
-      requireContextSelection(
-        database,
-        request.contextId.value,
-        request.selectedItemId.value,
-        request.selectedAnchorId.value,
-      );
+      if (contextId !== null) {
+        requireContextSelection(
+          database,
+          contextId,
+          request.selectedItemId.value,
+          request.selectedAnchorId.value,
+        );
+      } else {
+        const revision = currentItemRevision(
+          database,
+          request.selectedItemId.value,
+        );
+        if (
+          revision === undefined ||
+          !anchorBelongsToItem(
+            database,
+            request.selectedAnchorId.value,
+            request.selectedItemId.value,
+            revision,
+          )
+        )
+          throw contextReferenceNotFound();
+      }
     }
-    releaseObsoleteResumeImpact(
-      database,
-      request.contextId.value,
-      'management_resume',
-    );
+    if (contextId !== null)
+      releaseObsoleteResumeImpact(database, contextId, 'management_resume');
     const resumeVersion = (currentVersion ?? 0) + 1;
     database
       .prepare(
@@ -380,7 +447,7 @@ export function setWorkScopeResume(
            (context_id, resume_version, presentation, selected_item_id,
             selected_anchor_id, updated_at_utc)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(context_id) DO UPDATE SET
+         ON CONFLICT DO UPDATE SET
            resume_version = excluded.resume_version,
            presentation = excluded.presentation,
            selected_item_id = excluded.selected_item_id,
@@ -388,7 +455,7 @@ export function setWorkScopeResume(
            updated_at_utc = excluded.updated_at_utc`,
       )
       .run(
-        request.contextId.value,
+        contextId,
         resumeVersion,
         request.presentation,
         request.selectedItemId?.value ?? null,
@@ -396,7 +463,7 @@ export function setWorkScopeResume(
         occurredAt,
       );
     const dataRevision = incrementDataRevision(database, occurredAt);
-    const resume = readManagementResume(database, request.contextId);
+    const resume = readManagementResume(database, contextId);
     if (resume === undefined) throw invalidResume();
     return Object.freeze({ area: 'manage', resume, dataRevision });
   }
@@ -404,12 +471,12 @@ export function setWorkScopeResume(
   const currentVersion = currentResumeVersion(
     database,
     'workspace_analysis_resume',
-    request.contextId.value,
+    contextId,
   );
   assertResumeRevision(request.expectedResumeVersion, currentVersion);
   const openScratch = database
-    .prepare(`SELECT 1 FROM analysis_scratch_draft WHERE context_id = ?`)
-    .get(request.contextId.value);
+    .prepare(`SELECT 1 FROM analysis_scratch_draft WHERE context_id IS ?`)
+    .get(contextId);
   if (openScratch !== undefined) throw invalidResume();
   if (
     request.itemId === undefined ||
@@ -418,17 +485,22 @@ export function setWorkScopeResume(
   ) {
     throw invalidResume();
   }
-  assertNoOpenRevisionImpact(
-    database,
-    request.contextId.value,
-    request.itemId.value,
-  );
-  requireEffectiveContextRevision(
-    database,
-    request.contextId.value,
-    request.itemId.value,
-    request.revisionId.value,
-  );
+  if (contextId !== null)
+    assertNoOpenRevisionImpact(database, contextId, request.itemId.value);
+  if (contextId !== null) {
+    requireEffectiveContextRevision(
+      database,
+      contextId,
+      request.itemId.value,
+      request.revisionId.value,
+    );
+  } else if (
+    request.mode === 'edit_overlay' ||
+    currentItemRevision(database, request.itemId.value) !==
+      request.revisionId.value
+  ) {
+    throw invalidResume();
+  }
   const currentPositionId = resolveAnchorPosition(
     database,
     request.itemId.value,
@@ -436,11 +508,8 @@ export function setWorkScopeResume(
     request.anchorId.value,
   );
   if (currentPositionId === undefined) throw invalidResume();
-  releaseObsoleteResumeImpact(
-    database,
-    request.contextId.value,
-    'analysis_resume',
-  );
+  if (contextId !== null)
+    releaseObsoleteResumeImpact(database, contextId, 'analysis_resume');
   const resumeVersion = (currentVersion ?? 0) + 1;
   database
     .prepare(
@@ -448,7 +517,7 @@ export function setWorkScopeResume(
          (context_id, resume_version, item_id, revision_id, anchor_id,
           mode, current_position_id, analysis_scratch_draft_id, updated_at_utc)
        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-       ON CONFLICT(context_id) DO UPDATE SET
+       ON CONFLICT DO UPDATE SET
          resume_version = excluded.resume_version,
          item_id = excluded.item_id,
          revision_id = excluded.revision_id,
@@ -459,7 +528,7 @@ export function setWorkScopeResume(
          updated_at_utc = excluded.updated_at_utc`,
     )
     .run(
-      request.contextId.value,
+      contextId,
       resumeVersion,
       request.itemId.value,
       request.revisionId.value,
@@ -469,7 +538,7 @@ export function setWorkScopeResume(
       occurredAt,
     );
   const dataRevision = incrementDataRevision(database, occurredAt);
-  const resume = readAnalysisResume(database, request.contextId);
+  const resume = readAnalysisResume(database, contextId);
   if (resume === undefined) throw invalidResume();
   return Object.freeze({ area: 'analyze', resume, dataRevision });
 }
@@ -494,6 +563,362 @@ export function requireActiveContext(
     )
     .get(contextId.value) as { lifecycle: string } | undefined;
   if (row?.lifecycle !== 'active') throw workingContextNotFound();
+}
+
+export function readWorkScopeWorkspace(
+  database: Database.Database,
+  scope: WorkScope,
+): WorkScopeWorkspace | undefined {
+  if (scope.kind === 'context') {
+    const context = readWorkingContextSummary(database, scope.contextId);
+    if (context?.lifecycle !== 'active') return undefined;
+  }
+  const contextId = scope.kind === 'context' ? scope.contextId.value : null;
+  const managementResume = readManagementResume(database, contextId);
+  const analysisResume = readAnalysisResume(database, contextId);
+  return Object.freeze({
+    scope,
+    ...(managementResume === undefined ? {} : { managementResume }),
+    ...(analysisResume === undefined ? {} : { analysisResume }),
+    dataRevision: readDataRevision(database),
+  });
+}
+
+export function readStartupResume(database: Database.Database): StartupResume {
+  const row = database
+    .prepare(
+      `SELECT context_id AS contextId, area, startup_version AS startupVersion FROM workspace_startup_resume WHERE startup_id = 1`,
+    )
+    .get() as
+    | {
+        contextId: number | null;
+        area: StartupResume['area'];
+        startupVersion: number;
+      }
+    | undefined;
+  const dataRevision = readDataRevision(database);
+  if (row === undefined)
+    return Object.freeze({
+      scope: { kind: 'free' as const },
+      area: 'manage',
+      startupVersion: null,
+      dataRevision,
+    });
+  if (row.contextId === null)
+    return Object.freeze({
+      scope: { kind: 'free' as const },
+      area: row.area,
+      startupVersion: row.startupVersion,
+      dataRevision,
+    });
+  const contextId = localId('working-context', row.contextId);
+  const context = readWorkingContextSummary(database, contextId);
+  return Object.freeze({
+    scope:
+      context?.lifecycle === 'active'
+        ? { kind: 'context' as const, contextId }
+        : { kind: 'free' as const },
+    area: row.area,
+    startupVersion: row.startupVersion,
+    dataRevision,
+    ...(context?.lifecycle === 'active'
+      ? {}
+      : {
+          unavailableContext: {
+            contextId,
+            reason:
+              context === undefined
+                ? ('missing' as const)
+                : ('deleted' as const),
+            ...(context === undefined
+              ? {}
+              : { displayName: context.displayName }),
+          },
+        }),
+  });
+}
+
+export function setStartupResume(
+  database: Database.Database,
+  request: SetStartupResumeRequest,
+  occurredAt: string,
+): StartupResume {
+  if (request.scope.kind === 'context')
+    requireActiveContext(database, request.scope.contextId);
+  const current = readStartupResume(database);
+  if (current.startupVersion !== request.expectedStartupVersion)
+    throw startupRevisionConflict();
+  database
+    .prepare(
+      `INSERT INTO workspace_startup_resume (startup_id, context_id, area, startup_version, updated_at_utc)
+    VALUES (1, ?, ?, ?, ?) ON CONFLICT(startup_id) DO UPDATE SET context_id = excluded.context_id, area = excluded.area, startup_version = excluded.startup_version, updated_at_utc = excluded.updated_at_utc`,
+    )
+    .run(
+      request.scope.kind === 'context' ? request.scope.contextId.value : null,
+      request.area,
+      (current.startupVersion ?? 0) + 1,
+      occurredAt,
+    );
+  incrementDataRevision(database, occurredAt);
+  return readStartupResume(database);
+}
+
+export function assertRemovalVersions(
+  database: Database.Database,
+  request: {
+    readonly contextId: WorkingContextId;
+    readonly expectedContextVersion: number;
+    readonly expectedDataRevision: number;
+  },
+): void {
+  const context = readWorkingContextSummary(database, request.contextId);
+  if (context?.lifecycle !== 'active') throw workingContextNotFound();
+  if (
+    context.contextVersion !== request.expectedContextVersion ||
+    readDataRevision(database) !== request.expectedDataRevision
+  )
+    throw removalPreviewConflict();
+}
+
+export function previewContextItemRemoval(
+  database: Database.Database,
+  request: {
+    readonly contextId: WorkingContextId;
+    readonly itemId: InventoryItemId;
+  },
+): ContextRemovalPreview {
+  return previewContextRemoval(
+    database,
+    request.contextId,
+    request.itemId.value,
+  );
+}
+
+export function previewWorkingContextDeletion(
+  database: Database.Database,
+  request: { readonly contextId: WorkingContextId },
+): ContextRemovalPreview {
+  return previewContextRemoval(database, request.contextId);
+}
+
+function previewContextRemoval(
+  database: Database.Database,
+  contextId: WorkingContextId,
+  itemId?: number,
+): ContextRemovalPreview {
+  requireActiveContext(database, contextId);
+  const context = readWorkingContextSummary(database, contextId)!;
+  const rows = database
+    .prepare(
+      `SELECT member.item_id AS itemId, revision.display_name AS displayName
+    FROM workspace_context_item AS member JOIN inventory_item AS item ON item.item_id = member.item_id
+    JOIN item_revision AS revision ON revision.revision_id = coalesce(member.pinned_revision_id, item.current_revision_id)
+    WHERE member.context_id = ? AND (? IS NULL OR member.item_id = ?) ORDER BY member.item_id`,
+    )
+    .all(contextId.value, itemId ?? null, itemId ?? null) as {
+    itemId: number;
+    displayName: string;
+  }[];
+  if (itemId !== undefined && rows.length === 0)
+    throw contextReferenceNotFound();
+  const referenceCount = (
+    database
+      .prepare(
+        `SELECT count(*) AS count FROM workspace_context_reference WHERE context_id = ? AND (? IS NULL OR item_id = ?)`,
+      )
+      .get(contextId.value, itemId ?? null, itemId ?? null) as { count: number }
+  ).count;
+  const notes = database
+    .prepare(
+      `SELECT note.contribution_id AS contributionId, note.body,
+    coalesce(anchor.owner_item_id, anchor.item_id) AS itemId,
+    (SELECT count(*) FROM workspace_analysis_note_path_step AS step WHERE step.contribution_id = note.contribution_id) AS moveCount
+    FROM workspace_contribution AS note JOIN chess_anchor AS anchor ON anchor.anchor_id = note.anchor_id
+    WHERE note.context_id = ? AND note.scope_kind = 'context' AND note.status <> 'archived'
+    AND (? IS NULL OR coalesce(anchor.owner_item_id, anchor.item_id) = ?) ORDER BY note.contribution_id`,
+    )
+    .all(contextId.value, itemId ?? null, itemId ?? null) as {
+    contributionId: number;
+    body: string;
+    itemId: number | null;
+    moveCount: number;
+  }[];
+  const scratch = database
+    .prepare(
+      `SELECT scratch.scratch_key AS scratchId, scratch.scratch_revision AS scratchRevision,
+    scratch.note_body AS noteBody, scratch.scratch_mode AS intent,
+    coalesce(scratch.edit_item_id, scratch.origin_item_id) AS itemId,
+    (SELECT count(*) FROM analysis_scratch_step AS step WHERE step.scratch_draft_id = scratch.scratch_draft_id) AS stepCount
+    FROM analysis_scratch_draft AS scratch WHERE scratch.context_id = ?
+    AND (? IS NULL OR scratch.origin_item_id = ? OR scratch.edit_item_id = ?)`,
+    )
+    .get(contextId.value, itemId ?? null, itemId ?? null, itemId ?? null) as
+    | {
+        scratchId: string;
+        scratchRevision: number;
+        noteBody: string | null;
+        intent: NonNullable<ContextWorkLosses['scratch']>['intent'];
+        itemId: number | null;
+        stepCount: number;
+      }
+    | undefined;
+  const management = readManagementResume(database, contextId);
+  const managementResume =
+    itemId === undefined || management?.selectedItemId?.value === itemId
+      ? management
+      : undefined;
+  const analysis = readAnalysisResume(database, contextId);
+  const analysisResume =
+    itemId === undefined ||
+    analysis?.itemId?.value === itemId ||
+    (scratch !== undefined && analysis?.scratchId === scratch.scratchId)
+      ? analysis
+      : undefined;
+  const playoutRow = database
+    .prepare(
+      `SELECT draft_id AS draftId, draft_revision AS draftRevision, status_kind AS status, origin_item_id AS sourceItemId,
+    (SELECT count(*) FROM playout_ply AS ply WHERE ply.draft_id = draft.draft_id) AS moveCount
+    FROM playout_draft AS draft WHERE context_id = ?`,
+    )
+    .get(contextId.value) as
+    | {
+        draftId: number;
+        draftRevision: number;
+        status: ContextPlayoutWork['status'];
+        sourceItemId: number | null;
+        moveCount: number;
+      }
+    | undefined;
+  const playout: ContextPlayoutWork | undefined =
+    playoutRow === undefined
+      ? undefined
+      : Object.freeze({
+          draftId: localId('playout-draft', playoutRow.draftId),
+          draftRevision: playoutRow.draftRevision,
+          status: playoutRow.status,
+          moveCount: playoutRow.moveCount,
+          ...(playoutRow.sourceItemId === null
+            ? {}
+            : {
+                sourceItemId: localId(
+                  'inventory-item',
+                  playoutRow.sourceItemId,
+                ),
+              }),
+        });
+  return Object.freeze({
+    contextId,
+    contextName: context.displayName,
+    contextVersion: context.contextVersion,
+    dataRevision: readDataRevision(database),
+    referenceCount,
+    items: Object.freeze(
+      rows.map((row) =>
+        Object.freeze({
+          itemId: localId('inventory-item', row.itemId),
+          displayName: row.displayName,
+        }),
+      ),
+    ),
+    losses: Object.freeze({
+      notes: Object.freeze(
+        notes.map((row) =>
+          Object.freeze({
+            contributionId: localId('contribution', row.contributionId),
+            body: row.body,
+            moveCount: row.moveCount,
+            ...(row.itemId === null
+              ? {}
+              : { itemId: localId('inventory-item', row.itemId) }),
+          }),
+        ),
+      ),
+      ...(scratch === undefined
+        ? {}
+        : {
+            scratch: Object.freeze({
+              scratchId: scratch.scratchId,
+              scratchRevision: scratch.scratchRevision,
+              intent: scratch.intent,
+              stepCount: scratch.stepCount,
+              ...(scratch.noteBody === null
+                ? {}
+                : { noteBody: scratch.noteBody }),
+              ...(scratch.itemId === null
+                ? {}
+                : { itemId: localId('inventory-item', scratch.itemId) }),
+            }),
+          }),
+      ...(managementResume === undefined ? {} : { managementResume }),
+      ...(analysisResume === undefined ? {} : { analysisResume }),
+      ...(playout === undefined || itemId !== undefined ? {} : { playout }),
+    }),
+    ...(playout === undefined || itemId === undefined
+      ? {}
+      : { retainedPlayout: playout }),
+  });
+}
+
+export function deleteWorkingContext(
+  database: Database.Database,
+  request: DeleteWorkingContextRequest,
+  occurredAt: string,
+  removePlayout: (contextId: WorkingContextId) => void,
+): DeleteWorkingContextResult {
+  assertRemovalVersions(database, request);
+  const contextId = request.contextId.value;
+  removePlayout(request.contextId);
+  if (
+    database
+      .prepare('SELECT 1 FROM playout_draft WHERE context_id = ?')
+      .get(contextId) !== undefined
+  )
+    throw invalidResume();
+  database
+    .prepare(
+      'DELETE FROM workspace_revision_impact_entry WHERE impact_id IN (SELECT impact_id FROM workspace_pending_revision_impact WHERE context_id = ?)',
+    )
+    .run(contextId);
+  database
+    .prepare(
+      'DELETE FROM workspace_pending_revision_impact WHERE context_id = ?',
+    )
+    .run(contextId);
+  database
+    .prepare(
+      'UPDATE playout_completion_receipt SET context_reference_id = NULL WHERE context_reference_id IN (SELECT reference_id FROM workspace_context_reference WHERE context_id = ?)',
+    )
+    .run(contextId);
+  database
+    .prepare('DELETE FROM workspace_context_reference WHERE context_id = ?')
+    .run(contextId);
+  database
+    .prepare('DELETE FROM workspace_context_item WHERE context_id = ?')
+    .run(contextId);
+  database
+    .prepare('DELETE FROM workspace_management_resume WHERE context_id = ?')
+    .run(contextId);
+  database
+    .prepare('DELETE FROM workspace_analysis_resume WHERE context_id = ?')
+    .run(contextId);
+  deleteContextScratch(database, contextId);
+  database
+    .prepare('DELETE FROM search_document WHERE context_id = ?')
+    .run(contextId);
+  database
+    .prepare(
+      `UPDATE workspace_contribution SET status = 'archived', contribution_version = contribution_version + 1, updated_at_utc = ? WHERE context_id = ? AND status <> 'archived'`,
+    )
+    .run(occurredAt, contextId);
+  database
+    .prepare(
+      `UPDATE workspace_working_context SET lifecycle = 'archived', context_version = context_version + 1, updated_at_utc = ? WHERE context_id = ?`,
+    )
+    .run(occurredAt, contextId);
+  return Object.freeze({
+    contextId: request.contextId,
+    dataRevision: incrementDataRevision(database, occurredAt),
+  });
 }
 
 export function resolveAnchorPosition(
@@ -626,11 +1051,11 @@ function requireEffectiveContextRevision(
 function currentResumeVersion(
   database: Database.Database,
   table: 'workspace_management_resume' | 'workspace_analysis_resume',
-  contextId: number,
+  contextId: number | null,
 ): number | null {
   const row = database
     .prepare(
-      `SELECT resume_version AS resumeVersion FROM ${table} WHERE context_id = ?`,
+      `SELECT resume_version AS resumeVersion FROM ${table} WHERE context_id IS ?`,
     )
     .get(contextId) as { resumeVersion: number } | undefined;
   return row?.resumeVersion ?? null;
@@ -643,9 +1068,9 @@ function assertResumeRevision(
   if (expected !== current) throw resumeRevisionConflict(expected, current);
 }
 
-function readManagementResume(
+export function readManagementResume(
   database: Database.Database,
-  contextId: WorkingContextId,
+  contextId: WorkingContextId | number | null,
 ): ManagementResume | undefined {
   const row = database
     .prepare(
@@ -654,9 +1079,11 @@ function readManagementResume(
               selected_item_id AS selectedItemId,
               selected_anchor_id AS selectedAnchorId,
               updated_at_utc AS updatedAt
-         FROM workspace_management_resume WHERE context_id = ?`,
+         FROM workspace_management_resume WHERE context_id IS ?`,
     )
-    .get(contextId.value) as
+    .get(
+      typeof contextId === 'object' ? (contextId?.value ?? null) : contextId,
+    ) as
     | {
         resumeVersion: number;
         presentation: 'list' | 'atlas';
@@ -679,9 +1106,9 @@ function readManagementResume(
   });
 }
 
-function readAnalysisResume(
+export function readAnalysisResume(
   database: Database.Database,
-  contextId: WorkingContextId,
+  contextId: WorkingContextId | number | null,
 ): AnalysisResume | undefined {
   const row = database
     .prepare(
@@ -693,9 +1120,11 @@ function readAnalysisResume(
          FROM workspace_analysis_resume AS resume
          LEFT JOIN analysis_scratch_draft AS scratch
            ON scratch.scratch_draft_id = resume.analysis_scratch_draft_id
-        WHERE resume.context_id = ?`,
+        WHERE resume.context_id IS ?`,
     )
-    .get(contextId.value) as
+    .get(
+      typeof contextId === 'object' ? (contextId?.value ?? null) : contextId,
+    ) as
     | {
         resumeVersion: number;
         mode: AnalysisResume['mode'];

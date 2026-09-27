@@ -12,6 +12,7 @@ test('MCP contracts accept bounded objective root moves and explicit score persp
   const root = new ChessJsRulesAdapter().initialState();
   const move = { from: 'e2', to: 'e4', san: 'e4' };
   const request = {
+    work: { scope: { kind: 'free' }, subject: { kind: 'position' } },
     consumerId: 'test',
     laneId: 'objective',
     providerInstanceId: 'test',

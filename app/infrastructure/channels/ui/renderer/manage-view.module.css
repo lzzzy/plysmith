@@ -13,21 +13,6 @@
   border-bottom: 1px solid #d8dde4;
 }
 
-.viewHeader h1 {
-  margin: 3px 0 0;
-  color: #20262e;
-  font-size: 23px;
-  font-weight: 700;
-}
-
-.eyebrow,
-.panelLabel {
-  color: #5f6873;
-  font-size: 10px;
-  font-weight: 720;
-  text-transform: uppercase;
-}
-
 .inventoryCount {
   color: #5e6772;
   font-size: 12px;
@@ -38,6 +23,18 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 14px;
+}
+
+.setupGlyph {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  font-size: 20px;
+}
+
+.previewStatus {
+  color: #5e6772;
+  font-size: 13px;
 }
 
 .impactBadge {
@@ -101,7 +98,7 @@
 }
 
 .panelHeading h2,
-.inventoryToolbar h2 {
+.inventoryToolbar h1 {
   margin: 2px 0 0;
   overflow: hidden;
   color: #2b323b;
@@ -272,8 +269,68 @@
 
 .inventoryList {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   padding: 9px;
+}
+
+.familyViewport {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.familyViewport:focus-visible {
+  outline: 2px solid #2f66bd;
+  outline-offset: -2px;
+}
+
+.familyList {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.familyList > li {
+  min-width: 0;
+}
+
+.familyList .familyList {
+  margin-top: 3px;
+}
+
+.familyRow {
+  display: grid;
+  min-width: 260px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+}
+
+.expandButton {
+  display: grid;
+  width: 24px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  color: #56616e;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.expandButton:hover {
+  background: #e8ebef;
+}
+
+.expandButton:focus-visible {
+  outline: 2px solid #2f66bd;
+  outline-offset: -2px;
 }
 
 .loadMoreButton {
@@ -302,15 +359,15 @@
 .inventoryRow {
   display: grid;
   width: 100%;
-  min-height: 58px;
-  grid-template-columns: 35px minmax(0, 1fr) auto;
-  gap: 10px;
+  min-height: 50px;
+  grid-template-columns: 30px minmax(0, 1fr) fit-content(35%);
+  gap: 8px;
   align-items: center;
-  padding: 8px 10px;
+  padding: 6px 8px;
   color: #3e4853;
   background: #ffffff;
   border: 1px solid #e0e3e8;
-  border-radius: 6px;
+  border-radius: 4px;
   outline: none;
   cursor: pointer;
   text-align: left;
@@ -331,6 +388,17 @@
   border-color: #aac5e1;
 }
 
+.inventoryRow.sourceRow {
+  background: #f5f6f8;
+  border-color: transparent;
+  cursor: default;
+}
+
+.inventoryRow .itemIcon {
+  width: 28px;
+  height: 28px;
+}
+
 .itemIcon {
   display: grid;
   width: 34px;
@@ -349,11 +417,9 @@
 }
 
 .itemMain strong {
-  overflow: hidden;
+  overflow-wrap: anywhere;
   color: #2f3741;
   font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .itemMain small {
@@ -371,7 +437,7 @@
   border-radius: 4px;
   font-size: 9px;
   font-weight: 700;
-  text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .inventoryOnly {
@@ -436,7 +502,7 @@
 }
 
 .inspectorTitle span:last-child {
-  color: #7b8490;
+  color: #626b75;
   font-size: 10px;
 }
 
@@ -456,7 +522,7 @@
 }
 
 .inspectorBody dt {
-  color: #7a838e;
+  color: #626b75;
 }
 
 .inspectorBody dd {
@@ -467,29 +533,6 @@
 
 .inspectorActions {
   display: grid;
-  gap: 7px;
-}
-
-.removeConfirmation {
-  display: grid;
-  gap: 12px;
-  margin-top: 15px;
-  padding: 12px;
-  color: #633b3b;
-  background: #fff7f7;
-  border: 1px solid #d9b5b5;
-  border-radius: 5px;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.removeConfirmation p {
-  margin: 5px 0 0;
-}
-
-.removeConfirmationActions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
   gap: 7px;
 }
 
@@ -600,30 +643,6 @@
   text-align: left;
 }
 
-.contextDetailsTitle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 13px;
-  border-bottom: 1px solid #dfe3e8;
-}
-
-.contextDetailsTitle > div {
-  display: grid;
-  gap: 2px;
-}
-
-.contextDetailsTitle span {
-  color: #7a838e;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.contextDetailsTitle strong {
-  margin: 0;
-}
-
 .contextDetails dl {
   display: grid;
   gap: 0;
@@ -632,7 +651,7 @@
 
 .contextDetails dl > div {
   display: grid;
-  grid-template-columns: 130px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   padding: 11px 0;
   border-bottom: 1px solid #e4e7eb;
@@ -650,6 +669,88 @@
   color: #414b56;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.contextDetails > button {
+  justify-self: start;
+  margin-top: 16px;
+}
+
+.lossOverlay {
+  position: fixed;
+  z-index: 30;
+  display: grid;
+  padding: 18px;
+  background: rgb(22 28 36 / 52%);
+  inset: 0;
+  place-items: center;
+}
+
+.lossModal {
+  width: min(560px, 100%);
+  max-height: calc(100dvh - 36px);
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #c8ced6;
+  border-radius: 7px;
+}
+
+.lossDialog {
+  outline: none;
+  overflow-wrap: anywhere;
+}
+
+.lossHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #dfe3e8;
+}
+
+.lossHeader svg {
+  flex-shrink: 0;
+  color: #94423d;
+}
+
+.lossHeader h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 18px;
+}
+
+.lossBody {
+  padding: 4px 20px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lossSection {
+  padding: 12px 0;
+  border-bottom: 1px solid #dfe3e8;
+}
+
+.lossSection h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.lossActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid #dfe3e8;
+}
+
+.lossActions button {
+  max-width: 100%;
+  padding-block: 8px;
+}
+
+.lossActions svg {
+  flex-shrink: 0;
 }
 
 .primaryButton,
@@ -714,6 +815,12 @@
   border-bottom: 1px solid #dfc98f;
 }
 
+.contextMetadataForm {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 .formTitle {
   display: flex;
   align-items: center;
@@ -724,14 +831,17 @@
   font-weight: 700;
 }
 
-.createContextForm label {
+.createContextForm label,
+.contextMetadataForm label {
   color: #6d634c;
   font-size: 10px;
   font-weight: 680;
 }
 
 .createContextForm input,
-.createContextForm textarea {
+.contextMetadataForm input,
+.contextMetadataForm textarea {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   padding: 7px 8px;
@@ -745,41 +855,18 @@
 }
 
 .createContextForm input:focus,
-.createContextForm textarea:focus {
+.contextMetadataForm input:focus,
+.contextMetadataForm textarea:focus {
   border-color: #8f743d;
   box-shadow: 0 0 0 2px rgb(143 116 61 / 14%);
 }
 
 .formActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 5px;
   margin-top: 3px;
-}
-
-.nextStep {
-  margin-top: 14px;
-  padding: 9px;
-  color: #4d5661;
-  background: #ffffff;
-  border: 1px solid #dde1e6;
-  border-radius: 5px;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.nextStep span {
-  display: block;
-  margin-bottom: 3px;
-  color: #858d96;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.referenceSummary {
-  margin-top: 12px;
-  font-size: 10px;
 }
 
 .visuallyHidden {

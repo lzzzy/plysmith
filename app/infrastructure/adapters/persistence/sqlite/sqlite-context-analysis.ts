@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 
 import type { StoredContextAnalysisWorkspace } from '../../../../application/analysis/index.ts';
+import type { StoredFreeAnalysisWorkspace } from '../../../../application/analysis/analysis-models.ts';
 import {
   localId,
   type WorkingContextId,
@@ -8,7 +9,39 @@ import {
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import { readContextScratch } from './sqlite-analysis-scratch.ts';
 import { readDataRevision } from './sqlite-store-helpers.ts';
-import { readWorkingContextSummary } from './sqlite-workspace.ts';
+import {
+  readWorkingContextSummary,
+  readAnalysisResume,
+} from './sqlite-workspace.ts';
+
+export function readFreeAnalysisWorkspace(
+  database: Database.Database,
+): StoredFreeAnalysisWorkspace {
+  const scratch = readContextScratch(database, null);
+  const resume = readAnalysisResume(database, null);
+  const itemId =
+    scratch?.origin.kind === 'inventory_anchor'
+      ? scratch.origin.itemId
+      : resume?.itemId;
+  const revisionId =
+    scratch?.origin.kind === 'inventory_anchor'
+      ? scratch.origin.revisionId
+      : resume?.revisionId;
+  const anchorId =
+    scratch?.origin.kind === 'inventory_anchor'
+      ? scratch.origin.anchorId
+      : resume?.anchorId;
+  const record =
+    itemId === undefined || revisionId === undefined || anchorId === undefined
+      ? undefined
+      : readAnalysisRecordView(database, { itemId, revisionId, anchorId });
+  return Object.freeze({
+    dataRevision: readDataRevision(database),
+    ...(scratch === undefined ? {} : { scratch }),
+    ...(resume === undefined ? {} : { resumeVersion: resume.resumeVersion }),
+    ...(record === undefined ? {} : { record }),
+  });
+}
 
 export function readContextAnalysisWorkspace(
   database: Database.Database,
@@ -43,7 +76,6 @@ export function readContextAnalysisWorkspace(
           revisionId: localId('item-revision', resume.revisionId),
           anchorId: localId('anchor', resume.anchorId),
           contextId,
-          readOnlyPreview: false,
         });
   return Object.freeze({
     contextId,

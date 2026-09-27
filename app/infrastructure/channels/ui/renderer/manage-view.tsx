@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   ArrowRight,
   Boxes,
+  ChevronDown,
+  ChevronRight,
   FileSearch,
   FilePlus2,
   FolderPlus,
@@ -10,12 +12,20 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Save,
   Search,
   Trash2,
   X,
 } from 'lucide-react';
-import { Button, Radio, RadioGroup } from 'react-aria-components';
+import {
+  Button,
+  Dialog,
+  Modal,
+  ModalOverlay,
+  Radio,
+  RadioGroup,
+} from 'react-aria-components';
 import { FormattedDate, FormattedMessage, useIntl } from 'react-intl';
 
 import {
@@ -26,10 +36,17 @@ import {
 import { AnalysisSetupDialog } from './analysis-setup-dialog.tsx';
 import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import { InventoryTypeIcon } from './inventory-type-icon.tsx';
+import { InventoryDetailsView } from './inventory-details-view.tsx';
+import { ChessPieceGlyph } from './chess-board-surface.tsx';
+import {
+  inventoryFamilyPresentation,
+  type InventoryFamilyNode,
+} from './inventory-family-presentation.ts';
 import styles from './manage-view.module.css';
 import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
 import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
+import { LossSummary, contextRemovalSummary } from './loss-summary.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
 type RevisionImpactSummary = NonNullable<
@@ -46,7 +63,10 @@ export function ManageView({
   const intl = useIntl();
   const [query, setQuery] = useState(state.inventoryQuery);
   const [showCreateContext, setShowCreateContext] = useState(false);
-  const [showCreateAnalysis, setShowCreateAnalysis] = useState(false);
+  const [analysisStart, setAnalysisStart] = useState<'initial' | 'setup'>();
+  const [collapsedFamilies, setCollapsedFamilies] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const visibleItems = state.inventory.items.map((item) =>
     inventoryItemForScope(item, state),
   );
@@ -64,8 +84,21 @@ export function ManageView({
   const activeContext = state.contexts.contexts.find(
     (context) => context.contextId === activeContextId,
   );
+  const families = inventoryFamilyPresentation({
+    ...state.inventory,
+    items: visibleItems,
+  });
+  const emptyInventoryKind =
+    state.inventoryQuery.trim().length > 0
+      ? 'search'
+      : state.scope.kind === 'context' && state.inventoryContextOnly
+        ? 'context'
+        : 'inventory';
 
   useEffect(() => setQuery(state.inventoryQuery), [state.inventoryQuery]);
+  useEffect(() => {
+    setCollapsedFamilies(new Set());
+  }, [activeContextId, state.inventoryQuery, state.inventoryContextOnly]);
   useEffect(() => {
     if (selectedImpact === undefined) {
       if (state.revisionImpact !== undefined) store.closeRevisionImpact();
@@ -92,14 +125,6 @@ export function ManageView({
   return (
     <main className={styles.manageView}>
       <header className={styles.viewHeader}>
-        <div>
-          <span className={styles.eyebrow}>
-            <FormattedMessage id="manage.eyebrow" />
-          </span>
-          <h1>
-            <FormattedMessage id="manage.title" />
-          </h1>
-        </div>
         <div className={styles.headerActions}>
           <span className={styles.inventoryCount}>
             <FormattedMessage
@@ -117,11 +142,23 @@ export function ManageView({
           </Button>
           <Button
             className={styles.primaryButton!}
-            isDisabled={state.busyCommand !== undefined}
-            onPress={() => setShowCreateAnalysis(true)}
+            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            onPress={() => {
+              if (state.analysis.scratch !== undefined)
+                setAnalysisStart('initial');
+              else void store.startScratchAtInitialPosition();
+            }}
           >
             <FilePlus2 aria-hidden="true" size={16} />
             <FormattedMessage id="manage.newAnalysis" />
+          </Button>
+          <Button
+            className={styles.secondaryButton!}
+            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            onPress={() => setAnalysisStart('setup')}
+          >
+            <ChessPieceGlyph className={styles.setupGlyph!} symbol="♔" />
+            <FormattedMessage id="analysisSetup.buildPosition" />
           </Button>
         </div>
       </header>
@@ -132,9 +169,6 @@ export function ManageView({
         <aside className={styles.contextPanel} aria-labelledby="contexts-title">
           <div className={styles.panelHeading}>
             <div>
-              <span className={styles.panelLabel}>
-                <FormattedMessage id="manage.workScope" />
-              </span>
               <h2 id="contexts-title">
                 <FormattedMessage id="manage.contexts" />
               </h2>
@@ -167,16 +201,13 @@ export function ManageView({
           <div className={styles.contextList}>
             <Button
               className={`${styles.contextButton!} ${state.scope.kind === 'free' ? styles.activeContext : ''}`}
-              onPress={() => void store.setScope({ kind: 'free' })}
+              onPress={() => void store.selectManagementScope({ kind: 'free' })}
             >
               <Library aria-hidden="true" size={17} />
               <span>
                 <strong>
                   <FormattedMessage id="scope.free" />
                 </strong>
-                <small>
-                  <FormattedMessage id="manage.allInventory" />
-                </small>
               </span>
             </Button>
             {state.contexts.contexts.map((context) => (
@@ -184,7 +215,7 @@ export function ManageView({
                 key={context.contextId}
                 className={`${styles.contextButton!} ${state.scope.kind === 'context' && state.scope.contextId === context.contextId ? styles.activeContext : ''}`}
                 onPress={() =>
-                  void store.setScope({
+                  void store.selectManagementScope({
                     kind: 'context',
                     contextId: context.contextId,
                   })
@@ -225,20 +256,14 @@ export function ManageView({
           </div>
         </aside>
 
-        <section
-          className={styles.inventoryPanel}
-          aria-labelledby="inventory-title"
-        >
+        <section className={styles.inventoryPanel}>
           <div className={styles.inventoryToolbar}>
             <div>
-              <span className={styles.panelLabel}>
-                <FormattedMessage id="manage.inventory" />
-              </span>
-              <h2 id="inventory-title">
+              <h1 id="inventory-title">
                 {activeContext?.displayName ?? (
                   <FormattedMessage id="manage.allInventory" />
                 )}
-              </h2>
+              </h1>
             </div>
             <form className={styles.searchForm} onSubmit={submitSearch}>
               <label
@@ -286,30 +311,65 @@ export function ManageView({
             <div className={styles.emptyInventory}>
               <FileSearch aria-hidden="true" size={25} />
               <strong>
-                <FormattedMessage id="manage.noResults" />
+                <FormattedMessage id={`manage.empty.${emptyInventoryKind}`} />
               </strong>
-              <p>
-                <FormattedMessage id="manage.noResultsDetail" />
-              </p>
+              {emptyInventoryKind === 'search' && (
+                <Button
+                  className={styles.secondaryButton!}
+                  onPress={() => {
+                    setQuery('');
+                    void store.searchInventory('');
+                  }}
+                  isDisabled={
+                    state.busyCommand !== undefined || state.refreshing
+                  }
+                >
+                  <X aria-hidden="true" size={16} />
+                  <FormattedMessage id="manage.clearSearch" />
+                </Button>
+              )}
+              {emptyInventoryKind === 'context' && (
+                <Button
+                  className={styles.secondaryButton!}
+                  onPress={() => void store.setInventoryContextOnly(false)}
+                  isDisabled={
+                    state.busyCommand !== undefined || state.refreshing
+                  }
+                >
+                  <Library aria-hidden="true" size={16} />
+                  <FormattedMessage id="manage.showAllInventory" />
+                </Button>
+              )}
             </div>
           ) : (
             <div className={styles.inventoryList}>
-              {visibleItems.map((item) => (
-                <InventoryRow
-                  key={item.itemId}
-                  item={item}
-                  {...(activeContextId === undefined
-                    ? {}
-                    : { activeContextId })}
-                  isSelected={item.itemId === state.selectedInventoryItemId}
-                  requiresResolution={
-                    state.contextWorkspace?.pendingRevisionImpacts.some(
-                      (impact) => impact.itemId === item.itemId,
-                    ) ?? false
-                  }
-                  onSelect={() => void store.selectInventoryItem(item)}
-                />
-              ))}
+              <div
+                className={styles.familyViewport}
+                role="region"
+                aria-labelledby="inventory-title"
+                tabIndex={0}
+              >
+                <ul className={styles.familyList}>
+                  {families.map((family) => (
+                    <InventoryFamily
+                      key={family.item.itemId}
+                      node={family}
+                      depth={0}
+                      state={state}
+                      store={store}
+                      collapsedFamilies={collapsedFamilies}
+                      onToggle={(itemId) => {
+                        setCollapsedFamilies((previous) => {
+                          const next = new Set(previous);
+                          if (next.has(itemId)) next.delete(itemId);
+                          else next.add(itemId);
+                          return next;
+                        });
+                      }}
+                    />
+                  ))}
+                </ul>
+              </div>
               {state.inventory.nextCursor !== undefined && (
                 <Button
                   className={styles.loadMoreButton!}
@@ -326,16 +386,17 @@ export function ManageView({
         <aside className={styles.inspector} aria-labelledby="inspector-title">
           <div className={styles.panelHeading}>
             <div>
-              <span className={styles.panelLabel}>
-                <FormattedMessage id="manage.selection" />
-              </span>
               <h2 id="inspector-title">
                 <FormattedMessage id="manage.details" />
               </h2>
             </div>
           </div>
           {selectedItem === undefined ? (
-            <ContextSummary state={state} />
+            <ContextSummary
+              key={activeContextId ?? 'free'}
+              state={state}
+              store={store}
+            />
           ) : (
             <ItemInspector
               item={selectedItem}
@@ -348,13 +409,22 @@ export function ManageView({
           )}
         </aside>
       </div>
-      <AnalysisSetupDialog
-        isOpen={showCreateAnalysis}
-        hasScratch={state.analysis.scratch !== undefined}
-        isBusy={state.busyCommand !== undefined}
-        store={store}
-        onOpenChange={setShowCreateAnalysis}
-      />
+      {analysisStart !== undefined && (
+        <AnalysisSetupDialog
+          key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${analysisStart}`}
+          isOpen
+          requestedStart={analysisStart}
+          hasScratch={state.analysis.scratch !== undefined}
+          isBusy={state.busyCommand !== undefined}
+          store={store}
+          onOpenChange={(open) => {
+            if (!open) setAnalysisStart(undefined);
+          }}
+        />
+      )}
+      {state.destructiveAction !== undefined && (
+        <DestructiveActionDialog state={state} store={store} />
+      )}
     </main>
   );
 }
@@ -386,24 +456,265 @@ function inventoryItemForScope(
   });
 }
 
-function InventoryRow({
-  item,
-  activeContextId,
-  isSelected,
-  requiresResolution,
-  onSelect,
+export function DestructiveActionDialog({
+  state,
+  store,
 }: {
-  readonly item: InventoryItem;
-  readonly activeContextId?: string;
-  readonly isSelected: boolean;
-  readonly requiresResolution: boolean;
-  readonly onSelect: () => void;
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
 }) {
+  const action = state.destructiveAction;
+  if (action === undefined) return null;
+  const submitting = action.status === 'submitting';
+  const item =
+    action.kind === 'context'
+      ? undefined
+      : state.inventory.items.find(
+          (candidate) => candidate.itemId === action.itemId,
+        );
+  const targetAvailable =
+    action.kind === 'context'
+      ? state.scope.kind === 'context' &&
+        state.scope.contextId === action.contextId
+      : item !== undefined &&
+        item.itemId === state.selectedInventoryItemId &&
+        (action.kind === 'inventory' ||
+          (state.scope.kind === 'context' &&
+            state.scope.contextId === action.contextId));
+  const canConfirm =
+    action.status === 'ready' &&
+    action.preview !== undefined &&
+    targetAvailable &&
+    !state.refreshing &&
+    state.busyCommand === undefined;
+
+  function retry() {
+    if (!targetAvailable || action === undefined) return;
+    if (action.kind === 'context')
+      void store.prepareContextDeletion(action.contextId);
+    else if (item !== undefined && action.kind === 'context_item')
+      void store.prepareContextItemRemoval(item);
+    else if (item !== undefined) void store.prepareInventoryItemDeletion(item);
+  }
+
   return (
-    <Button
-      className={`${styles.inventoryRow!} ${isSelected ? styles.selectedItem : ''}`}
-      onPress={onSelect}
+    <ModalOverlay
+      className={styles.lossOverlay!}
+      isOpen
+      isDismissable={!submitting}
+      isKeyboardDismissDisabled={submitting}
+      onOpenChange={(open) => {
+        if (!open && !submitting) store.cancelDestructiveAction();
+      }}
     >
+      <Modal className={styles.lossModal!}>
+        <Dialog
+          className={styles.lossDialog!}
+          aria-labelledby="destructive-action-title"
+        >
+          <header className={styles.lossHeader}>
+            <AlertTriangle aria-hidden="true" size={20} />
+            <h2 id="destructive-action-title">
+              <FormattedMessage
+                id={`destructive.${action.kind}.title`}
+                values={{ name: action.displayName }}
+              />
+            </h2>
+          </header>
+          <div
+            className={styles.lossBody}
+            aria-busy={action.status === 'loading' || submitting}
+          >
+            {action.status === 'loading' && (
+              <p role="status">
+                <FormattedMessage id="destructive.loading" />
+              </p>
+            )}
+            {submitting && (
+              <p role="status">
+                <FormattedMessage id="destructive.submitting" />
+              </p>
+            )}
+            {(action.status === 'error' || action.status === 'stale') && (
+              <p role="alert">
+                <FormattedMessage
+                  id={
+                    action.status === 'stale'
+                      ? 'destructive.stale'
+                      : 'destructive.failed'
+                  }
+                />
+              </p>
+            )}
+            {(action.status === 'ready' || submitting) &&
+              action.preview !== undefined &&
+              (action.kind === 'inventory' ? (
+                <>
+                  <p>
+                    <FormattedMessage id="destructive.inventory.detail" />
+                  </p>
+                  <section className={styles.lossSection}>
+                    <h3>
+                      <FormattedMessage id="scope.free" />
+                    </h3>
+                    <LossSummary summary={action.preview.global} />
+                  </section>
+                  {action.preview.contexts.map((context) => (
+                    <section
+                      className={styles.lossSection}
+                      key={context.contextId}
+                    >
+                      <h3>{context.contextName}</h3>
+                      <LossSummary summary={context} />
+                    </section>
+                  ))}
+                  {action.preview.retainedDerivedItemCount > 0 && (
+                    <p>
+                      <FormattedMessage
+                        id="destructive.retainedDerived"
+                        values={{
+                          count: action.preview.retainedDerivedItemCount,
+                        }}
+                      />
+                    </p>
+                  )}
+                  {action.preview.retainedPlayoutCount > 0 && (
+                    <p>
+                      <FormattedMessage
+                        id="destructive.retainedPlayouts"
+                        values={{ count: action.preview.retainedPlayoutCount }}
+                      />
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p>
+                    <FormattedMessage
+                      id={`destructive.${action.kind}.detail`}
+                      values={{ name: action.preview.contextName }}
+                    />
+                  </p>
+                  <LossSummary
+                    summary={contextRemovalSummary(action.preview)}
+                  />
+                  {action.preview.losses.playout !== undefined && (
+                    <p>
+                      <FormattedMessage
+                        id="destructive.lostPlayout"
+                        values={{
+                          count: Number(
+                            action.preview.losses.playout !== undefined,
+                          ),
+                          moves: action.preview.losses.playout?.moveCount ?? 0,
+                        }}
+                      />
+                    </p>
+                  )}
+                  <p>
+                    <FormattedMessage
+                      id="destructive.retainedInventory"
+                      values={{ count: action.preview.items.length }}
+                    />
+                  </p>
+                  {action.preview.retainedPlayout !== undefined && (
+                    <p>
+                      <FormattedMessage
+                        id="destructive.retainedPlayout"
+                        values={{
+                          count: 1,
+                          moves: action.preview.retainedPlayout.moveCount,
+                        }}
+                      />
+                    </p>
+                  )}
+                </>
+              ))}
+          </div>
+          <footer className={styles.lossActions}>
+            <Button
+              className={styles.secondaryButton!}
+              autoFocus
+              isDisabled={submitting}
+              onPress={() => store.cancelDestructiveAction()}
+            >
+              <X aria-hidden="true" size={16} />
+              <FormattedMessage id="action.cancel" />
+            </Button>
+            {action.status === 'error' || action.status === 'stale' ? (
+              <Button
+                className={styles.secondaryButton!}
+                isDisabled={
+                  !targetAvailable ||
+                  state.refreshing ||
+                  state.busyCommand !== undefined
+                }
+                onPress={retry}
+              >
+                <RefreshCw aria-hidden="true" size={16} />
+                <FormattedMessage id="destructive.retry" />
+              </Button>
+            ) : (
+              <Button
+                className={styles.destructiveButton!}
+                isDisabled={!canConfirm}
+                onPress={() => {
+                  if (canConfirm) void store.confirmDestructiveAction();
+                }}
+              >
+                <Trash2 aria-hidden="true" size={16} />
+                <FormattedMessage id={`destructive.${action.kind}.confirm`} />
+              </Button>
+            )}
+          </footer>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
+
+function InventoryFamily({
+  node,
+  depth,
+  state,
+  store,
+  collapsedFamilies,
+  onToggle,
+}: {
+  readonly node: InventoryFamilyNode;
+  readonly depth: number;
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
+  readonly collapsedFamilies: ReadonlySet<string>;
+  readonly onToggle: (itemId: string) => void;
+}) {
+  const intl = useIntl();
+  const { item } = node;
+  const activeContextId =
+    state.scope.kind === 'context' ? state.scope.contextId : undefined;
+  const isSelected =
+    node.isMatch && item.itemId === state.selectedInventoryItemId;
+  const requiresResolution =
+    node.isMatch &&
+    (state.contextWorkspace?.pendingRevisionImpacts.some(
+      (impact) => impact.itemId === item.itemId,
+    ) ??
+      false);
+  const isExpanded = !collapsedFamilies.has(item.itemId);
+  const statusId =
+    item.lifecycle === 'trashed' || item.lifecycle === 'tombstone'
+      ? 'manage.deletedSource'
+      : !node.isMatch
+        ? 'manage.sourceContext'
+        : requiresResolution
+          ? 'revisionImpact.required'
+          : activeContextId === undefined
+            ? undefined
+            : item.contextIds.includes(activeContextId)
+              ? 'manage.inContext'
+              : 'manage.outsideContext';
+  const content = (
+    <>
       <span className={styles.itemIcon}>
         <InventoryTypeIcon itemType={item.itemType} size={18} />
       </span>
@@ -415,28 +726,89 @@ function InventoryRow({
           <FormattedDate value={item.updatedAt} />
         </small>
       </span>
-      <span
-        className={
-          requiresResolution
-            ? styles.resolutionRequired
-            : activeContextId !== undefined &&
-                item.contextIds.includes(activeContextId)
-              ? styles.contextMember
-              : styles.inventoryOnly
-        }
-      >
-        <FormattedMessage
-          id={
+      {statusId !== undefined && (
+        <span
+          className={
             requiresResolution
-              ? 'revisionImpact.required'
-              : activeContextId !== undefined &&
-                  item.contextIds.includes(activeContextId)
-                ? 'manage.inContext'
-                : 'manage.inventoryOnly'
+              ? styles.resolutionRequired
+              : statusId === 'manage.inContext'
+                ? styles.contextMember
+                : styles.inventoryOnly
           }
-        />
-      </span>
-    </Button>
+        >
+          <FormattedMessage id={statusId} />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <li>
+      <div
+        className={styles.familyRow}
+        style={{ marginInlineStart: depth * 14 }}
+      >
+        {node.children.length > 0 ? (
+          <button
+            type="button"
+            className={styles.expandButton}
+            aria-expanded={isExpanded}
+            aria-label={intl.formatMessage(
+              {
+                id: isExpanded
+                  ? 'manage.collapseFamily'
+                  : 'manage.expandFamily',
+              },
+              { name: item.displayName },
+            )}
+            title={intl.formatMessage(
+              {
+                id: isExpanded
+                  ? 'manage.collapseFamily'
+                  : 'manage.expandFamily',
+              },
+              { name: item.displayName },
+            )}
+            onClick={() => onToggle(item.itemId)}
+          >
+            {isExpanded ? (
+              <ChevronDown aria-hidden="true" size={16} />
+            ) : (
+              <ChevronRight aria-hidden="true" size={16} />
+            )}
+          </button>
+        ) : (
+          <span />
+        )}
+        {node.isMatch ? (
+          <Button
+            className={`${styles.inventoryRow!} ${isSelected ? styles.selectedItem : ''}`}
+            aria-pressed={isSelected}
+            onPress={() => void store.selectInventoryItem(item)}
+          >
+            {content}
+          </Button>
+        ) : (
+          <div className={`${styles.inventoryRow} ${styles.sourceRow}`}>
+            {content}
+          </div>
+        )}
+      </div>
+      {isExpanded && node.children.length > 0 && (
+        <ul className={styles.familyList}>
+          {node.children.map((child) => (
+            <InventoryFamily
+              key={child.item.itemId}
+              node={child}
+              depth={depth + 1}
+              state={state}
+              store={store}
+              collapsedFamilies={collapsedFamilies}
+              onToggle={onToggle}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -455,10 +827,9 @@ function ItemInspector({
     state.scope.kind === 'context' ? state.scope.contextId : undefined;
   const isContextMember =
     contextId !== undefined && item.contextIds.includes(contextId);
-  const isBusy = state.busyCommand !== undefined;
+  const isBusy = state.busyCommand !== undefined || state.refreshing;
   const [showRename, setShowRename] = useState(false);
   const renameOpen = showRename;
-  const [showRemove, setShowRemove] = useState(false);
   const [showScratchDecision, setShowScratchDecision] = useState(false);
   const hasOpenAnalysisDraft = state.analysis.scratch !== undefined;
   const renameDraft =
@@ -485,7 +856,6 @@ function ItemInspector({
 
   useEffect(() => {
     setShowRename(false);
-    setShowRemove(false);
     setShowScratchDecision(false);
   }, [item.itemId, item.currentRevisionId]);
 
@@ -511,19 +881,12 @@ function ItemInspector({
             <FormattedMessage id={`origin.${item.originKind}`} />
           </dd>
         </div>
-        <div>
-          <dt>
-            <FormattedMessage id="manage.language" />
-          </dt>
-          <dd>{item.languageTag}</dd>
-        </div>
-        <div>
-          <dt>
-            <FormattedMessage id="manage.revision" />
-          </dt>
-          <dd>r{item.currentRevisionId}</dd>
-        </div>
       </dl>
+      <InventoryDetailsView
+        key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${item.itemId}-${item.currentRevisionId}`}
+        item={item}
+        store={store}
+      />
       {revisionImpact === undefined &&
         renameOpen &&
         renameDraft === undefined && (
@@ -605,7 +968,9 @@ function ItemInspector({
             </div>
           </section>
         )}
-      {revisionImpact === undefined && showScratchDecision ? (
+      {revisionImpact === undefined &&
+      (contextId === undefined || isContextMember) &&
+      showScratchDecision ? (
         <section className={styles.scratchDecision}>
           <div>
             <strong>
@@ -651,58 +1016,27 @@ function ItemInspector({
             </Button>
           </div>
         </section>
-      ) : revisionImpact === undefined && showRemove ? (
-        <section className={styles.removeConfirmation}>
-          <div>
-            <strong>
-              <FormattedMessage id="manage.removeFromContextTitle" />
-            </strong>
-            <p>
-              <FormattedMessage id="manage.removeFromContextDetail" />
-            </p>
-          </div>
-          <div className={styles.removeConfirmationActions}>
-            <Button
-              className={styles.secondaryButton!}
-              onPress={() => setShowRemove(false)}
-              isDisabled={isBusy}
-            >
-              <X aria-hidden="true" size={16} />
-              <FormattedMessage id="action.cancel" />
-            </Button>
-            <Button
-              className={styles.destructiveButton!}
-              onPress={async () => {
-                if (await store.removeInventoryItemFromCurrentContext(item)) {
-                  setShowRemove(false);
-                }
-              }}
-              isDisabled={isBusy}
-            >
-              <Trash2 aria-hidden="true" size={16} />
-              <FormattedMessage id="manage.removeFromContext" />
-            </Button>
-          </div>
-        </section>
       ) : revisionImpact === undefined &&
         !renameOpen &&
         renameDraft === undefined &&
         !showScratchDecision ? (
         <div className={styles.inspectorActions}>
-          <Button
-            className={styles.primaryButton!}
-            onPress={() => {
-              if (hasOpenAnalysisDraft) {
-                setShowScratchDecision(true);
-                return;
-              }
-              void store.openInventoryItem(item);
-            }}
-            isDisabled={isBusy}
-          >
-            <ArrowRight aria-hidden="true" size={16} />
-            <FormattedMessage id="activity.analyze" />
-          </Button>
+          {(contextId === undefined || isContextMember) && (
+            <Button
+              className={styles.primaryButton!}
+              onPress={() => {
+                if (hasOpenAnalysisDraft) {
+                  setShowScratchDecision(true);
+                  return;
+                }
+                void store.openInventoryItem(item);
+              }}
+              isDisabled={isBusy}
+            >
+              <ArrowRight aria-hidden="true" size={16} />
+              <FormattedMessage id="activity.analyze" />
+            </Button>
+          )}
           <Button
             className={styles.primaryButton!}
             onPress={() => setShowRename((visible) => !visible)}
@@ -726,7 +1060,7 @@ function ItemInspector({
               className={styles.destructiveButton!}
               onPress={() => {
                 setShowRename(false);
-                setShowRemove(true);
+                void store.prepareContextItemRemoval(item);
               }}
               isDisabled={isBusy}
             >
@@ -734,6 +1068,14 @@ function ItemInspector({
               <FormattedMessage id="manage.removeFromContext" />
             </Button>
           )}
+          <Button
+            className={styles.destructiveButton!}
+            onPress={() => void store.prepareInventoryItemDeletion(item)}
+            isDisabled={isBusy}
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            <FormattedMessage id="manage.deleteInventoryItem" />
+          </Button>
         </div>
       ) : revisionImpact !== undefined &&
         state.revisionImpact?.impact.impactId === revisionImpact.impactId ? (
@@ -753,7 +1095,13 @@ function ItemInspector({
   );
 }
 
-function ContextSummary({ state }: { readonly state: ReadyState }) {
+function ContextSummary({
+  state,
+  store,
+}: {
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
+}) {
   if (state.scope.kind === 'free') {
     return (
       <div className={styles.contextSummary}>
@@ -761,49 +1109,25 @@ function ContextSummary({ state }: { readonly state: ReadyState }) {
         <strong>
           <FormattedMessage id="scope.free" />
         </strong>
-        <p>
-          <FormattedMessage id="manage.freeSummary" />
-        </p>
       </div>
     );
   }
   const workspace = state.contextWorkspace;
   return (
-    <section className={`${styles.contextSummary} ${styles.contextDetails}`}>
-      <div className={styles.contextDetailsTitle}>
-        <Boxes aria-hidden="true" size={22} />
-        <div>
-          <span>
-            <FormattedMessage id="manage.contextDetails" />
-          </span>
-          <strong>{workspace?.context.displayName}</strong>
-        </div>
-      </div>
+    <section className={styles.contextDetails}>
+      {workspace !== undefined && (
+        <ContextMetadataForm
+          context={workspace.context}
+          isBusy={state.busyCommand !== undefined || state.refreshing}
+          onSave={(request) =>
+            store.updateWorkingContextMetadata(
+              workspace.context.contextId,
+              request,
+            )
+          }
+        />
+      )}
       <dl>
-        {workspace?.context.purpose !== undefined && (
-          <div>
-            <dt>
-              <FormattedMessage id="manage.contextPurpose" />
-            </dt>
-            <dd>{workspace.context.purpose}</dd>
-          </div>
-        )}
-        {workspace?.context.nextStep !== undefined && (
-          <div>
-            <dt>
-              <FormattedMessage id="manage.nextStep" />
-            </dt>
-            <dd>{workspace.context.nextStep}</dd>
-          </div>
-        )}
-        {workspace?.context.boundary !== undefined && (
-          <div>
-            <dt>
-              <FormattedMessage id="manage.contextBoundary" />
-            </dt>
-            <dd>{workspace.context.boundary}</dd>
-          </div>
-        )}
         <div>
           <dt>
             <FormattedMessage id="manage.contents" />
@@ -816,7 +1140,124 @@ function ContextSummary({ state }: { readonly state: ReadyState }) {
           </dd>
         </div>
       </dl>
+      {workspace !== undefined && (
+        <Button
+          className={styles.destructiveButton!}
+          onPress={() =>
+            void store.prepareContextDeletion(workspace.context.contextId)
+          }
+          isDisabled={state.busyCommand !== undefined || state.refreshing}
+        >
+          <Trash2 aria-hidden="true" size={16} />
+          <FormattedMessage id="manage.deleteContext" />
+        </Button>
+      )}
     </section>
+  );
+}
+
+function ContextMetadataForm({
+  context,
+  isBusy,
+  onSave,
+}: {
+  readonly context: NonNullable<ReadyState['contextWorkspace']>['context'];
+  readonly isBusy: boolean;
+  readonly onSave: (request: {
+    readonly displayName: string;
+    readonly purpose: string | null;
+    readonly expectedContextVersion: number;
+  }) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState<{
+    readonly base: typeof context;
+    readonly displayName: string;
+    readonly purpose: string;
+  }>();
+  const displayName = draft?.displayName ?? context.displayName;
+  const purpose = draft?.purpose ?? context.purpose ?? '';
+  const hasChanges =
+    draft !== undefined &&
+    (displayName.trim() !== draft.base.displayName ||
+      purpose.trim() !== (draft.base.purpose ?? ''));
+  function edit(field: 'displayName' | 'purpose', value: string) {
+    setDraft((current) => ({
+      base: current?.base ?? context,
+      displayName,
+      purpose,
+      [field]: value,
+    }));
+  }
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (
+      isBusy ||
+      !hasChanges ||
+      displayName.trim() === '' ||
+      draft === undefined
+    )
+      return;
+    if (
+      await onSave({
+        displayName: displayName.trim(),
+        purpose: purpose.trim() || null,
+        expectedContextVersion: draft.base.contextVersion,
+      })
+    )
+      setDraft(undefined);
+  }
+  return (
+    <form
+      className={styles.contextMetadataForm}
+      onSubmit={submit}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && !isBusy) {
+          event.preventDefault();
+          setDraft(undefined);
+        }
+      }}
+    >
+      <label htmlFor="context-edit-name">
+        <FormattedMessage id="manage.contextName" />
+      </label>
+      <input
+        id="context-edit-name"
+        value={displayName}
+        maxLength={160}
+        required
+        disabled={isBusy}
+        onChange={(event) => edit('displayName', event.target.value)}
+      />
+      <label htmlFor="context-edit-purpose">
+        <FormattedMessage id="manage.contextPurpose" />
+      </label>
+      <textarea
+        id="context-edit-purpose"
+        value={purpose}
+        maxLength={2000}
+        rows={4}
+        disabled={isBusy}
+        onChange={(event) => edit('purpose', event.target.value)}
+      />
+      <div className={styles.formActions}>
+        <Button
+          className={styles.tertiaryButton!}
+          isDisabled={isBusy || draft === undefined}
+          onPress={() => setDraft(undefined)}
+        >
+          <X aria-hidden="true" size={15} />
+          <FormattedMessage id="action.cancel" />
+        </Button>
+        <button
+          type="submit"
+          className={styles.primaryButton}
+          disabled={isBusy || !hasChanges || displayName.trim() === ''}
+        >
+          <Save aria-hidden="true" size={15} />
+          <FormattedMessage id="manage.saveContext" />
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -829,20 +1270,14 @@ function CreateContextForm({
   readonly onCancel: () => void;
   readonly onCreate: (request: {
     readonly displayName: string;
-    readonly purpose?: string;
-    readonly nextStep?: string;
   }) => Promise<boolean>;
 }) {
   const [displayName, setDisplayName] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [nextStep, setNextStep] = useState('');
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (displayName.trim() === '') return;
+    if (isBusy || displayName.trim() === '') return;
     await onCreate({
       displayName: displayName.trim(),
-      ...(purpose.trim() === '' ? {} : { purpose: purpose.trim() }),
-      ...(nextStep.trim() === '' ? {} : { nextStep: nextStep.trim() }),
     });
   }
   return (
@@ -857,28 +1292,18 @@ function CreateContextForm({
       <input
         id="context-name"
         value={displayName}
+        maxLength={160}
+        required
+        disabled={isBusy}
         onChange={(event) => setDisplayName(event.target.value)}
         autoFocus
       />
-      <label htmlFor="context-purpose">
-        <FormattedMessage id="manage.contextPurpose" />
-      </label>
-      <textarea
-        id="context-purpose"
-        value={purpose}
-        onChange={(event) => setPurpose(event.target.value)}
-        rows={2}
-      />
-      <label htmlFor="context-next-step">
-        <FormattedMessage id="manage.nextStep" />
-      </label>
-      <input
-        id="context-next-step"
-        value={nextStep}
-        onChange={(event) => setNextStep(event.target.value)}
-      />
       <div className={styles.formActions}>
-        <Button className={styles.tertiaryButton!} onPress={onCancel}>
+        <Button
+          className={styles.tertiaryButton!}
+          onPress={onCancel}
+          isDisabled={isBusy}
+        >
           <FormattedMessage id="action.cancel" />
         </Button>
         <button

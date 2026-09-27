@@ -50,6 +50,19 @@ import {
 } from './responses.ts';
 import {
   AddContextReferenceArgumentsSchema,
+  GetWorkScopeWorkspaceArgumentsSchema,
+  WorkScopeWorkspaceSchema,
+  StartupResumeSchema,
+  SetStartupResumeArgumentsSchema,
+  PreviewContextItemRemovalArgumentsSchema,
+  ContextRemovalPreviewSchema,
+  PreviewWorkingContextDeletionArgumentsSchema,
+  DeleteWorkingContextArgumentsSchema,
+  DeleteWorkingContextResultSchema,
+  PreviewInventoryItemDeletionArgumentsSchema,
+  InventoryItemDeletionPreviewSchema,
+  DeleteInventoryItemArgumentsSchema,
+  DeleteInventoryItemResultSchema,
   AddContextReferenceResultSchema,
   RemoveContextItemArgumentsSchema,
   RemoveContextItemResultSchema,
@@ -66,6 +79,7 @@ import {
   DiagnosticReportManifestSchema,
   DiagnosticSettingsSchema,
   CreateWorkingContextArgumentsSchema,
+  UpdateWorkingContextMetadataArgumentsSchema,
   CreateWorkingContextResultSchema,
   EmptyArgumentsSchema,
   GetAnalysisWorkspaceArgumentsSchema,
@@ -476,6 +490,109 @@ export function createMcpServer({
       _meta: problemMetadata,
     },
     {
+      name: 'get_work_scope_workspace',
+      title: 'get work scope workspace',
+      description: 'Read the authoritative resume slots for one work scope.',
+      inputSchema: GetWorkScopeWorkspaceArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [WorkScopeWorkspaceSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_startup_resume',
+      title: 'get startup resume',
+      description:
+        'Read the startup scope, area and unavailable-context cause.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [StartupResumeSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'set_startup_resume',
+      title: 'set startup resume',
+      description:
+        'Set the startup scope and area using the observed startup version.',
+      inputSchema: SetStartupResumeArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [StartupResumeSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'preview_context_item_removal',
+      title: 'preview context item removal',
+      description:
+        'Read concrete local-work losses before removing an item from a context.',
+      inputSchema: PreviewContextItemRemovalArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ContextRemovalPreviewSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'preview_working_context_deletion',
+      title: 'preview working context deletion',
+      description:
+        'Read concrete work losses before deleting a working context.',
+      inputSchema: PreviewWorkingContextDeletionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ContextRemovalPreviewSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'delete_working_context',
+      title: 'delete working context',
+      description:
+        'Delete the working context confirmed by the preview versions.',
+      inputSchema: DeleteWorkingContextArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DeleteWorkingContextResultSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'preview_inventory_item_deletion',
+      title: 'preview inventory item deletion',
+      description:
+        'Read context and global work affected by deleting an inventory item.',
+      inputSchema: PreviewInventoryItemDeletionArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [InventoryItemDeletionPreviewSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'delete_inventory_item',
+      title: 'delete inventory item',
+      description:
+        'Delete the inventory item confirmed by the preview versions.',
+      inputSchema: DeleteInventoryItemArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DeleteInventoryItemResultSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+    {
       name: 'list_working_contexts',
       title: 'List working contexts',
       description:
@@ -499,6 +616,19 @@ export function createMcpServer({
         anyOf: [WorkingContextWorkspaceSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'update_working_context_metadata',
+      title: 'Update working context metadata',
+      description:
+        'Update the name and description of a working context with an explicit version check.',
+      inputSchema: UpdateWorkingContextMetadataArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [CreateWorkingContextResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
       _meta: problemMetadata,
     },
     {
@@ -646,6 +776,19 @@ export function createMcpServer({
         _meta: problemMetadata,
       }),
     ),
+    {
+      name: 'cancel_playout_completion',
+      title: 'Cancel playout completion',
+      description:
+        'Cancel completion of a stopped playout draft and leave it paused without requesting a provider move.',
+      inputSchema: ExpectedPlayoutArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [PlayoutResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
     {
       name: 'complete_playout',
       title: 'Complete playout',
@@ -1036,10 +1179,88 @@ export function createMcpServer({
           const dto = resolvePendingRevisionImpactResultDto(
             await hostClient.resolvePendingRevisionImpact(args.impactId, {
               expectedImpactVersion: args.expectedImpactVersion,
+              expectedDataRevision: args.expectedDataRevision,
               resolution: args.resolution,
             }),
           );
           return toolResult(dto, `Revision impact ${dto.impactId} resolved.`);
+        }
+        case 'get_work_scope_workspace': {
+          if (!Value.Check(GetWorkScopeWorkspaceArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.getWorkScopeWorkspace(args);
+          if (!Value.Check(WorkScopeWorkspaceSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace state read.');
+        }
+        case 'get_startup_resume': {
+          if (!Value.Check(EmptyArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.getStartupResume();
+          if (!Value.Check(StartupResumeSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace state read.');
+        }
+        case 'set_startup_resume': {
+          if (!Value.Check(SetStartupResumeArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.setStartupResume(args);
+          if (!Value.Check(StartupResumeSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace change completed.');
+        }
+        case 'preview_context_item_removal': {
+          if (!Value.Check(PreviewContextItemRemovalArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.previewContextItemRemoval(
+            args.contextId,
+            args.itemId,
+          );
+          if (!Value.Check(ContextRemovalPreviewSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace state read.');
+        }
+        case 'preview_working_context_deletion': {
+          if (!Value.Check(PreviewWorkingContextDeletionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.previewWorkingContextDeletion(
+            args.contextId,
+          );
+          if (!Value.Check(ContextRemovalPreviewSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace state read.');
+        }
+        case 'delete_working_context': {
+          if (!Value.Check(DeleteWorkingContextArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.deleteWorkingContext(args.contextId, {
+            expectedContextVersion: args.expectedContextVersion,
+            expectedDataRevision: args.expectedDataRevision,
+          });
+          if (!Value.Check(DeleteWorkingContextResultSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace change completed.');
+        }
+        case 'preview_inventory_item_deletion': {
+          if (!Value.Check(PreviewInventoryItemDeletionArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.previewInventoryItemDeletion(
+            args.itemId,
+          );
+          if (!Value.Check(InventoryItemDeletionPreviewSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace state read.');
+        }
+        case 'delete_inventory_item': {
+          if (!Value.Check(DeleteInventoryItemArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.deleteInventoryItem(args.itemId, {
+            expectedCurrentRevisionId: args.expectedCurrentRevisionId,
+            expectedDataRevision: args.expectedDataRevision,
+          });
+          if (!Value.Check(DeleteInventoryItemResultSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Workspace change completed.');
         }
         case 'list_working_contexts': {
           if (!Value.Check(ListWorkingContextsArgumentsSchema, args))
@@ -1064,6 +1285,18 @@ export function createMcpServer({
             await hostClient.getWorkingContextWorkspace(args.contextId),
           );
           return toolResult(dto, `Working context ${dto.context.displayName}.`);
+        }
+        case 'update_working_context_metadata': {
+          if (!Value.Check(UpdateWorkingContextMetadataArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const { contextId, ...request } = args;
+          const dto = createWorkingContextResultDto(
+            await hostClient.updateWorkingContextMetadata(contextId, request),
+          );
+          return toolResult(
+            dto,
+            `Working context ${dto.context.displayName} updated.`,
+          );
         }
         case 'create_working_context': {
           if (!Value.Check(CreateWorkingContextArgumentsSchema, args))
@@ -1094,7 +1327,10 @@ export function createMcpServer({
           if (!Value.Check(RemoveContextItemArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
           const dto = removeContextItemResultDto(
-            await hostClient.removeContextItem(args.contextId, args.itemId),
+            await hostClient.removeContextItem(args.contextId, args.itemId, {
+              expectedContextVersion: args.expectedContextVersion,
+              expectedDataRevision: args.expectedDataRevision,
+            }),
           );
           return toolResult(dto, `Item ${dto.itemId} removed from context.`);
         }
@@ -1105,7 +1341,7 @@ export function createMcpServer({
           if (request === undefined)
             return toolProblem(localProblem('request.invalid'));
           const dto = setWorkScopeResumeResultDto(
-            await hostClient.setWorkScopeResume(args.contextId, request),
+            await hostClient.setWorkScopeResume(request),
           );
           return toolResult(
             dto,
@@ -1191,10 +1427,18 @@ export function createMcpServer({
                   : await hostClient.stopPlayout(args);
           return toolResult(dto, `Playout is ${dto.draft.status.kind}.`);
         }
+        case 'cancel_playout_completion': {
+          if (!Value.Check(ExpectedPlayoutArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.cancelPlayoutCompletion(args);
+          return toolResult(dto, `Playout is ${dto.draft.status.kind}.`);
+        }
         case 'complete_playout': {
           if (!Value.Check(CompletePlayoutArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
           const dto = await hostClient.completePlayout(args);
+          if (!Value.Check(CompletePlayoutResultSchema, dto))
+            throw new Error('Invalid host response');
           return toolResult(dto, `Game record ${dto.itemId} created.`);
         }
         case 'discard_playout': {
@@ -1242,6 +1486,7 @@ function resumeRequest(args: typeof SetWorkScopeResumeArgumentsSchema.static) {
     }
     return {
       area: args.area,
+      scope: args.scope,
       expectedResumeVersion: args.expectedResumeVersion,
       presentation: args.presentation,
       ...(args.selectedItemId === undefined
@@ -1262,6 +1507,7 @@ function resumeRequest(args: typeof SetWorkScopeResumeArgumentsSchema.static) {
   }
   return {
     area: args.area,
+    scope: args.scope,
     expectedResumeVersion: args.expectedResumeVersion,
     mode: args.mode,
     ...(args.itemId === undefined ? {} : { itemId: args.itemId }),
@@ -1272,6 +1518,22 @@ function resumeRequest(args: typeof SetWorkScopeResumeArgumentsSchema.static) {
 
 function inputSchema(name: string) {
   switch (name) {
+    case 'get_work_scope_workspace':
+      return GetWorkScopeWorkspaceArgumentsSchema;
+    case 'get_startup_resume':
+      return EmptyArgumentsSchema;
+    case 'set_startup_resume':
+      return SetStartupResumeArgumentsSchema;
+    case 'preview_context_item_removal':
+      return PreviewContextItemRemovalArgumentsSchema;
+    case 'preview_working_context_deletion':
+      return PreviewWorkingContextDeletionArgumentsSchema;
+    case 'delete_working_context':
+      return DeleteWorkingContextArgumentsSchema;
+    case 'preview_inventory_item_deletion':
+      return PreviewInventoryItemDeletionArgumentsSchema;
+    case 'delete_inventory_item':
+      return DeleteInventoryItemArgumentsSchema;
     case 'get_system_status':
     case 'get_user_preferences':
     case 'get_diagnostic_settings':
@@ -1325,6 +1587,8 @@ function inputSchema(name: string) {
       return GetWorkingContextWorkspaceArgumentsSchema;
     case 'create_working_context':
       return CreateWorkingContextArgumentsSchema;
+    case 'update_working_context_metadata':
+      return UpdateWorkingContextMetadataArgumentsSchema;
     case 'add_context_reference':
       return AddContextReferenceArgumentsSchema;
     case 'remove_context_item':
@@ -1344,6 +1608,7 @@ function inputSchema(name: string) {
     case 'resume_playout':
     case 'stop_playout':
     case 'discard_playout':
+    case 'cancel_playout_completion':
       return ExpectedPlayoutArgumentsSchema;
     case 'complete_playout':
       return CompletePlayoutArgumentsSchema;

@@ -4,6 +4,11 @@ import { ApplicationProblem } from '../../../app/application/problems/applicatio
 import { localId } from '../../../app/domain/identity/index.ts';
 import { problemUriBase } from '../../../app/infrastructure/channels/api/problems.ts';
 import {
+  cancelCompletionRequest,
+  pausedPlayout,
+  pausedPlayoutDto,
+} from '../playout-fixtures.ts';
+import {
   buildFixture,
   createFixture,
   headers,
@@ -34,6 +39,71 @@ const initialPosition = {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
 };
 
+test('cancel completion binds scope and revision once and preserves the paused view', async (t) => {
+  const received: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    cancelPlayoutCompletion: {
+      execute: async (request) => {
+        received.push(request);
+        if (request.expectedDraftRevision !== 3)
+          throw new ApplicationProblem('playout.revision_conflict', 'stale');
+        return pausedPlayout;
+      },
+    },
+  });
+  const response = await host.inject({
+    method: 'POST',
+    url: '/playout/cancel-completion',
+    headers,
+    payload: cancelCompletionRequest,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), pausedPlayoutDto);
+  assert.deepEqual(received, [
+    {
+      scope: { kind: 'context', contextId: localId('working-context', 5) },
+      draftId: localId('playout-draft', 7),
+      expectedDraftRevision: 3,
+    },
+  ]);
+  const stale = await host.inject({
+    method: 'POST',
+    url: '/playout/cancel-completion',
+    headers,
+    payload: { ...cancelCompletionRequest, expectedDraftRevision: 2 },
+  });
+  assert.equal(stale.statusCode, 409);
+  assert.equal(stale.json().code, 'playout.revision_conflict');
+  assert.equal(received.length, 2);
+});
+
+test('cancel completion rejects malformed or extra input before invoking the use case', async (t) => {
+  const { host } = await buildFixture(t, {
+    cancelPlayoutCompletion: {
+      execute: async () => assert.fail('invalid input reached the use case'),
+    },
+  });
+  for (const payload of [
+    {},
+    { ...cancelCompletionRequest, expectedDraftRevision: 0 },
+    { ...cancelCompletionRequest, expectedDraftRevision: 1.5 },
+    { ...cancelCompletionRequest, draftId: '07' },
+    { ...cancelCompletionRequest, scope: { kind: 'context' } },
+    { ...cancelCompletionRequest, scope: { kind: 'free', contextId: '5' } },
+    { ...cancelCompletionRequest, resume: true },
+    { ...cancelCompletionRequest, outcome: { kind: 'unfinished' } },
+  ]) {
+    const response = await host.inject({
+      method: 'POST',
+      url: '/playout/cancel-completion',
+      headers,
+      payload,
+    });
+    assert.equal(response.statusCode, 400, JSON.stringify(payload));
+    assert.equal(response.json().code, 'request.invalid');
+  }
+});
+
 test('status includes the application read model and release handshake only', async (t) => {
   const diagnostics: unknown[] = [];
   const { host } = await buildFixture(t, {
@@ -47,6 +117,67 @@ test('status includes the application read model and release handshake only', as
     contractFingerprint: 'test-contract-fingerprint',
   });
   assert.deepEqual(diagnostics, []);
+});
+
+test('context metadata route preserves version and explicit description clearing', async (t) => {
+  const received: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    updateWorkingContextMetadata: {
+      execute: async (request) => {
+        received.push(request);
+        if (request.expectedContextVersion !== 2)
+          throw new ApplicationProblem(
+            'workspace.context_version_conflict',
+            'stale',
+          );
+        return {
+          context: {
+            contextId: request.contextId,
+            displayName: request.displayName,
+            lifecycle: 'active',
+            contextVersion: 3,
+            referenceCount: 1,
+            pendingRevisionImpactCount: 0,
+            createdAt: occurredAt,
+            updatedAt: occurredAt,
+          },
+          dataRevision: 4,
+        };
+      },
+    },
+  });
+  const body = {
+    expectedContextVersion: 2,
+    displayName: 'Renamed',
+    purpose: null,
+  };
+  const response = await host.inject({
+    method: 'PUT',
+    url: '/working-contexts/5/metadata',
+    headers,
+    payload: body,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.json().context.contextId, '5');
+  assert.equal(response.json().context.contextVersion, 3);
+  assert.deepEqual(received, [
+    { ...body, contextId: localId('working-context', 5) },
+  ]);
+  const stale = await host.inject({
+    method: 'PUT',
+    url: '/working-contexts/5/metadata',
+    headers,
+    payload: { ...body, expectedContextVersion: 1 },
+  });
+  assert.equal(stale.statusCode, 409);
+  const invalid = await host.inject({
+    method: 'PUT',
+    url: '/working-contexts/5/metadata',
+    headers,
+    payload: { ...body, nextStep: 'undeclared' },
+  });
+  assert.equal(invalid.statusCode, 400);
+  assert.equal(received.length, 2);
 });
 
 test('engine provider mutation routes bind concrete instance id paths', async (t) => {
@@ -153,6 +284,7 @@ test('context item removal binds both local ids and returns the removed relation
     method: 'DELETE',
     url: '/working-contexts/2/items/7',
     headers,
+    payload: { expectedContextVersion: 1, expectedDataRevision: 5 },
   });
 
   assert.equal(response.statusCode, 200);
@@ -165,6 +297,8 @@ test('context item removal binds both local ids and returns the removed relation
     {
       contextId: localId('working-context', 2),
       itemId: localId('inventory-item', 7),
+      expectedContextVersion: 1,
+      expectedDataRevision: 5,
     },
   ]);
 });
@@ -454,7 +588,8 @@ test('malformed JSON, missing routes, media type and oversized body use neutral 
   assert.ok(!missing.body.includes('CANARY'));
 });
 
-for (const [code, status] of [
+const applicationProblemCases = [
+  ['inventory.display_name_conflict', 409],
   ['preference.invalid_ui_language', 400],
   ['preference.invalid_revision', 400],
   ['preference.revision_conflict', 409],
@@ -490,28 +625,34 @@ for (const [code, status] of [
   ['inventory.preview_conflict', 409],
   ['workspace.impact_not_found', 404],
   ['workspace.impact_conflict', 409],
+  ['workspace.context_version_conflict', 409],
+  ['workspace.inventory_work_not_allowed', 403],
   ['workspace.invalid_impact_resolution', 400],
   ['unknown.CANARY', 500],
-] as const) {
-  test(`application problem ${code} maps without exposing its message or arbitrary parameters`, async (t) => {
-    const { host } = await buildFixture(t, {
-      setUiLanguage: {
-        execute: async () => {
-          throw new ApplicationProblem(code, 'C:/secret/CANARY', {
-            secret: 'CANARY',
-            expectedRevision: 1,
-            currentRevision: 3,
-          });
-        },
+] as const;
+
+test('application problems map to their stable status without exposing messages or arbitrary parameters', async (t) => {
+  let problemCode: string;
+  const { host } = await buildFixture(t, {
+    setUiLanguage: {
+      execute: async () => {
+        throw new ApplicationProblem(problemCode, 'C:/secret/CANARY', {
+          secret: 'CANARY',
+          expectedRevision: 1,
+          currentRevision: 3,
+        });
       },
-    });
+    },
+  });
+  for (const [code, status] of applicationProblemCases) {
+    problemCode = code;
     const response = await host.inject({
       method: 'PUT',
       url: '/preferences/ui-language',
       headers,
       payload: { uiLocale: 'en-GB', expectedRevision: 1 },
     });
-    assert.equal(response.statusCode, status);
+    assert.equal(response.statusCode, status, code);
     const body = response.json();
     assert.equal(body.code, status === 500 ? 'host.failure' : code);
     assert.equal(body.type, `${problemUriBase}${body.code}.md`);
@@ -525,8 +666,8 @@ for (const [code, status] of [
         ? { expectedRevision: 1, currentRevision: 3 }
         : {},
     );
-  });
-}
+  }
+});
 
 test('unexpected exceptions receive one injected correlation and no internal detail', async (t) => {
   let correlations = 0;
@@ -675,6 +816,7 @@ test('position analysis routes preserve provider capabilities and the exact focu
   const listed = await host.inject({ url: '/analysis/providers', headers });
   const request = {
     consumerId: 'desktop-test',
+    work: { scope: { kind: 'free' }, subject: { kind: 'position' } },
     laneId: 'objective',
     providerInstanceId: provider.instanceId,
     candidateCount: 5,
@@ -753,6 +895,7 @@ test('terminal Maia analysis needs no model WDL', async (t) => {
     headers,
     payload: {
       consumerId: 'desktop-test',
+      work: { scope: { kind: 'free' }, subject: { kind: 'position' } },
       laneId: 'human-maia-1800',
       providerInstanceId: 'maia-1800',
       candidateCount: 5,
@@ -1161,7 +1304,6 @@ test('inventory revision reads and impact routes preserve historical and resolut
           cursor: 0,
           contributions: [],
           contextMember: true,
-          readOnlyPreview: true,
           historical: true,
         };
       },
@@ -1199,6 +1341,27 @@ test('inventory revision reads and impact routes preserve historical and resolut
           targetRevisionId: localId('item-revision', 8),
           targetAnchorId: localId('anchor', 9),
           impactVersion: 1,
+          dataRevision: 8,
+          useTargetLoss: {
+            referenceCount: 0,
+            activeNoteCount: 0,
+            noteMoveCount: 0,
+            scratchCount: 0,
+            scratchMoveCount: 0,
+            scratchNoteCount: 0,
+            managementResumeAffected: false,
+            analysisResumeAffected: false,
+          },
+          removeFromContextLoss: {
+            referenceCount: 1,
+            activeNoteCount: 0,
+            noteMoveCount: 0,
+            scratchCount: 0,
+            scratchMoveCount: 0,
+            scratchNoteCount: 0,
+            managementResumeAffected: false,
+            analysisResumeAffected: false,
+          },
           referenceCount: 1,
           contributionCount: 0,
           managementResumeAffected: false,
@@ -1242,6 +1405,7 @@ test('inventory revision reads and impact routes preserve historical and resolut
     headers,
     payload: {
       expectedImpactVersion: 1,
+      expectedDataRevision: 8,
       resolution: { kind: 'use_target' },
     },
   });
@@ -1281,10 +1445,38 @@ test('inventory revision reads and impact routes preserve historical and resolut
       {
         impactId: localId('revision-impact', 10),
         expectedImpactVersion: 1,
+        expectedDataRevision: 8,
         resolution: { kind: 'use_target' },
       },
     ],
   ]);
+});
+
+test('HTTP scratch update maps the explicit return to exploration with its expected versions', async (t) => {
+  let received;
+  const { host } = await buildFixture(t, {
+    updateAnalysisScratch: {
+      execute: async (request) => {
+        received = request;
+        return { discarded: false, dataRevision: 0 };
+      },
+    },
+  });
+  const request = {
+    scope: { kind: 'free' },
+    expectedScratchId: 'dragon-path',
+    expectedScratchRevision: 7,
+    action: { kind: 'continue_exploration' },
+  };
+  const response = await host.inject({
+    method: 'PUT',
+    url: '/analysis/scratch',
+    headers,
+    payload: request,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(received, request);
+  assert.equal(response.json().discarded, false);
 });
 
 test('iteration-two application problems keep stable status and zero revision sentinels', async (t) => {

@@ -150,6 +150,28 @@ export function moveAnalysisCursor(
   });
 }
 
+export function canContinueAnalysisExploration(
+  scratch: AnalysisScratch,
+): boolean {
+  return (
+    scratch.intent.kind === 'inventory_revision' &&
+    scratch.intent.mode !== 'metadata' &&
+    scratch.origin.kind === 'inventory_anchor' &&
+    scratch.steps.length > 0
+  );
+}
+
+export function continueAnalysisExploration(
+  scratch: AnalysisScratch,
+): AnalysisScratch {
+  if (!canContinueAnalysisExploration(scratch)) {
+    throw new Error(
+      'Only an anchored revision with moves can continue as exploration.',
+    );
+  }
+  return replaceAnalysisScratchIntent(scratch, { kind: 'exploration' });
+}
+
 export function prepareAnalysisNote(
   scratch: AnalysisScratch,
   body: string,

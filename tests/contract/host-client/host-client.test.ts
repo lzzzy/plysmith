@@ -7,9 +7,15 @@ import {
   createHostFetch,
   HostClientProblem,
   PlysmithHostClient,
+  RediscoveringHostClient,
   productRelease,
   type HostConnection,
 } from '../../../app/infrastructure/channels/host_client/testing.ts';
+import {
+  cancelCompletionRequest,
+  pausedPlayoutDto,
+  playoutRevisionConflict,
+} from '../playout-fixtures.ts';
 
 const connection: HostConnection = {
   endpoint: 'http://127.0.0.1:43121/',
@@ -17,6 +23,58 @@ const connection: HostConnection = {
   contractFingerprint,
   token: 'host-client-test-token',
 };
+
+test('rediscovering lifecycle mutations never replay after connection loss', async () => {
+  const writes: { path: string; body: unknown }[] = [];
+  const client = new RediscoveringHostClient(async () => connection, {
+    fetch: async (input) => {
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url).pathname;
+      if (path === '/status')
+        return Response.json({
+          state: 'ready',
+          persistence: { schemaVersion: 7, dataRevision: 12 },
+          productRelease,
+          contractFingerprint,
+        });
+      writes.push({ path, body: await request.json() });
+      throw new TypeError('Connection lost after sending');
+    },
+  });
+  const confirmation = { expectedContextVersion: 3, expectedDataRevision: 12 };
+  const startup = {
+    scope: { kind: 'free' as const },
+    area: 'analyze' as const,
+    expectedStartupVersion: 2,
+  };
+  const resume = {
+    scope: { kind: 'free' as const },
+    area: 'manage' as const,
+    expectedResumeVersion: 1,
+    presentation: 'list' as const,
+  };
+  const deletion = { expectedCurrentRevisionId: '8', expectedDataRevision: 12 };
+  for (const invoke of [
+    () => client.setStartupResume(startup),
+    () => client.setWorkScopeResume(resume),
+    () => client.removeContextItem('2', '7', confirmation),
+    () => client.deleteWorkingContext('2', confirmation),
+    () => client.deleteInventoryItem('7', deletion),
+  ])
+    await assert.rejects(
+      invoke,
+      (error: unknown) =>
+        error instanceof HostClientProblem &&
+        error.problem.code === 'host.unavailable',
+    );
+  assert.deepEqual(writes, [
+    { path: '/workspace/startup', body: startup },
+    { path: '/workspace/resume', body: resume },
+    { path: '/working-contexts/2/items/7', body: confirmation },
+    { path: '/working-contexts/2', body: confirmation },
+    { path: '/inventory/items/7', body: deletion },
+  ]);
+});
 
 test('host fetch preserves request and init headers while adding credentials', async () => {
   let captured: Request | undefined;
@@ -97,6 +155,70 @@ test('generated host client performs each write exactly once', async () => {
   assert.equal(result.changed, true);
   assert.equal(writes, 1);
 });
+
+for (const rediscovering of [false, true]) {
+  for (const outcome of ['paused', 'stale', 'disconnect'] as const) {
+    test(`${rediscovering ? 'rediscovering' : 'generated'} client sends cancel completion once on ${outcome}`, async () => {
+      const writes: { path: string; method: string; body: unknown }[] = [];
+      let discoveries = 0;
+      const options = {
+        fetch: async (request: Request | string | URL) => {
+          const input =
+            request instanceof Request ? request : new Request(request);
+          const url = new URL(input.url);
+          if (url.pathname === '/status') {
+            return Response.json({
+              state: 'ready',
+              persistence: { schemaVersion: 1, dataRevision: 5 },
+              productRelease,
+              contractFingerprint,
+            });
+          }
+          writes.push({
+            path: url.pathname,
+            method: input.method,
+            body: await input.json(),
+          });
+          if (outcome === 'disconnect') throw new TypeError('fetch failed');
+          if (outcome === 'stale')
+            return Response.json(playoutRevisionConflict, { status: 409 });
+          return Response.json(pausedPlayoutDto);
+        },
+      };
+      const client = rediscovering
+        ? new RediscoveringHostClient(async () => {
+            discoveries += 1;
+            return connection;
+          }, options)
+        : new PlysmithHostClient(connection, options);
+      if (outcome === 'paused') {
+        assert.deepEqual(
+          await client.cancelPlayoutCompletion(cancelCompletionRequest),
+          pausedPlayoutDto,
+        );
+      } else {
+        await assert.rejects(
+          client.cancelPlayoutCompletion(cancelCompletionRequest),
+          (error: unknown) => {
+            assert.ok(error instanceof HostClientProblem);
+            if (outcome === 'stale')
+              assert.deepEqual(error.problem, playoutRevisionConflict);
+            else assert.equal(error.problem.code, 'host.unavailable');
+            return true;
+          },
+        );
+      }
+      assert.deepEqual(writes, [
+        {
+          path: '/playout/cancel-completion',
+          method: 'POST',
+          body: cancelCompletionRequest,
+        },
+      ]);
+      assert.equal(discoveries, rediscovering ? 1 : 0);
+    });
+  }
+}
 
 test('generated diagnostic client keeps settings, consent and report target explicit', async () => {
   const requests: { path: string; body?: unknown }[] = [];

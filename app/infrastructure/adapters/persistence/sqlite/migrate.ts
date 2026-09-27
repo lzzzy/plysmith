@@ -16,6 +16,7 @@ const migrations = [
   loadMigration(4, './migrations/004-stable-analysis-scratch-identity.sql'),
   loadMigration(5, './migrations/005-inventory-revisions.sql'),
   loadMigration(6, './migrations/006-playout-drafts.sql'),
+  loadMigration(7, './migrations/007-game-source-path.sql'),
 ] satisfies readonly Migration[];
 
 export function migrateStore(
@@ -29,7 +30,7 @@ export function migrateStore(
     if (isNewStore) {
       schemaVersion = initializeStore(database, now);
     } else {
-      schemaVersion = validateStore(database);
+      schemaVersion = validateStore(database, migrations.length);
     }
 
     for (const migration of migrations.slice(schemaVersion)) {

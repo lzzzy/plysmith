@@ -131,6 +131,13 @@ export function deleteUnreferencedPositions(
            WHERE before_position_id = chess_position.position_id
               OR after_position_id = chess_position.position_id)
         AND NOT EXISTS (
+          SELECT 1 FROM inventory_game_source_path
+           WHERE root_position_id = chess_position.position_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM inventory_game_source_ply
+           WHERE before_position_id = chess_position.position_id
+              OR after_position_id = chess_position.position_id)
+        AND NOT EXISTS (
           SELECT 1 FROM playout_ply
            WHERE before_position_id = chess_position.position_id
               OR after_position_id = chess_position.position_id)`,

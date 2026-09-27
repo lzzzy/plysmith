@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ArrowRight,
   Check,
@@ -42,20 +42,25 @@ const roles = ['king', 'queen', 'rook', 'bishop', 'knight', 'pawn'] as const;
 
 export function AnalysisSetupDialog({
   isOpen,
+  requestedStart,
   hasScratch,
-  isBusy,
+  isBusy: applicationBusy,
   store,
   onOpenChange,
 }: {
   readonly isOpen: boolean;
+  readonly requestedStart: 'initial' | 'setup';
   readonly hasScratch: boolean;
   readonly isBusy: boolean;
   readonly store: PlysmithApplicationStore;
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const intl = useIntl();
-  const [mode, setMode] = useState<'choose' | 'setup'>('choose');
   const [scratchDiscarded, setScratchDiscarded] = useState(false);
+  const operationPending = useRef(false);
+  const [pending, setPending] = useState(false);
+  const [commandErrorId, setCommandErrorId] = useState<string>();
+  const isBusy = applicationBusy || pending;
   const [setup, setSetup] = useState<PositionSetup>(() => initialSetup());
   const [tool, setTool] = useState<SetupTool>();
   const [moveSource, setMoveSource] = useState<string>();
@@ -65,7 +70,34 @@ export function AnalysisSetupDialog({
   const enPassantOptions = enPassantCandidates(setup);
 
   function close() {
-    if (!isBusy) onOpenChange(false);
+    if (!isBusy && !operationPending.current) onOpenChange(false);
+  }
+
+  async function runAction(action: () => Promise<void>) {
+    if (isBusy || operationPending.current) return;
+    operationPending.current = true;
+    setPending(true);
+    setCommandErrorId(undefined);
+    try {
+      await action();
+    } finally {
+      operationPending.current = false;
+      setPending(false);
+    }
+  }
+
+  async function startInitial() {
+    if (await store.startScratchAtInitialPosition()) onOpenChange(false);
+    else setCommandErrorId('analysisSetup.startFailed');
+  }
+
+  async function discardScratch() {
+    if (!(await store.discardAnalysisScratch())) {
+      setCommandErrorId('error.generic');
+      return;
+    }
+    setScratchDiscarded(true);
+    if (requestedStart === 'initial') await startInitial();
   }
 
   function updateSetup(next: PositionSetup) {
@@ -90,7 +122,10 @@ export function AnalysisSetupDialog({
     const result = await store.validateAnalysisSetup({
       input: { kind: 'fen', fen: fen.trim() },
     });
-    if (result === undefined) return;
+    if (result === undefined) {
+      setCommandErrorId('error.generic');
+      return;
+    }
     if (!result.valid) {
       setIssues(result.issues);
       return;
@@ -105,12 +140,16 @@ export function AnalysisSetupDialog({
     const result = await store.validateAnalysisSetup({
       input: { kind: 'position_setup', setup },
     });
-    if (result === undefined) return;
+    if (result === undefined) {
+      setCommandErrorId('error.generic');
+      return;
+    }
     if (!result.valid) {
       setIssues(result.issues);
       return;
     }
     if (await store.startScratchAtSetup(result.setup)) onOpenChange(false);
+    else setCommandErrorId('analysisSetup.startFailed');
   }
 
   return (
@@ -118,21 +157,24 @@ export function AnalysisSetupDialog({
       className={styles.overlay!}
       isOpen={isOpen}
       isDismissable={!isBusy}
-      onOpenChange={onOpenChange}
+      isKeyboardDismissDisabled={isBusy}
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
     >
       <Modal className={styles.modal!}>
         <Dialog className={styles.dialog!} aria-labelledby="new-analysis-title">
           <header className={styles.header}>
             <div>
-              <span className={styles.eyebrow}>
-                <FormattedMessage id="analysisSetup.eyebrow" />
-              </span>
               <h2 id="new-analysis-title">
-                <FormattedMessage id="analysisSetup.title" />
+                <FormattedMessage
+                  id={
+                    requestedStart === 'setup'
+                      ? 'analysisSetup.buildPosition'
+                      : 'manage.newAnalysis'
+                  }
+                />
               </h2>
-              <p>
-                <FormattedMessage id="analysisSetup.intro" />
-              </p>
             </div>
             <Button
               className={styles.closeButton!}
@@ -143,6 +185,12 @@ export function AnalysisSetupDialog({
               <X aria-hidden="true" size={20} />
             </Button>
           </header>
+
+          {commandErrorId !== undefined && (
+            <div className={styles.scratchDecision} role="alert">
+              <FormattedMessage id={commandErrorId} />
+            </div>
+          )}
 
           {scratchNeedsDecision ? (
             <section className={styles.scratchDecision}>
@@ -159,6 +207,7 @@ export function AnalysisSetupDialog({
                   className={styles.primaryButton!}
                   isDisabled={isBusy}
                   onPress={() => {
+                    if (isBusy || operationPending.current) return;
                     onOpenChange(false);
                     store.setActivity('analyze');
                   }}
@@ -169,60 +218,14 @@ export function AnalysisSetupDialog({
                 <Button
                   className={styles.dangerButton!}
                   isDisabled={isBusy}
-                  onPress={async () => {
-                    if (await store.discardAnalysisScratch()) {
-                      setScratchDiscarded(true);
-                    }
-                  }}
+                  onPress={() => void runAction(discardScratch)}
                 >
                   <Trash2 aria-hidden="true" size={17} />
                   <FormattedMessage id="analysisSetup.discardDraft" />
                 </Button>
               </div>
             </section>
-          ) : mode === 'choose' ? (
-            <section className={styles.choices}>
-              <Button
-                className={styles.choiceButton!}
-                isDisabled={isBusy}
-                onPress={async () => {
-                  if (await store.startScratchAtInitialPosition()) {
-                    onOpenChange(false);
-                  }
-                }}
-              >
-                <RotateCcw aria-hidden="true" size={22} />
-                <span>
-                  <strong>
-                    <FormattedMessage id="analysisSetup.fromInitial" />
-                  </strong>
-                  <small>
-                    <FormattedMessage id="analysisSetup.fromInitialDetail" />
-                  </small>
-                </span>
-                <ArrowRight aria-hidden="true" size={19} />
-              </Button>
-              <Button
-                className={styles.choiceButton!}
-                isDisabled={isBusy}
-                onPress={() => setMode('setup')}
-              >
-                <ChessPieceGlyph
-                  className={styles.boardChoiceIcon}
-                  symbol="♔"
-                />
-                <span>
-                  <strong>
-                    <FormattedMessage id="analysisSetup.buildPosition" />
-                  </strong>
-                  <small>
-                    <FormattedMessage id="analysisSetup.buildPositionDetail" />
-                  </small>
-                </span>
-                <ArrowRight aria-hidden="true" size={19} />
-              </Button>
-            </section>
-          ) : (
+          ) : requestedStart === 'setup' ? (
             <div className={styles.builder}>
               <section className={styles.boardColumn}>
                 <SetupBoard
@@ -393,7 +396,7 @@ export function AnalysisSetupDialog({
                             id: 'analysisSetup.importFen',
                           })}
                           isDisabled={isBusy || fen.trim().length === 0}
-                          onPress={() => void importFen()}
+                          onPress={() => void runAction(importFen)}
                         >
                           <FileInput aria-hidden="true" size={17} />
                         </Button>
@@ -466,20 +469,40 @@ export function AnalysisSetupDialog({
                   <Button
                     className={styles.secondaryButton!}
                     isDisabled={isBusy}
-                    onPress={() => setMode('choose')}
+                    onPress={close}
                   >
                     <FormattedMessage id="action.cancel" />
                   </Button>
                   <Button
                     className={styles.primaryButton!}
                     isDisabled={isBusy}
-                    onPress={() => void startSetup()}
+                    onPress={() => void runAction(startSetup)}
                   >
                     <Check aria-hidden="true" size={17} />
                     <FormattedMessage id="analysisSetup.start" />
                   </Button>
                 </footer>
               </section>
+            </div>
+          ) : (
+            <div className={styles.scratchDecision}>
+              <div className={styles.decisionActions}>
+                <Button
+                  className={styles.secondaryButton!}
+                  isDisabled={isBusy}
+                  onPress={close}
+                >
+                  <FormattedMessage id="action.cancel" />
+                </Button>
+                <Button
+                  className={styles.primaryButton!}
+                  isDisabled={isBusy}
+                  onPress={() => void runAction(startInitial)}
+                >
+                  <RotateCcw aria-hidden="true" size={17} />
+                  <FormattedMessage id="action.retry" />
+                </Button>
+              </div>
             </div>
           )}
         </Dialog>

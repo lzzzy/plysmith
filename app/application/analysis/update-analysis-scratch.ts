@@ -1,6 +1,7 @@
 import {
   appendAnalysisMove,
   clearAnalysisNote,
+  continueAnalysisExploration,
   currentAnalysisMoves,
   moveAnalysisCursor,
   prepareAnalysisNote,
@@ -14,6 +15,7 @@ import type { ChessRulesPort } from '../chess_graph/index.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import { workingContextNotFound } from '../workspace/index.ts';
+import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
 import type {
   AnalysisRecordView,
   UpdateAnalysisScratchAction,
@@ -120,6 +122,20 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
     if (workspace === undefined) {
       throw workingContextNotFound();
     }
+    if (request.action.kind !== 'discard' && workspace.record !== undefined) {
+      assertInventoryWorkAccess(request.scope, workspace.record.contextMember);
+    }
+    if (
+      request.action.kind !== 'discard' &&
+      workspace.scratch?.origin.kind === 'inventory_anchor'
+    ) {
+      assertInventoryWorkAccess(
+        request.scope,
+        workspace.record?.contextMember === true &&
+          workspace.record.itemId.value ===
+            workspace.scratch.origin.itemId.value,
+      );
+    }
     assertScratchIdentity(
       workspace.scratch,
       request.expectedScratchId,
@@ -175,13 +191,16 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
     ) {
       return undefined;
     }
-    return this.#reader.readAnalysisRecord({
+    const record = await this.#reader.readAnalysisRecord({
       itemId: request.action.origin.itemId,
       revisionId: request.action.origin.revisionId,
       anchorId: request.action.origin.anchorId,
       ...(contextId === undefined ? {} : { contextId }),
-      readOnlyPreview: contextId !== undefined,
     });
+    if (record !== undefined) {
+      assertInventoryWorkAccess(request.scope, record.contextMember);
+    }
+    return record;
   }
 
   #applyAction(
@@ -204,7 +223,6 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
       } else {
         if (
           record === undefined ||
-          record.readOnlyPreview ||
           record.itemId.value !== action.origin.itemId.value ||
           record.revisionId.value !== action.origin.revisionId.value ||
           record.currentAnchorId.value !== action.origin.anchorId.value
@@ -250,6 +268,9 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
       throw invalidAnalysisUpdate();
     }
     try {
+      if (action.kind === 'continue_exploration') {
+        return continueAnalysisExploration(current);
+      }
       if (action.kind === 'move_cursor') {
         return moveAnalysisCursor(current, action.cursor);
       }

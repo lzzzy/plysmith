@@ -3,6 +3,25 @@ import test from 'node:test';
 
 import { messages } from '../../../app/infrastructure/channels/ui/renderer/messages.ts';
 
+test('German working-context terminology and bilingual message keys are uniform', () => {
+  assert.equal(messages['de-DE']['scope.free'], 'Gesamter Bestand');
+  assert.deepEqual(
+    Object.keys(messages['de-DE']).sort(),
+    Object.keys(messages['en-GB']).sort(),
+  );
+  for (const [id, value] of Object.entries(messages['de-DE'])) {
+    assert.doesNotMatch(
+      value.replaceAll('{context}', ''),
+      /Working Context|\bContext\b|\bContexte\b|contextbezogen/i,
+      id,
+    );
+  }
+  for (const catalogue of Object.values(messages)) {
+    assert.match(catalogue['manage.expandFamily'], /\{name\}/);
+    assert.match(catalogue['manage.collapseFamily'], /\{name\}/);
+  }
+});
+
 test('product messages do not expose process or development topology', () => {
   const internalTerms =
     /application host|desktop|watch[- ]?modus|watch mode|hostvertrag|host contract/i;

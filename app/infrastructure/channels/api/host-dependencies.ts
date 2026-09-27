@@ -24,6 +24,8 @@ import type {
 } from '../../../application/analysis/index.ts';
 import type {
   GetInventoryRevisionUseCase,
+  DeleteInventoryItemUseCase,
+  PreviewInventoryItemDeletionUseCase,
   GetPendingRevisionImpactUseCase,
   ListInventoryRevisionsUseCase,
   PreviewInventoryRevisionUseCase,
@@ -36,10 +38,17 @@ import type {
 import type {
   AddContextReferenceUseCase,
   CreateWorkingContextUseCase,
+  UpdateWorkingContextMetadataUseCase,
   GetWorkingContextWorkspaceUseCase,
   ListWorkingContextsUseCase,
   RemoveContextItemUseCase,
   SetWorkScopeResumeUseCase,
+  GetWorkScopeWorkspace,
+  GetStartupResume,
+  SetStartupResume,
+  PreviewContextItemRemoval,
+  PreviewWorkingContextDeletion,
+  DeleteWorkingContext,
 } from '../../../application/workspace/index.ts';
 import type { DiagnosticSink } from '../../../../contracts/diagnostics/index.ts';
 import type {
@@ -57,6 +66,20 @@ import type {
 } from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
+  readonly previewInventoryItemDeletion: PreviewInventoryItemDeletionUseCase;
+  readonly deleteInventoryItem: DeleteInventoryItemUseCase;
+  readonly getWorkScopeWorkspace: Pick<GetWorkScopeWorkspace, 'execute'>;
+  readonly getStartupResume: Pick<GetStartupResume, 'execute'>;
+  readonly setStartupResume: Pick<SetStartupResume, 'execute'>;
+  readonly previewContextItemRemoval: Pick<
+    PreviewContextItemRemoval,
+    'execute'
+  >;
+  readonly previewWorkingContextDeletion: Pick<
+    PreviewWorkingContextDeletion,
+    'execute'
+  >;
+  readonly deleteWorkingContext: Pick<DeleteWorkingContext, 'execute'>;
   readonly getSystemStatus: GetSystemStatusUseCase;
   readonly getDiagnosticSettings: GetDiagnosticSettingsUseCase;
   readonly setDiagnosticLogLevel: SetDiagnosticLogLevelUseCase;
@@ -86,6 +109,7 @@ export interface HostDependencies {
   readonly listWorkingContexts: ListWorkingContextsUseCase;
   readonly getWorkingContextWorkspace: GetWorkingContextWorkspaceUseCase;
   readonly createWorkingContext: CreateWorkingContextUseCase;
+  readonly updateWorkingContextMetadata: UpdateWorkingContextMetadataUseCase;
   readonly addContextReference: AddContextReferenceUseCase;
   readonly removeContextItem: RemoveContextItemUseCase;
   readonly setWorkScopeResume: SetWorkScopeResumeUseCase;
@@ -97,6 +121,7 @@ export interface HostDependencies {
   readonly pausePlayout: ExpectedPlayoutUseCase;
   readonly resumePlayout: ExpectedPlayoutUseCase;
   readonly stopPlayout: ExpectedPlayoutUseCase;
+  readonly cancelPlayoutCompletion: ExpectedPlayoutUseCase;
   readonly completePlayout: CompletePlayoutUseCase;
   readonly discardPlayout: DiscardPlayoutUseCase;
   readonly getEngineProviderConfigurations: GetEngineProviderConfigurationsUseCase;

@@ -68,7 +68,10 @@ function storeFixture(t: TestContext) {
 
 function analysisUseCases(
   store: SqlitePersistenceAdapter,
-  freeSession = new FreeAnalysisSession(),
+  freeSession = new FreeAnalysisSession({
+    persistence: store,
+    clock: { now: () => timestamp },
+  }),
   scratchId: () => string = () => 'scratch-from-application',
 ) {
   const rules = new ChessJsRulesAdapter();
@@ -316,6 +319,87 @@ test('persists analysis, note, context reference and resume as one recoverable w
   }
 });
 
+for (const inContext of [false, true]) {
+  test(`persists an initial-position library root and its derived family (context: ${inContext})`, async (t) => {
+    const fixture = storeFixture(t);
+    const store = fixture.open();
+    const context = inContext
+      ? (
+          await workspaceUseCases(store).create.execute({
+            displayName: 'Opening library',
+          })
+        ).context
+      : undefined;
+    const scope = context
+      ? contextWorkScope(context.contextId)
+      : freeWorkScope();
+    const analysis = analysisUseCases(store);
+    const started = await analysis.update.execute({
+      scope,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: { kind: 'start', origin: { kind: 'initial_position' } },
+    });
+    const library = await analysis.create.execute({
+      scope,
+      expectedScratchId: started.scratch!.scratchId,
+      expectedScratchRevision: started.scratch!.scratchRevision,
+      displayName: 'Opening library',
+      languageTag: 'en-GB',
+      ...(context ? { targetContextId: context.contextId } : {}),
+    });
+    const root = (await analysis.get.execute({ scope })).record!;
+    assert.equal(root.steps.length, 0);
+    assert.equal(root.origin.kind, 'initial_position');
+    assert.equal(root.root.fen, new ChessJsRulesAdapter().initialState().fen);
+    const childScratch = await analysis.update.execute({
+      scope,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: {
+        kind: 'start',
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: library.itemId,
+          revisionId: library.revisionId,
+          anchorId: root.rootAnchorId,
+        },
+        firstMove: { kind: 'notation', value: 'e4', locale: 'en-GB' },
+      },
+    });
+    const child = await analysis.create.execute({
+      scope,
+      expectedScratchId: childScratch.scratch!.scratchId,
+      expectedScratchRevision: childScratch.scratch!.scratchRevision,
+      displayName: 'King pawn openings',
+      languageTag: 'en-GB',
+      ...(context ? { targetContextId: context.contextId } : {}),
+    });
+    await store.close();
+    const reopened = fixture.open();
+    const restored = await analysisUseCases(reopened).get.execute({ scope });
+    assert.equal(restored.record?.itemId.value, child.itemId.value);
+    const family = await new SearchInventory(reopened).execute({});
+    assert.deepEqual(
+      family.provenanceEdges.map((edge) => [
+        edge.sourceItemId.value,
+        edge.itemId.value,
+      ]),
+      [[library.itemId.value, child.itemId.value]],
+    );
+    const unchanged = await analysisUseCases(reopened).get.execute({
+      scope,
+      preview: {
+        itemId: library.itemId,
+        revisionId: library.revisionId,
+        anchorId: root.rootAnchorId,
+      },
+    });
+    assert.equal(unchanged.record?.steps.length, 0);
+    assert.equal(unchanged.record?.revisionId.value, library.revisionId.value);
+  });
+}
+
 test('persists a root-only analysis created from a structured position', async (t) => {
   const fixture = storeFixture(t);
   const store = fixture.open();
@@ -429,7 +513,7 @@ test('navigates inner record anchors independently from every referencing contex
     });
     await workspace.setResume.execute({
       area: 'analyze',
-      contextId: context.contextId,
+      scope: { kind: 'context', contextId: context.contextId },
       expectedResumeVersion:
         contextWorkspace.analysisResume?.resumeVersion ?? null,
       mode: 'analyze',
@@ -481,17 +565,17 @@ test('an inventory-only record is referenced only by an explicit later command',
   const context = await workspace.create.execute({
     displayName: 'Später zugeordnet',
   });
-  const preview = await analysis.get.execute({
-    scope: contextWorkScope(context.context.contextId),
-    preview: {
-      itemId: record.itemId,
-      revisionId: record.revisionId,
-      anchorId: record.rootAnchorId,
-    },
-  });
-  assert.equal(preview.record?.readOnlyPreview, true);
-  assert.equal(preview.record?.contextMember, false);
-  assert.deepEqual(preview.allowedActions, []);
+  await assert.rejects(
+    analysis.get.execute({
+      scope: contextWorkScope(context.context.contextId),
+      preview: {
+        itemId: record.itemId,
+        revisionId: record.revisionId,
+        anchorId: record.rootAnchorId,
+      },
+    }),
+    { problemCode: 'workspace.inventory_work_not_allowed' },
+  );
   assert.equal(
     (await workspace.get.execute({ contextId: context.context.contextId }))
       .references.length,
@@ -510,11 +594,10 @@ test('an inventory-only record is referenced only by an explicit later command',
       anchorId: record.rootAnchorId,
     },
   });
-  assert.equal(memberPreview.record?.readOnlyPreview, false);
   assert.equal(memberPreview.record?.contextMember, true);
   assert.deepEqual(memberPreview.allowedActions, ['start_scratch']);
   const resume = await workspace.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'analyze',
     expectedResumeVersion: null,
     mode: 'analyze',
@@ -531,11 +614,10 @@ test('an inventory-only record is referenced only by an explicit later command',
   const opened = await analysis.get.execute({
     scope: contextWorkScope(context.context.contextId),
   });
-  assert.equal(opened.record?.readOnlyPreview, false);
   assert.equal(opened.record?.contextMember, true);
 
   await workspace.setResume.execute({
-    contextId: context.context.contextId,
+    scope: { kind: 'context', contextId: context.context.contextId },
     area: 'manage',
     expectedResumeVersion: null,
     presentation: 'list',
@@ -571,9 +653,15 @@ test('an inventory-only record is referenced only by an explicit later command',
     },
   });
 
+  const removal = await store.previewContextItemRemoval({
+    contextId: context.context.contextId,
+    itemId: record.itemId,
+  });
   const removed = await workspace.removeItem.execute({
     contextId: context.context.contextId,
     itemId: record.itemId,
+    expectedDataRevision: removal.dataRevision,
+    expectedContextVersion: removal.contextVersion,
   });
   assert.equal(removed.contextId.value, context.context.contextId.value);
   assert.equal(removed.itemId.value, record.itemId.value);
@@ -589,16 +677,17 @@ test('an inventory-only record is referenced only by an explicit later command',
   assert.equal(afterRemoval.analysisResume?.anchorId, undefined);
   assert.equal(afterRemoval.analysisResume?.scratchId, undefined);
 
-  const afterRemovalPreview = await analysis.get.execute({
-    scope: contextWorkScope(context.context.contextId),
-    preview: {
-      itemId: record.itemId,
-      revisionId: record.revisionId,
-      anchorId: record.rootAnchorId,
-    },
-  });
-  assert.equal(afterRemovalPreview.record?.readOnlyPreview, true);
-  assert.equal(afterRemovalPreview.record?.contextMember, false);
+  await assert.rejects(
+    analysis.get.execute({
+      scope: contextWorkScope(context.context.contextId),
+      preview: {
+        itemId: record.itemId,
+        revisionId: record.revisionId,
+        anchorId: record.rootAnchorId,
+      },
+    }),
+    { problemCode: 'workspace.inventory_work_not_allowed' },
+  );
 
   const inventory = await new SearchInventory(store).execute({
     query: 'Damenbauernspiel',
@@ -677,8 +766,20 @@ test('an inventory record opened without context remains writable', async (t) =>
     },
   });
 
-  assert.equal(opened.record?.readOnlyPreview, false);
   assert.deepEqual(opened.allowedActions, ['start_scratch']);
+  const resume = (await store.readWorkScopeWorkspace(freeWorkScope()))
+    ?.analysisResume;
+  assert.ok(resume);
+  assert.equal(opened.resumeVersion, resume.resumeVersion);
+  await workspaceUseCases(store).setResume.execute({
+    scope: freeWorkScope(),
+    area: 'analyze',
+    expectedResumeVersion: opened.resumeVersion!,
+    itemId: record.itemId,
+    revisionId: record.revisionId,
+    anchorId: record.rootAnchorId,
+    mode: 'analyze',
+  });
 });
 
 test('a free scratch stays visible while its inventory preview remains focused', async (t) => {
@@ -725,6 +826,7 @@ test('a free scratch stays visible while its inventory preview remains focused',
     'apply_move',
     'move_cursor',
     'discard_scratch',
+    'create_analysis_record',
   ]);
 });
 
@@ -1049,7 +1151,10 @@ test('an open context scratch cannot be displaced and keeps monotonic identity',
   let scratchSequence = 0;
   const analysis = analysisUseCases(
     store,
-    new FreeAnalysisSession(),
+    new FreeAnalysisSession({
+      persistence: store,
+      clock: { now: () => timestamp },
+    }),
     () => `stable-scratch-${++scratchSequence}`,
   );
   const targetScope = contextWorkScope(target.context.contextId);
@@ -1065,7 +1170,7 @@ test('an open context scratch cannot be displaced and keeps monotonic identity',
   await assert.rejects(
     workspace.setResume.execute({
       area: 'analyze',
-      contextId: target.context.contextId,
+      scope: { kind: 'context', contextId: target.context.contextId },
       expectedResumeVersion:
         targetWorkspace.analysisResume?.resumeVersion ?? null,
       mode: 'analyze',
@@ -1254,6 +1359,7 @@ test('identifies a played game as the source of a derived analysis', async (t) =
     draftId: playout.draft.draftId,
     expectedDraftRevision: stopped.draftRevision,
     completionId: 'game-origin-test',
+    manualResult: 'unfinished',
     displayName: 'Gespielte Partie',
     languageTag: 'de-DE',
   });
@@ -1308,6 +1414,26 @@ test('identifies a played game as the source of a derived analysis', async (t) =
     },
   });
   assert.equal(recovered.record?.sourceLine?.sourceItemType, 'game');
+  const family = await new SearchInventory(store).execute({
+    query: 'Fortsetzung',
+    pageSize: 1,
+  });
+  assert.deepEqual(
+    family.items.map((item) => item.itemId),
+    [child.itemId],
+  );
+  assert.deepEqual(
+    family.ancestors.map((item) => [item.itemId, item.itemType]),
+    [[game.itemId, 'game']],
+  );
+  assert.deepEqual(family.provenanceEdges, [
+    {
+      itemId: child.itemId,
+      sourceItemId: game.itemId,
+      sourceRevisionId: game.revisionId,
+      sourceAnchorId: gameMoveAnchor,
+    },
+  ]);
   assert.equal(
     recovered.record?.sourceLine?.sourceDisplayName,
     'Gespielte Partie',
@@ -1370,18 +1496,41 @@ test('renames a game as a metadata revision without changing played moves', asyn
     draft: stopped,
     occurredAt: timestamp,
   });
-  const game = await new CompletePlayout({
+  const complete = new CompletePlayout({
     reader: store,
     writer: store,
     clock: { now: () => timestamp },
-  }).execute({
+  });
+  const completion = {
     scope,
     draftId: playout.draft.draftId,
     expectedDraftRevision: stopped.draftRevision,
     completionId: 'game-rename-test',
+    manualResult: 'unfinished' as const,
     displayName: 'Gespielte Partie',
     languageTag: 'de-DE',
-  });
+  };
+  const beforeConflict = {
+    status: await store.readStoreStatus(),
+    playout: await store.readPlayout(scope),
+    inventory: await store.searchInventory({ pageSize: 10 }),
+  };
+  await assert.rejects(
+    complete.execute({ ...completion, displayName: 'AUSGANGSANALYSE' }),
+    { problemCode: 'inventory.display_name_conflict' },
+  );
+  assert.deepEqual(await store.readStoreStatus(), beforeConflict.status);
+  assert.deepEqual(await store.readPlayout(scope), beforeConflict.playout);
+  assert.deepEqual(
+    await store.searchInventory({ pageSize: 10 }),
+    beforeConflict.inventory,
+  );
+  assert.equal(await store.readPlayoutCompletion(completion), undefined);
+  const game = await complete.execute(completion);
+  assert.equal(await store.readPlayout(scope), undefined);
+  const afterCompletion = await store.readStoreStatus();
+  assert.deepEqual(await complete.execute(completion), game);
+  assert.deepEqual(await store.readStoreStatus(), afterCompletion);
   const context = await workspaceUseCases(store).create.execute({
     displayName: 'Training',
   });
@@ -1390,7 +1539,10 @@ test('renames a game as a metadata revision without changing played moves', asyn
     itemId: game.itemId,
     anchorId: game.rootAnchorId,
   });
-  const freeSession = new FreeAnalysisSession();
+  const freeSession = new FreeAnalysisSession({
+    persistence: store,
+    clock: { now: () => timestamp },
+  });
   const clock = { now: () => timestamp };
   const started = await new StartInventoryRevision({
     inventory: store,
@@ -1483,7 +1635,10 @@ test('renames a game as a metadata revision without changing played moves', asyn
       inventory: store,
       contextReader: store,
       contextWriter: store,
-      freeSession: new FreeAnalysisSession(),
+      freeSession: new FreeAnalysisSession({
+        persistence: store,
+        clock: { now: () => timestamp },
+      }),
       rules,
       clock,
       events: noEvents,
@@ -1595,7 +1750,7 @@ test('stale context scratch writes and unrelated anchors change no persisted sta
   const workspace = workspaceUseCases(store);
   const firstContext = await workspace.create.execute({ displayName: 'A' });
   const secondContext = await workspace.create.execute({ displayName: 'B' });
-  const analysis = analysisUseCases(store);
+  const analysis = analysisUseCases(store, undefined, () => 'context-scratch');
   const firstScope = contextWorkScope(firstContext.context.contextId);
   const firstScratch = await analysis.update.execute({
     scope: firstScope,
