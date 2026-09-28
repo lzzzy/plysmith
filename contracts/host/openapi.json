@@ -9587,7 +9587,7 @@
   },
   "info": {
     "title": "Plysmith Application Host",
-    "version": "0.1.0-alpha.3"
+    "version": "0.1.0-alpha.4"
   },
   "openapi": "3.0.3",
   "paths": {

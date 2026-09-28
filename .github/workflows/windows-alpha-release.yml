@@ -21,9 +21,11 @@ jobs:
       - uses: pnpm/setup@v2
         with:
           version: 11.19.0
-          runtime: node@24
           cache: true
           install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Verify source
@@ -36,6 +38,7 @@ jobs:
           if (git status --porcelain) {
             throw 'Release source is not clean.'
           }
+          node -e "require('node:fs').accessSync(require('node:path').join(require('node:path').dirname(process.execPath), 'LICENSE'))"
       - name: Verify application
         run: pnpm verify
       - name: Build installer
