@@ -83,6 +83,9 @@ async function attach(t: TestContext, applicationHome: string) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [entryPoint, '--application-home', applicationHome],
+    env: process.env.PSModulePath
+      ? { PSModulePath: process.env.PSModulePath }
+      : {},
     stderr: 'pipe',
   });
   let stderr = '';
