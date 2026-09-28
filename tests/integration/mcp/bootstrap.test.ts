@@ -41,8 +41,17 @@ async function attach(t: TestContext, applicationHome: string) {
     await client.close();
     await transport.close();
   });
-  await client.connect(transport);
-  await client.listTools();
+  try {
+    await client.connect(transport);
+    await client.listTools();
+  } catch (error) {
+    throw new Error(
+      `MCP attach failed: ${stderr.trim() || 'no child stderr'}`,
+      {
+        cause: error,
+      },
+    );
+  }
   return { client, stderr: () => stderr };
 }
 

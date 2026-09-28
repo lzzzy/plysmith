@@ -96,6 +96,25 @@ interface Report {
   duplicateVersions: { name: string; versions: string[] }[];
 }
 
+test('accepts a staged runtime through the same directory alias', async (context) => {
+  const { root, options, stagingRoot } = await fixture(context);
+  const alias = path.join(root, 'payload-alias');
+  await symlink(
+    stagingRoot,
+    alias,
+    process.platform === 'win32' ? 'junction' : 'dir',
+  );
+  const result = await buildReleaseInventory({
+    ...options,
+    stagingRoot: alias,
+    nodeRuntimeDirectory: path.join(alias, 'runtime/node'),
+  });
+  assert.equal(
+    result.inventory,
+    path.join(stagingRoot, 'release-license-inventory.json'),
+  );
+});
+
 test('inventories staged and bundled packages with actual dependency versions, license evidence and runtime notices', async (context) => {
   const { options, stagingRoot, packageRoot } = await fixture(context);
   const modules = path.join(stagingRoot, 'resources/app/node_modules');

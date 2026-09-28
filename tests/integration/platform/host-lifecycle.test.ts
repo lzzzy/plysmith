@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import fs, {
   mkdtemp,
-  mkdir,
   readFile,
   readdir,
   rm,
@@ -43,7 +42,7 @@ test('holds one host owner lease and releases it explicitly', async (context) =>
 test('replaces a stale host owner lease', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
-  await mkdir(runtimeDirectory, { recursive: true });
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
   await writeFile(
     path.join(runtimeDirectory, 'host-owner.json'),
     `${JSON.stringify({ ownerId: 'stale', pid: 2_147_483_647 })}\n`,
@@ -59,7 +58,7 @@ test('recovers a lease when its host PID has been reused by another process', as
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
   const leasePath = path.join(runtimeDirectory, 'host-owner.json');
-  await mkdir(runtimeDirectory, { recursive: true });
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
   await writeFile(
     leasePath,
     `${JSON.stringify({
@@ -114,7 +113,7 @@ test('recovers a reused PID whose process start time requires the Windows CIM fa
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
   const leasePath = path.join(runtimeDirectory, 'host-owner.json');
-  await mkdir(runtimeDirectory, { recursive: true });
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
   await writeFile(
     leasePath,
     `${JSON.stringify({
@@ -134,7 +133,7 @@ test('keeps an unverifiable lease fail-safe while its PID still exists', async (
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
   const leasePath = path.join(runtimeDirectory, 'host-owner.json');
-  await mkdir(runtimeDirectory, { recursive: true });
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
 
   for (const record of [
     { ownerId: 'legacy-host', pid: process.pid },
@@ -195,7 +194,7 @@ test('recovers an interrupted empty lease after Windows releases the crashed wri
 test('elects exactly one owner when two acquisitions recover the same stale lease', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
-  await mkdir(runtimeDirectory);
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
   await writeFile(
     path.join(runtimeDirectory, 'host-owner.json'),
     JSON.stringify({ ownerId: 'stale', pid: 2_147_483_647 }),
@@ -241,7 +240,11 @@ test('repairs permissive Windows ACLs without ownership privileges and protects 
   const discoveryPath = path.join(runtimeDirectory, 'host.json');
   const leasePath = path.join(runtimeDirectory, 'host-owner.json');
   const guardPath = path.join(runtimeDirectory, 'host-owner.lock');
-  await mkdir(runtimeDirectory);
+  await preparePrivateFixtureFiles(applicationHome, [
+    'host.json',
+    'host-owner.json',
+    'host-owner.lock',
+  ]);
   await writeFile(discoveryPath, '{}');
   await writeFile(
     leasePath,
@@ -323,7 +326,10 @@ test('repairs permissive Windows ACLs without ownership privileges and protects 
 test('fails closed on denied ACL access without replacing discovery or granting a lease', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const runtimeDirectory = path.join(applicationHome, 'runtime');
-  await mkdir(runtimeDirectory);
+  await preparePrivateFixtureFiles(applicationHome, [
+    'host.json',
+    'host-owner.json',
+  ]);
   const paths = ['host.json', 'host-owner.json'].map((name) =>
     path.join(runtimeDirectory, name),
   );
@@ -505,6 +511,40 @@ async function runPowerShell(
   });
 }
 
+async function preparePrivateFixtureFiles(
+  applicationHome: string,
+  fileNames: string[],
+): Promise<void> {
+  await runPowerShell(
+    `
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $directoryAcl = [Security.AccessControl.DirectorySecurity]::new()
+    $directoryAcl.SetOwner($sid)
+    $directoryAcl.SetAccessRuleProtection($true, $false)
+    $directoryAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+      $sid, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow'))
+    [void][IO.Directory]::CreateDirectory($inputData.runtimeDirectory, $directoryAcl)
+    foreach ($fileName in $inputData.fileNames) {
+      $fileAcl = [Security.AccessControl.FileSecurity]::new()
+      $fileAcl.SetOwner($sid)
+      $fileAcl.SetAccessRuleProtection($true, $false)
+      $fileAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
+        $sid, 'FullControl', 'Allow'))
+      $file = [IO.FileStream]::new(
+        [IO.Path]::Combine($inputData.runtimeDirectory, $fileName),
+        [IO.FileMode]::CreateNew,
+        [Security.AccessControl.FileSystemRights] 'Read, Write, ChangePermissions, Synchronize',
+        [IO.FileShare]::None, 4096, [IO.FileOptions]::None, $fileAcl)
+      $file.Dispose()
+    }
+  `,
+    {
+      runtimeDirectory: path.join(applicationHome, 'runtime'),
+      fileNames,
+    },
+  );
+}
+
 interface WindowsAcl {
   owner: string;
   currentUser: string;
@@ -563,6 +603,7 @@ async function pauseLeaseWriter(context: TestContext, applicationHome: string) {
   // Initialize the real guard/ACLs, then hold precisely the empty-record window.
   const initial = await acquireHostOwnerLease(applicationHome);
   await initial.release();
+  await preparePrivateFixtureFiles(applicationHome, ['host-owner.json']);
   const source = `
     $ErrorActionPreference = 'Stop'
     $inputData = [Console]::In.ReadLine() | ConvertFrom-Json

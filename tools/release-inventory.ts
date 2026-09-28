@@ -150,12 +150,15 @@ async function packageMetadata(file: string): Promise<PackageMetadata> {
 
 /** Inventories shipped files and selected build inputs, never the source dev tree. */
 export async function buildReleaseInventory(options: ReleaseInventoryOptions) {
+  const suppliedStagingRoot = path.resolve(options.stagingRoot);
+  const suppliedNodeRoot = path.resolve(options.nodeRuntimeDirectory);
+  if (!isInside(suppliedStagingRoot, suppliedNodeRoot))
+    throw new Error(`Path outside supplied root: ${suppliedNodeRoot}`);
   const stagingRoot = await realpath(options.stagingRoot);
   const packageRoot = await realpath(options.packageRoot);
-  const nodeRoot = await confined(
-    path.resolve(options.nodeRuntimeDirectory),
-    stagingRoot,
-  );
+  const nodeRoot = await realpath(suppliedNodeRoot);
+  if (!isInside(stagingRoot, nodeRoot))
+    throw new Error(`Symlink escapes supplied root: ${suppliedNodeRoot}`);
   if (
     !options.productVersion.trim() ||
     !options.buildRevision.trim() ||
