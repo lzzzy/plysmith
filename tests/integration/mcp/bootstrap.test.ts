@@ -10,7 +10,11 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 import { parseApplicationHome } from '../../../app/bootstrap/mcp/main.ts';
-import type { PlayoutDto } from '../../../app/infrastructure/channels/host_client/index.ts';
+import { readHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
+import {
+  connectHost,
+  type PlayoutDto,
+} from '../../../app/infrastructure/channels/host_client/index.ts';
 import {
   assertToolData,
   preferences,
@@ -45,8 +49,16 @@ async function attach(t: TestContext, applicationHome: string) {
     await client.connect(transport);
     await client.listTools();
   } catch (error) {
+    let diagnostic = 'direct host attach succeeded';
+    try {
+      const connection = await readHostDiscovery(applicationHome);
+      await connectHost(connection);
+    } catch (probeError) {
+      const problem = probeError as Error & { code?: string; cause?: Error };
+      diagnostic = `${problem.code ?? problem.name}: ${problem.cause?.message ?? problem.message}`;
+    }
     throw new Error(
-      `MCP attach failed: ${stderr.trim() || 'no child stderr'}`,
+      `MCP attach failed: ${stderr.trim() || 'no child stderr'}; ${diagnostic}`,
       {
         cause: error,
       },

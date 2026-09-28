@@ -6,6 +6,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   symlink,
   writeFile,
@@ -111,7 +112,7 @@ test('accepts a staged runtime through the same directory alias', async (context
   });
   assert.equal(
     result.inventory,
-    path.join(stagingRoot, 'release-license-inventory.json'),
+    path.join(await realpath(stagingRoot), 'release-license-inventory.json'),
   );
 });
 

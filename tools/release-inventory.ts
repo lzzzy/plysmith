@@ -126,8 +126,13 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
-async function confined(file: string, root: string): Promise<string> {
-  if (!isInside(root, path.resolve(file)))
+async function confined(
+  file: string,
+  root: string,
+  suppliedRoot = root,
+): Promise<string> {
+  const input = path.resolve(file);
+  if (!isInside(root, input) && !isInside(suppliedRoot, input))
     throw new Error(`Path outside supplied root: ${file}`);
   const resolved = await realpath(file);
   if (!isInside(root, resolved))
@@ -155,6 +160,7 @@ export async function buildReleaseInventory(options: ReleaseInventoryOptions) {
   if (!isInside(suppliedStagingRoot, suppliedNodeRoot))
     throw new Error(`Path outside supplied root: ${suppliedNodeRoot}`);
   const stagingRoot = await realpath(options.stagingRoot);
+  const suppliedPackageRoot = path.resolve(options.packageRoot);
   const packageRoot = await realpath(options.packageRoot);
   const nodeRoot = await realpath(suppliedNodeRoot);
   if (!isInside(stagingRoot, nodeRoot))
@@ -291,7 +297,11 @@ export async function buildReleaseInventory(options: ReleaseInventoryOptions) {
       const key = `${metadata.name}@${metadata.version}`;
       const supplemental = options.supplementalLicenseEvidence?.[key];
       if (supplemental) {
-        const safe = await confined(supplemental, packageRoot);
+        const safe = await confined(
+          supplemental,
+          packageRoot,
+          suppliedPackageRoot,
+        );
         component.evidence.push(
           await evidence(
             safe,
@@ -338,7 +348,9 @@ export async function buildReleaseInventory(options: ReleaseInventoryOptions) {
   async function inputPackage(input: string): Promise<void> {
     const inputPath = path.resolve(packageRoot, input);
     if (!slash(inputPath).includes('/node_modules/')) return;
-    let directory = path.dirname(await confined(inputPath, packageRoot));
+    let directory = path.dirname(
+      await confined(inputPath, packageRoot, suppliedPackageRoot),
+    );
     while (isInside(packageRoot, directory) && directory !== packageRoot) {
       const manifest = path.join(directory, 'package.json');
       const parent = path.basename(path.dirname(directory));
