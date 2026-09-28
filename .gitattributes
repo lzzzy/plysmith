@@ -1,0 +1,3 @@
+configuration/schemas/*.json text eol=lf
+contracts/host/openapi.json text eol=lf
+contracts/host/generated/*.ts text eol=lf
