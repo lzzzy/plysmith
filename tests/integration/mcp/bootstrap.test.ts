@@ -7,7 +7,10 @@ import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import {
+  getDefaultEnvironment,
+  StdioClientTransport,
+} from '@modelcontextprotocol/sdk/client/stdio.js';
 
 import { parseApplicationHome } from '../../../app/bootstrap/mcp/main.ts';
 import { readHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
@@ -29,6 +32,42 @@ const entryPoint = fileURLToPath(
 );
 const startupFailure =
   'Plysmith MCP could not attach. Start the matching Application Host and check application-home.';
+let childStartupDiagnosed = false;
+
+async function diagnoseChildStartup(applicationHome: string): Promise<string> {
+  const script = [
+    `import { readHostDiscovery } from ${JSON.stringify(new URL('../../../app/infrastructure/adapters/platform/windows/index.ts', import.meta.url).href)};`,
+    `import { connectHost } from ${JSON.stringify(new URL('../../../app/infrastructure/channels/host_client/index.ts', import.meta.url).href)};`,
+    `import { runMcp } from ${JSON.stringify(new URL('../../../app/bootstrap/mcp/main.ts', import.meta.url).href)};`,
+    'try {',
+    '  const connection = await readHostDiscovery(process.argv[1]);',
+    "  console.error('discovery succeeded');",
+    '  await connectHost(connection);',
+    "  console.error('host connection succeeded');",
+    "  await runMcp(['--application-home', process.argv[1]]);",
+    "  console.error('MCP startup succeeded');",
+    '  process.exit(0);',
+    '} catch (error) {',
+    "  console.error((error.code ?? error.problem?.code ?? error.name) + ': ' + (error.cause?.message ?? error.message));",
+    '  process.exit(1);',
+    '}',
+  ].join('\n');
+  try {
+    const result = await promisify(execFile)(
+      process.execPath,
+      ['--input-type=module', '--eval', script, applicationHome],
+      {
+        env: getDefaultEnvironment(),
+        timeout: 25_000,
+        windowsHide: true,
+      },
+    );
+    return result.stderr.trim() || 'diagnostic child had no output';
+  } catch (error) {
+    const failed = error as Error & { stderr?: string };
+    return failed.stderr?.trim() || failed.message;
+  }
+}
 
 async function attach(t: TestContext, applicationHome: string) {
   const client = new Client({ name: 'plysmith-stdio-test', version: '1.0.0' });
@@ -49,6 +88,10 @@ async function attach(t: TestContext, applicationHome: string) {
     await client.connect(transport);
     await client.listTools();
   } catch (error) {
+    const childDiagnostic = childStartupDiagnosed
+      ? 'already captured'
+      : await diagnoseChildStartup(applicationHome);
+    childStartupDiagnosed = true;
     let diagnostic = 'direct host attach succeeded';
     try {
       const connection = await readHostDiscovery(applicationHome);
@@ -58,7 +101,7 @@ async function attach(t: TestContext, applicationHome: string) {
       diagnostic = `${problem.code ?? problem.name}: ${problem.cause?.message ?? problem.message}`;
     }
     throw new Error(
-      `MCP attach failed: ${stderr.trim() || 'no child stderr'}; ${diagnostic}`,
+      `MCP attach failed: ${stderr.trim() || 'no child stderr'}; ${diagnostic}; child: ${childDiagnostic}`,
       {
         cause: error,
       },
@@ -102,7 +145,7 @@ test('MCP paths support source defaults and an explicit application-home only', 
 
 test(
   'stdio bootstrap attaches using discovery and the shared host client',
-  { timeout: 30000 },
+  { timeout: 60000 },
   async (t) => {
     const fixture = await createHttpHostFixture(t);
     const discoveryBefore = await readFile(fixture.discoveryPath, 'utf8');
