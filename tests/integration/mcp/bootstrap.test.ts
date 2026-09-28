@@ -34,7 +34,10 @@ const startupFailure =
   'Plysmith MCP could not attach. Start the matching Application Host and check application-home.';
 let childStartupDiagnosed = false;
 
-async function diagnoseChildStartup(applicationHome: string): Promise<string> {
+async function diagnoseChildStartup(
+  applicationHome: string,
+  env: NodeJS.ProcessEnv,
+): Promise<{ succeeded: boolean; message: string }> {
   const script = [
     `import { readHostDiscovery } from ${JSON.stringify(new URL('../../../app/infrastructure/adapters/platform/windows/index.ts', import.meta.url).href)};`,
     `import { connectHost } from ${JSON.stringify(new URL('../../../app/infrastructure/channels/host_client/index.ts', import.meta.url).href)};`,
@@ -57,15 +60,21 @@ async function diagnoseChildStartup(applicationHome: string): Promise<string> {
       process.execPath,
       ['--input-type=module', '--eval', script, applicationHome],
       {
-        env: getDefaultEnvironment(),
+        env,
         timeout: 25_000,
         windowsHide: true,
       },
     );
-    return result.stderr.trim() || 'diagnostic child had no output';
+    return {
+      succeeded: true,
+      message: result.stderr.trim() || 'diagnostic child had no output',
+    };
   } catch (error) {
     const failed = error as Error & { stderr?: string };
-    return failed.stderr?.trim() || failed.message;
+    return {
+      succeeded: false,
+      message: failed.stderr?.trim() || failed.message,
+    };
   }
 }
 
@@ -88,9 +97,17 @@ async function attach(t: TestContext, applicationHome: string) {
     await client.connect(transport);
     await client.listTools();
   } catch (error) {
-    const childDiagnostic = childStartupDiagnosed
-      ? 'already captured'
-      : await diagnoseChildStartup(applicationHome);
+    let childDiagnostic = 'already captured';
+    if (!childStartupDiagnosed) {
+      const filtered = await diagnoseChildStartup(
+        applicationHome,
+        getDefaultEnvironment(),
+      );
+      const inherited = filtered.succeeded
+        ? undefined
+        : await diagnoseChildStartup(applicationHome, process.env);
+      childDiagnostic = `filtered: ${filtered.message}; inherited: ${inherited?.message ?? 'not needed'}`;
+    }
     childStartupDiagnosed = true;
     let diagnostic = 'direct host attach succeeded';
     try {
@@ -145,7 +162,7 @@ test('MCP paths support source defaults and an explicit application-home only', 
 
 test(
   'stdio bootstrap attaches using discovery and the shared host client',
-  { timeout: 60000 },
+  { timeout: 90000 },
   async (t) => {
     const fixture = await createHttpHostFixture(t);
     const discoveryBefore = await readFile(fixture.discoveryPath, 'utf8');
