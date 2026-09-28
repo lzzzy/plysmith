@@ -14,3 +14,13 @@ export {
   type DevelopmentWatchLease,
   type HostOwnerLease,
 } from './host-owner-lease.ts';
+export {
+  startProductionHost,
+  type OwnedProductionHost,
+} from './production-host.ts';
+export {
+  ProductionHostStartupProblem,
+  type ProductionHostStartupCode,
+} from './production-host-startup.ts';
+export { resolveWindowsApplicationHome } from './product-paths.ts';
+export { verifyProductManifest } from './product-manifest.ts';

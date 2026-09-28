@@ -1,6 +1,13 @@
 # Local agent control and project memory
 /.agents/
 /.github/
+!/.github/
+/.github/*
+!/.github/ISSUE_TEMPLATE/
+!/.github/ISSUE_TEMPLATE/*.yml
+!/.github/workflows/
+!/.github/workflows/*.yml
+!/.github/ALPHA_RELEASE_NOTES.md
 /AGENTS.md
 
 # Local configuration and secrets
@@ -24,3 +31,4 @@
 /data/
 /diagnostics/
 /runtime/
+/desktop/

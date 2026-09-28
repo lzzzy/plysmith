@@ -1,33 +1,106 @@
-import { app, protocol } from 'electron';
+import { app, dialog, protocol } from 'electron';
 
-import { registerPlysmithScheme } from '../../infrastructure/channels/ui/desktop/index.ts';
+import {
+  configureElectronProfile,
+  registerPlysmithScheme,
+} from '../../infrastructure/channels/ui/desktop/index.ts';
+import {
+  resolveWindowsApplicationHome,
+  startProductionHost,
+  verifyProductManifest,
+  type OwnedProductionHost,
+  ProductionHostStartupProblem,
+} from '../../infrastructure/adapters/platform/windows/index.ts';
 import { composeDesktop, type DesktopRuntime } from './composition-root.ts';
 import { parseDesktopPaths, selectDesktopArguments } from './desktop-paths.ts';
 
 export async function runDesktop(arguments_: readonly string[]): Promise<void> {
   const paths = parseDesktopPaths(arguments_);
+  const packagedPaths = app.isPackaged
+    ? {
+        applicationHome: arguments_.includes('--application-home')
+          ? paths.applicationHome
+          : await resolveWindowsApplicationHome(),
+        installRoot: process.resourcesPath,
+      }
+    : paths;
+  await configureElectronProfile(app, packagedPaths.applicationHome);
+  if (app.isPackaged && !app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
   await app.whenReady();
-  const runtime = await composeDesktop(paths);
-  installDesktopLifecycle(runtime);
+  let ownedHost: OwnedProductionHost | undefined;
+  if (app.isPackaged) {
+    await verifyProductManifest(
+      packagedPaths.installRoot,
+      process.versions.electron ?? '',
+    );
+    ownedHost = await startProductionHost(packagedPaths);
+  }
+  try {
+    const runtime = await composeDesktop(packagedPaths);
+    installDesktopLifecycle(runtime, ownedHost);
+    if (app.isPackaged) {
+      app.on('second-instance', () => {
+        if (runtime.window.isMinimized()) runtime.window.restore();
+        runtime.window.focus();
+      });
+    }
+  } catch (error) {
+    await ownedHost?.close();
+    throw error;
+  }
 }
 
-function installDesktopLifecycle(runtime: DesktopRuntime): void {
-  let closed = false;
-  const close = (): void => {
-    if (closed) {
-      return;
-    }
-    closed = true;
+function installDesktopLifecycle(
+  runtime: DesktopRuntime,
+  ownedHost?: OwnedProductionHost,
+): void {
+  let shuttingDown = false;
+  let readyToQuit = false;
+  app.on('before-quit', (event) => {
+    if (readyToQuit) return;
+    event.preventDefault();
+    if (shuttingDown) return;
+    shuttingDown = true;
     runtime.close();
-  };
-  app.once('before-quit', close);
+    void (async () => {
+      try {
+        await ownedHost?.close();
+      } catch {
+        process.exitCode = 1;
+      } finally {
+        readyToQuit = true;
+        app.quit();
+      }
+    })();
+  });
   app.once('window-all-closed', () => app.quit());
   process.once('SIGINT', () => app.quit());
   process.once('SIGTERM', () => app.quit());
 }
 
 registerPlysmithScheme(protocol);
-runDesktop(selectDesktopArguments(process.argv)).catch(() => {
+runDesktop(selectDesktopArguments(process.argv)).catch((error: unknown) => {
+  if (app.isPackaged) {
+    const reason =
+      error instanceof ProductionHostStartupProblem
+        ? {
+            already_running:
+              'Ein anderer Host verwendet bereits diesen Datenbestand.',
+            incompatible_data:
+              'Der vorhandene Datenbestand ist mit dieser Alpha-Version nicht kompatibel. Er wurde nicht veraendert.',
+            invalid_configuration: 'Die lokale Konfiguration ist ungueltig.',
+            startup_failed: 'Der lokale Host konnte nicht gestartet werden.',
+            timeout: 'Der lokale Host hat nicht rechtzeitig geantwortet.',
+          }[error.code]
+        : 'Die Installation konnte nicht geprueft oder gestartet werden.';
+    dialog.showErrorBox(
+      'Plysmith konnte nicht starten',
+      `${reason}\n\nBitte melden Sie den Fehler mit einem Screenshot ueber GitHub Issues.`,
+    );
+  }
   console.error(
     'Plysmith Desktop could not start. Keep the Application Host running and check application-home.',
   );

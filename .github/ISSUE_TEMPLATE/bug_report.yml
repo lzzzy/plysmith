@@ -1,0 +1,46 @@
+name: Fehler melden
+description: Einen reproduzierbaren Fehler in Plysmith beschreiben
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vielen Dank! Bitte keine Datenbank, aktive Konfiguration, .env, privaten Partien oder Notizen hochladen. Screenshots und exportierte Diagnoseberichte vor dem Anhaengen pruefen.
+  - type: input
+    id: version
+    attributes:
+      label: Plysmith-Version
+      description: In Einstellungen unter Lokales System > Technische Details sichtbar.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows-Version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Schritte zur Wiederholung
+      placeholder: "1. ...\n2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Erwartetes Verhalten
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Tatsaechliches Verhalten
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots oder redigierter Diagnosebericht (optional)
+      description: Nur nach eigener Sichtpruefung anhaengen.

@@ -1,0 +1,81 @@
+name: Windows Alpha release candidate
+
+on:
+  push:
+    tags:
+      - 'v*-alpha.*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@v2
+        with:
+          version: 11.19.0
+          runtime: node@24
+          cache: true
+          install: false
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify source
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw 'Release tag and package version differ.'
+          }
+          if (git status --porcelain) {
+            throw 'Release source is not clean.'
+          }
+      - name: Verify application
+        run: pnpm verify
+      - name: Build installer
+        run: pnpm build:alpha
+      - name: Verify release candidate
+        run: node tools/verify-alpha-release-candidate.ts
+      - name: Verify bundled Host
+        run: node tools/verify-alpha-release.ts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-alpha-release
+          if-no-files-found: error
+          path: |
+            build/alpha-release/output/*.exe
+            build/alpha-release/output/LICENSE
+            build/alpha-release/output/THIRD_PARTY_NOTICES.txt
+            build/alpha-release/output/licenses.tar.gz
+            build/alpha-release/output/release-license-inventory.json
+            build/alpha-release/output/sbom.cdx.json
+            build/alpha-release/output/SHA256SUMS.txt
+
+  draft:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-alpha-release
+          path: build/alpha-release/output
+      - name: Verify downloaded assets
+        working-directory: build/alpha-release/output
+        run: sha256sum --check SHA256SUMS.txt
+      - name: Create draft prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/alpha-release/output/* \
+            --draft --prerelease --verify-tag \
+            --title "Plysmith $GITHUB_REF_NAME (Alpha)" \
+            --notes-file .github/ALPHA_RELEASE_NOTES.md

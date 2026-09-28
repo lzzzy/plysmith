@@ -1,4 +1,6 @@
-import { rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +22,8 @@ const uiRoot = path.join(
 );
 const rendererRoot = path.join(uiRoot, 'renderer');
 const rendererPublicRoot = path.join(uiRoot, 'assets', 'public');
+const rendererInputs = new Set<string>();
+const viteRequire = createRequire(import.meta.resolve('vite/package.json'));
 
 await rm(outputRoot, { recursive: true, force: true });
 
@@ -28,7 +32,29 @@ await Promise.all([
     root: rendererRoot,
     base: './',
     publicDir: rendererPublicRoot,
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'release-inputs',
+        generateBundle(_options, bundle) {
+          for (const output of Object.values(bundle)) {
+            if (output.type !== 'chunk') continue;
+            if (/(^|\/)rolldown-runtime-[^/]+\.js$/.test(output.fileName)) {
+              rendererInputs.add(viteRequire.resolve('rolldown/package.json'));
+            }
+            for (const [id, contribution] of Object.entries(output.modules)) {
+              if (
+                contribution.renderedLength > 0 &&
+                path.isAbsolute(id) &&
+                existsSync(id)
+              ) {
+                rendererInputs.add(id);
+              }
+            }
+          }
+        },
+      },
+    ],
     build: {
       outDir: path.join(outputRoot, 'renderer'),
       emptyOutDir: true,
@@ -75,3 +101,8 @@ await Promise.all([
     sourcemap: true,
   }),
 ]);
+
+await writeFile(
+  path.join(outputRoot, 'renderer-inputs.json'),
+  `${JSON.stringify({ inputs: Object.fromEntries([...rendererInputs].map((id) => [id, {}])) }, null, 2)}\n`,
+);

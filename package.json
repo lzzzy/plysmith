@@ -1,6 +1,8 @@
 {
   "name": "plysmith",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.1",
+  "description": "Local-first chess workbench",
+  "author": "Plysmith contributors",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.19.0",
@@ -12,6 +14,7 @@
     "dev:mcp": "node --enable-source-maps app/bootstrap/mcp/main.ts",
     "dev:reset": "node tools/reset-development-data.ts",
     "build:desktop": "node tools/build-desktop.ts",
+    "build:alpha": "node tools/build-alpha-release.ts",
     "dev:desktop": "pnpm run build:desktop && electron build/desktop/main.mjs --application-home . --install-root .",
     "typecheck": "tsc --noEmit --pretty false -p tsconfig.node.json && tsc --noEmit --pretty false -p tsconfig.renderer.json && tsc --noEmit --pretty false -p tsconfig.tests.json && tsc --noEmit --pretty false -p tsconfig.tools.json",
     "lint": "eslint .",
