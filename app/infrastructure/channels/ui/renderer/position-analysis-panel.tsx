@@ -69,12 +69,16 @@ export function PositionAnalysisPanel({
   const [selectedHumanProviderIds, setSelectedHumanProviderIds] = useState(
     () =>
       new Set(
-        humanProviders.slice(0, 1).map((provider) => provider.instanceId),
+        store.getPositionAnalysisHumanSelection() ??
+          humanProviders.slice(0, 1).map((provider) => provider.instanceId),
       ),
   );
   const [sortBy, setSortBy] = useState('stockfish');
   const [retry, setRetry] = useState(0);
-  const initializedHumanSelection = useRef(humanProviders.length > 0);
+  const initializedHumanSelection = useRef(
+    store.getPositionAnalysisHumanSelection() !== undefined ||
+      humanProviders.length > 0,
+  );
   const requestRef = useRef({ focus, work });
 
   useEffect(() => {
@@ -89,17 +93,10 @@ export function PositionAnalysisPanel({
     );
   }, [objectiveProviders]);
   useEffect(() => {
-    setSelectedHumanProviderIds((current) => {
-      const available = new Set(
-        humanProviders.map((provider) => provider.instanceId),
-      );
-      const next = new Set([...current].filter((id) => available.has(id)));
-      if (!initializedHumanSelection.current && humanProviders[0]) {
-        next.add(humanProviders[0].instanceId);
-        initializedHumanSelection.current = true;
-      }
-      return sameSet(current, next) ? current : next;
-    });
+    if (initializedHumanSelection.current || humanProviders[0] === undefined)
+      return;
+    initializedHumanSelection.current = true;
+    setSelectedHumanProviderIds(new Set([humanProviders[0].instanceId]));
   }, [humanProviders]);
 
   const objectiveProvider = objectiveProviders.find(
@@ -308,12 +305,11 @@ export function PositionAnalysisPanel({
   const intl = useIntl();
 
   function toggleHumanProvider(instanceId: string): void {
-    setSelectedHumanProviderIds((current) => {
-      const next = new Set(current);
-      if (next.has(instanceId)) next.delete(instanceId);
-      else next.add(instanceId);
-      return next;
-    });
+    const next = new Set(selectedHumanProviderIds);
+    if (next.has(instanceId)) next.delete(instanceId);
+    else next.add(instanceId);
+    store.setPositionAnalysisHumanSelection(next);
+    setSelectedHumanProviderIds(next);
     if (sortBy === instanceId) setSortBy('stockfish');
   }
 
@@ -600,13 +596,4 @@ function formatEvaluation(evaluation: ObjectiveEvaluation): string {
   if (evaluation.kind === 'mate') return `${bound}#${evaluation.moves}`;
   const pawns = evaluation.value / 100;
   return `${bound}${pawns >= 0 ? '+' : ''}${pawns.toFixed(2)}`;
-}
-
-function sameSet(
-  left: ReadonlySet<string>,
-  right: ReadonlySet<string>,
-): boolean {
-  return (
-    left.size === right.size && [...left].every((value) => right.has(value))
-  );
 }

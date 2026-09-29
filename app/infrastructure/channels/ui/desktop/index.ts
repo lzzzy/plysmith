@@ -1,5 +1,6 @@
 export { registerPlysmithScheme } from './app-protocol.ts';
 export { createDesktopWindow } from './create-desktop-window.ts';
+export { createStartupWindow } from './create-startup-window.ts';
 export { configureElectronProfile } from './electron-profile.ts';
 export {
   DesktopHostConnectionMonitor,

@@ -15,6 +15,7 @@ import {
 export interface ComposeDesktopOptions {
   readonly applicationHome: string;
   readonly installRoot: string;
+  readonly startupWindow?: BrowserWindow;
 }
 
 export interface DesktopRuntime {
@@ -58,6 +59,9 @@ export async function composeDesktop(
       ),
       hostConnections,
       diagnostics,
+      ...(options.startupWindow === undefined
+        ? {}
+        : { startupWindow: options.startupWindow }),
     });
     diagnostics.write({
       level: 'info',

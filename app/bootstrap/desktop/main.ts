@@ -1,8 +1,9 @@
-import { app, dialog, protocol } from 'electron';
+import { app, dialog, protocol, type BrowserWindow } from 'electron';
 
 import {
   configureElectronProfile,
   registerPlysmithScheme,
+  createStartupWindow,
 } from '../../infrastructure/channels/ui/desktop/index.ts';
 import {
   resolveWindowsApplicationHome,
@@ -25,29 +26,40 @@ export async function runDesktop(arguments_: readonly string[]): Promise<void> {
       }
     : paths;
   await configureElectronProfile(app, packagedPaths.applicationHome);
+  let activeWindow: BrowserWindow | undefined;
   if (app.isPackaged && !app.requestSingleInstanceLock()) {
     app.quit();
     return;
   }
-  await app.whenReady();
-  let ownedHost: OwnedProductionHost | undefined;
   if (app.isPackaged) {
-    await verifyProductManifest(
-      packagedPaths.installRoot,
-      process.versions.electron ?? '',
-    );
-    ownedHost = await startProductionHost(packagedPaths);
+    app.on('second-instance', () => {
+      if (activeWindow === undefined || activeWindow.isDestroyed()) return;
+      if (activeWindow.isMinimized()) activeWindow.restore();
+      activeWindow.focus();
+    });
   }
+  await app.whenReady();
+  const startupWindow = app.isPackaged
+    ? createStartupWindow(app.getLocale())
+    : undefined;
+  activeWindow = startupWindow;
+  let ownedHost: OwnedProductionHost | undefined;
   try {
-    const runtime = await composeDesktop(packagedPaths);
-    installDesktopLifecycle(runtime, ownedHost);
     if (app.isPackaged) {
-      app.on('second-instance', () => {
-        if (runtime.window.isMinimized()) runtime.window.restore();
-        runtime.window.focus();
-      });
+      await verifyProductManifest(
+        packagedPaths.installRoot,
+        process.versions.electron ?? '',
+      );
+      ownedHost = await startProductionHost(packagedPaths);
     }
+    const runtime = await composeDesktop({
+      ...packagedPaths,
+      ...(startupWindow === undefined ? {} : { startupWindow }),
+    });
+    activeWindow = runtime.window;
+    installDesktopLifecycle(runtime, ownedHost);
   } catch (error) {
+    startupWindow?.destroy();
     await ownedHost?.close();
     throw error;
   }

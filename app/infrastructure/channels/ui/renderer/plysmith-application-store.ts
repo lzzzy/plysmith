@@ -460,6 +460,7 @@ export class PlysmithApplicationStore {
   #activity: ActivityId = 'manage';
   #scope: WorkScope = Object.freeze({ kind: 'free' });
   #analysisFocus: AnalysisFocus | undefined;
+  #positionAnalysisHumanSelection: ReadonlySet<string> | undefined;
   #inventoryQuery = '';
   #inventoryContextOnly = false;
   // Undefined restores resume; null is an explicit empty management selection.
@@ -503,6 +504,14 @@ export class PlysmithApplicationStore {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   };
+
+  getPositionAnalysisHumanSelection(): ReadonlySet<string> | undefined {
+    return this.#positionAnalysisHumanSelection;
+  }
+
+  setPositionAnalysisHumanSelection(ids: ReadonlySet<string>): void {
+    this.#positionAnalysisHumanSelection = new Set(ids);
+  }
 
   async start(): Promise<void> {
     this.#diagnose({

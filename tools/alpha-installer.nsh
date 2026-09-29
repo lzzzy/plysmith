@@ -14,6 +14,14 @@
 !macroend
 
 !macro customInit
+  ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+  !insertmacro GetDParameter $1
+  ${If} $0 == ""
+    ${If} $1 == ""
+      ${StdUtils.GetParentPath} $0 "$INSTDIR"
+      StrCpy $INSTDIR "$0\Plysmith"
+    ${EndIf}
+  ${EndIf}
   System::Call 'kernel32::SetEnvironmentVariable(t "PLYSMITH_INSTALL_ROOT", t "$INSTDIR") i.r0'
   ${If} $0 == 0
     SetErrorLevel 1
@@ -26,4 +34,18 @@
     SetErrorLevel 1
     Quit
   ${EndIf}
+!macroend
+
+!macro removeCachedInstaller
+  Delete "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+  ${StdUtils.GetParentPath} $0 "$LOCALAPPDATA\${APP_INSTALLER_STORE_FILE}"
+  RMDir "$0"
+!macroend
+
+!macro customInstall
+  !insertmacro removeCachedInstaller
+!macroend
+
+!macro customUnInstall
+  !insertmacro removeCachedInstaller
 !macroend

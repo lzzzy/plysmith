@@ -17,6 +17,12 @@ const installed = path.resolve(
 );
 const executable = path.join(installed, 'Plysmith.exe');
 const uninstaller = path.join(installed, 'Uninstall Plysmith.exe');
+const localAppData = process.env.LOCALAPPDATA;
+if (localAppData === undefined) {
+  throw new Error('LOCALAPPDATA is required for the Windows uninstall check.');
+}
+const cacheDirectory = path.join(localAppData, 'plysmith-updater');
+const cachedInstaller = path.join(cacheDirectory, 'installer.exe');
 const applicationHome = path.resolve(
   'build/alpha-verification',
   `uninstall-guard-${randomUUID()}`,
@@ -24,6 +30,8 @@ const applicationHome = path.resolve(
 await mkdir(applicationHome, { recursive: true });
 await stat(executable);
 await stat(uninstaller);
+await assert.rejects(stat(cachedInstaller), { code: 'ENOENT' });
+await assert.rejects(stat(cacheDirectory), { code: 'ENOENT' });
 
 const application = await electron.launch({
   executablePath: executable,
@@ -34,7 +42,10 @@ let hostPid: number | undefined;
 let quitRequested = false;
 try {
   const window = await application.firstWindow();
-  await window
+  const applicationWindow = window.url().startsWith('app://plysmith/')
+    ? window
+    : await waitForApplicationWindow();
+  await applicationWindow
     .getByText(/Verbunden|Connected/)
     .first()
     .waitFor({ timeout: 60_000 });
@@ -46,7 +57,7 @@ try {
   await delay(2_000);
   await stat(executable);
   process.kill(hostPid, 0);
-  assert.equal(window.isClosed(), false);
+  assert.equal(applicationWindow.isClosed(), false);
   console.log('Uninstall while Desktop and Host run: refused');
   await application.evaluate(({ app }) => {
     setTimeout(() => app.quit(), 0);
@@ -72,8 +83,23 @@ await execFileAsync(uninstaller, ['/S', '/currentuser'], {
   timeout: 60_000,
 });
 await waitForRemoval(executable);
+await waitForRemoval(cachedInstaller);
+await waitForRemoval(cacheDirectory);
 await stat(path.join(applicationHome, 'data', 'plysmith.db'));
-console.log('Uninstall after orderly quit: program removed; data preserved');
+console.log(
+  'Uninstall after orderly quit: program and cache removed; data preserved',
+);
+
+async function waitForApplicationWindow() {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    const window = application
+      .windows()
+      .find((candidate) => candidate.url().startsWith('app://plysmith/'));
+    if (window !== undefined) return window;
+    await delay(100);
+  }
+  throw new Error('The Plysmith application window did not appear.');
+}
 
 async function waitForHostExit(pid: number): Promise<void> {
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -97,5 +123,5 @@ async function waitForRemoval(file: string): Promise<void> {
     }
     await delay(500);
   }
-  throw new Error('The uninstaller did not remove the program.');
+  throw new Error(`The uninstaller did not remove ${file}.`);
 }

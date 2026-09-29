@@ -1,13 +1,13 @@
 name: Funktion vorschlagen
 description: Einen Anwendungsfall oder eine Verbesserung beschreiben
-title: "[Feature] "
+title: '[Feature] '
 labels: [enhancement]
 body:
   - type: textarea
     id: situation
     attributes:
       label: Ausgangssituation
-      description: Was moechtest du mit Plysmith erreichen?
+      description: Was möchtest du mit Plysmith erreichen?
     validations:
       required: true
   - type: textarea
@@ -20,4 +20,4 @@ body:
     id: proposal
     attributes:
       label: Vorschlag (optional)
-      description: Welche Loesung waere fuer dich verstaendlich?
+      description: Welche Lösung wäre für dich verständlich?

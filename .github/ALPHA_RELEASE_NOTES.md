@@ -1,18 +1,48 @@
 # Plysmith Windows Alpha
 
-This is an early, lightly tested open-source release for Windows 10/11 x64.
-Download the `Plysmith-*-win-x64-Setup.exe` asset; no repository clone or
-development tools are needed. Compare its SHA-256 digest with `SHA256SUMS.txt`
-before running it. The installer is currently unsigned, so Windows may warn.
+## Deutsch
 
-Plysmith keeps application data separate from the installation and preserves
-it on a normal uninstall. Future Alpha releases are **not guaranteed** to read
-existing data or configuration. There is no built-in backup or migration yet;
-make your own copy before important work. No chess engine, Maia model, MCP
-bridge, automatic updater, telemetry or crash upload is included.
+Diese frühe, wenig getestete Open-Source-Alpha ist für Windows x64. Laden Sie
+`Plysmith-*-win-x64-Setup.exe` herunter. Git und Entwicklungswerkzeuge sind
+nicht erforderlich. Der Installer ist **nicht digital signiert**; Windows kann
+deshalb warnen. Prüfen Sie die Downloadquelle und vergleichen Sie bei Bedarf
+den SHA-256-Wert mit `SHA256SUMS.txt`.
 
-The SBOM, license inventory, notices and license archive are downloadable
-alongside the installer. Please report bugs or request features through
-[GitHub Issues](https://github.com/lzzzy/plysmith/issues/new/choose); the
-[README](https://github.com/lzzzy/plysmith#rueckmeldung) explains useful
-screenshots and local diagnostic reports.
+Sie können direkt im gesamten Bestand Analysen und Partien anlegen.
+Arbeitskontexte helfen, ausgewählte Bestandseinträge für mehrere Themen
+parallel zusammenzustellen. Für Enginebewertungen und Partien gegen eine
+Engine müssen Sie Stockfish oder Maia/Lc0 getrennt einrichten; Engines und
+Maia-Gewichte sind nicht enthalten.
+
+Bei einer normalen Deinstallation bleiben Ihre Daten erhalten. Spätere
+Alpha-Versionen können möglicherweise nicht alle bisherigen Daten und
+Einstellungen lesen. Es gibt noch keine integrierte Sicherung oder Migration:
+Sichern Sie wichtige Arbeit selbst. Die
+[deutsche Anleitung](https://github.com/lzzzy/plysmith/blob/main/README.md)
+erklärt Installation, Engines und das Melden von Fehlern mit freiwilligen
+Screenshots und lokalen Diagnoseberichten. Auch wenn Plysmith nicht startet,
+können Sie einen Fehler über
+[GitHub Issues](https://github.com/lzzzy/plysmith/issues/new/choose) melden.
+SBOM, Lizenzinventar, Notices und Lizenzarchiv liegen den Release-Dateien bei.
+
+## English
+
+This early, lightly tested open-source alpha is for Windows x64. Download
+`Plysmith-*-win-x64-Setup.exe`; no Git checkout or development tools are
+needed. The installer is **unsigned**, so Windows may warn. Check the
+download source and, if needed, compare its SHA-256 hash with `SHA256SUMS.txt`.
+
+You can create analyses and games directly in your inventory. Working
+contexts let you collect selected inventory items for several topics in
+parallel. For engine evaluations or games against an engine, set up
+Stockfish or Maia/Lc0 separately; engines and Maia weights are not included.
+
+A normal uninstall leaves your data in place. Future alpha releases are not
+guaranteed to read all previous data and settings. There is no built-in
+backup or migration yet; back up important work yourself. The
+[English guide](https://github.com/lzzzy/plysmith/blob/main/README.en.md)
+explains installation, engines, and how to report bugs with optional
+screenshots and local diagnostic reports. You can still use
+[GitHub Issues](https://github.com/lzzzy/plysmith/issues/new/choose) if
+Plysmith will not start. The SBOM, license inventory, notices, and license
+archive accompany the release files.

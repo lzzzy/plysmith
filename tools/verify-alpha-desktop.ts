@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -31,7 +32,23 @@ for (const iteration of [1, 2]) {
     cwd: path.dirname(executablePath),
   });
   try {
-    const window = await application.firstWindow();
+    const firstWindow = await application.firstWindow();
+    if (firstWindow.url().startsWith('data:')) {
+      await firstWindow
+        .getByRole('status')
+        .getByRole('heading', { name: /Plysmith/ })
+        .waitFor();
+      await firstWindow.screenshot({
+        path: path.join(screenshots, `startup-${iteration}.png`),
+      });
+      console.log(
+        'Startup window: visible before the Application Host is ready',
+      );
+    }
+    if (iteration === 1) {
+      await verifySecondInstanceDoesNotOpen(application, executablePath, home);
+    }
+    const window = await waitForApplicationWindow(application);
     await window
       .getByRole('navigation', { name: 'Plysmith' })
       .waitFor({ timeout: 60_000 });
@@ -83,7 +100,7 @@ for (const iteration of [1, 2]) {
         cwd: path.dirname(executablePath),
       });
       try {
-        const parallelWindow = await parallel.firstWindow();
+        const parallelWindow = await waitForApplicationWindow(parallel);
         await parallelWindow
           .getByText(/Verbunden|Connected/)
           .first()
@@ -118,6 +135,60 @@ for (const iteration of [1, 2]) {
   } finally {
     await application.close();
   }
+}
+
+async function waitForApplicationWindow(
+  application: Awaited<ReturnType<typeof electron.launch>>,
+) {
+  await application.firstWindow();
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    const window = application
+      .windows()
+      .find((candidate) => candidate.url().startsWith('app://plysmith/'));
+    if (window !== undefined) return window;
+    await delay(100);
+  }
+  throw new Error('The Plysmith application window did not appear.');
+}
+
+async function verifySecondInstanceDoesNotOpen(
+  application: Awaited<ReturnType<typeof electron.launch>>,
+  executable: string,
+  applicationHome: string,
+): Promise<void> {
+  const minimized = await application.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window?.minimize();
+    return window?.isMinimized() ?? false;
+  });
+  assert.equal(minimized, true, 'The startup window must be minimizable.');
+  const duplicate = spawn(executable, ['--application-home', applicationHome], {
+    cwd: path.dirname(executable),
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    duplicate.once('error', reject);
+    duplicate.once('exit', resolve);
+  });
+  assert.equal(exitCode, 0, 'The second launch must exit cleanly.');
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const state = await application.evaluate(({ BrowserWindow }) => {
+      const windows = BrowserWindow.getAllWindows();
+      return {
+        count: windows.length,
+        focused: windows.some((window) => window.isFocused()),
+        minimized: windows.some((window) => window.isMinimized()),
+      };
+    });
+    assert.equal(state.count, 1, 'A second window must not appear.');
+    if (state.focused && !state.minimized) {
+      console.log('Second launch: first window restored and focused');
+      return;
+    }
+    await delay(100);
+  }
+  throw new Error('The second launch did not focus the first window.');
 }
 
 async function waitForHostExit(

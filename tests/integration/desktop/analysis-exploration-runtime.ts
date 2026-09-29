@@ -65,6 +65,8 @@ function revise(intent) {
 }
 const store = {
   canWorkWithInventoryItem: () => true,
+  getPositionAnalysisHumanSelection: () => undefined,
+  setPositionAnalysisHumanSelection: () => {},
   promoteAnalysisToInventoryRevision: async () => { calls.push('promote'); revise({ kind: 'inventory_revision', mode: 'extend', itemId: '11', baseRevisionId: '12', cutAnchorId: '15', returnAnchorId: '15', displayName: 'Sizilianisch' }); },
   continueAnalysisExploration: async () => { calls.push('continue'); revise({ kind: 'exploration' }); },
   createAnalysisRecord: async (...args) => { calls.push({ kind: 'save_record', args }); return true; },

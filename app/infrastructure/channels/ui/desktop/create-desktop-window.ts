@@ -28,6 +28,7 @@ export interface CreateDesktopWindowOptions {
   readonly preloadPath: string;
   readonly hostConnections: DesktopHostConnectionMonitor;
   readonly diagnostics: DiagnosticSink;
+  readonly startupWindow?: BrowserWindow;
 }
 
 export async function createDesktopWindow(
@@ -47,7 +48,7 @@ export async function createDesktopWindow(
     minHeight: 560,
     backgroundColor: '#f5f6f8',
     autoHideMenuBar: true,
-    show: true,
+    show: options.startupWindow === undefined,
     title: 'Plysmith',
     icon: path.join(options.assetsRoot, 'branding', 'plysmith-icon-black.ico'),
     webPreferences: {
@@ -58,6 +59,13 @@ export async function createDesktopWindow(
       webSecurity: true,
     },
   });
+
+  if (options.startupWindow !== undefined) {
+    window.once('ready-to-show', () => {
+      window.show();
+      options.startupWindow?.destroy();
+    });
+  }
 
   const bootstrapHandler = (event: IpcMainInvokeEvent): DesktopBootstrap => {
     const senderFrame = event.senderFrame;
@@ -165,6 +173,7 @@ export async function createDesktopWindow(
     url.searchParams.set('generation', String(snapshot.generation));
     void window.loadURL(url.toString()).catch((error: unknown) => {
       if (sequence !== loadSequence || window.isDestroyed()) return;
+      options.startupWindow?.destroy();
       options.diagnostics.write({
         level: 'error',
         eventCode: 'desktop.renderer.load_failed',
@@ -173,6 +182,11 @@ export async function createDesktopWindow(
         problemCode: rendererLoadProblemCode(error),
       });
       console.error('Plysmith Desktop renderer could not load.');
+      dialog.showErrorBox(
+        'Plysmith konnte nicht starten',
+        'Die Benutzeroberfläche konnte nicht geladen werden.',
+      );
+      window.destroy();
     });
   };
   const unsubscribe = hostConnections.subscribe(loadSnapshot);
