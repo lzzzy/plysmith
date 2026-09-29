@@ -1,46 +1,55 @@
-name: Fehler melden
-description: Einen reproduzierbaren Fehler in Plysmith beschreiben
+name: Fehler melden / Report a bug
+description: Fehler oder unerwartetes Verhalten melden / Report unexpected behavior
 title: '[Bug] '
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Vielen Dank! Ein Bericht ist auch ohne Diagnosebericht hilfreich. Bitte keine Datenbank, aktive Konfiguration, .env, privaten Partien, Notizen oder unbearbeiteten Logs hochladen. Screenshots und Diagnoseberichte vor dem Anhängen prüfen.
+        Deutsch und Englisch sind willkommen. Ein Bericht hilft auch ohne Diagnosebericht. Bitte keine Datenbank, aktive Konfiguration, .env, private Partien, Notizen oder unbearbeiteten Logs hochladen.
+
+        German and English are welcome. A report helps even without diagnostics. Do not upload databases, active configuration, .env, private games, notes, or raw logs. Review screenshots and diagnostic reports before attaching them.
+
+        Anleitung / Guide: [Deutsch](https://github.com/lzzzy/plysmith/blob/main/README.md#fehler-und-ideen-melden) | [English](https://github.com/lzzzy/plysmith/blob/main/README.en.md#reporting-bugs-and-ideas)
   - type: input
     id: version
     attributes:
-      label: Plysmith-Version
-      description: In Einstellungen > Lokales System > Technische Details. Wenn Plysmith nicht startet, genügt der Name der heruntergeladenen Installerdatei.
+      label: Plysmith-Version / Plysmith version
+      description: In Einstellungen > Lokales System > Technische Details / Settings > Local system > Technical details. If the app does not start, the installer filename is enough.
     validations:
       required: true
   - type: input
     id: windows
     attributes:
-      label: Windows-Version
+      label: Windows-Version / Windows version
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: Schritte zur Wiederholung
+      label: Schritte zur Wiederholung / Steps to reproduce
       placeholder: "1. ...\n2. ..."
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Erwartetes Verhalten
+      label: Erwartetes Verhalten / Expected behavior
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Tatsächliches Verhalten
+      label: Tatsächliches Verhalten / Actual behavior
     validations:
       required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Engine und Modell (falls betroffen) / Engine and model (if relevant)
+      description: Stockfish- oder Lc0-Version und Maia-Gewichtedatei, soweit bekannt / Version and Maia weights filename, if known.
   - type: textarea
     id: evidence
     attributes:
-      label: Screenshots oder redigierter Diagnosebericht (optional)
-      description: Freiwillig. Vor dem Anhängen selbst auf private Inhalte prüfen und bei Bedarf unkenntlich machen.
+      label: Screenshots oder Diagnosebericht / Screenshots or diagnostic report
+      description: Freiwillig / Optional. Vor dem Anhängen private Inhalte prüfen und bei Bedarf unkenntlich machen / Review and redact private content before attaching.

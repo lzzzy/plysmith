@@ -49,9 +49,11 @@ getrennt bearbeiten möchten, legen Sie Arbeitskontexte an und wählen dort
 die passenden Bestandseinträge aus. Ein Arbeitskontext muss nicht vorab
 eingerichtet werden.
 
-Für eigene Analysen und die Verwaltung ist keine Schachengine nötig. Für
-Enginebewertungen und Partien gegen eine Engine richten Sie diese gesondert
-ein; der Installer enthält weder Engines noch Modellgewichte.
+Für eigene Analysen und die Verwaltung ist keine Schachengine nötig.
+Stockfish liefert objektive Stellungsbewertungen. Maia Chess ergänzt
+menschenähnliche Zugvorschläge und kann als Gegner beim Ausspielen dienen.
+Auch mit Stockfish können Sie ausspielen. Der Installer enthält weder
+Engines noch Modellgewichte.
 
 ## Schachengines einrichten
 
@@ -63,13 +65,14 @@ Quelle, Lizenz und Systemanforderungen vor der Installation.
    **Einstellungen > Schachengine > Stockfish hinzufügen** bei **Programmdatei**
    die entpackte `stockfish*.exe` auswählen. Anschließend die Konfiguration
    prüfen und **Geänderte Konfiguration speichern** wählen.
-2. **Maia Chess:** Eine passende
+2. **Maia Chess:** Eine stabile
    [Lc0-Windows-Version](https://github.com/LeelaChessZero/lc0/releases)
    herunterladen und entpacken. Für Rechner ohne geeignete GPU gibt es
    CPU-Pakete. Ein klassisches `maia-*.pb.gz`-Gewicht aus dem
-   [Maia-Chess-Projekt](https://github.com/CSSLab/maia-chess) herunterladen,
-   aber nicht entpacken. Unter **Einstellungen > Schachengine > Maia Chess
-   hinzufügen** bei **Programmdatei** `lc0.exe` und bei
+   [Ordner der Maia-Gewichte](https://github.com/CSSLab/maia-chess/tree/master/maia_weights)
+   herunterladen, aber nicht entpacken. Neuere Maia-Modellgenerationen
+   verwenden ein anderes Dateiformat. Unter **Einstellungen > Schachengine >
+   Maia Chess hinzufügen** bei **Programmdatei** `lc0.exe` und bei
    **Maia-Gewichtedatei** die `.pb.gz`-Datei auswählen. Danach
    **Geänderte Konfiguration speichern** wählen. Lc0 und Gewichtsdatei
    werden gemeinsam benötigt; die Gewichtsdatei ist keine ausführbare Engine.
@@ -98,11 +101,22 @@ diese Angaben besonders nützlich:
 
 Einen lokalen Diagnosebericht können Sie unter **Einstellungen > Diagnose >
 Inhalt prüfen und Bericht erstellen** erzeugen und mit **Speicherort wählen**
-selbst ablegen. Plysmith lädt ihn nicht automatisch hoch. Prüfen Sie vor dem
-Anhängen Screenshots und Bericht auf persönliche Inhalte und machen Sie
-private Angaben bei Bedarf unkenntlich. Veröffentlichen Sie in öffentlichen
-Issues keine Datenbank, aktive Konfiguration, `.env`-Datei, privaten Partien,
-Notizen oder unbearbeiteten Logs. Ein Diagnosebericht ist kein Backup.
+selbst ablegen. Plysmith lädt ihn nicht automatisch hoch. Bei einem
+wiederholbaren Fehler können Sie vorher unter **Einstellungen > Diagnose**
+das Diagnoselevel **Fehler** oder **Info** wählen, **Übernehmen** klicken,
+Plysmith neu starten und den Fehler erneut auslösen. Erst danach enthält
+der Bericht die zugehörigen technischen Ereignisse. Ein Bericht ohne diese
+Schritte kann trotzdem nützlich sein. Prüfen Sie vor dem Anhängen Screenshots
+und Bericht auf persönliche Inhalte und machen Sie private Angaben bei Bedarf
+unkenntlich. Veröffentlichen Sie in öffentlichen Issues keine Datenbank,
+aktive Konfiguration, `.env`-Datei, private Partien, Notizen oder
+unbearbeiteten Logs. Ein Diagnosebericht ist kein Backup.
+
+## Mitwirken
+
+Fehlerberichte, Ideen, Dokumentation, Übersetzungen, Tests und Codebeiträge
+sind willkommen. Der Ablauf für lokale Entwicklung und Pull Requests steht
+in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Weitere Angaben
 
@@ -111,15 +125,6 @@ Updater und lädt weder Telemetrie noch Crashberichte automatisch hoch.
 Die Release-Beigaben `sbom.cdx.json`, `release-license-inventory.json`,
 `THIRD_PARTY_NOTICES.txt` und `licenses.tar.gz` dokumentieren gelieferte
 Komponenten und Lizenznachweise; das Inventar benennt seine Grenzen und ist
-keine rechtliche Freigabe. Die Plysmith-Quellen stehen unter
-[Apache-2.0](LICENSE).
-
-### Entwicklung
-
-Das Repository verwendet Node 24, pnpm 11 und TypeScript. `pnpm verify`
-prüft die Anwendung; `pnpm build:alpha` baut unter Windows x64 den Installer
-samt Release-Beigaben unter `build/alpha-release/output`. Für die lokale
-Entwicklung starten Sie `pnpm dev:host` und `pnpm dev:desktop`. Entwicklungs-
-und Installationsprofil nutzen getrennte Daten und können parallel laufen.
-Ein passender Versionstag erstellt auf GitHub einen Release-Entwurf; dessen
-Veröffentlichung erfolgt separat.
+keine rechtliche Freigabe. Der Plysmith-Anwendungscode steht unter
+[Apache-2.0](LICENSE); der [Schachfont](assets/fonts/plysmith-chess/README.md)
+steht unter der [SIL Open Font License 1.1](licenses/PlysmithChess-OFL.txt).

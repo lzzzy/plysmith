@@ -1,23 +1,26 @@
-name: Funktion vorschlagen
-description: Einen Anwendungsfall oder eine Verbesserung beschreiben
+name: Funktion vorschlagen / Suggest a feature
+description: Anwendungsfall oder Verbesserung beschreiben / Describe a use case or improvement
 title: '[Feature] '
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: Deutsch und Englisch sind willkommen. / German and English are welcome.
   - type: textarea
     id: situation
     attributes:
-      label: Ausgangssituation
-      description: Was möchtest du mit Plysmith erreichen?
+      label: Ausgangssituation / Use case
+      description: Was möchtest du mit Plysmith erreichen? / What do you want to achieve with Plysmith?
     validations:
       required: true
   - type: textarea
     id: difficulty
     attributes:
-      label: Was ist derzeit schwierig?
+      label: Was ist derzeit schwierig? / What is difficult today?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Vorschlag (optional)
-      description: Welche Lösung wäre für dich verständlich?
+      label: Vorschlag (optional) / Suggestion (optional)
+      description: Welche Lösung wäre für dich verständlich? / What solution would make sense to you?

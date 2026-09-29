@@ -10,9 +10,10 @@ den SHA-256-Wert mit `SHA256SUMS.txt`.
 
 Sie können direkt im gesamten Bestand Analysen und Partien anlegen.
 Arbeitskontexte helfen, ausgewählte Bestandseinträge für mehrere Themen
-parallel zusammenzustellen. Für Enginebewertungen und Partien gegen eine
-Engine müssen Sie Stockfish oder Maia/Lc0 getrennt einrichten; Engines und
-Maia-Gewichte sind nicht enthalten.
+parallel zusammenzustellen. Stockfish liefert objektive
+Stellungsbewertungen; Maia mit Lc0 bietet menschenähnliche Zugvorschläge
+und einen Gegner zum Ausspielen. Beide werden separat eingerichtet;
+Engines und Maia-Gewichte sind nicht enthalten.
 
 Bei einer normalen Deinstallation bleiben Ihre Daten erhalten. Spätere
 Alpha-Versionen können möglicherweise nicht alle bisherigen Daten und
@@ -34,8 +35,9 @@ download source and, if needed, compare its SHA-256 hash with `SHA256SUMS.txt`.
 
 You can create analyses and games directly in your inventory. Working
 contexts let you collect selected inventory items for several topics in
-parallel. For engine evaluations or games against an engine, set up
-Stockfish or Maia/Lc0 separately; engines and Maia weights are not included.
+parallel. Stockfish provides objective position evaluations; Maia with Lc0
+offers human-like move suggestions and an opponent for playout. Set them up
+separately; engines and Maia weights are not included.
 
 A normal uninstall leaves your data in place. Future alpha releases are not
 guaranteed to read all previous data and settings. There is no built-in

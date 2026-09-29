@@ -46,8 +46,10 @@ relevant inventory items for each one. You do not need a working context
 to get started.
 
 You can create your own analyses and manage your inventory without a chess
-engine. For engine evaluations or games against an engine, set one up
-separately. The installer contains neither engines nor model weights.
+engine. Stockfish provides objective position evaluations. Maia Chess adds
+human-like move suggestions and can be an opponent when you play out a
+position. You can also play against Stockfish. The installer contains
+neither engines nor model weights.
 
 ## Setting Up Chess Engines
 
@@ -59,12 +61,13 @@ sources, licenses, and system requirements before installing them.
    it to a permanent folder. Under **Settings > Chess engine > Add Stockfish**,
    select the extracted `stockfish*.exe` as the **Executable**. Review the
    configuration and choose **Save changed configuration**.
-2. **Maia Chess:** Download and extract a suitable
+2. **Maia Chess:** Download and extract a stable
    [Lc0 Windows build](https://github.com/LeelaChessZero/lc0/releases).
    CPU packages are available if your computer lacks a suitable GPU. Download
-   a classic `maia-*.pb.gz` weights file from the
-   [Maia Chess project](https://github.com/CSSLab/maia-chess), but do not
-   extract it. Under **Settings > Chess engine > Add Maia Chess**, select
+   a classic `maia-*.pb.gz` file from the
+   [Maia weights folder](https://github.com/CSSLab/maia-chess/tree/master/maia_weights),
+   but do not extract it. Newer Maia model generations use a different file
+   format. Under **Settings > Chess engine > Add Maia Chess**, select
    `lc0.exe` as the **Executable** and the `.pb.gz` file as the
    **Maia weights file**. Then choose **Save changed configuration**.
    You need both Lc0 and the weights file; the weights file is not an
@@ -91,11 +94,20 @@ report is still useful. For a bug, these details help most:
 
 You can create a local diagnostic report under **Settings > Diagnostics >
 Review contents and create report** and save it yourself with
-**Choose destination**. Plysmith does not upload it automatically. Before
-attaching screenshots or the report, check for personal information and
-redact it if needed. Please do not post your database, active configuration,
-`.env`, private games, notes, or raw logs in a public issue. A diagnostic
-report is not a backup.
+**Choose destination**. Plysmith does not upload it automatically. For a
+reproducible bug, you can first select **Errors** or **Info** under
+**Settings > Diagnostics**, choose **Apply**, restart Plysmith, and repeat
+the problem. Only then will the report include the related technical events.
+A report without these steps can still help. Before attaching screenshots or
+the report, check for personal information and redact it if needed. Please
+do not post your database, active configuration, `.env`, private games, notes,
+or raw logs in a public issue. A diagnostic report is not a backup.
+
+## Contributing
+
+Bug reports, ideas, documentation, translations, tests, and code
+contributions are welcome. See [CONTRIBUTING.en.md](CONTRIBUTING.en.md) for
+local development and pull requests.
 
 ## More Information
 
@@ -104,13 +116,6 @@ does not automatically upload telemetry or crash reports. The release files
 `sbom.cdx.json`, `release-license-inventory.json`,
 `THIRD_PARTY_NOTICES.txt`, and `licenses.tar.gz` document shipped components
 and license evidence. The inventory states its coverage limits and is not
-legal clearance. Plysmith's source is licensed under [Apache-2.0](LICENSE).
-
-### Development
-
-The repository uses Node 24, pnpm 11, and TypeScript. `pnpm verify` checks
-the application; `pnpm build:alpha` builds the Windows x64 installer and
-release files in `build/alpha-release/output`. For local development, run
-`pnpm dev:host` and `pnpm dev:desktop`. Development and installed profiles
-use separate data and can run at the same time. A matching version tag
-creates a GitHub release draft; publishing it is a separate decision.
+legal clearance. Plysmith's application code is licensed under
+[Apache-2.0](LICENSE); the [chess font](assets/fonts/plysmith-chess/README.md)
+uses the [SIL Open Font License 1.1](licenses/PlysmithChess-OFL.txt).
