@@ -57,7 +57,7 @@ preferencesStoreContract(
   'SQLite preferences port contract',
   async (t) => storeFixture(t).open(),
   false,
-  7,
+  8,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -80,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 7,
+    schemaVersion: 8,
     dataRevision: 1,
   });
 });
@@ -199,6 +199,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
       { name: 'chess_position', strict: 1 },
       { name: 'inventory_analysis_origin', strict: 1 },
       { name: 'inventory_analysis_revision', strict: 1 },
+      { name: 'inventory_folder', strict: 1 },
       { name: 'inventory_game_origin', strict: 1 },
       { name: 'inventory_game_revision', strict: 1 },
       { name: 'inventory_game_source_path', strict: 1 },
@@ -220,6 +221,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
       { name: 'search_document_fts_idx', strict: 0 },
       { name: 'workspace_analysis_note_path_step', strict: 1 },
       { name: 'workspace_analysis_resume', strict: 1 },
+      { name: 'workspace_context_folder', strict: 1 },
       { name: 'workspace_context_item', strict: 1 },
       { name: 'workspace_context_reference', strict: 1 },
       { name: 'workspace_contribution', strict: 1 },
@@ -249,6 +251,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
         { migrationId: 5, size: 32 },
         { migrationId: 6, size: 32 },
         { migrationId: 7, size: 32 },
+        { migrationId: 8, size: 32 },
       ],
     );
     assert.throws(() =>
@@ -459,7 +462,7 @@ test('rejects a populated older schema without upgrading its workspace state', (
         `INSERT INTO workspace_management_resume
            (context_id, resume_version, presentation, selected_item_id,
             selected_anchor_id, updated_at_utc) VALUES
-           (1, 1, 'list', 1, 2, ?)`,
+           (1, 1, 'folders', 1, 2, ?)`,
       )
       .run(timestamp);
     database
@@ -535,7 +538,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 8',
+    'UPDATE runtime_store_state SET schema_version = 9',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

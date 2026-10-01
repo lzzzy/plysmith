@@ -39,6 +39,52 @@ const initialPosition = {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
 };
 
+test('working context reads expose canonical members independently from references', async (t) => {
+  const { host } = await buildFixture(t, {
+    getWorkingContextWorkspace: {
+      execute: async () => ({
+        context: {
+          contextId: localId('working-context', 1),
+          displayName: 'Study',
+          lifecycle: 'active',
+          contextVersion: 1,
+          referenceCount: 0,
+          itemCount: 0,
+          pendingRevisionImpactCount: 0,
+          createdAt: occurredAt,
+          updatedAt: occurredAt,
+        },
+        members: [
+          {
+            itemId: localId('inventory-item', 2),
+            currentRevisionId: localId('item-revision', 3),
+            itemType: 'analysis',
+            displayName: 'Pinned name',
+          },
+        ],
+        references: [],
+        pendingRevisionImpacts: [],
+        dataRevision: 4,
+      }),
+    },
+  });
+  const response = await host.inject({
+    method: 'GET',
+    url: '/working-contexts/1',
+    headers,
+  });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().members, [
+    {
+      itemId: '2',
+      currentRevisionId: '3',
+      itemType: 'analysis',
+      displayName: 'Pinned name',
+    },
+  ]);
+  assert.deepEqual(response.json().references, []);
+});
+
 test('cancel completion binds scope and revision once and preserves the paused view', async (t) => {
   const received: unknown[] = [];
   const { host } = await buildFixture(t, {
@@ -137,6 +183,7 @@ test('context metadata route preserves version and explicit description clearing
             lifecycle: 'active',
             contextVersion: 3,
             referenceCount: 1,
+            itemCount: 1,
             pendingRevisionImpactCount: 0,
             createdAt: occurredAt,
             updatedAt: occurredAt,
@@ -1347,6 +1394,7 @@ test('inventory revision reads and impact routes preserve historical and resolut
             activeNoteCount: 0,
             noteMoveCount: 0,
             scratchCount: 0,
+            changedScratchCount: 0,
             scratchMoveCount: 0,
             scratchNoteCount: 0,
             managementResumeAffected: false,
@@ -1357,6 +1405,7 @@ test('inventory revision reads and impact routes preserve historical and resolut
             activeNoteCount: 0,
             noteMoveCount: 0,
             scratchCount: 0,
+            changedScratchCount: 0,
             scratchMoveCount: 0,
             scratchNoteCount: 0,
             managementResumeAffected: false,

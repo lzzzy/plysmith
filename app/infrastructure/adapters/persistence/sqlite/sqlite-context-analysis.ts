@@ -7,7 +7,7 @@ import {
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
-import { readContextScratch } from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
 import { readDataRevision } from './sqlite-store-helpers.ts';
 import {
   readWorkingContextSummary,

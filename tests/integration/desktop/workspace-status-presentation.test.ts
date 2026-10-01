@@ -89,6 +89,17 @@ function render(
           scope: { kind: 'context', contextId: '1' },
           preferences: { uiLocale: 'en-GB' },
           refreshing: false,
+          inventory: {
+            items: [],
+            ancestors: [],
+            provenanceEdges: [],
+            dataRevision: 1,
+          },
+          inventoryOrganization: {
+            folders: [],
+            linkedFolderIds: [],
+            dataRevision: 1,
+          },
           ...(options.busy ? { busyCommand: 'cancel_playout_completion' } : {}),
           analysis: {
             currentState: root,
@@ -110,6 +121,7 @@ function render(
             draft: {
               draftId: '3',
               draftRevision: 1,
+              origin: { kind: 'initial_position' },
               root,
               steps: [],
               playerSide: 'white',
@@ -149,6 +161,7 @@ function render(
                   draft: {
                     draftId: '3',
                     draftRevision: 1,
+                    origin: { kind: 'initial_position' },
                     root,
                     steps: [],
                     playerSide: 'black',

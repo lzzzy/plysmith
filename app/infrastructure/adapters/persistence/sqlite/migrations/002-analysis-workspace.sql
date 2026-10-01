@@ -259,7 +259,7 @@ CREATE TABLE workspace_management_resume (
     resume_id INTEGER PRIMARY KEY,
     context_id INTEGER UNIQUE,
     resume_version INTEGER NOT NULL CHECK (resume_version > 0),
-    presentation TEXT NOT NULL CHECK (presentation IN ('list', 'atlas')),
+    presentation TEXT NOT NULL CHECK (presentation IN ('folders', 'origins')),
     selected_item_id INTEGER,
     selected_anchor_id INTEGER,
     updated_at_utc TEXT NOT NULL CHECK (strftime('%Y-%m-%dT%H:%M:%fZ', updated_at_utc) IS updated_at_utc),

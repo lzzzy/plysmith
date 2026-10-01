@@ -29,6 +29,10 @@ import {
   ResolvePendingRevisionImpact,
   SaveInventoryRevision,
   SearchInventory,
+  GetInventoryOrganization,
+  ChangeInventoryOrganization,
+  PreviewContextFolderRemoval,
+  CheckInventoryNameAvailability,
   StartInventoryRevision,
 } from '../../application/inventory/index.ts';
 import {
@@ -69,6 +73,7 @@ import {
   ListWorkingContexts,
   RemoveContextItem,
   SetWorkScopeResume,
+  SetManagementPresentation,
   GetWorkScopeWorkspace,
   GetStartupResume,
   SetStartupResume,
@@ -424,6 +429,18 @@ export async function composeHost(
       events: eventStream,
     });
     const searchInventory = new SearchInventory(persistence);
+    const getInventoryOrganization = new GetInventoryOrganization(persistence);
+    const changeInventoryOrganization = new ChangeInventoryOrganization({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
+    const previewContextFolderRemoval = new PreviewContextFolderRemoval(
+      persistence,
+    );
+    const checkInventoryNameAvailability = new CheckInventoryNameAvailability(
+      persistence,
+    );
     const previewInventoryItemDeletion = new PreviewInventoryItemDeletion(
       persistence,
     );
@@ -524,6 +541,11 @@ export async function composeHost(
       clock,
       events: eventStream,
     });
+    const setManagementPresentation = new SetManagementPresentation({
+      writer: persistence,
+      clock,
+      events: eventStream,
+    });
     const playoutDependencies = {
       reader: persistence,
       writer: persistence,
@@ -574,6 +596,10 @@ export async function composeHost(
       updateAnalysisNote,
       deleteAnalysisNote,
       searchInventory,
+      getInventoryOrganization,
+      changeInventoryOrganization,
+      previewContextFolderRemoval,
+      checkInventoryNameAvailability,
       previewInventoryItemDeletion,
       deleteInventoryItem,
       getWorkScopeWorkspace,
@@ -597,6 +623,7 @@ export async function composeHost(
       addContextReference,
       removeContextItem,
       setWorkScopeResume,
+      setManagementPresentation,
       listMovePolicyProviders,
       getPlayout,
       startPlayout,

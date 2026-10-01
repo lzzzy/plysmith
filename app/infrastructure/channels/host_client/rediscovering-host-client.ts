@@ -53,11 +53,21 @@ import {
   type SaveInventoryRevisionRequestDto,
   type SaveInventoryRevisionResultDto,
   type SearchInventoryRequestDto,
+  type GetInventoryOrganizationRequestDto,
+  type InventoryOrganizationDto,
+  type ChangeInventoryOrganizationRequestDto,
+  type ChangeInventoryOrganizationResultDto,
+  type PreviewContextFolderRemovalRequestDto,
+  type ContextFolderRemovalPreviewDto,
+  type CheckInventoryNameAvailabilityRequestDto,
+  type InventoryNameAvailabilityDto,
   type SearchInventoryResultDto,
   type SetDiagnosticLogLevelRequestDto,
   type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
+  type SetManagementPresentationRequestDto,
+  type SetManagementPresentationResultDto,
   type StartInventoryRevisionRequestDto,
   type StartInventoryRevisionResultDto,
   type UpdateAnalysisScratchRequestDto,
@@ -262,6 +272,32 @@ export class RediscoveringHostClient {
     );
   }
 
+  async getInventoryOrganization(
+    request: GetInventoryOrganizationRequestDto,
+  ): Promise<InventoryOrganizationDto> {
+    return this.#read((client) => client.getInventoryOrganization(request));
+  }
+
+  async changeInventoryOrganization(
+    request: ChangeInventoryOrganizationRequestDto,
+  ): Promise<ChangeInventoryOrganizationResultDto> {
+    return (await this.#currentClient()).changeInventoryOrganization(request);
+  }
+
+  async previewContextFolderRemoval(
+    request: PreviewContextFolderRemovalRequestDto,
+  ): Promise<ContextFolderRemovalPreviewDto> {
+    return this.#read((client) => client.previewContextFolderRemoval(request));
+  }
+
+  async checkInventoryNameAvailability(
+    request: CheckInventoryNameAvailabilityRequestDto,
+  ): Promise<InventoryNameAvailabilityDto> {
+    return this.#read((client) =>
+      client.checkInventoryNameAvailability(request),
+    );
+  }
+
   async searchInventory(
     request: SearchInventoryRequestDto,
   ): Promise<SearchInventoryResultDto> {
@@ -389,6 +425,12 @@ export class RediscoveringHostClient {
     request: SetWorkScopeResumeRequestDto,
   ): Promise<SetWorkScopeResumeResultDto> {
     return (await this.#currentClient()).setWorkScopeResume(request);
+  }
+
+  async setManagementPresentation(
+    request: SetManagementPresentationRequestDto,
+  ): Promise<SetManagementPresentationResultDto> {
+    return (await this.#currentClient()).setManagementPresentation(request);
   }
 
   async listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto> {

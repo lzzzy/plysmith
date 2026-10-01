@@ -15,10 +15,8 @@ import {
 } from '../../../app/domain/analysis/index.ts';
 import { localId } from '../../../app/domain/identity/index.ts';
 import { freeWorkScope } from '../../../app/domain/workspace/index.ts';
-import {
-  replaceContextAnalysisScratch,
-  readContextScratch,
-} from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch.ts';
+import { replaceContextAnalysisScratch } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch.ts';
+import { readContextScratch } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch-state.ts';
 import { insertAnalysisNoteContribution } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-note.ts';
 import {
   addContextReference,
@@ -168,7 +166,7 @@ function usageFixture(t: TestContext) {
       scope: { kind: 'context', contextId: context.contextId },
       area: 'manage',
       expectedResumeVersion: null,
-      presentation: 'list',
+      presentation: 'folders',
       selectedItemId: root.itemId,
       selectedAnchorId: root.rootAnchorId,
     },
@@ -238,6 +236,7 @@ test('previews exact bound context work and retained families and playouts witho
       activeNoteCount: 2,
       noteMoveCount: 2,
       scratchCount: 1,
+      changedScratchCount: 1,
       scratchMoveCount: 2,
       scratchNoteCount: 1,
       managementResumeAffected: true,
@@ -360,7 +359,7 @@ test('includes and clears the selected item work in the persistent full inventor
       scope: freeWorkScope(),
       area: 'manage',
       expectedResumeVersion: null,
-      presentation: 'list',
+      presentation: 'folders',
       selectedItemId: root.itemId,
     },
     timestamp,
@@ -374,6 +373,7 @@ test('includes and clears the selected item work in the persistent full inventor
     activeNoteCount: 1,
     noteMoveCount: 1,
     scratchCount: 1,
+    changedScratchCount: 1,
     scratchMoveCount: 1,
     scratchNoteCount: 1,
     managementResumeAffected: true,
@@ -555,6 +555,7 @@ test('reports targeted revision losses separately from all work removed with con
     activeNoteCount: 1,
     noteMoveCount: 1,
     scratchCount: 1,
+    changedScratchCount: 1,
     scratchMoveCount: 2,
     scratchNoteCount: 1,
     managementResumeAffected: false,
@@ -565,6 +566,7 @@ test('reports targeted revision losses separately from all work removed with con
     activeNoteCount: 2,
     noteMoveCount: 2,
     scratchCount: 1,
+    changedScratchCount: 1,
     scratchMoveCount: 2,
     scratchNoteCount: 1,
     managementResumeAffected: true,

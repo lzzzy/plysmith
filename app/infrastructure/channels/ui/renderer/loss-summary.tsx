@@ -17,6 +17,7 @@ export function contextRemovalSummary(
     activeNoteCount: losses.notes.length,
     noteMoveCount: losses.notes.reduce((sum, note) => sum + note.moveCount, 0),
     scratchCount: Number(losses.scratch !== undefined),
+    changedScratchCount: Number(losses.scratch?.hasChanges === true),
     scratchMoveCount: losses.scratch?.stepCount ?? 0,
     scratchNoteCount: Number(
       (losses.scratch?.noteBody?.trim().length ?? 0) > 0,

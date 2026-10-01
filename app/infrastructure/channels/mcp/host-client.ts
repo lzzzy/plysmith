@@ -1,5 +1,21 @@
 import type { components } from '../../../../contracts/host/index.ts';
 
+export type GetInventoryOrganizationRequest =
+  components['schemas']['InventoryOrganizationQuery'];
+export type InventoryOrganization =
+  components['schemas']['InventoryOrganization'];
+export type ChangeInventoryOrganizationRequest =
+  components['schemas']['ChangeInventoryOrganizationBody'];
+export type ChangeInventoryOrganizationResult =
+  components['schemas']['ChangeInventoryOrganizationResult'];
+export type PreviewContextFolderRemovalRequest =
+  components['schemas']['ContextFolderRemovalQuery'];
+export type ContextFolderRemovalPreview =
+  components['schemas']['ContextFolderRemovalPreview'];
+export type CheckInventoryNameAvailabilityRequest =
+  components['schemas']['InventoryNameAvailabilityQuery'];
+export type InventoryNameAvailability =
+  components['schemas']['InventoryNameAvailability'];
 export type SystemStatus = components['schemas']['SystemStatus'];
 export type ContextRemovalPreview =
   components['schemas']['ContextRemovalPreview'];
@@ -112,6 +128,10 @@ export type SetWorkScopeResumeRequest =
   components['schemas']['SetWorkScopeResumeBody'];
 export type SetWorkScopeResumeResult =
   components['schemas']['SetWorkScopeResumeResult'];
+export type SetManagementPresentationRequest =
+  components['schemas']['SetManagementPresentationBody'];
+export type SetManagementPresentationResult =
+  components['schemas']['SetManagementPresentationResult'];
 export type ListMovePolicyProvidersResult =
   components['schemas']['ListMovePolicyProvidersResult'];
 export type ListPositionAnalysisProvidersResult =
@@ -146,6 +166,18 @@ export interface HostClientFailure {
  * setUiLanguage must send at most once, including after a connection failure.
  */
 export interface HostClient {
+  getInventoryOrganization(
+    request: GetInventoryOrganizationRequest,
+  ): Promise<InventoryOrganization>;
+  changeInventoryOrganization(
+    request: ChangeInventoryOrganizationRequest,
+  ): Promise<ChangeInventoryOrganizationResult>;
+  previewContextFolderRemoval(
+    request: PreviewContextFolderRemovalRequest,
+  ): Promise<ContextFolderRemovalPreview>;
+  checkInventoryNameAvailability(
+    request: CheckInventoryNameAvailabilityRequest,
+  ): Promise<InventoryNameAvailability>;
   getWorkScopeWorkspace(
     request: GetWorkScopeWorkspaceRequest,
   ): Promise<WorkScopeWorkspace>;
@@ -262,6 +294,9 @@ export interface HostClient {
   setWorkScopeResume(
     request: SetWorkScopeResumeRequest,
   ): Promise<SetWorkScopeResumeResult>;
+  setManagementPresentation(
+    request: SetManagementPresentationRequest,
+  ): Promise<SetManagementPresentationResult>;
   listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResult>;
   analyzePosition(
     request: AnalyzePositionRequest,

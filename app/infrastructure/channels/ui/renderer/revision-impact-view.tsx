@@ -17,6 +17,7 @@ import type {
 } from './plysmith-application-store.ts';
 import { RevisionLineComparison } from './revision-line-comparison.tsx';
 import { LossSummary } from './loss-summary.tsx';
+import { hasContentLoss } from './work-loss-presentation.ts';
 import styles from './revision-impact-view.module.css';
 
 export function RevisionImpactView({
@@ -89,10 +90,12 @@ export function RevisionImpactResolutionPanel({
   details,
   store,
   isBusy,
+  onResolved,
 }: {
   readonly details: RevisionImpactDetails;
   readonly store: PlysmithApplicationStore;
   readonly isBusy: boolean;
+  readonly onResolved?: () => void;
 }) {
   const intl = useIntl();
   const [copyName, setCopyName] = useState('');
@@ -149,6 +152,7 @@ export function RevisionImpactResolutionPanel({
         resolution,
       });
       if (!resolved) setFailedDetails(details);
+      else onResolved?.();
     } finally {
       pending.current = false;
       setSubmitting(false);
@@ -158,6 +162,14 @@ export function RevisionImpactResolutionPanel({
 
   function choose(kind: 'use_target' | 'remove_from_context') {
     if (busy || needsReload) return;
+    const loss =
+      kind === 'use_target'
+        ? details.impact.useTargetLoss
+        : details.impact.removeFromContextLoss;
+    if (!hasContentLoss(loss)) {
+      void resolve({ kind });
+      return;
+    }
     setChoice({
       impactId: details.impact.impactId,
       impactVersion: details.impact.impactVersion,

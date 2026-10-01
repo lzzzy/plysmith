@@ -29,6 +29,22 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
     correlationId: event.correlationId,
   };
   switch (event.kind) {
+    case 'inventory.organization-changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          ...(event.payload.folderId === undefined
+            ? {}
+            : { folderId: String(event.payload.folderId.value) }),
+          ...(event.payload.contextId === undefined
+            ? {}
+            : { contextId: String(event.payload.contextId.value) }),
+          ...(event.payload.itemIds === undefined
+            ? {}
+            : { itemIds: event.payload.itemIds.map((id) => String(id.value)) }),
+        },
+      };
     case 'inventory.item-deleted':
       return {
         ...metadata,

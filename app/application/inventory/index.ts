@@ -1,4 +1,33 @@
 export {
+  GetInventoryOrganization,
+  PreviewContextFolderRemoval,
+  ChangeInventoryOrganization,
+  CheckInventoryNameAvailability,
+  inventoryOrganizationProblem,
+  type GetInventoryOrganizationUseCase,
+  type PreviewContextFolderRemovalUseCase,
+  type ChangeInventoryOrganizationUseCase,
+  type CheckInventoryNameAvailabilityUseCase,
+} from './inventory-organization.ts';
+export type {
+  InventoryOrganizationReader,
+  InventoryOrganizationWriter,
+  InventoryNameAvailabilityReader,
+  InventoryOrganizationChangedPublisher,
+} from './inventory-organization-ports.ts';
+export type {
+  GetInventoryOrganizationRequest,
+  InventoryOrganization,
+  InventoryOrganizationChange,
+  ChangeInventoryOrganizationRequest,
+  ChangeInventoryOrganizationResult,
+  PreviewContextFolderRemovalRequest,
+  ContextFolderRemovalPreview,
+  CheckInventoryNameAvailabilityRequest,
+  InventoryNameAvailability,
+  InventoryOrganizationChanged,
+} from './inventory-organization-models.ts';
+export {
   GetInventoryRevision,
   type GetInventoryRevisionUseCase,
 } from './get-inventory-revision.ts';

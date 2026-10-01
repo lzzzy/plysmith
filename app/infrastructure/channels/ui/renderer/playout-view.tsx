@@ -25,6 +25,11 @@ import styles from './playout-view.module.css';
 import { playoutMoveRows } from './playout-presentation.ts';
 import { sideName } from './chess-display.ts';
 import { GameOutcomeLabel } from './game-outcome-label.tsx';
+import { inventoryDefaultFolder } from './inventory-folder-presentation.ts';
+import {
+  InventoryFolderField,
+  InventoryNameSuggestion,
+} from './inventory-save-fields.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
 
@@ -94,6 +99,7 @@ export function PlayoutView({
   const workspace: AnalysisWorkspaceDto = {
     scope: state.scope,
     dataRevision: playout.dataRevision,
+    scratchHasChanges: false,
     currentState,
     legalMoves: atCurrentPosition ? playout.legalMoves : [],
     allowedActions: [],
@@ -654,6 +660,17 @@ function PlayoutActions({
       ? state.scope.kind === 'context'
       : state.pendingPlayoutCompletion.request.targetContextId !== undefined,
   );
+  const [folderId, setFolderId] = useState<string | null | undefined>(
+    state.pendingPlayoutCompletion === undefined
+      ? draft.origin.kind === 'inventory_anchor'
+        ? undefined
+        : inventoryDefaultFolder(
+            state.inventoryOrganization,
+            state.selectedInventoryFolderId,
+            state.scope.kind === 'context',
+          )
+      : state.pendingPlayoutCompletion.request.folderId,
+  );
   const [manualResult, setManualResult] = useState<
     NonNullable<CompletePlayoutRequestDto['manualResult']>
   >(state.pendingPlayoutCompletion?.request.manualResult ?? 'unfinished');
@@ -707,6 +724,20 @@ function PlayoutActions({
             })}
           />
         </label>
+        <InventoryNameSuggestion
+          name={title}
+          store={store}
+          onChoose={setTitle}
+          disabled={isBusy || completionPending}
+        />
+        <InventoryFolderField
+          state={state}
+          value={folderId}
+          onChange={setFolderId}
+          contextOnly={addToContext}
+          canInherit={draft.origin.kind === 'inventory_anchor'}
+          disabled={isBusy || completionPending}
+        />
         {draft.status.kind === 'stopped' ? (
           <label>
             <span>
@@ -770,6 +801,7 @@ function PlayoutActions({
               title,
               addToContext,
               draft.status.kind === 'stopped' ? manualResult : undefined,
+              folderId,
             )
           }
         >

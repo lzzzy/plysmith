@@ -32,6 +32,11 @@ import type { AnalyzePositionRequestDto } from '../../host_client/index.ts';
 import { ChessBoard } from './chess-board.tsx';
 import { localizeSan } from './chess-display.ts';
 import { InventoryTypeIcon } from './inventory-type-icon.tsx';
+import { inventoryDefaultFolder } from './inventory-folder-presentation.ts';
+import {
+  InventoryFolderField,
+  InventoryNameSuggestion,
+} from './inventory-save-fields.tsx';
 import {
   analysisMoveRows,
   analysisNoteMoveRows,
@@ -173,6 +178,20 @@ export function AnalysisView({
   const [noteBody, setNoteBody] = useState(scratch?.noteDraft?.body ?? '');
   const [noteEditor, setNoteEditor] = useState<NoteEditor>();
   const [recordTitle, setRecordTitle] = useState('');
+  const [recordFolderId, setRecordFolderId] = useState<
+    string | null | undefined
+  >();
+  useEffect(() => {
+    setRecordFolderId(
+      scratch?.origin.kind === 'inventory_anchor'
+        ? undefined
+        : inventoryDefaultFolder(
+            state.inventoryOrganization,
+            state.selectedInventoryFolderId,
+            state.scope.kind === 'context',
+          ),
+    );
+  }, [scratch?.scratchId]);
   const [recordNoteBody, setRecordNoteBody] = useState('');
   const [destination, setDestination] = useState<'inventory' | 'context'>(
     state.scope.kind === 'context' ? 'context' : 'inventory',
@@ -425,6 +444,7 @@ export function AnalysisView({
         destination,
         recordNoteScope,
         scratch !== undefined && scratch.cursor > 0 ? recordNoteBody : '',
+        recordFolderId,
       )
     ) {
       setRecordTitle('');
@@ -1491,6 +1511,20 @@ export function AnalysisView({
                         value={recordTitle}
                         onChange={(event) => setRecordTitle(event.target.value)}
                         autoFocus
+                        disabled={isBusy}
+                      />
+                      <InventoryNameSuggestion
+                        name={recordTitle}
+                        store={store}
+                        onChoose={setRecordTitle}
+                        disabled={isBusy}
+                      />
+                      <InventoryFolderField
+                        state={state}
+                        value={recordFolderId}
+                        onChange={setRecordFolderId}
+                        contextOnly={destination === 'context'}
+                        canInherit={scratch.origin.kind === 'inventory_anchor'}
                         disabled={isBusy}
                       />
                       {scratch.cursor > 0 && (

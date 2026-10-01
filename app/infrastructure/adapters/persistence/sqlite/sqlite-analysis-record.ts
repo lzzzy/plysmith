@@ -24,7 +24,8 @@ import {
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
 import { ensurePosition, readChessState } from './sqlite-chess-state.ts';
-import { readContextScratch } from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
+import { readMainLine, type MainLineRow } from './sqlite-analysis-line.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { readGameSourcePath } from './sqlite-game-source-path.ts';
 import {
@@ -38,6 +39,7 @@ import {
 } from './sqlite-analysis-note.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { creationFolder } from './sqlite-inventory-organization.ts';
 import { inventoryDisplayNameConflict } from '../../../../application/inventory/index.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import {
@@ -100,14 +102,22 @@ export function createAnalysisRecord(
     throw invalidAnalysisRecord();
   }
 
+  const folderId = creationFolder(
+    database,
+    request.folderId,
+    request.origin.kind === 'inventory_anchor'
+      ? request.origin.itemId
+      : undefined,
+    request.targetContextId,
+  );
   const itemInsert = database
     .prepare(
       `INSERT INTO inventory_item
          (item_type, origin_kind, lifecycle, current_revision_id,
-          created_at_utc, updated_at_utc)
-       VALUES ('analysis', 'manual', 'active', NULL, ?, ?)`,
+          created_at_utc, updated_at_utc, folder_id)
+       VALUES ('analysis', 'manual', 'active', NULL, ?, ?, ?)`,
     )
-    .run(request.occurredAt, request.occurredAt);
+    .run(request.occurredAt, request.occurredAt, folderId);
   const itemId = localId('inventory-item', Number(itemInsert.lastInsertRowid));
   const revisionInsert = database
     .prepare(
@@ -976,68 +986,6 @@ function insertSearchDocument(
       request.occurredAt,
       request.displayName,
     );
-}
-
-interface MainLineRow {
-  readonly depth: number;
-  readonly occurrenceId: number;
-  readonly occurrenceAnchorId: number;
-  readonly positionId: number;
-  readonly halfmoveClock: number;
-  readonly fullmoveNumber: number;
-  readonly historyKnowledge: ChessState['playState']['historyKnowledge'];
-  readonly moveNodeId: number | null;
-  readonly from: string | null;
-  readonly to: string | null;
-  readonly promotion: PromotionPiece | null;
-  readonly san: string | null;
-}
-
-function readMainLine(
-  database: Database.Database,
-  revisionId: number,
-  rootOccurrenceId: number,
-): MainLineRow[] {
-  return database
-    .prepare(
-      `WITH RECURSIVE line(depth, occurrence_id) AS (
-         VALUES (0, ?)
-         UNION ALL
-         SELECT line.depth + 1, move.child_occurrence_id
-           FROM line
-           JOIN chess_move_node_snapshot AS move
-             ON move.revision_id = ?
-            AND move.parent_occurrence_id = line.occurrence_id
-            AND move.is_main_line = 1
-       )
-       SELECT line.depth,
-              occurrence.occurrence_id AS occurrenceId,
-              occurrence_anchor.anchor_id AS occurrenceAnchorId,
-              occurrence.position_id AS positionId,
-              play.halfmove_clock AS halfmoveClock,
-              play.fullmove_number AS fullmoveNumber,
-              play.history_knowledge AS historyKnowledge,
-              move.move_node_id AS moveNodeId,
-              move.from_square AS 'from', move.to_square AS 'to',
-              move.promotion, move.san
-         FROM line
-         JOIN chess_occurrence_snapshot AS occurrence
-           ON occurrence.revision_id = ?
-          AND occurrence.occurrence_id = line.occurrence_id
-         JOIN chess_play_state_snapshot AS play
-          ON play.revision_id = occurrence.revision_id
-         AND play.occurrence_id = occurrence.occurrence_id
-         JOIN chess_anchor AS occurrence_anchor
-           ON occurrence_anchor.anchor_kind = 'occurrence'
-          AND occurrence_anchor.owner_item_id = occurrence.item_id
-          AND occurrence_anchor.occurrence_id = occurrence.occurrence_id
-         LEFT JOIN chess_move_node_snapshot AS move
-           ON move.revision_id = occurrence.revision_id
-          AND move.parent_occurrence_id = occurrence.occurrence_id
-          AND move.is_main_line = 1
-        ORDER BY line.depth`,
-    )
-    .all(rootOccurrenceId, revisionId, revisionId) as MainLineRow[];
 }
 
 function resolveRecordCursor(

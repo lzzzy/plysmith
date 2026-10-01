@@ -106,6 +106,10 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'create_position_note',
       'update_analysis_note',
       'delete_analysis_note',
+      'get_inventory_organization',
+      'change_inventory_organization',
+      'preview_context_folder_removal',
+      'check_inventory_name_availability',
       'search_inventory',
       'start_inventory_revision',
       'preview_inventory_revision',
@@ -129,6 +133,7 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'create_working_context',
       'add_context_reference',
       'remove_context_item',
+      'set_management_presentation',
       'set_work_scope_resume',
       'list_position_analysis_providers',
       'analyze_position',
@@ -315,6 +320,7 @@ test('context metadata MCP forwards one version checked shared host operation', 
       lifecycle: 'active' as const,
       contextVersion: 3,
       referenceCount: 1,
+      itemCount: 1,
       pendingRevisionImpactCount: 0,
       createdAt: '2026-09-27T12:00:00.000Z',
       updatedAt: '2026-09-27T12:00:00.000Z',
@@ -580,6 +586,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    itemCount: 0,
     pendingRevisionImpactCount: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -599,6 +606,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       scope: { kind: 'free' },
       dataRevision: 4,
       currentState: state,
+      scratchHasChanges: false,
       legalMoves: [],
       allowedActions: ['start_scratch'],
     }),
@@ -676,6 +684,14 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
     }),
     getWorkingContextWorkspace: async () => ({
       context,
+      members: [
+        {
+          itemId: '1',
+          currentRevisionId: '1',
+          itemType: 'analysis',
+          displayName: 'Member without reference',
+        },
+      ],
       references: [],
       pendingRevisionImpacts: [],
       dataRevision: 5,
@@ -691,7 +707,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
       area: 'manage',
       resume: {
         resumeVersion: 1,
-        presentation: 'list',
+        presentation: 'folders',
         updatedAt: timestamp,
       },
       dataRevision: 8,
@@ -781,7 +797,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         scope: { kind: 'context', contextId: '1' },
         area: 'manage',
         expectedResumeVersion: null,
-        presentation: 'list',
+        presentation: 'folders',
       },
     ],
     [
@@ -797,6 +813,22 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
   for (const [name, arguments_] of scenarios) {
     const result = await client.callTool({ name, arguments: arguments_ });
     assert.notEqual(result.isError, true, name);
+    if (name === 'get_working_context_workspace') {
+      assertToolData(result, {
+        context,
+        members: [
+          {
+            itemId: '1',
+            currentRevisionId: '1',
+            itemType: 'analysis',
+            displayName: 'Member without reference',
+          },
+        ],
+        references: [],
+        pendingRevisionImpacts: [],
+        dataRevision: 5,
+      });
+    }
   }
 
   assert.deepEqual(calls, [
@@ -851,7 +883,7 @@ test('analysis, inventory and workspace tools forward explicit host requests onc
         scope: { kind: 'context', contextId: '1' },
         area: 'manage',
         expectedResumeVersion: null,
-        presentation: 'list',
+        presentation: 'folders',
       },
     },
     { method: 'validateAnalysisSetup', request: scenarios[14][1] },
@@ -1015,6 +1047,7 @@ test('inventory revision tools expose preview-bound writes and historical reads 
         activeNoteCount: 0,
         noteMoveCount: 0,
         scratchCount: 0,
+        changedScratchCount: 0,
         scratchMoveCount: 0,
         scratchNoteCount: 0,
         managementResumeAffected: false,
@@ -1025,6 +1058,7 @@ test('inventory revision tools expose preview-bound writes and historical reads 
         activeNoteCount: 0,
         noteMoveCount: 0,
         scratchCount: 0,
+        changedScratchCount: 0,
         scratchMoveCount: 0,
         scratchNoteCount: 0,
         managementResumeAffected: false,
@@ -1206,7 +1240,7 @@ test('resume tool rejects mixed manage and analyze shapes before the host', asyn
       contextId: '1',
       area: 'manage',
       expectedResumeVersion: null,
-      presentation: 'list',
+      presentation: 'folders',
       mode: 'analyze',
     },
     {
@@ -1214,7 +1248,7 @@ test('resume tool rejects mixed manage and analyze shapes before the host', asyn
       area: 'analyze',
       expectedResumeVersion: null,
       mode: 'analyze',
-      presentation: 'list',
+      presentation: 'folders',
     },
   ]) {
     const result = await client.callTool({

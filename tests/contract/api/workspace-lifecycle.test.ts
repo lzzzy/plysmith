@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApplicationProblem } from '../../../app/application/problems/application-problem.ts';
+import { ChangeInventoryOrganization } from '../../../app/application/inventory/index.ts';
 import { localId } from '../../../app/domain/identity/index.ts';
 import { PlysmithHostClient } from '../../../app/infrastructure/channels/host_client/index.ts';
 import {
@@ -18,6 +19,7 @@ const usage = {
   activeNoteCount: 2,
   noteMoveCount: 3,
   scratchCount: 1,
+  changedScratchCount: 1,
   scratchMoveCount: 4,
   scratchNoteCount: 1,
   managementResumeAffected: true,
@@ -26,7 +28,7 @@ const usage = {
 const confirmation = { expectedContextVersion: 3, expectedDataRevision: 12 };
 const managementResume = {
   resumeVersion: 1,
-  presentation: 'list' as const,
+  presentation: 'folders' as const,
   selectedItemId: itemId,
   updatedAt: occurredAt,
 };
@@ -55,6 +57,7 @@ const removal = {
     ],
     scratch: {
       scratchId: 'scratch-1',
+      hasChanges: true,
       scratchRevision: 2,
       stepCount: 4,
       noteBody: 'Unfinished thought',
@@ -76,6 +79,360 @@ const removal = {
   },
   retainedPlayout: playout,
 };
+
+test('folder organization preserves HTTP and MCP parity for reads, all changes, rejected and stale writes', async (t) => {
+  const folderId = localId('inventory-folder', 3);
+  const received: unknown[] = [];
+  const published: unknown[] = [];
+  const { host } = await buildFixture(t, {
+    searchInventory: {
+      execute: async () => ({
+        items: [
+          {
+            itemId,
+            currentRevisionId: revisionId,
+            rootAnchorId: localId('anchor', 10),
+            itemType: 'analysis',
+            originKind: 'manual',
+            lifecycle: 'active',
+            displayName: 'Line',
+            languageTag: 'en-GB',
+            contextIds: [contextId],
+            createdAt: occurredAt,
+            updatedAt: occurredAt,
+            folderId,
+          },
+        ],
+        ancestors: [],
+        provenanceEdges: [],
+        dataRevision: 12,
+      }),
+    },
+    createAnalysisRecord: {
+      execute: async (request) => {
+        received.push(request);
+        throw new ApplicationProblem(
+          'inventory.organization_conflict',
+          'captured',
+        );
+      },
+    },
+    completePlayout: {
+      execute: async (request) => {
+        received.push(request);
+        throw new ApplicationProblem(
+          'inventory.organization_conflict',
+          'captured',
+        );
+      },
+    },
+    getInventoryOrganization: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          folders: [
+            {
+              folderId,
+              displayName: 'Openings',
+              itemCount: 2,
+              contextItemCount: 1,
+              contextLinkCount: 1,
+            },
+          ],
+          linkedFolderIds: [folderId],
+          dataRevision: 12,
+        };
+      },
+    },
+    changeInventoryOrganization: new ChangeInventoryOrganization({
+      writer: {
+        changeInventoryOrganization: async (request) => {
+          received.push(request);
+          if (request.expectedDataRevision !== 12)
+            throw new ApplicationProblem(
+              'inventory.organization_conflict',
+              'stale',
+            );
+          if (
+            request.change.kind === 'rename_folder' &&
+            request.change.displayName === 'Taken'
+          )
+            throw new ApplicationProblem('inventory.name_conflict', 'taken');
+          return { dataRevision: 13, folderId };
+        },
+      },
+      clock: { now: () => occurredAt },
+      events: { publish: (event) => published.push(event) },
+    }),
+    previewContextFolderRemoval: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          ...request,
+          folderIds: [folderId],
+          linkedFolderIds: [folderId],
+          itemIds: [itemId],
+          loss: usage,
+          losses: removal.losses,
+          dataRevision: 12,
+        };
+      },
+    },
+    checkInventoryNameAvailability: {
+      execute: async (request) => {
+        received.push(request);
+        return {
+          displayName: request.displayName,
+          available: false,
+          suggestedDisplayName: request.displayName + ' (2)',
+          dataRevision: 12,
+        };
+      },
+    },
+  });
+  const hostClient = new PlysmithHostClient(
+    {
+      endpoint: 'http://127.0.0.1:43210/',
+      productRelease,
+      contractFingerprint,
+      token,
+    },
+    {
+      fetch: async (input) => {
+        const request = input instanceof Request ? input : new Request(input);
+        const url = new URL(request.url);
+        const response = await host.inject({
+          method: request.method as 'GET' | 'POST',
+          url: url.pathname + url.search,
+          headers: {
+            ...Object.fromEntries(request.headers),
+            host: headers.host,
+          },
+          ...(request.method === 'GET'
+            ? {}
+            : { payload: await request.text() }),
+        });
+        return new Response(response.body, {
+          status: response.statusCode,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    },
+  );
+  const { client } = await connectMcp(t, hostClient);
+  const search = await hostClient.searchInventory({});
+  assert.equal(search.items[0]?.folderId, '3');
+  assertToolData(
+    await client.callTool({ name: 'search_inventory', arguments: {} }),
+    search,
+  );
+  for (const folderId of [undefined, null, '3']) {
+    const placement = folderId === undefined ? {} : { folderId };
+    for (const [name, url, body] of [
+      [
+        'create_analysis_record',
+        '/inventory/analysis-records',
+        {
+          scope: { kind: 'free' },
+          expectedScratchId: 'scratch-1',
+          expectedScratchRevision: 1,
+          displayName: 'Created',
+          languageTag: 'en-GB',
+          ...placement,
+        },
+      ],
+      [
+        'complete_playout',
+        '/playout/complete',
+        {
+          scope: { kind: 'free' },
+          draftId: '9',
+          expectedDraftRevision: 2,
+          completionId: 'completion-1',
+          displayName: 'Created',
+          languageTag: 'en-GB',
+          ...placement,
+        },
+      ],
+    ] as const) {
+      const response = await host.inject({
+        method: 'POST',
+        url,
+        headers,
+        payload: body,
+      });
+      assert.equal(response.statusCode, 409);
+      assert.equal(response.json().code, 'inventory.organization_conflict');
+      const result = await client.callTool({ name, arguments: body });
+      assert.ok(
+        result.structuredContent &&
+          typeof result.structuredContent === 'object' &&
+          'code' in result.structuredContent,
+      );
+      assert.equal(
+        result.structuredContent.code,
+        'inventory.organization_conflict',
+      );
+      assert.deepEqual(received.at(-1), received.at(-2));
+      assert.equal(
+        Object.hasOwn(received.at(-1) as object, 'folderId'),
+        folderId !== undefined,
+      );
+      assert.deepEqual(
+        (received.at(-1) as { folderId?: unknown }).folderId,
+        folderId === '3' ? localId('inventory-folder', 3) : folderId,
+      );
+    }
+  }
+  for (const [name, args, invoke] of [
+    [
+      'get_inventory_organization',
+      { contextId: '2' },
+      () => hostClient.getInventoryOrganization({ contextId: '2' }),
+    ],
+    [
+      'preview_context_folder_removal',
+      { folderId: '3', contextId: '2' },
+      () =>
+        hostClient.previewContextFolderRemoval({
+          folderId: '3',
+          contextId: '2',
+        }),
+    ],
+    [
+      'check_inventory_name_availability',
+      { displayName: 'Line & position', excludingItemId: '7' },
+      () =>
+        hostClient.checkInventoryNameAvailability({
+          displayName: 'Line & position',
+          excludingItemId: '7',
+        }),
+    ],
+  ] as const) {
+    const direct = await invoke();
+    assertToolData(await client.callTool({ name, arguments: args }), direct);
+    assert.deepEqual(received.at(-1), received.at(-2));
+  }
+  assert.deepEqual(await hostClient.getInventoryOrganization({}), {
+    folders: [
+      {
+        folderId: '3',
+        displayName: 'Openings',
+        itemCount: 2,
+        contextItemCount: 1,
+        contextLinkCount: 1,
+      },
+    ],
+    linkedFolderIds: ['3'],
+    dataRevision: 12,
+  });
+  for (const change of [
+    { kind: 'create_folder', displayName: 'New', parentFolderId: '3' },
+    { kind: 'rename_folder', folderId: '3', displayName: 'Renamed' },
+    { kind: 'move_folder', folderId: '3' },
+    { kind: 'delete_folder', folderId: '3' },
+    { kind: 'move_items', itemIds: ['7'], folderId: '3', workContextId: '2' },
+    { kind: 'move_items', itemIds: ['7'], contextId: '2' },
+    {
+      kind: 'include_folder',
+      folderId: '3',
+      contextId: '2',
+      includeItems: true,
+    },
+    { kind: 'remove_context_folder', folderId: '3', contextId: '2' },
+  ] as const) {
+    const body = { expectedDataRevision: 12, change };
+    const direct = await hostClient.changeInventoryOrganization(body);
+    assertToolData(
+      await client.callTool({
+        name: 'change_inventory_organization',
+        arguments: body,
+      }),
+      direct,
+    );
+    assert.deepEqual(received.at(-1), received.at(-2));
+    assert.deepEqual(published.at(-1), published.at(-2));
+  }
+  assert.equal(published.length, 16);
+  for (const body of [
+    {
+      expectedDataRevision: 11,
+      change: { kind: 'delete_folder', folderId: '3' },
+    },
+    {
+      expectedDataRevision: 12,
+      change: { kind: 'rename_folder', folderId: '3', displayName: 'Taken' },
+    },
+    {
+      expectedDataRevision: 12,
+      change: { kind: 'create_folder', displayName: ' ' },
+    },
+    { expectedDataRevision: 12, change: { kind: 'move_items', itemIds: [] } },
+    {
+      expectedDataRevision: 12,
+      change: { kind: 'move_items', itemIds: ['7', '7'] },
+    },
+    {
+      expectedDataRevision: 12,
+      change: { kind: 'delete_folder', folderId: '03' },
+    },
+    {
+      expectedDataRevision: -1,
+      change: { kind: 'delete_folder', folderId: '3' },
+    },
+    {
+      expectedDataRevision: 12,
+      change: { kind: 'delete_folder', folderId: '3', recursive: true },
+    },
+  ]) {
+    const response = await host.inject({
+      method: 'POST',
+      url: '/inventory/organization',
+      headers,
+      payload: body,
+    });
+    assert.ok(
+      response.statusCode >= 400 && response.statusCode < 500,
+      response.body,
+    );
+    const result = await client.callTool({
+      name: 'change_inventory_organization',
+      arguments: body,
+    });
+    assert.equal(result.isError, true);
+    assert.ok(
+      result.structuredContent &&
+        typeof result.structuredContent === 'object' &&
+        'code' in result.structuredContent &&
+        'status' in result.structuredContent,
+    );
+    assert.equal(result.structuredContent.code, response.json().code);
+    assert.equal(result.structuredContent.status, response.statusCode);
+  }
+  assert.equal(
+    published.length,
+    16,
+    'Rejected writes never emit organization events',
+  );
+  for (const [url, method] of [
+    ['/inventory/organization', 'GET'],
+    ['/inventory/organization', 'POST'],
+    ['/inventory/organization/removal-preview', 'GET'],
+    ['/inventory/name-availability', 'GET'],
+  ] as const) {
+    const response = await host.inject({
+      method: 'OPTIONS',
+      url,
+      headers: {
+        host: headers.host,
+        origin: 'app://plysmith',
+        'access-control-request-method': method,
+        'access-control-request-headers': 'authorization,content-type',
+      },
+    });
+    assert.equal(response.statusCode, 204);
+  }
+});
 
 test('workspace lifecycle has identical API, host-client and MCP requests and concrete DTOs', async (t) => {
   const requests: { method: string; request?: unknown }[] = [];
@@ -214,7 +571,7 @@ test('workspace lifecycle has identical API, host-client and MCP requests and co
     scope: { kind: 'free' as const },
     area: 'manage' as const,
     expectedResumeVersion: null,
-    presentation: 'list' as const,
+    presentation: 'folders' as const,
     selectedItemId: '7',
   };
   const deletion = { expectedCurrentRevisionId: '8', expectedDataRevision: 12 };

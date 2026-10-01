@@ -1,6 +1,14 @@
 export { createMcpServer, type McpServerOptions } from './create-mcp-server.ts';
 export type {
   HostProblem,
+  GetInventoryOrganizationRequest,
+  InventoryOrganization,
+  ChangeInventoryOrganizationRequest,
+  ChangeInventoryOrganizationResult,
+  PreviewContextFolderRemovalRequest,
+  ContextFolderRemovalPreview,
+  CheckInventoryNameAvailabilityRequest,
+  InventoryNameAvailability,
   HostClient,
   HostClientFailure,
   SetUiLanguageRequest,
@@ -40,6 +48,8 @@ export type {
   ResolvePendingRevisionImpactResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
+  SetManagementPresentationRequest,
+  SetManagementPresentationResult,
   UpdateAnalysisScratchRequest,
   UpdateAnalysisScratchResult,
   UpdateAnalysisNoteRequest,

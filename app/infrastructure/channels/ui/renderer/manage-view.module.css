@@ -60,16 +60,6 @@
   border-radius: 7px;
 }
 
-.impactLayout {
-  grid-template-columns: 246px minmax(390px, 1fr);
-}
-
-.impactLayout .inspector {
-  grid-column: 1 / -1;
-  border-top: 1px solid #dfe3e8;
-  border-left: 0;
-}
-
 .contextPanel,
 .inventoryPanel,
 .inspector {
@@ -79,6 +69,17 @@
 .contextPanel {
   background: #f5f6f8;
   border-right: 1px solid #dfe3e8;
+}
+
+.inventoryPanel {
+  container-name: inventory-actions;
+  container-type: inline-size;
+}
+
+.contextRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .inspector {
@@ -129,6 +130,8 @@
 }
 
 .contextList {
+  container-name: inventory-actions;
+  container-type: inline-size;
   display: grid;
   gap: 3px;
   padding: 8px;
@@ -307,7 +310,7 @@
 .familyRow {
   display: grid;
   min-width: 260px;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr) auto;
   align-items: center;
 }
 
@@ -584,24 +587,7 @@
   display: grid;
   gap: 9px;
   margin: 15px 0;
-  padding: 12px;
-  color: #493a1c;
-  background: #fffaf0;
-  border: 1px solid #e2ca96;
-  border-radius: 5px;
   font-size: 12px;
-}
-
-.managedRevisionDraft {
-  display: grid;
-  gap: 9px;
-  margin: 15px 0 0;
-}
-
-.managedRevisionActions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px;
 }
 
 .impactWarning {
@@ -658,7 +644,7 @@
 }
 
 .contextDetails dt {
-  color: #7a838e;
+  color: #626e7b;
   font-size: 10px;
   font-weight: 680;
 }
@@ -721,6 +707,27 @@
 
 .lossBody {
   padding: 4px 20px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.managementHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #dfe3e8;
+}
+
+.managementHeader h2 {
+  min-width: 0;
+  margin: 0;
+  font-size: 18px;
+}
+
+.managementBody {
+  padding: 16px 20px;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -889,10 +896,6 @@
     grid-column: 1 / -1;
     border-top: 1px solid #dfe3e8;
     border-left: 0;
-  }
-
-  .impactLayout {
-    grid-template-columns: 220px minmax(360px, 1fr);
   }
 }
 

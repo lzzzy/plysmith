@@ -42,6 +42,7 @@ import {
   saveInventoryRevisionResultDto,
   startInventoryRevisionResultDto,
   setWorkScopeResumeResultDto,
+  setManagementPresentationResultDto,
   toolProblem,
   toolResult,
   updateAnalysisScratchResultDto,
@@ -50,6 +51,14 @@ import {
 } from './responses.ts';
 import {
   AddContextReferenceArgumentsSchema,
+  InventoryOrganizationQuerySchema,
+  InventoryOrganizationSchema,
+  ChangeInventoryOrganizationBodySchema,
+  ChangeInventoryOrganizationResultSchema,
+  ContextFolderRemovalQuerySchema,
+  ContextFolderRemovalPreviewSchema,
+  InventoryNameAvailabilityQuerySchema,
+  InventoryNameAvailabilitySchema,
   GetWorkScopeWorkspaceArgumentsSchema,
   WorkScopeWorkspaceSchema,
   StartupResumeSchema,
@@ -110,6 +119,8 @@ import {
   SetDiagnosticLogLevelArgumentsSchema,
   SetDiagnosticLogLevelResultSchema,
   SetWorkScopeResumeArgumentsSchema,
+  SetManagementPresentationArgumentsSchema,
+  SetManagementPresentationResultSchema,
   SetWorkScopeResumeResultSchema,
   SystemStatusSchema,
   UpdateAnalysisScratchArgumentsSchema,
@@ -370,6 +381,57 @@ export function createMcpServer({
         anyOf: [AnalysisNoteMutationResultSchema, HostProblemSchema],
       },
       annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_inventory_organization',
+      title: 'get inventory organization',
+      description: 'Read inventory folders and context links.',
+      inputSchema: InventoryOrganizationQuerySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [InventoryOrganizationSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'change_inventory_organization',
+      title: 'change inventory organization',
+      description:
+        'Change inventory folders, placement or context links using the current data revision.',
+      inputSchema: ChangeInventoryOrganizationBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ChangeInventoryOrganizationResultSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'preview_context_folder_removal',
+      title: 'preview context folder removal',
+      description:
+        'Preview concrete work lost when removing a folder subtree from a context.',
+      inputSchema: ContextFolderRemovalQuerySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ContextFolderRemovalPreviewSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'check_inventory_name_availability',
+      title: 'check inventory name availability',
+      description:
+        'Check global inventory name availability and a suggested name.',
+      inputSchema: InventoryNameAvailabilityQuerySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [InventoryNameAvailabilitySchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
       _meta: problemMetadata,
     },
     {
@@ -666,6 +728,19 @@ export function createMcpServer({
       outputSchema: {
         type: 'object',
         anyOf: [RemoveContextItemResultSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'set_management_presentation',
+      title: 'Set management presentation',
+      description:
+        'Remember the folders or origins view for a work scope while preserving its current selection.',
+      inputSchema: SetManagementPresentationArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [SetManagementPresentationResultSchema, HostProblemSchema],
       },
       annotations: writeAnnotations,
       _meta: problemMetadata,
@@ -1035,6 +1110,38 @@ export function createMcpServer({
             `Analysis note ${dto.contributionId} archived.`,
           );
         }
+        case 'get_inventory_organization': {
+          if (!Value.Check(InventoryOrganizationQuerySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.getInventoryOrganization(args);
+          if (!Value.Check(InventoryOrganizationSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Inventory organization request completed.');
+        }
+        case 'change_inventory_organization': {
+          if (!Value.Check(ChangeInventoryOrganizationBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.changeInventoryOrganization(args);
+          if (!Value.Check(ChangeInventoryOrganizationResultSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Inventory organization request completed.');
+        }
+        case 'preview_context_folder_removal': {
+          if (!Value.Check(ContextFolderRemovalQuerySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.previewContextFolderRemoval(args);
+          if (!Value.Check(ContextFolderRemovalPreviewSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Inventory organization request completed.');
+        }
+        case 'check_inventory_name_availability': {
+          if (!Value.Check(InventoryNameAvailabilityQuerySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.checkInventoryNameAvailability(args);
+          if (!Value.Check(InventoryNameAvailabilitySchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Inventory organization request completed.');
+        }
         case 'search_inventory': {
           if (!Value.Check(SearchInventoryArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -1334,6 +1441,17 @@ export function createMcpServer({
           );
           return toolResult(dto, `Item ${dto.itemId} removed from context.`);
         }
+        case 'set_management_presentation': {
+          if (!Value.Check(SetManagementPresentationArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = setManagementPresentationResultDto(
+            await hostClient.setManagementPresentation(args),
+          );
+          return toolResult(
+            dto,
+            `Management resume revision ${dto.resume.resumeVersion}.`,
+          );
+        }
         case 'set_work_scope_resume': {
           if (!Value.Check(SetWorkScopeResumeArgumentsSchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -1553,6 +1671,14 @@ function inputSchema(name: string) {
       return ValidateAnalysisSetupArgumentsSchema;
     case 'update_analysis_scratch':
       return UpdateAnalysisScratchArgumentsSchema;
+    case 'get_inventory_organization':
+      return InventoryOrganizationQuerySchema;
+    case 'change_inventory_organization':
+      return ChangeInventoryOrganizationBodySchema;
+    case 'preview_context_folder_removal':
+      return ContextFolderRemovalQuerySchema;
+    case 'check_inventory_name_availability':
+      return InventoryNameAvailabilityQuerySchema;
     case 'create_analysis_record':
       return CreateAnalysisRecordArgumentsSchema;
     case 'create_analysis_note':
@@ -1595,6 +1721,8 @@ function inputSchema(name: string) {
       return RemoveContextItemArgumentsSchema;
     case 'set_work_scope_resume':
       return SetWorkScopeResumeArgumentsSchema;
+    case 'set_management_presentation':
+      return SetManagementPresentationArgumentsSchema;
     case 'analyze_position':
       return AnalyzePositionArgumentsSchema;
     case 'get_playout':

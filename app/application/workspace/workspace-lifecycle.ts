@@ -62,6 +62,7 @@ export interface ContextWorkLosses {
   readonly scratch?: {
     readonly scratchId: string;
     readonly scratchRevision: number;
+    readonly hasChanges: boolean;
     readonly stepCount: number;
     readonly noteBody?: string;
     readonly intent: AnalysisScratchIntent['kind'];

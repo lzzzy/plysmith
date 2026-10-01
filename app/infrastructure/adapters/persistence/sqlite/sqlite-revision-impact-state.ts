@@ -4,6 +4,11 @@ import {
   revisionImpactConflict,
   type InventoryItemUsageSummary,
 } from '../../../../application/inventory/index.ts';
+import { localId } from '../../../../domain/identity/index.ts';
+import {
+  readContextScratch,
+  readScratchHasChanges,
+} from './sqlite-analysis-scratch-state.ts';
 
 export function readInventoryItemUsage(
   database: Database.Database,
@@ -92,6 +97,20 @@ export function readInventoryItemUsage(
   return Object.freeze({
     ...notes,
     ...scratch,
+    changedScratchCount:
+      scratch.scratchCount === 0
+        ? 0
+        : Number(
+            readScratchHasChanges(
+              database,
+              readContextScratch(
+                database,
+                contextId === null
+                  ? null
+                  : localId('working-context', contextId),
+              ),
+            ),
+          ),
     referenceCount: references.count,
     managementResumeAffected: management !== undefined,
     analysisResumeAffected: analysis !== undefined,

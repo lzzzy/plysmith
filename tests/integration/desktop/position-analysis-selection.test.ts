@@ -5,7 +5,7 @@ import { chromium, expect } from '@playwright/test';
 import { build } from 'esbuild';
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
 
-test('an explicitly disabled Maia profile stays disabled after a position change', async () => {
+test('analysis choices survive leaving the area and a position change', async () => {
   const rootState = new ChessJsRulesAdapter().initialState();
   const bundle = await build({
     stdin: {
@@ -29,11 +29,14 @@ const providers = { providers: [
 ] };
 const store = {
   selection: undefined,
+  budget: 'fast',
   calls: [],
   getPositionAnalysisHumanSelection() { return this.selection; },
   setPositionAnalysisHumanSelection(ids) { this.selection = new Set(ids); },
+  getPositionAnalysisBudget() { return this.budget; },
+  setPositionAnalysisBudget(budget) { this.budget = budget; },
   analyzePosition(request) {
-    this.calls.push(request.mode.kind);
+    this.calls.push(request.mode.kind === 'objective' ? request.mode.budget : request.mode.kind);
     return Promise.resolve({ kind: 'failed' });
   },
 };
@@ -45,6 +48,7 @@ function render() {
   </IntlProvider>);
 }
 window.selectionTest = {
+  leaveAndReturn() { generation++; render(); },
   move() { generation++; focus = { ...focus, focusKey: 'next' }; render(); },
   calls() { return store.calls; },
 };
@@ -73,6 +77,16 @@ render();`,
     await expect(maia).toBeChecked();
     await maia.uncheck();
     await expect(maia).not.toBeChecked();
+    const budget = page.getByRole('combobox', { name: 'Thinking time' });
+    await budget.selectOption('very_deep');
+    await expect(budget).toHaveValue('very_deep');
+    await page.evaluate(() =>
+      (
+        globalThis as unknown as { selectionTest: { leaveAndReturn(): void } }
+      ).selectionTest.leaveAndReturn(),
+    );
+    await expect(budget).toHaveValue('very_deep');
+    await expect(maia).not.toBeChecked();
     const callsBeforeMove = await page.evaluate(
       () =>
         (
@@ -85,13 +99,14 @@ render();`,
       ).selectionTest.move(),
     );
     await expect(maia).not.toBeChecked();
+    await expect(budget).toHaveValue('very_deep');
     const callsAfterMove = await page.evaluate(() =>
       (
         globalThis as unknown as { selectionTest: { calls(): string[] } }
       ).selectionTest.calls(),
     );
     assert.equal(callsAfterMove.length, callsBeforeMove + 1);
-    assert.equal(callsAfterMove.at(-1), 'objective');
+    assert.equal(callsAfterMove.at(-1), 'very_deep');
   } finally {
     await browser.close();
   }

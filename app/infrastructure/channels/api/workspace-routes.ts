@@ -12,6 +12,7 @@ import {
   removeContextItemResultDto,
   resolvePendingRevisionImpactResultDto,
   setWorkScopeResumeResultDto,
+  setManagementPresentationResultDto,
   workingContextWorkspaceDto,
   parseWorkScope,
   workScopeWorkspaceDto,
@@ -33,6 +34,8 @@ import {
   PendingRevisionImpactSchema,
   problemResponses,
   SetWorkScopeResumeBodySchema,
+  SetManagementPresentationBodySchema,
+  SetManagementPresentationResultSchema,
   SetWorkScopeResumeResultSchema,
   RemoveContextItemResultSchema,
   ResolvePendingRevisionImpactBodySchema,
@@ -314,6 +317,29 @@ export function registerWorkspaceRoutes(
           contextId: parseLocalId('working-context', request.params.contextId),
           itemId: parseLocalId('inventory-item', request.body.itemId),
           anchorId: parseLocalId('anchor', request.body.anchorId),
+        }),
+      ),
+  );
+
+  api.put(
+    '/workspace/management-presentation',
+    {
+      schema: {
+        operationId: 'SetManagementPresentation',
+        querystring: EmptyQuerySchema,
+        body: SetManagementPresentationBodySchema,
+        response: {
+          200: Type.Ref(SetManagementPresentationResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async (request) =>
+      setManagementPresentationResultDto(
+        await dependencies.setManagementPresentation.execute({
+          scope: parseWorkScope(request.body.scope),
+          expectedResumeVersion: request.body.expectedResumeVersion,
+          presentation: request.body.presentation,
         }),
       ),
   );

@@ -620,7 +620,7 @@ test('an inventory-only record is referenced only by an explicit later command',
     scope: { kind: 'context', contextId: context.context.contextId },
     area: 'manage',
     expectedResumeVersion: null,
-    presentation: 'list',
+    presentation: 'folders',
     selectedItemId: record.itemId,
     selectedAnchorId: record.rootAnchorId,
   });

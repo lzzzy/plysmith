@@ -15,6 +15,7 @@ import type {
   ContextReferenceId,
   ContributionId,
   InventoryItemId,
+  InventoryFolderId,
   ItemRevisionId,
   WorkingContextId,
 } from '../../domain/identity/index.ts';
@@ -116,6 +117,7 @@ export interface AnalysisWorkspace {
   readonly contextName?: string;
   readonly resumeVersion?: number;
   readonly scratch?: AnalysisScratch;
+  readonly scratchHasChanges: boolean;
   readonly record?: AnalysisRecordView;
   readonly currentState: ChessState;
   readonly legalMoves: readonly CanonicalMove[];
@@ -189,6 +191,7 @@ export interface UpdateAnalysisScratchResult {
 }
 
 export interface CreateAnalysisRecordRequest {
+  readonly folderId?: InventoryFolderId | null;
   readonly scope: WorkScope;
   readonly expectedScratchId: string;
   readonly expectedScratchRevision: number;
@@ -269,6 +272,7 @@ export interface CreateAnalysisRecordResult {
 }
 
 export interface PersistAnalysisRecordRequest {
+  readonly folderId?: InventoryFolderId | null;
   readonly sourceScope?: WorkScope;
   readonly sourceContextId?: WorkingContextId;
   readonly expectedScratchId?: string;

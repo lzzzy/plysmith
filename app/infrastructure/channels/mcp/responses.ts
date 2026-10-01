@@ -29,6 +29,7 @@ import type {
   SetDiagnosticLogLevelResult,
   SetUiLanguageResult,
   SetWorkScopeResumeResult,
+  SetManagementPresentationResult,
   SystemStatus,
   UpdateAnalysisScratchResult,
   UserPreferences,
@@ -60,6 +61,7 @@ import {
   SetDiagnosticLogLevelResultSchema,
   SetUiLanguageResultSchema,
   SetWorkScopeResumeResultSchema,
+  SetManagementPresentationResultSchema,
   SystemStatusSchema,
   UpdateAnalysisScratchResultSchema,
   UserPreferencesSchema,
@@ -220,6 +222,12 @@ export function removeContextItemResultDto(model: RemoveContextItemResult) {
 
 export function setWorkScopeResumeResultDto(model: SetWorkScopeResumeResult) {
   return checked(SetWorkScopeResumeResultSchema, model);
+}
+
+export function setManagementPresentationResultDto(
+  model: SetManagementPresentationResult,
+) {
+  return checked(SetManagementPresentationResultSchema, model);
 }
 
 export function listPositionAnalysisProvidersResultDto(

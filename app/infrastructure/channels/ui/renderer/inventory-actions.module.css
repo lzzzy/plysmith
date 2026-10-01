@@ -1,0 +1,134 @@
+.actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 32px;
+}
+
+.inline {
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+
+.compact {
+  display: flex;
+}
+
+/* One list-wide threshold leaves room for names and metadata beside actions. */
+@container inventory-actions (width >= 640px) {
+  .inline {
+    display: flex;
+  }
+
+  .compact {
+    display: none;
+  }
+}
+
+.iconButton {
+  display: inline-flex;
+  flex: 0 0 32px;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #35434f;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.iconButton[data-hovered],
+.iconButton[data-pressed] {
+  background: #e9edf1;
+}
+
+.iconButton[data-focus-visible],
+.menuItem[data-focused] {
+  outline: 2px solid var(--action-blue, #2e61ad);
+  outline-offset: -2px;
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.popover {
+  z-index: 110;
+  max-width: calc(100vw - 24px);
+  max-height: var(--available-height);
+  overflow: auto;
+  border: 1px solid #c8ced6;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #35434f;
+  box-shadow: 0 4px 14px #20252d24;
+}
+
+.menu {
+  width: max-content;
+  min-width: min(180px, calc(100vw - 24px));
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 4px;
+  outline: none;
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.itemLabel {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.menuItem[data-focused] {
+  background: #edf4fd;
+}
+
+.iconButton[data-destructive],
+.menuItem[data-destructive] {
+  color: #a12630;
+}
+
+.iconButton[data-disabled],
+.menuItem[data-disabled] {
+  color: #757b82;
+  cursor: default;
+}
+
+.tooltip {
+  z-index: 120;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 6px 9px;
+  border-radius: 4px;
+  background: #20252d;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

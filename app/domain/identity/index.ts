@@ -4,6 +4,7 @@ export {
   type ContextReferenceId,
   type ContributionId,
   type InventoryItemId,
+  type InventoryFolderId,
   type ItemRevisionId,
   type LocalId,
   type LocalIdKind,

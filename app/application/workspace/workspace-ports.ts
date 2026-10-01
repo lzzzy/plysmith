@@ -9,6 +9,8 @@ import type {
   RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
+  SetManagementPresentationRequest,
+  SetManagementPresentationResult,
   WorkingContextSummary,
   WorkingContextWorkspace,
   WorkspaceChanged,
@@ -53,6 +55,13 @@ export interface WorkingContextWriter {
 
 export interface WorkspaceClock {
   now(): string;
+}
+
+export interface ManagementPresentationWriter {
+  setManagementPresentation(
+    request: SetManagementPresentationRequest,
+    occurredAt: string,
+  ): Promise<SetManagementPresentationResult & { readonly changed: boolean }>;
 }
 
 export interface WorkspaceChangedPublisher {

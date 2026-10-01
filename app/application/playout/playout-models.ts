@@ -1,4 +1,5 @@
 import type { AnalysisSetup } from '../../domain/chess_graph/index.ts';
+import type { InventoryFolderId } from '../../domain/identity/index.ts';
 import type {
   MovePolicyBinding,
   MovePolicyCapability,
@@ -113,6 +114,7 @@ export interface PersistDiscardPlayoutRequest {
 }
 
 export interface CompletePlayoutRequest extends ExpectedPlayoutRequest {
+  readonly folderId?: InventoryFolderId | null;
   readonly manualResult?: ManualGameResult;
   readonly completionId: string;
   readonly displayName: string;
@@ -121,6 +123,7 @@ export interface CompletePlayoutRequest extends ExpectedPlayoutRequest {
 }
 
 export interface PersistCompletePlayoutRequest {
+  readonly folderId?: InventoryFolderId | null;
   readonly scope: WorkScope;
   readonly draftId: PlayoutDraft['draftId'];
   readonly expectedDraftRevision: number;

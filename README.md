@@ -55,6 +55,35 @@ menschenähnliche Zugvorschläge und kann als Gegner beim Ausspielen dienen.
 Auch mit Stockfish können Sie ausspielen. Der Installer enthält weder
 Engines noch Modellgewichte.
 
+## Ordner und Arbeitskontexte
+
+In **Verwalten > Ordner** können Sie Analysen und Partien in verschachtelten
+Ordnern ablegen. Ordner und Einträge lassen sich per Drag-and-drop
+neu einsortieren. Unter **Herkunft** bleiben die tatsächlichen Ableitungen
+zwischen Analysen und Partien sichtbar, unabhängig von ihrer Ablage.
+Plysmith merkt sich die gewählte Ansicht für den Gesamtbestand und jeden
+Arbeitskontext getrennt, auch nach einem Neustart.
+
+Aktionen für Ordner und Einträge finden Sie an ihrer Zeile: als Symbole oder,
+bei wenig Platz, im Menü **…**. Rechts sehen Sie die Details und die
+Stellungsvorschau. Angekreuzte Einträge verschieben Sie gemeinsam, indem Sie
+einen davon in den gewünschten Ordner ziehen.
+Gelöscht wird jeweils ein einzelner Eintrag nach Bestätigung.
+Das Plus nimmt Inhalte in einen Arbeitskontext auf, das Minus entfernt sie
+nur daraus. Der Mülleimer löscht aus dem Bestand.
+
+Ein Arbeitskontext kann einen Ordner samt Unterordnern aufnehmen: nur als
+leere Ablageziele oder zusätzlich mit den derzeit darin liegenden Einträgen.
+Später hinzugefügte Einträge werden nicht automatisch aufgenommen. Im
+Arbeitskontext sehen Sie die passenden Ordner mit ihrem vollständigen Pfad.
+Die Ablage bleibt für alle Arbeitskontexte dieselbe.
+
+Das Löschen eines Bestandsordners samt Unterordnern erhält die Einträge;
+sie erscheinen danach unter **Nicht eingeordnet**. Entfernen Sie einen Ordner
+aus einem Arbeitskontext, entfallen dagegen dessen zugehörige Einträge und
+Arbeitsstände nur dort. Vor einem Verlust von Kontextnotizen oder Entwürfen
+fragt Plysmith nach. Die Einträge im Gesamtbestand bleiben erhalten.
+
 ## Schachengines einrichten
 
 Stockfish, Lc0 und Maia-Gewichte stammen von externen Projekten. Prüfen Sie

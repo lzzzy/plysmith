@@ -51,6 +51,33 @@ human-like move suggestions and can be an opponent when you play out a
 position. You can also play against Stockfish. The installer contains
 neither engines nor model weights.
 
+## Folders and Working Contexts
+
+In **Manage > Folders**, you can organize analyses and games in nested folders.
+Drag folders and items to change their location. **Origins**
+shows the actual derivations between analyses and games, independently of
+their folder location.
+Plysmith remembers the selected view separately for the full inventory and
+each working context, including after a restart.
+
+Folder and item actions are available at their rows: as icons or, when space
+is limited, in the **…** menu. The right-hand panel shows details and a
+position preview. Move checked items together by dragging one of them to the
+destination folder; deletion applies
+to one item at a time and requires confirmation.
+The plus adds content to a working context; the minus removes it only from
+that context. The trash icon deletes from the inventory.
+
+A working context can include a folder and its subfolders as empty destinations
+or together with their current items. Items added later are not included
+automatically. The working context shows relevant folders with their full paths.
+Folder locations are shared by all working contexts.
+
+Deleting an inventory folder and its subfolders keeps the items; they appear
+under **Unfiled**. Removing a folder from a working context instead removes
+its associated items and work from that context only. Plysmith asks before
+discarding context notes or drafts. The inventory items themselves remain.
+
 ## Setting Up Chess Engines
 
 Stockfish, Lc0, and Maia weights come from separate projects. Check their

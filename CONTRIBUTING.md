@@ -26,6 +26,16 @@ Klonen des Repositories:
 pnpm install --frozen-lockfile
 ```
 
+Die Skriptstarts prüfen die Abhängigkeiten, installieren aber nichts automatisch.
+Nach Änderungen an den Paketdateien kann erneut `pnpm install --frozen-lockfile`
+erforderlich sein. Erscheint eine Aufforderung, `node_modules` vollständig neu
+anzulegen, brechen Sie zunächst ab: Ein abweichender pnpm-Store kann die Ursache
+sein. Vergleichen Sie `pnpm config get storeDir` mit `storeDir` in
+`node_modules/.modules.yaml`. Ergänzen Sie beim Installieren die Option
+`--store-dir "<bisheriger Store-Stammpfad>"`, um den bisherigen Store ohne Änderung
+der globalen Konfiguration zu verwenden. Den Versionsunterordner wie `v11` nicht
+mit angeben.
+
 Starten Sie Host und Desktop in zwei getrennten Terminals im Repository:
 
 ```powershell

@@ -3,6 +3,7 @@ export type LocalIdKind =
   | 'context-reference'
   | 'contribution'
   | 'inventory-item'
+  | 'inventory-folder'
   | 'item-revision'
   | 'move-node'
   | 'occurrence'
@@ -20,6 +21,7 @@ export type AnchorId = LocalId<'anchor'>;
 export type ContextReferenceId = LocalId<'context-reference'>;
 export type ContributionId = LocalId<'contribution'>;
 export type InventoryItemId = LocalId<'inventory-item'>;
+export type InventoryFolderId = LocalId<'inventory-folder'>;
 export type ItemRevisionId = LocalId<'item-revision'>;
 export type MoveNodeId = LocalId<'move-node'>;
 export type OccurrenceId = LocalId<'occurrence'>;

@@ -18,6 +18,7 @@ export interface WorkingContextSummary extends WorkingContextDraft {
   readonly pinnedOrder?: number;
   readonly contextVersion: number;
   readonly referenceCount: number;
+  readonly itemCount: number;
   readonly pendingRevisionImpactCount: number;
   readonly managementResumeVersion?: number;
   readonly analysisResumeVersion?: number;
@@ -25,12 +26,15 @@ export interface WorkingContextSummary extends WorkingContextDraft {
   readonly updatedAt: string;
 }
 
-export interface ContextReferenceSummary {
-  readonly referenceId: ContextReferenceId;
+export interface ContextInventoryMemberSummary {
   readonly itemId: InventoryItemId;
   readonly currentRevisionId: ItemRevisionId;
   readonly itemType: 'game' | 'analysis' | 'source';
   readonly displayName: string;
+}
+
+export interface ContextReferenceSummary extends ContextInventoryMemberSummary {
+  readonly referenceId: ContextReferenceId;
   readonly anchorId: AnchorId;
   readonly anchorKind: 'item' | 'position' | 'occurrence' | 'move_node';
   readonly createdAt: string;
@@ -38,7 +42,7 @@ export interface ContextReferenceSummary {
 
 export interface ManagementResume {
   readonly resumeVersion: number;
-  readonly presentation: 'list' | 'atlas';
+  readonly presentation: 'folders' | 'origins';
   readonly selectedItemId?: InventoryItemId;
   readonly selectedAnchorId?: AnchorId;
   readonly updatedAt: string;
@@ -67,6 +71,7 @@ export interface WorkingContextRevisionImpactSummary {
 
 export interface WorkingContextWorkspace {
   readonly context: WorkingContextSummary;
+  readonly members: readonly ContextInventoryMemberSummary[];
   readonly references: readonly ContextReferenceSummary[];
   readonly pendingRevisionImpacts: readonly WorkingContextRevisionImpactSummary[];
   readonly managementResume?: ManagementResume;
@@ -129,7 +134,7 @@ export type SetWorkScopeResumeRequest =
       readonly scope: WorkScope;
       readonly area: 'manage';
       readonly expectedResumeVersion: number | null;
-      readonly presentation: 'list' | 'atlas';
+      readonly presentation: ManagementResume['presentation'];
       readonly selectedItemId?: InventoryItemId;
       readonly selectedAnchorId?: AnchorId;
     }
@@ -154,6 +159,17 @@ export type SetWorkScopeResumeResult =
       readonly resume: AnalysisResume;
       readonly dataRevision: number;
     };
+
+export interface SetManagementPresentationRequest {
+  readonly scope: WorkScope;
+  readonly expectedResumeVersion: number | null;
+  readonly presentation: ManagementResume['presentation'];
+}
+
+export type SetManagementPresentationResult = Extract<
+  SetWorkScopeResumeResult,
+  { readonly area: 'manage' }
+>;
 
 export type WorkspaceChanged =
   | {

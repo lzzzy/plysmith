@@ -25,10 +25,8 @@ import {
   insertAnalysisNoteContribution,
 } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-note.ts';
 import { readFreeAnalysisWorkspace } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-context-analysis.ts';
-import {
-  readContextScratch,
-  replaceContextAnalysisScratch,
-} from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch.ts';
+import { replaceContextAnalysisScratch } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch.ts';
+import { readContextScratch } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch-state.ts';
 import {
   removeContextItemUsage,
   requireContextInventoryWorkAccess,
@@ -116,7 +114,7 @@ test('free scratch and both resumes survive reopening independently without a hi
         scope: free,
         area: 'manage',
         expectedResumeVersion: null,
-        presentation: 'list',
+        presentation: 'folders',
         selectedItemId: record.itemId,
         selectedAnchorId: record.rootAnchorId,
       },
@@ -193,7 +191,7 @@ test('free scratch and both resumes survive reopening independently without a hi
             scope: free,
             area: 'manage',
             expectedResumeVersion: null,
-            presentation: 'list',
+            presentation: 'folders',
           },
           timestamp,
         ),

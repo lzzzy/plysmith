@@ -53,9 +53,16 @@ test(
       resumeVersion: 4,
     });
     const events: HostEvent[] = [];
+    stream.publish({
+      ...metadata,
+      kind: 'inventory.organization-changed',
+      folderId: localId('inventory-folder', 3),
+      contextId: localId('working-context', 2),
+      itemIds: [localId('inventory-item', 7)],
+    });
     const iterator = subscription.events[Symbol.asyncIterator]();
     try {
-      for (let index = 0; index < 4; index++) {
+      for (let index = 0; index < 5; index++) {
         const next = await iterator.next();
         assert.equal(next.done, false);
         events.push(next.value);
@@ -78,6 +85,7 @@ test(
       { contextId: '2' },
       { startupVersion: 3 },
       { area: 'manage', resumeVersion: 4 },
+      { folderId: '3', contextId: '2', itemIds: ['7'] },
     ]);
   },
 );

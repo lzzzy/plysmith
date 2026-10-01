@@ -12,6 +12,8 @@ import type {
   RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
+  SetManagementPresentationRequest,
+  SetManagementPresentationResult,
   WorkingContextSummary,
   WorkingContextRevisionImpactSummary,
   WorkingContextWorkspace,
@@ -55,6 +57,10 @@ import {
 import { removeContextItemUsage } from './sqlite-context-item.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import {
+  readContextScratch,
+  readScratchHasChanges,
+} from './sqlite-analysis-scratch-state.ts';
+import {
   assertNoOpenRevisionImpact,
   releaseObsoleteResumeImpact,
 } from './sqlite-revision-impact-state.ts';
@@ -69,6 +75,7 @@ interface WorkingContextRow {
   readonly pinnedOrder: number | null;
   readonly contextVersion: number;
   readonly referenceCount: number;
+  readonly itemCount: number;
   readonly pendingRevisionImpactCount: number;
   readonly managementResumeVersion: number | null;
   readonly analysisResumeVersion: number | null;
@@ -223,6 +230,25 @@ export function readWorkingContextWorkspace(
 ): WorkingContextWorkspace | undefined {
   const context = readWorkingContextSummary(database, contextId);
   if (context?.lifecycle !== 'active') return undefined;
+  const members = database
+    .prepare(
+      `SELECT i.item_id AS itemId,
+              v.revision_id AS currentRevisionId,
+              i.item_type AS itemType,
+              v.display_name AS displayName
+         FROM workspace_context_item AS context_item
+         JOIN inventory_item AS i ON i.item_id = context_item.item_id
+         JOIN item_revision AS v
+           ON v.item_id = i.item_id
+          AND v.revision_id = coalesce(context_item.pinned_revision_id,
+                                       i.current_revision_id)
+        WHERE context_item.context_id = ?
+        ORDER BY context_item.created_at_utc, i.item_id`,
+    )
+    .all(contextId.value) as Pick<
+    ContextReferenceRow,
+    'itemId' | 'currentRevisionId' | 'itemType' | 'displayName'
+  >[];
   const references = database
     .prepare(
       `SELECT r.reference_id AS referenceId,
@@ -267,6 +293,16 @@ export function readWorkingContextWorkspace(
     .all(contextId.value) as WorkingContextRevisionImpactRow[];
   return Object.freeze({
     context,
+    members: Object.freeze(
+      members.map((member) =>
+        Object.freeze({
+          itemId: localId('inventory-item', member.itemId),
+          currentRevisionId: localId('item-revision', member.currentRevisionId),
+          itemType: member.itemType,
+          displayName: member.displayName,
+        }),
+      ),
+    ),
     references: Object.freeze(references.map(mapContextReference)),
     pendingRevisionImpacts: Object.freeze(
       pendingRevisionImpacts.map(mapWorkingContextRevisionImpact),
@@ -385,6 +421,60 @@ export function removeContextItem(
     itemId: request.itemId,
     dataRevision: incrementDataRevision(database, occurredAt),
   });
+}
+
+export function setManagementPresentation(
+  database: Database.Database,
+  request: SetManagementPresentationRequest,
+  occurredAt: string,
+): SetManagementPresentationResult & { readonly changed: boolean } {
+  if (
+    (request.presentation !== 'folders' &&
+      request.presentation !== 'origins') ||
+    (request.expectedResumeVersion !== null &&
+      (!Number.isSafeInteger(request.expectedResumeVersion) ||
+        request.expectedResumeVersion < 1))
+  )
+    throw invalidResume();
+  const contextId =
+    request.scope.kind === 'context' ? request.scope.contextId.value : null;
+  if (request.scope.kind === 'context')
+    requireActiveContext(database, request.scope.contextId);
+  const current = readManagementResume(database, contextId);
+  assertResumeRevision(
+    request.expectedResumeVersion,
+    current?.resumeVersion ?? null,
+  );
+  if (current?.presentation === request.presentation) {
+    return Object.freeze({
+      area: 'manage',
+      resume: current,
+      dataRevision: readDataRevision(database),
+      changed: false,
+    });
+  }
+  database
+    .prepare(
+      `
+    INSERT INTO workspace_management_resume
+      (context_id, resume_version, presentation, updated_at_utc)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT DO UPDATE SET
+      resume_version = excluded.resume_version,
+      presentation = excluded.presentation,
+      updated_at_utc = excluded.updated_at_utc
+  `,
+    )
+    .run(
+      contextId,
+      (current?.resumeVersion ?? 0) + 1,
+      request.presentation,
+      occurredAt,
+    );
+  const dataRevision = incrementDataRevision(database, occurredAt);
+  const resume = readManagementResume(database, contextId);
+  if (resume === undefined) throw invalidResume();
+  return Object.freeze({ area: 'manage', resume, dataRevision, changed: true });
 }
 
 export function setWorkScopeResume(
@@ -839,6 +929,10 @@ function previewContextRemoval(
             scratch: Object.freeze({
               scratchId: scratch.scratchId,
               scratchRevision: scratch.scratchRevision,
+              hasChanges: readScratchHasChanges(
+                database,
+                readContextScratch(database, contextId),
+              ),
               intent: scratch.intent,
               stepCount: scratch.stepCount,
               ...(scratch.noteBody === null
@@ -1086,7 +1180,7 @@ export function readManagementResume(
     ) as
     | {
         resumeVersion: number;
-        presentation: 'list' | 'atlas';
+        presentation: ManagementResume['presentation'];
         selectedItemId: number | null;
         selectedAnchorId: number | null;
         updatedAt: string;
@@ -1213,6 +1307,7 @@ function mapWorkingContext(row: WorkingContextRow): WorkingContextSummary {
     ...(row.pinnedOrder === null ? {} : { pinnedOrder: row.pinnedOrder }),
     contextVersion: row.contextVersion,
     referenceCount: row.referenceCount,
+    itemCount: row.itemCount,
     pendingRevisionImpactCount: row.pendingRevisionImpactCount,
     ...(row.managementResumeVersion === null
       ? {}
@@ -1272,6 +1367,8 @@ const workingContextSelect = `
          c.context_version AS contextVersion,
          (SELECT count(*) FROM workspace_context_reference AS r
             WHERE r.context_id = c.context_id) AS referenceCount,
+         (SELECT count(*) FROM workspace_context_item AS member
+            WHERE member.context_id = c.context_id) AS itemCount,
          (SELECT count(*) FROM workspace_pending_revision_impact AS impact
             WHERE impact.context_id = c.context_id) AS pendingRevisionImpactCount,
          management.resume_version AS managementResumeVersion,

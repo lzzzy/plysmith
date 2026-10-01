@@ -29,6 +29,9 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/engine-providers/configurations': ['GET'],
   '/engine-providers/configuration-preview': ['POST'],
   '/inventory': ['GET'],
+  '/inventory/organization': ['GET', 'POST'],
+  '/inventory/organization/removal-preview': ['GET'],
+  '/inventory/name-availability': ['GET'],
   '/inventory/analysis-records': ['POST'],
   '/inventory/revision-edits/preview': ['POST'],
   '/inventory/revision-edits/save': ['POST'],
@@ -45,6 +48,7 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/workspace/scope': ['GET'],
   '/workspace/startup': ['GET', 'PUT'],
   '/workspace/resume': ['PUT'],
+  '/workspace/management-presentation': ['PUT'],
 };
 
 function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {

@@ -206,6 +206,7 @@ test('browser preflight covers every public use-case route including queries and
     ['/working-contexts/1/items/2', 'DELETE', 'DELETE'],
     ['/working-contexts/1/references', 'POST', 'POST'],
     ['/workspace/resume', 'PUT', 'PUT'],
+    ['/workspace/management-presentation', 'PUT', 'PUT'],
   ] as const;
 
   for (const [url, method, allowedMethods] of cases) {

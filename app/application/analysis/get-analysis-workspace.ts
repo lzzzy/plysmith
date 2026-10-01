@@ -19,6 +19,7 @@ import type {
 import type { ContextAnalysisReader } from './analysis-ports.ts';
 import { chessRulesProblem } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
+import { analysisScratchHasChanges } from './analysis-scratch-changes.ts';
 
 export interface GetAnalysisWorkspaceUseCase {
   execute(request: GetAnalysisWorkspaceRequest): Promise<AnalysisWorkspace>;
@@ -199,6 +200,10 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
         ? {}
         : { resumeVersion: stored.resumeVersion }),
       ...(stored.scratch === undefined ? {} : { scratch: stored.scratch }),
+      scratchHasChanges: analysisScratchHasChanges(
+        stored.scratch,
+        stored.record,
+      ),
       ...(stored.record === undefined ? {} : { record: stored.record }),
       currentState,
       legalMoves: legalMoves.value,

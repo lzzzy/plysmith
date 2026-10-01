@@ -37,6 +37,7 @@ import { incrementDataRevision } from './sqlite-store-helpers.ts';
 import { requireActiveContext } from './sqlite-workspace.ts';
 import { persistGameSourcePath } from './sqlite-game-source-path.ts';
 import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
+import { creationFolder } from './sqlite-inventory-organization.ts';
 
 export function completePlayout(
   database: Database.Database,
@@ -49,6 +50,7 @@ export function completePlayout(
   }
   const manualResult = manualGameResult(request.game);
   const receipt = readPlayoutCompletion(database, {
+    ...(request.folderId === undefined ? {} : { folderId: request.folderId }),
     scope: request.scope,
     draftId: request.draftId,
     expectedDraftRevision: request.expectedDraftRevision,
@@ -118,14 +120,22 @@ export function completePlayout(
     requireActiveContext(database, request.targetContextId);
   }
 
+  const folderId = creationFolder(
+    database,
+    request.folderId,
+    request.game.origin.kind === 'inventory_anchor'
+      ? request.game.origin.itemId
+      : undefined,
+    request.targetContextId,
+  );
   const itemInsert = database
     .prepare(
       `INSERT INTO inventory_item
          (item_type, origin_kind, lifecycle, current_revision_id,
-          created_at_utc, updated_at_utc)
-       VALUES ('game', 'playout', 'active', NULL, ?, ?)`,
+          created_at_utc, updated_at_utc, folder_id)
+       VALUES ('game', 'playout', 'active', NULL, ?, ?, ?)`,
     )
-    .run(request.occurredAt, request.occurredAt);
+    .run(request.occurredAt, request.occurredAt, folderId);
   const itemId = localId('inventory-item', Number(itemInsert.lastInsertRowid));
   const revisionInsert = database
     .prepare(
@@ -239,8 +249,9 @@ export function completePlayout(
          (completion_id, draft_id, scope_kind, context_id,
           expected_draft_revision, display_name, language_tag,
           target_context_id, item_id, revision_id, root_anchor_id,
-          context_reference_id, data_revision, completed_at_utc)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          context_reference_id, data_revision, completed_at_utc,
+          requested_folder_mode, requested_folder_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       request.completionId,
@@ -257,6 +268,12 @@ export function completePlayout(
       contextReferenceId ?? null,
       dataRevision,
       request.occurredAt,
+      request.folderId === undefined
+        ? 'inherit'
+        : request.folderId === null
+          ? 'unfiled'
+          : 'folder',
+      request.folderId?.value ?? null,
     );
   return resultModel(
     itemId.value,
@@ -333,6 +350,8 @@ export function readPlayoutCompletion(
               expected_draft_revision AS expectedDraftRevision,
               display_name AS displayName, language_tag AS languageTag,
               target_context_id AS targetContextId,
+              requested_folder_mode AS requestedFolderMode,
+              requested_folder_id AS requestedFolderId,
               receipt.item_id AS itemId, receipt.revision_id AS revisionId,
               root_anchor_id AS rootAnchorId,
               context_reference_id AS contextReferenceId,
@@ -353,6 +372,8 @@ export function readPlayoutCompletion(
         displayName: string;
         languageTag: string;
         targetContextId: number | null;
+        requestedFolderMode: 'inherit' | 'unfiled' | 'folder';
+        requestedFolderId: number | null;
         itemId: number;
         revisionId: number;
         rootAnchorId: number;
@@ -395,6 +416,13 @@ export function readPlayoutCompletion(
     row.displayName !== request.displayName ||
     row.languageTag !== request.languageTag ||
     row.targetContextId !== (request.targetContextId?.value ?? null) ||
+    row.requestedFolderMode !==
+      (request.folderId === undefined
+        ? 'inherit'
+        : request.folderId === null
+          ? 'unfiled'
+          : 'folder') ||
+    row.requestedFolderId !== (request.folderId?.value ?? null) ||
     manualGameResult(result) !== request.manualResult
   ) {
     throw invalidPlayout();

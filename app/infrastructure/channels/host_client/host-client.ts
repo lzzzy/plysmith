@@ -17,6 +17,22 @@ import {
   type SafeHostProblem,
 } from './host-client-problem.ts';
 
+export type GetInventoryOrganizationRequestDto =
+  components['schemas']['InventoryOrganizationQuery'];
+export type InventoryOrganizationDto =
+  components['schemas']['InventoryOrganization'];
+export type ChangeInventoryOrganizationRequestDto =
+  components['schemas']['ChangeInventoryOrganizationBody'];
+export type ChangeInventoryOrganizationResultDto =
+  components['schemas']['ChangeInventoryOrganizationResult'];
+export type PreviewContextFolderRemovalRequestDto =
+  components['schemas']['ContextFolderRemovalQuery'];
+export type ContextFolderRemovalPreviewDto =
+  components['schemas']['ContextFolderRemovalPreview'];
+export type CheckInventoryNameAvailabilityRequestDto =
+  components['schemas']['InventoryNameAvailabilityQuery'];
+export type InventoryNameAvailabilityDto =
+  components['schemas']['InventoryNameAvailability'];
 export type SystemStatusDto = components['schemas']['SystemStatus'];
 export type ContextRemovalPreviewDto =
   components['schemas']['ContextRemovalPreview'];
@@ -137,6 +153,10 @@ export type SetWorkScopeResumeRequestDto =
   components['schemas']['SetWorkScopeResumeBody'];
 export type SetWorkScopeResumeResultDto =
   components['schemas']['SetWorkScopeResumeResult'];
+export type SetManagementPresentationRequestDto =
+  components['schemas']['SetManagementPresentationBody'];
+export type SetManagementPresentationResultDto =
+  components['schemas']['SetManagementPresentationResult'];
 export type MovePolicyProviderDto = components['schemas']['MovePolicyProvider'];
 export type ListMovePolicyProvidersResultDto =
   components['schemas']['ListMovePolicyProvidersResult'];
@@ -540,6 +560,68 @@ export class PlysmithHostClient {
     }
   }
 
+  async getInventoryOrganization(
+    request: GetInventoryOrganizationRequestDto,
+  ): Promise<InventoryOrganizationDto> {
+    try {
+      const result = await this.#client.GET('/inventory/organization', {
+        params: { query: request },
+      });
+      return unwrap<InventoryOrganizationDto>(
+        result.data as unknown as InventoryOrganizationDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async changeInventoryOrganization(
+    request: ChangeInventoryOrganizationRequestDto,
+  ): Promise<ChangeInventoryOrganizationResultDto> {
+    try {
+      const result = await this.#client.POST('/inventory/organization', {
+        body: request,
+      });
+      return unwrap<ChangeInventoryOrganizationResultDto>(
+        result.data,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async previewContextFolderRemoval(
+    request: PreviewContextFolderRemovalRequestDto,
+  ): Promise<ContextFolderRemovalPreviewDto> {
+    try {
+      const result = await this.#client.GET(
+        '/inventory/organization/removal-preview',
+        { params: { query: request } },
+      );
+      return unwrap<ContextFolderRemovalPreviewDto>(
+        result.data as unknown as ContextFolderRemovalPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async checkInventoryNameAvailability(
+    request: CheckInventoryNameAvailabilityRequestDto,
+  ): Promise<InventoryNameAvailabilityDto> {
+    try {
+      const result = await this.#client.GET('/inventory/name-availability', {
+        params: { query: request },
+      });
+      return unwrap<InventoryNameAvailabilityDto>(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
   async searchInventory(
     request: SearchInventoryRequestDto,
   ): Promise<SearchInventoryResultDto> {
@@ -817,6 +899,23 @@ export class PlysmithHostClient {
       });
       return unwrap<SetWorkScopeResumeResultDto>(
         result.data as unknown as SetWorkScopeResumeResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async setManagementPresentation(
+    request: SetManagementPresentationRequestDto,
+  ): Promise<SetManagementPresentationResultDto> {
+    try {
+      const result = await this.#client.PUT(
+        '/workspace/management-presentation',
+        { body: request },
+      );
+      return unwrap<SetManagementPresentationResultDto>(
+        result.data as SetManagementPresentationResultDto | undefined,
         result.error,
       );
     } catch (error) {

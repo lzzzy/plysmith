@@ -190,7 +190,7 @@ try {
       scope: context,
       area: 'manage',
       expectedResumeVersion: null,
-      presentation: 'list',
+      presentation: 'folders',
       selectedItemId: root.itemId,
       selectedAnchorId: root.rootAnchorId,
     });
@@ -278,7 +278,7 @@ try {
       area: 'manage',
       expectedResumeVersion:
         freeWorkspace.managementResume?.resumeVersion ?? null,
-      presentation: 'list',
+      presentation: 'folders',
       selectedItemId: child.itemId,
       selectedAnchorId: child.rootAnchorId,
     });

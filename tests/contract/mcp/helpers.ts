@@ -276,6 +276,30 @@ export async function connectMcp(
         return overrides.deleteAnalysisNote(contributionId, request);
       throw new Error('deleteAnalysisNote fixture not configured');
     },
+    async getInventoryOrganization(request) {
+      calls.push({ method: 'getInventoryOrganization', request });
+      if (overrides.getInventoryOrganization)
+        return overrides.getInventoryOrganization(request);
+      throw new Error('getInventoryOrganization fixture not configured');
+    },
+    async changeInventoryOrganization(request) {
+      calls.push({ method: 'changeInventoryOrganization', request });
+      if (overrides.changeInventoryOrganization)
+        return overrides.changeInventoryOrganization(request);
+      throw new Error('changeInventoryOrganization fixture not configured');
+    },
+    async previewContextFolderRemoval(request) {
+      calls.push({ method: 'previewContextFolderRemoval', request });
+      if (overrides.previewContextFolderRemoval)
+        return overrides.previewContextFolderRemoval(request);
+      throw new Error('previewContextFolderRemoval fixture not configured');
+    },
+    async checkInventoryNameAvailability(request) {
+      calls.push({ method: 'checkInventoryNameAvailability', request });
+      if (overrides.checkInventoryNameAvailability)
+        return overrides.checkInventoryNameAvailability(request);
+      throw new Error('checkInventoryNameAvailability fixture not configured');
+    },
     async searchInventory(request) {
       calls.push({ method: 'searchInventory', request });
       if (overrides.searchInventory) return overrides.searchInventory(request);
@@ -390,6 +414,12 @@ export async function connectMcp(
       if (overrides.removeContextItem)
         return overrides.removeContextItem(contextId, itemId, request);
       throw new Error('removeContextItem fixture not configured');
+    },
+    async setManagementPresentation(request) {
+      calls.push({ method: 'setManagementPresentation', request });
+      if (overrides.setManagementPresentation)
+        return overrides.setManagementPresentation(request);
+      throw new Error('setManagementPresentation fixture not configured');
     },
     async setWorkScopeResume(request) {
       calls.push({

@@ -1,6 +1,7 @@
 import type {
   AnchorId,
   InventoryItemId,
+  InventoryFolderId,
   ItemRevisionId,
   WorkingContextId,
   RevisionImpactId,
@@ -14,6 +15,7 @@ import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
 
 export interface InventorySearchItem {
+  readonly folderId?: InventoryFolderId;
   readonly lifecycle: 'active' | 'archived' | 'trashed' | 'tombstone';
   readonly itemId: InventoryItemId;
   readonly currentRevisionId: ItemRevisionId;
@@ -200,6 +202,7 @@ export interface InventoryItemUsageSummary {
   readonly activeNoteCount: number;
   readonly noteMoveCount: number;
   readonly scratchCount: number;
+  readonly changedScratchCount: number;
   readonly scratchMoveCount: number;
   readonly scratchNoteCount: number;
   readonly managementResumeAffected: boolean;

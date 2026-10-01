@@ -81,6 +81,7 @@ function analysis(dataRevision = 0): AnalysisWorkspaceDto {
     scope: { kind: 'free' },
     dataRevision,
     currentState: initialState,
+    scratchHasChanges: false,
     legalMoves: [],
     allowedActions: ['start_scratch'],
   };
@@ -337,6 +338,21 @@ function createClient(
   const scopeKey = (scope: WorkScopeWorkspaceDto['scope']) =>
     scope.kind === 'free' ? 'free' : scope.contextId;
   const client: PlysmithApplicationClient = {
+    getInventoryOrganization: async () => ({
+      folders: [],
+      linkedFolderIds: [],
+      dataRevision: (await statusRead).persistence.dataRevision,
+    }),
+    changeInventoryOrganization: async () =>
+      assert.fail('no organization write expected'),
+    previewContextFolderRemoval: async () =>
+      assert.fail('no folder removal preview expected'),
+    checkInventoryNameAvailability: async (request) => ({
+      displayName: request.displayName,
+      available: true,
+      suggestedDisplayName: request.displayName,
+      dataRevision: (await statusRead).persistence.dataRevision,
+    }),
     getSystemStatus: async () => status(),
     getUserPreferences: async () => preferences(),
     setUiLanguage: async () => assert.fail('no language write expected'),
@@ -409,6 +425,30 @@ function createClient(
         scope,
         dataRevision: (await statusRead).persistence.dataRevision,
       };
+    },
+    setManagementPresentation: async (request) => {
+      const workspace = await client.getWorkScopeWorkspace({
+        scopeKind: request.scope.kind,
+        ...(request.scope.kind === 'context'
+          ? { contextId: request.scope.contextId }
+          : {}),
+      });
+      const previous = workspace.managementResume;
+      assert.equal(
+        request.expectedResumeVersion,
+        previous?.resumeVersion ?? null,
+      );
+      const resume = {
+        ...previous,
+        resumeVersion: (previous?.resumeVersion ?? 0) + 1,
+        presentation: request.presentation,
+        updatedAt: '2026-09-30T19:00:00.000Z',
+      };
+      workspaces.set(scopeKey(request.scope), {
+        ...workspace,
+        managementResume: resume,
+      });
+      return { area: 'manage', resume, dataRevision: workspace.dataRevision };
     },
     setWorkScopeResume: async (request) => {
       const workspace = await client.getWorkScopeWorkspace({
@@ -741,6 +781,7 @@ test('a stale scope read cannot replace the current workspace', async () => {
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    itemCount: 0,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
@@ -749,6 +790,7 @@ test('a stale scope read cannot replace the current workspace', async () => {
     listWorkingContexts: async () => ({ contexts: [context], dataRevision: 0 }),
     getWorkingContextWorkspace: async () => ({
       context,
+      members: [],
       references: [],
       pendingRevisionImpacts: [],
       dataRevision: 0,
@@ -1607,6 +1649,7 @@ function lifecycleFixture(overrides: Partial<PlysmithApplicationClient> = {}) {
     lifecycle: 'active' as const,
     contextVersion: 4,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 0,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -1635,6 +1678,7 @@ function lifecycleFixture(overrides: Partial<PlysmithApplicationClient> = {}) {
       assert.equal(backend.contextExists, true);
       return {
         context,
+        members: [],
         references: [],
         pendingRevisionImpacts: [],
         dataRevision: backend.revision,
@@ -1805,12 +1849,53 @@ function emptyUsage() {
     activeNoteCount: 0,
     noteMoveCount: 0,
     scratchCount: 0,
+    changedScratchCount: 0,
     scratchMoveCount: 0,
     scratchNoteCount: 0,
     managementResumeAffected: false,
     analysisResumeAffected: false,
   };
 }
+
+test('context removal with only assignment and resume changes runs without a modal', async (t) => {
+  const fixture = lifecycleFixture();
+  const removals: unknown[] = [];
+  fixture.client.removeContextItem = async (
+    contextId,
+    itemId,
+    confirmation,
+  ) => {
+    removals.push({ contextId, itemId, confirmation });
+    fixture.backend.revision++;
+    return { contextId, itemId, dataRevision: fixture.backend.revision };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const dialogs: unknown[] = [];
+  const unsubscribe = store.subscribe(() => {
+    const action = readyStore(store).destructiveAction;
+    if (action !== undefined) dialogs.push(action);
+  });
+  t.after(unsubscribe);
+  const revision = fixture.backend.revision;
+
+  await store.prepareContextItemRemoval(fixture.item);
+
+  assert.deepEqual(removals, [
+    {
+      contextId: '7',
+      itemId: '11',
+      confirmation: {
+        expectedContextVersion: 4,
+        expectedDataRevision: revision,
+      },
+    },
+  ]);
+  assert.deepEqual(dialogs, []);
+  assert.equal(readyStore(store).destructiveAction, undefined);
+});
 
 for (const scope of [
   { kind: 'free' },
@@ -2105,6 +2190,8 @@ test('confirmed context deletion falls back to the free workspace and preserves 
   await store.openRecordAnchor('14');
   await store.setScope({ kind: 'context', contextId: '7' });
   await store.openInventoryItem(fixture.item);
+  await store.selectInventoryFolder();
+  assert.equal(readyStore(store).inspectedInventoryFolderId, null);
   await store.prepareContextDeletion('7');
   const dataRevision = fixture.backend.revision;
   assert.equal(await store.confirmDestructiveAction(), true);
@@ -2118,6 +2205,7 @@ test('confirmed context deletion falls back to the free workspace and preserves 
     },
   ]);
   assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+  assert.equal(readyStore(store).inspectedInventoryFolderId, undefined);
   assert.equal(readyStore(store).analysis.record?.currentAnchorId, '14');
   assert.deepEqual(readyStore(store).startupNotice, {
     contextId: '7',
@@ -2456,6 +2544,7 @@ test('inventory and contexts remain reachable across result pages', async () => 
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    itemCount: 0,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
@@ -2533,6 +2622,7 @@ test('analysis navigation restores context and free return points', async () => 
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 0,
+    itemCount: 0,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
@@ -2550,6 +2640,7 @@ test('analysis navigation restores context and free return points', async () => 
     }),
     getWorkingContextWorkspace: async () => ({
       context,
+      members: [],
       references: [],
       pendingRevisionImpacts: [],
       dataRevision: 0,
@@ -2682,10 +2773,12 @@ test('opening a context member sets its analysis resume exactly once', async () 
       lifecycle: 'active' as const,
       contextVersion: 1,
       referenceCount: 1,
+      itemCount: 1,
       pendingRevisionImpactCount: 0,
       createdAt: '2026-09-11T18:00:00.000Z',
       updatedAt: '2026-09-11T18:00:00.000Z',
     },
+    members: [],
     references: [],
     pendingRevisionImpacts: [],
     dataRevision: 0,
@@ -2771,12 +2864,14 @@ test('discarding an open draft happens before opening another context analysis',
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
   };
   const contextWorkspace: WorkingContextWorkspaceDto = {
     context,
+    members: [],
     references: [],
     pendingRevisionImpacts: [],
     dataRevision: 0,
@@ -2904,6 +2999,7 @@ test('removing a context member keeps it in inventory and refreshes its membersh
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
@@ -2936,6 +3032,7 @@ test('removing a context member keeps it in inventory and refreshes its membersh
         ...context,
         referenceCount: removed ? 0 : 1,
       },
+      members: [],
       references: [],
       pendingRevisionImpacts: [],
       dataRevision: removed ? 1 : 0,
@@ -2993,6 +3090,7 @@ test('a context member with a pending impact cannot be opened before resolution'
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 1,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-14T12:00:00.000Z',
@@ -3009,6 +3107,14 @@ test('a context member with a pending impact cannot be opened before resolution'
     }),
     getWorkingContextWorkspace: async () => ({
       context,
+      members: [
+        {
+          itemId: '11',
+          currentRevisionId: '12',
+          itemType: 'analysis',
+          displayName: 'Bisherige Context-Fassung',
+        },
+      ],
       references: [
         {
           referenceId: '31',
@@ -3086,6 +3192,7 @@ test('saving an analysis note sends its explicit context visibility once', async
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-11T18:00:00.000Z',
     updatedAt: '2026-09-11T18:00:00.000Z',
@@ -3094,6 +3201,7 @@ test('saving an analysis note sends its explicit context visibility once', async
     listWorkingContexts: async () => ({ contexts: [context], dataRevision: 0 }),
     getWorkingContextWorkspace: async () => ({
       context,
+      members: [],
       references: [],
       pendingRevisionImpacts: [],
       dataRevision: 0,
@@ -3455,6 +3563,118 @@ test('saving a separate analysis synchronizes its optional visible comment', asy
   store.close();
 });
 
+for (const { remote, duringDiscard } of [
+  { remote: 'missing', duringDiscard: false },
+  { remote: 'replaced', duringDiscard: false },
+  { remote: 'changed', duringDiscard: false },
+  { remote: 'missing', duringDiscard: true },
+  { remote: 'replaced', duringDiscard: true },
+  { remote: 'changed', duringDiscard: true },
+  { remote: 'unchanged', duringDiscard: true },
+  { remote: 'unreadable', duringDiscard: true },
+] as const) {
+  test(`rename cancellation handles ${remote} remote work ${duringDiscard ? 'during its CAS discard' : 'after a lost save response'}`, async (t) => {
+    let scratch: AnalysisWorkspaceDto['scratch'];
+    let discards = 0;
+    const changeRemote = () => {
+      if (remote === 'unchanged' || remote === 'unreadable') return;
+      scratch =
+        remote === 'missing'
+          ? undefined
+          : {
+              ...scratch!,
+              scratchId:
+                remote === 'replaced' ? 'other-client' : scratch!.scratchId,
+              scratchRevision: 2,
+              noteDraft: { body: 'Remote work', moves: [] },
+            };
+    };
+    const fixture = lifecycleFixture({
+      getAnalysisWorkspace: async () => {
+        if (remote === 'unreadable' && discards > 0)
+          throw new Error('Unable to reread remote work');
+        return {
+          ...analysis(fixture.backend.revision),
+          ...(scratch === undefined
+            ? {}
+            : { scratch, scratchHasChanges: true }),
+        };
+      },
+      getInventoryRevision: async () => savedAnalysis().record!,
+      startInventoryRevision: async () => {
+        scratch = {
+          scratchId: 'managed-rename',
+          scratchRevision: 1,
+          intent: {
+            kind: 'inventory_revision',
+            mode: 'metadata',
+            itemId: '11',
+            baseRevisionId: '12',
+            cutAnchorId: '13',
+            returnAnchorId: '13',
+            displayName: 'Renamed',
+          },
+          origin: {
+            kind: 'inventory_anchor',
+            itemId: '11',
+            revisionId: '12',
+            anchorId: '13',
+          },
+          root: initialState,
+          steps: [],
+          cursor: 0,
+        };
+        return { scratch, dataRevision: fixture.backend.revision };
+      },
+      previewInventoryRevision: async () =>
+        revisionPreview({
+          mode: 'metadata',
+          displayName: 'Renamed',
+          dataRevision: fixture.backend.revision,
+        }),
+      saveInventoryRevision: async () => {
+        if (!duringDiscard) changeRemote();
+        throw new Error('Committed response was lost');
+      },
+      updateAnalysisScratch: async (request) => {
+        discards++;
+        assert.equal(duringDiscard, true);
+        assert.equal(request.expectedScratchId, 'managed-rename');
+        assert.equal(request.expectedScratchRevision, 1);
+        assert.deepEqual(request.action, { kind: 'discard' });
+        changeRemote();
+        throw workAccessProblem('analysis.scratch_revision_conflict');
+      },
+    });
+    const store = createReadyStore(fixture.client);
+    t.after(() => store.close());
+    await store.start();
+    assert.equal(
+      await store.renameInventoryItem(fixture.item, 'Renamed', null),
+      false,
+    );
+    const remoteBefore = structuredClone(scratch);
+    assert.ok(readyStore(store).manageInventoryRevisionDraft);
+    const detachable = remote !== 'unchanged' && remote !== 'unreadable';
+    assert.equal(await store.discardManagedInventoryRevision(), detachable);
+    assert.equal(
+      readyStore(store).manageInventoryRevisionDraft === undefined,
+      detachable,
+    );
+    assert.equal(discards, duringDiscard ? 1 : 0);
+    if (!duringDiscard || !detachable) assert.deepEqual(scratch, remoteBefore);
+    else if (remote === 'missing') assert.equal(scratch, undefined);
+    else assert.equal(scratch!.noteDraft!.body, 'Remote work');
+    if (!detachable)
+      assert.equal(
+        readyStore(store).errorCode,
+        remote === 'unreadable'
+          ? 'host.unavailable'
+          : 'analysis.scratch_revision_conflict',
+      );
+  });
+}
+
 for (const scopeKind of ['free', 'context'] as const) {
   test(`saving an analysis follows the committed resume and continues from its last anchor in ${scopeKind} scope`, async () => {
     const scope =
@@ -3487,10 +3707,12 @@ for (const scopeKind of ['free', 'context'] as const) {
           lifecycle: 'active',
           contextVersion: 1,
           referenceCount: dataRevision === 0 ? 0 : 1,
+          itemCount: dataRevision === 0 ? 0 : 1,
           pendingRevisionImpactCount: 0,
           createdAt: '2026-09-11T18:00:00.000Z',
           updatedAt: '2026-09-11T18:00:00.000Z',
         },
+        members: [],
         references: [],
         pendingRevisionImpacts: [],
         dataRevision,
@@ -4018,19 +4240,92 @@ test('the first board move in an empty analysis starts one atomic analysis path'
   store.close();
 });
 
-test('starting a new analysis never overwrites an existing draft', async () => {
+for (const target of ['new', 'saved'] as const) {
+  test(`opening ${target} analysis discards only an unchanged scratch with its exact versions`, async (t) => {
+    let scratch: AnalysisWorkspaceDto['scratch'] = {
+      scratchId: 'empty-scratch',
+      scratchRevision: 3,
+      intent: { kind: 'exploration' },
+      origin: { kind: 'initial_position' },
+      root: initialState,
+      steps: [],
+      cursor: 0,
+    };
+    const requests: Parameters<
+      PlysmithApplicationClient['updateAnalysisScratch']
+    >[0][] = [];
+    const fixture = lifecycleFixture({
+      getAnalysisWorkspace: async () => ({
+        ...analysis(fixture.backend.revision),
+        ...(scratch ? { scratch } : {}),
+      }),
+      updateAnalysisScratch: async (request) => {
+        requests.push(request);
+        if (request.action.kind === 'discard') {
+          scratch = undefined;
+          return { discarded: true, dataRevision: fixture.backend.revision };
+        }
+        assert.equal(request.action.kind, 'start');
+        scratch = {
+          scratchId: 'new-scratch',
+          scratchRevision: 1,
+          intent: { kind: 'exploration' },
+          origin: { kind: 'initial_position' },
+          root: initialState,
+          steps: [],
+          cursor: 0,
+        };
+        return {
+          scratch,
+          discarded: false,
+          dataRevision: fixture.backend.revision,
+        };
+      },
+    });
+    const store = createReadyStore(fixture.client);
+    t.after(() => store.close());
+    await store.start();
+    assert.equal(
+      target === 'new'
+        ? await store.startScratchAtInitialPosition()
+        : await store.openInventoryItem(fixture.item),
+      true,
+    );
+    assert.deepEqual(requests[0], {
+      scope: { kind: 'free' },
+      expectedScratchId: 'empty-scratch',
+      expectedScratchRevision: 3,
+      action: { kind: 'discard' },
+    });
+    if (target === 'new')
+      assert.deepEqual(requests[1], {
+        scope: { kind: 'free' },
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        action: { kind: 'start', origin: { kind: 'initial_position' } },
+      });
+    else assert.equal(fixture.resumeWrites.at(-1)?.area, 'analyze');
+    assert.equal(readyStore(store).errorCode, undefined);
+  });
+}
+
+test('starting a new analysis never overwrites a root-only custom position draft', async () => {
   const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'existing-scratch',
     scratchRevision: 1,
     intent: { kind: 'exploration' },
-    origin: { kind: 'initial_position' },
+    origin: { kind: 'fen' },
     root: initialState,
     steps: [],
     cursor: 0,
   };
   let writes = 0;
   const client = createClient({
-    getAnalysisWorkspace: async () => ({ ...analysis(), scratch }),
+    getAnalysisWorkspace: async () => ({
+      ...analysis(),
+      scratch,
+      scratchHasChanges: true,
+    }),
     updateAnalysisScratch: async () => {
       writes += 1;
       return assert.fail('existing scratch must not be replaced');
@@ -4092,7 +4387,7 @@ test('failed saves report failure without consuming visible drafts', async () =>
   store.close();
 });
 
-test('rename from manage previews and saves one metadata revision in place', async () => {
+test('one-step rename retains a failed draft and retries the same bound metadata revision', async () => {
   const item: SearchInventoryResultDto['items'][number] = {
     lifecycle: 'active' as const,
     itemId: '11',
@@ -4116,6 +4411,10 @@ test('rename from manage previews and saves one metadata revision in place', asy
     | Parameters<PlysmithApplicationClient['updateAnalysisScratch']>[0]
     | undefined;
   const previousRevision = savedAnalysis().record!;
+  let saveAttempts = 0;
+  let starts = 0;
+  let managedScratch: AnalysisWorkspaceDto['scratch'];
+  let previewCount = 0;
   const preview = {
     itemId: '11',
     baseRevisionId: '12',
@@ -4139,7 +4438,14 @@ test('rename from manage previews and saves one metadata revision in place', asy
       dataRevision: 0,
     }),
     getInventoryRevision: async () => previousRevision,
+    getAnalysisWorkspace: async () => ({
+      ...analysis(),
+      ...(managedScratch === undefined
+        ? {}
+        : { scratch: managedScratch, scratchHasChanges: true }),
+    }),
     startInventoryRevision: async (_itemId, request) => {
+      starts += 1;
       startRequest = request;
       const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
         scratchId: 'rename-scratch',
@@ -4163,11 +4469,19 @@ test('rename from manage previews and saves one metadata revision in place', asy
         steps: [],
         cursor: 0,
       };
+      managedScratch = scratch;
       return { scratch, dataRevision: 0 };
     },
-    previewInventoryRevision: async () => preview,
+    previewInventoryRevision: async () => ({
+      ...preview,
+      previewFingerprint:
+        ++previewCount === 1 ? 'sha256:old-preview' : 'sha256:rename-preview',
+    }),
     saveInventoryRevision: async (request) => {
       saveRequest = request;
+      if (++saveAttempts === 1)
+        throw workAccessProblem('inventory.preview_conflict');
+      managedScratch = undefined;
       return {
         itemId: '11',
         revisionId: '14',
@@ -4180,16 +4494,16 @@ test('rename from manage previews and saves one metadata revision in place', asy
     },
     updateAnalysisScratch: async (request) => {
       discardRequest = request;
+      managedScratch = undefined;
       return { discarded: true, dataRevision: 0 };
     },
   });
   const store = createReadyStore(client);
   await store.start();
 
-  await store.prepareInventoryItemRename(
-    item,
-    'Französische Verteidigung',
-    null,
+  assert.equal(
+    await store.renameInventoryItem(item, 'Französische Verteidigung', null),
+    false,
   );
 
   assert.deepEqual(startRequest, {
@@ -4213,7 +4527,13 @@ test('rename from manage previews and saves one metadata revision in place', asy
       : undefined,
     'Französische Verteidigung',
   );
-  assert.equal(await store.saveManagedInventoryRevision(), true);
+  assert.equal(
+    await store.renameInventoryItem(item, 'Französische Verteidigung', null),
+    true,
+  );
+  assert.equal(starts, 1);
+  assert.equal(saveAttempts, 2);
+  assert.equal(previewCount, 3);
   assert.deepEqual(saveRequest, {
     scope: { kind: 'free' },
     expectedScratchId: 'rename-scratch',
@@ -4282,10 +4602,12 @@ for (const scopeKind of ['free', 'context'] as const) {
             lifecycle: 'active',
             contextVersion: 1,
             referenceCount: 1,
+            itemCount: 1,
             pendingRevisionImpactCount: 0,
             createdAt: '2026-09-11T18:00:00.000Z',
             updatedAt: '2026-09-11T18:00:00.000Z',
           },
+          members: [],
           references: [],
           pendingRevisionImpacts: [],
           dataRevision: 0,
@@ -5140,6 +5462,7 @@ test('an open context impact is discoverable, loaded with both revisions and res
     lifecycle: 'active' as const,
     contextVersion: 1,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 1,
     createdAt: '2026-09-14T12:00:00.000Z',
     updatedAt: '2026-09-14T12:00:00.000Z',
@@ -5155,6 +5478,7 @@ test('an open context impact is discoverable, loaded with both revisions and res
         ...context,
         pendingRevisionImpactCount: pending ? 1 : 0,
       },
+      members: [],
       references: [],
       pendingRevisionImpacts: pending
         ? [
@@ -5265,16 +5589,18 @@ test('explicit management deselection survives stale refresh and a repeated cont
       lifecycle: 'active' as const,
       contextVersion: 1,
       referenceCount: 1,
+      itemCount: 1,
       pendingRevisionImpactCount: 0,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     },
+    members: [],
     references: [],
     pendingRevisionImpacts: [],
     dataRevision: 0,
     managementResume: {
       resumeVersion: 1,
-      presentation: 'list',
+      presentation: 'folders',
       selectedItemId: item.itemId,
       selectedAnchorId: item.rootAnchorId,
       updatedAt: item.updatedAt,
@@ -5311,7 +5637,7 @@ test('explicit management deselection survives stale refresh and a repeated cont
         dataRevision: 0,
         resume: {
           resumeVersion: 2,
-          presentation: 'list',
+          presentation: 'folders',
           updatedAt: item.updatedAt,
         },
       };
@@ -5340,7 +5666,7 @@ test('explicit management deselection survives stale refresh and a repeated cont
     scope: { kind: 'context', contextId: '7' },
     area: 'manage',
     expectedResumeVersion: 1,
-    presentation: 'list',
+    presentation: 'folders',
   });
   await store.selectManagementScope({ kind: 'context', contextId: '7' });
   const repeated = store.getSnapshot();
@@ -5473,6 +5799,56 @@ test('engine analysis binds the displayed ancestor and blocks outsiders before q
     kind: 'inventory_item',
     itemId: '11',
   });
+});
+
+test('folder-only membership permits origin navigation and engine analysis without anchor references', async (t) => {
+  const requests: AnalyzePositionRequestDto[] = [];
+  const base = contextWorkClient(
+    () => 0,
+    () => ['11', '31'],
+  );
+  const store = createReadyStore({
+    ...base,
+    getWorkingContextWorkspace: async (contextId) => ({
+      ...(await base.getWorkingContextWorkspace(contextId)),
+      references: [],
+    }),
+    analyzePosition: async (request) => {
+      requests.push(request);
+      return {
+        kind: 'objective',
+        focusKey: request.focus.focusKey,
+        providerInstanceId: request.providerInstanceId,
+        providerDisplayName: 'Engine',
+        historyCompleteness: 'complete',
+        budget: 'fast',
+        perspective: 'white',
+        candidates: [],
+        search: { limiter: { kind: 'movetime', value: 300 } },
+      };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(store.canWorkWithInventoryItem('11'), true);
+  await store.openAnalysisTarget({
+    itemId: '11',
+    revisionId: '12',
+    anchorId: '13',
+  });
+  const state = store.getSnapshot();
+  assert.equal(state.phase, 'ready');
+  if (state.phase === 'ready') {
+    assert.equal(state.analysis.record?.itemId, '11');
+    assert.equal(state.analysisUnavailable, undefined);
+    assert.deepEqual(state.contextWorkspace?.references, []);
+  }
+  assert.equal(
+    (await store.analyzePosition(engineWorkRequest('11'))).kind,
+    'completed',
+  );
+  assert.equal(requests.length, 1);
 });
 
 test('engine analysis rejects an obsolete scope without issuing a provider request', async (t) => {
@@ -5781,6 +6157,7 @@ function contextWorkClient(
     lifecycle: 'active' as const,
     contextVersion: revision() + 1,
     referenceCount: members().length,
+    itemCount: members().length,
     pendingRevisionImpactCount: 0,
     createdAt: '2026-09-27T12:00:00.000Z',
     updatedAt: '2026-09-27T12:00:00.000Z',
@@ -5795,6 +6172,12 @@ function contextWorkClient(
     }),
     getWorkingContextWorkspace: async () => ({
       context: context(),
+      members: members().map((itemId) => ({
+        itemId,
+        currentRevisionId: String(Number(itemId) + 1),
+        itemType: 'analysis' as const,
+        displayName: `Item ${itemId}`,
+      })),
       references: members().map((itemId) => ({
         referenceId: itemId,
         itemId,
@@ -5930,6 +6313,11 @@ function analysisRemovalFixture(
   );
   const client = {
     ...base,
+    getInventoryOrganization: async () => ({
+      folders: [],
+      linkedFolderIds: [],
+      dataRevision: backend.revision,
+    }),
     getWorkScopeWorkspace: async (
       request: Parameters<
         PlysmithApplicationClient['getWorkScopeWorkspace']
@@ -5946,6 +6334,7 @@ function analysisRemovalFixture(
       return {
         ...workspace,
         context: { ...workspace.context, contextId },
+        members: contextId === '7' ? workspace.members : [],
         references: contextId === '7' ? workspace.references : [],
       };
     },
@@ -6045,6 +6434,7 @@ test('context item confirmation retains concrete losses and sends exactly the pr
       ],
       scratch: {
         scratchId: 'scratch-loss',
+        hasChanges: true,
         scratchRevision: 3,
         stepCount: 4,
         noteBody: 'Draft annotation',
@@ -6053,7 +6443,7 @@ test('context item confirmation retains concrete losses and sends exactly the pr
       },
       managementResume: {
         resumeVersion: 2,
-        presentation: 'list',
+        presentation: 'folders',
         selectedItemId: '11',
         updatedAt: '2026-09-27T12:00:00.000Z',
       },
@@ -6550,3 +6940,317 @@ test('a new scratch from another client replaces the cause without restoring the
   await fixture.store.refresh();
   assert.equal(fixture.snapshot().analysisUnavailable, undefined);
 });
+
+test('management presentation survives scope changes, area changes and a new store without selection writes', async (t) => {
+  const client = contextWorkClient(
+    () => 0,
+    () => ['11'],
+  );
+  const selected: SearchInventoryResultDto['items'][number] = {
+    lifecycle: 'active',
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Opening',
+    languageTag: 'de-DE',
+    contextIds: ['7'],
+    createdAt: '2026-09-30T19:00:00.000Z',
+    updatedAt: '2026-09-30T19:00:00.000Z',
+  };
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(readyStore(store).inventoryPresentation, 'folders');
+  await store.selectInventoryItem(selected);
+  const selection = readyStore(store).scopeWorkspace.managementResume!;
+  await store.setInventoryPresentation('origins');
+  assert.deepEqual(readyStore(store).scopeWorkspace.managementResume, {
+    ...selection,
+    presentation: 'origins',
+    resumeVersion: selection.resumeVersion + 1,
+    updatedAt: '2026-09-30T19:00:00.000Z',
+  });
+  assert.equal(readyStore(store).selectedInventoryItemId, selected.itemId);
+  const unchanged = readyStore(store).scopeWorkspace.managementResume;
+  await store.setInventoryPresentation('origins');
+  assert.deepEqual(
+    readyStore(store).scopeWorkspace.managementResume,
+    unchanged,
+  );
+  store.setActivity('settings');
+  await store.refresh();
+  store.setActivity('manage');
+  assert.equal(readyStore(store).inventoryPresentation, 'origins');
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(readyStore(store).inventoryPresentation, 'folders');
+  await store.setInventoryPresentation('origins');
+  await store.selectInventoryItem(selected);
+  assert.equal(
+    readyStore(store).scopeWorkspace.managementResume?.presentation,
+    'origins',
+  );
+  await store.setInventoryPresentation('folders');
+  await store.setScope({ kind: 'free' });
+  assert.equal(readyStore(store).inventoryPresentation, 'origins');
+  store.close();
+  const restarted = createReadyStore(client);
+  t.after(() => restarted.close());
+  await restarted.start();
+  assert.equal(readyStore(restarted).inventoryPresentation, 'origins');
+  assert.equal(readyStore(restarted).selectedInventoryItemId, selected.itemId);
+  await restarted.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(readyStore(restarted).inventoryPresentation, 'folders');
+  assert.equal(readyStore(restarted).selectedInventoryItemId, selected.itemId);
+});
+
+test('a failed management presentation save retains the previous view and exposes the error', async (t) => {
+  const client = createClient({
+    setManagementPresentation: async () => {
+      throw new Error('save failed');
+    },
+  });
+  await client.setWorkScopeResume({
+    scope: { kind: 'free' },
+    area: 'manage',
+    expectedResumeVersion: null,
+    presentation: 'folders',
+    selectedItemId: '11',
+    selectedAnchorId: '13',
+  });
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  const before = readyStore(store);
+  await store.setInventoryPresentation('origins');
+  const after = readyStore(store);
+  assert.equal(after.inventoryPresentation, 'folders');
+  assert.equal(after.selectedInventoryItemId, before.selectedInventoryItemId);
+  assert.deepEqual(after.scopeWorkspace, before.scopeWorkspace);
+  assert.equal(after.errorCode, 'host.unavailable');
+  assert.equal(after.busyCommand, undefined);
+});
+
+test('folder selection survives area changes and remains independent for each working scope', async (t) => {
+  const store = createReadyStore(
+    contextWorkClient(
+      () => 0,
+      () => [],
+      {
+        getInventoryOrganization: async () => ({
+          folders: [
+            {
+              folderId: '1',
+              displayName: 'Openings',
+              itemCount: 0,
+              contextLinkCount: 0,
+            },
+            {
+              folderId: '2',
+              displayName: 'Endgames',
+              itemCount: 0,
+              contextLinkCount: 0,
+            },
+          ],
+          linkedFolderIds: ['2'],
+          dataRevision: 0,
+        }),
+      },
+    ),
+  );
+  t.after(() => store.close());
+  await store.start();
+  await store.selectInventoryFolder('1');
+  store.setActivity('settings');
+  await store.refresh();
+  const selected = store.getSnapshot();
+  assert.equal(selected.phase, 'ready');
+  if (selected.phase === 'ready')
+    assert.equal(selected.selectedInventoryFolderId, '1');
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.selectInventoryFolder('2');
+  await store.setScope({ kind: 'free' });
+  const state = store.getSnapshot();
+  assert.equal(state.phase, 'ready');
+  if (state.phase === 'ready')
+    assert.equal(state.selectedInventoryFolderId, '1');
+});
+
+test('detail selection is exclusive without losing the chosen creation destination', async (t) => {
+  const item: SearchInventoryResultDto['items'][number] = {
+    lifecycle: 'active',
+    itemId: '11',
+    currentRevisionId: '12',
+    rootAnchorId: '13',
+    itemType: 'analysis',
+    originKind: 'manual',
+    displayName: 'Opening',
+    languageTag: 'de-DE',
+    contextIds: [],
+    createdAt: '2026-10-01T10:00:00Z',
+    updatedAt: '2026-10-01T10:00:00Z',
+  };
+  const client = contextWorkClient(
+    () => 0,
+    () => [],
+    {
+      getInventoryOrganization: async () => ({
+        folders: [
+          {
+            folderId: '1',
+            displayName: 'Openings',
+            itemCount: 1,
+            contextLinkCount: 0,
+          },
+        ],
+        linkedFolderIds: [],
+        dataRevision: 0,
+      }),
+      createWorkingContext: async () => ({
+        context: (await client.getWorkingContextWorkspace('7')).context,
+        dataRevision: 0,
+      }),
+    },
+  );
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  await store.inspectInventoryItem(item);
+  await store.selectInventoryFolder('1');
+  assert.equal(readyStore(store).selectedInventoryItemId, undefined);
+  assert.equal(readyStore(store).inspectedInventoryFolderId, '1');
+  await store.inspectInventoryItem(item);
+  await store.inspectInventoryItem(item);
+  assert.equal(readyStore(store).selectedInventoryItemId, '11');
+  assert.equal(readyStore(store).inspectedInventoryFolderId, undefined);
+  assert.equal(readyStore(store).selectedInventoryFolderId, '1');
+  await store.selectInventoryFolder();
+  assert.equal(readyStore(store).inspectedInventoryFolderId, null);
+  assert.equal(readyStore(store).selectedInventoryFolderId, undefined);
+  assert.equal(readyStore(store).selectedInventoryItemId, undefined);
+  await store.searchInventory('new');
+  assert.equal(readyStore(store).inspectedInventoryFolderId, undefined);
+  await store.selectInventoryFolder('1');
+  assert.equal(
+    await store.createWorkingContext({ displayName: 'Context' }),
+    true,
+  );
+  assert.equal(readyStore(store).inspectedInventoryFolderId, undefined);
+  assert.equal(readyStore(store).selectedInventoryFolderId, undefined);
+  await store.setScope({ kind: 'free' });
+  assert.equal(readyStore(store).selectedInventoryFolderId, '1');
+});
+
+test('organization writes bind the preview revision and preserve explicit work-context semantics', async (t) => {
+  const writes: unknown[] = [];
+  const store = createReadyStore(
+    createClient({
+      changeInventoryOrganization: async (request) => {
+        writes.push(request);
+        return { dataRevision: 0 };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  const change = {
+    kind: 'move_items' as const,
+    itemIds: ['11', '31'],
+    folderId: '5',
+    workContextId: '7',
+  };
+  assert.equal(await store.changeInventoryOrganization(change, 9), true);
+  assert.deepEqual(writes, [{ change, expectedDataRevision: 9 }]);
+});
+
+for (const scenario of ['area', 'scope', 'presentation', 'close'] as const) {
+  test(`late folder removal preview is ignored after ${scenario}`, async (t) => {
+    const pending =
+      Promise.withResolvers<
+        Awaited<
+          ReturnType<PlysmithApplicationClient['previewContextFolderRemoval']>
+        >
+      >();
+    const store = createReadyStore(
+      contextWorkClient(
+        () => 0,
+        () => [],
+        {
+          previewContextFolderRemoval: () => pending.promise,
+        },
+      ),
+    );
+    t.after(() => store.close());
+    await store.start();
+    await store.setScope({ kind: 'context', contextId: '7' });
+    const reading = store.previewContextFolderRemoval('1');
+    switch (scenario) {
+      case 'area':
+        store.setActivity('settings');
+        store.setActivity('manage');
+        break;
+      case 'scope':
+        await store.setScope({ kind: 'free' });
+        await store.setScope({ kind: 'context', contextId: '7' });
+        break;
+      case 'presentation':
+        await store.setInventoryPresentation('origins');
+        await store.setInventoryPresentation('folders');
+        break;
+      case 'close':
+        store.close();
+        break;
+    }
+    pending.reject(new Error('obsolete preview failed'));
+    assert.equal(await reading, undefined);
+    const state = store.getSnapshot();
+    if (state.phase === 'ready') assert.equal(state.errorCode, undefined);
+  });
+}
+
+for (const folderId of ['5', null, undefined]) {
+  test(`analysis creation retains the ${folderId === undefined ? 'inherited' : folderId === null ? 'explicit unfiled' : 'explicit folder'} destination`, async (t) => {
+    let submitted:
+      | Parameters<PlysmithApplicationClient['createAnalysisRecord']>[0]
+      | undefined;
+    const scratch = {
+      scratchId: 'folder-scratch',
+      scratchRevision: 1,
+      intent: { kind: 'exploration' as const },
+      origin: { kind: 'initial_position' as const },
+      root: initialState,
+      steps: [],
+      cursor: 0,
+    };
+    const store = createReadyStore(
+      createClient({
+        getAnalysisWorkspace: async () => ({ ...analysis(), scratch }),
+        createAnalysisRecord: async (request) => {
+          submitted = request;
+          return {
+            itemId: '11',
+            revisionId: '12',
+            rootAnchorId: '13',
+            resumeUpdates: [],
+            dataRevision: 0,
+          };
+        },
+      }),
+    );
+    t.after(() => store.close());
+    await store.start();
+    assert.equal(
+      await store.createAnalysisRecord(
+        'Root',
+        'inventory',
+        'global',
+        '',
+        folderId,
+      ),
+      true,
+    );
+    assert.equal(submitted?.folderId, folderId);
+    assert.equal(Object.hasOwn(submitted!, 'folderId'), folderId !== undefined);
+  });
+}

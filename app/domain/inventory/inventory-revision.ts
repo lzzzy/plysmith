@@ -173,6 +173,32 @@ export function promoteAnalysisExplorationToRevision(input: {
   return replaceAnalysisScratchIntent(scratch, plan.intent);
 }
 
+export function inventoryRevisionHasChanges(input: {
+  readonly base: InventoryRevisionLine;
+  readonly scratch: AnalysisScratch;
+}): boolean {
+  const steps = inventoryRevisionCandidateSteps(input);
+  const intent = input.scratch.intent;
+  if (intent.kind !== 'inventory_revision') {
+    throw new Error('An inventory revision intent is required.');
+  }
+  return (
+    intent.displayName !== input.base.displayName ||
+    intent.summary !== input.base.summary ||
+    steps.length !== input.base.steps.length ||
+    steps.some((step, index) => {
+      const other = input.base.steps[index];
+      return (
+        other === undefined ||
+        step.move.from !== other.move.from ||
+        step.move.to !== other.move.to ||
+        step.move.promotion !== other.move.promotion ||
+        step.after.fen !== other.after.fen
+      );
+    })
+  );
+}
+
 function lineAnchorIndex(
   line: InventoryRevisionLine,
   anchorId: AnchorId,

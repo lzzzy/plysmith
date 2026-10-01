@@ -11,6 +11,10 @@ import type {
   ContextRemovalPreviewDto,
   PendingRevisionImpactDto,
 } from '../../../app/infrastructure/channels/host_client/index.ts';
+import {
+  hasContentLoss,
+  contextRemovalHasContentLoss,
+} from '../../../app/infrastructure/channels/ui/renderer/work-loss-presentation.ts';
 
 type Summary = PendingRevisionImpactDto['useTargetLoss'];
 let LossSummary: ComponentType<{ summary: Summary }>;
@@ -70,6 +74,7 @@ const counts: Summary = {
   activeNoteCount: 3,
   noteMoveCount: 17,
   scratchCount: 1,
+  changedScratchCount: 1,
   scratchMoveCount: 8,
   scratchNoteCount: 1,
   managementResumeAffected: true,
@@ -89,6 +94,44 @@ function render(component: ReturnType<typeof createElement>) {
     ),
   );
 }
+
+test('only notes and actual scratch changes require content-loss confirmation', () => {
+  assert.equal(
+    hasContentLoss({ ...counts, activeNoteCount: 0, changedScratchCount: 0 }),
+    false,
+  );
+  assert.equal(hasContentLoss({ ...counts, activeNoteCount: 0 }), true);
+  assert.equal(hasContentLoss({ ...counts, changedScratchCount: 0 }), true);
+  const preview: ContextRemovalPreviewDto = {
+    contextId: 'context',
+    contextName: 'Preparation',
+    contextVersion: 4,
+    dataRevision: 7,
+    items: [],
+    referenceCount: 3,
+    losses: {
+      notes: [],
+      scratch: {
+        scratchId: 'scratch',
+        scratchRevision: 1,
+        stepCount: 0,
+        hasChanges: false,
+        intent: 'exploration',
+      },
+    },
+  };
+  assert.equal(contextRemovalHasContentLoss(preview), false);
+  assert.equal(
+    contextRemovalHasContentLoss({
+      ...preview,
+      losses: {
+        ...preview.losses,
+        scratch: { ...preview.losses.scratch!, hasChanges: true },
+      },
+    }),
+    true,
+  );
+});
 
 test('loss counters keep notes, note moves, scratch, scratch note and both resumes distinct', () => {
   const markup = render(createElement(LossSummary, { summary: counts }));
@@ -114,6 +157,7 @@ test('empty loss summary explains no affected work without listing zero counters
         activeNoteCount: 0,
         noteMoveCount: 0,
         scratchCount: 0,
+        changedScratchCount: 0,
         scratchMoveCount: 0,
         scratchNoteCount: 0,
         managementResumeAffected: false,
@@ -139,6 +183,7 @@ test('context loss projection counts a root-only draft without inventing note co
         { contributionId: 'note-two', body: 'Two', moveCount: 9 },
       ],
       scratch: {
+        hasChanges: true,
         scratchId: 'scratch',
         scratchRevision: 1,
         stepCount: 0,
@@ -152,6 +197,7 @@ test('context loss projection counts a root-only draft without inventing note co
     activeNoteCount: 2,
     noteMoveCount: 14,
     scratchCount: 1,
+    changedScratchCount: 1,
     scratchMoveCount: 0,
     scratchNoteCount: 0,
     managementResumeAffected: false,
@@ -196,13 +242,25 @@ function managementState(selected = false, deletedSource = false) {
     purpose: 'Description',
     contextVersion: 4,
     referenceCount: 1,
+    itemCount: 1,
     pendingRevisionImpactCount: 0,
   };
   return {
     phase: 'ready',
     scope: { kind: 'context', contextId: 'context' },
     contexts: { contexts: [context] },
-    contextWorkspace: { context, references: [], pendingRevisionImpacts: [] },
+    contextWorkspace: {
+      context,
+      members: [],
+      references: [],
+      pendingRevisionImpacts: [],
+    },
+    inventoryPresentation: 'origins',
+    inventoryOrganization: {
+      folders: [],
+      linkedFolderIds: [],
+      dataRevision: 0,
+    },
     inventory: {
       items: [inventoryItem('child')],
       ancestors: deletedSource ? [inventoryItem('parent', 'trashed')] : [],
@@ -225,16 +283,24 @@ function managementState(selected = false, deletedSource = false) {
   };
 }
 
-test('context deletion is outside the description form and does not submit metadata', () => {
+test('context deletion is a row action, outside forms and the read-only inspector', () => {
   const markup = render(
     createElement(ManageView, { state: managementState(), store: {} }),
   );
   const forms = markup.match(/<form\b[^>]*>[\s\S]*?<\/form>/g) ?? [];
-  assert.ok(forms.some((form) => form.includes('context-edit-purpose')));
+  assert.ok(forms.every((form) => !form.includes('context-edit-purpose')));
   assert.ok(forms.every((form) => !form.includes('manage.deleteContext')));
   assert.match(
     markup,
     /<button[^>]*type="button"[^>]*>[\s\S]*?manage.deleteContext/,
+  );
+  const inspector = markup.match(
+    /<aside\b[^>]*aria-labelledby="inspector-title"[\s\S]*?<\/aside>/,
+  )?.[0];
+  assert.ok(inspector);
+  assert.doesNotMatch(
+    inspector,
+    /manage.deleteContext|manage.editContext|context-edit-purpose/,
   );
 });
 

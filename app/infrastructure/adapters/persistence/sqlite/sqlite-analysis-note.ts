@@ -25,7 +25,7 @@ import {
   type InventoryItemId,
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
-import { readContextScratch } from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';

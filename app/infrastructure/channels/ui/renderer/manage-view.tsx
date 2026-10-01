@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FileSearch,
   FilePlus2,
+  Folder,
   FolderPlus,
   Library,
   Pencil,
@@ -37,6 +38,17 @@ import { AnalysisSetupDialog } from './analysis-setup-dialog.tsx';
 import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import { InventoryTypeIcon } from './inventory-type-icon.tsx';
 import { InventoryDetailsView } from './inventory-details-view.tsx';
+import { InventoryFolderView } from './inventory-folder-view.tsx';
+import {
+  inventoryFolderGroups,
+  type InventoryFolderGroup,
+} from './inventory-folder-presentation.ts';
+import { InventoryActions } from './inventory-actions.tsx';
+import { ErrorNotice } from './error-notice.tsx';
+import {
+  InventoryItemActions,
+  type InventoryItemCommand,
+} from './inventory-item-actions.tsx';
 import { ChessPieceGlyph } from './chess-board-surface.tsx';
 import {
   inventoryFamilyPresentation,
@@ -44,8 +56,6 @@ import {
 } from './inventory-family-presentation.ts';
 import styles from './manage-view.module.css';
 import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
-import { RevisionLineComparison } from './revision-line-comparison.tsx';
-import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 import { LossSummary, contextRemovalSummary } from './loss-summary.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
@@ -64,6 +74,11 @@ export function ManageView({
   const [query, setQuery] = useState(state.inventoryQuery);
   const [showCreateContext, setShowCreateContext] = useState(false);
   const [analysisStart, setAnalysisStart] = useState<'initial' | 'setup'>();
+  const [itemAction, setItemAction] = useState<{
+    readonly itemId: string;
+    readonly kind: 'open' | 'rename' | 'resolve';
+  }>();
+  const [editContext, setEditContext] = useState(false);
   const [collapsedFamilies, setCollapsedFamilies] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -73,6 +88,20 @@ export function ManageView({
   const selectedItem = visibleItems.find(
     (item) => item.itemId === state.selectedInventoryItemId,
   );
+  const selectedFolder =
+    state.inventoryPresentation === 'folders' &&
+    state.inspectedInventoryFolderId !== undefined
+      ? inventoryFolderGroups(
+          state.inventoryOrganization,
+          visibleItems,
+          state.scope.kind === 'context' && state.inventoryContextOnly,
+          intl.locale,
+        ).find(
+          (group) =>
+            (group.folderId ?? null) === state.inspectedInventoryFolderId,
+        )
+      : undefined;
+  const isBusy = state.busyCommand !== undefined || state.refreshing;
   const selectedImpact =
     selectedItem === undefined
       ? undefined
@@ -98,7 +127,46 @@ export function ManageView({
   useEffect(() => setQuery(state.inventoryQuery), [state.inventoryQuery]);
   useEffect(() => {
     setCollapsedFamilies(new Set());
+    setItemAction(undefined);
+    setEditContext(false);
   }, [activeContextId, state.inventoryQuery, state.inventoryContextOnly]);
+
+  async function itemCommand(
+    item: InventoryItem,
+    command: InventoryItemCommand,
+  ) {
+    if (isBusy) return;
+    await store.inspectInventoryItem(item);
+    const current = store.getSnapshot();
+    if (
+      current.phase !== 'ready' ||
+      current.selectedInventoryItemId !== item.itemId ||
+      (current.scope.kind === 'context'
+        ? current.scope.contextId
+        : undefined) !== activeContextId
+    )
+      return;
+    if (command === 'include')
+      void store.addInventoryItemToCurrentContext(item);
+    else if (command === 'remove') void store.prepareContextItemRemoval(item);
+    else if (command === 'delete')
+      void store.prepareInventoryItemDeletion(item);
+    else if (command === 'open' && !current.analysis.scratchHasChanges)
+      void store.openInventoryItem(item);
+    else setItemAction({ itemId: item.itemId, kind: command });
+  }
+
+  async function closeItemAction() {
+    const current = store.getSnapshot();
+    if (current.phase !== 'ready' || current.busyCommand !== undefined) return;
+    if (
+      itemAction?.kind === 'rename' &&
+      current.manageInventoryRevisionDraft?.itemId === itemAction.itemId
+    ) {
+      if (!(await store.discardManagedInventoryRevision())) return;
+    }
+    setItemAction(undefined);
+  }
   useEffect(() => {
     if (selectedImpact === undefined) {
       if (state.revisionImpact !== undefined) store.closeRevisionImpact();
@@ -144,8 +212,7 @@ export function ManageView({
             className={styles.primaryButton!}
             isDisabled={state.busyCommand !== undefined || state.refreshing}
             onPress={() => {
-              if (state.analysis.scratch !== undefined)
-                setAnalysisStart('initial');
+              if (state.analysis.scratchHasChanges) setAnalysisStart('initial');
               else void store.startScratchAtInitialPosition();
             }}
           >
@@ -163,9 +230,7 @@ export function ManageView({
         </div>
       </header>
 
-      <div
-        className={`${styles.manageGrid} ${selectedImpact === undefined ? '' : styles.impactLayout}`}
-      >
+      <div className={styles.manageGrid}>
         <aside className={styles.contextPanel} aria-labelledby="contexts-title">
           <div className={styles.panelHeading}>
             <div>
@@ -211,38 +276,66 @@ export function ManageView({
               </span>
             </Button>
             {state.contexts.contexts.map((context) => (
-              <Button
-                key={context.contextId}
-                className={`${styles.contextButton!} ${state.scope.kind === 'context' && state.scope.contextId === context.contextId ? styles.activeContext : ''}`}
-                onPress={() =>
-                  void store.selectManagementScope({
-                    kind: 'context',
-                    contextId: context.contextId,
-                  })
-                }
-              >
-                <Boxes aria-hidden="true" size={17} />
-                <span>
-                  <strong>{context.displayName}</strong>
-                  <small>
-                    <FormattedMessage
-                      id="manage.referenceCount"
-                      values={{ count: context.referenceCount }}
-                    />
-                  </small>
-                </span>
-                {context.pendingRevisionImpactCount > 0 && (
-                  <span
-                    className={styles.impactBadge}
-                    aria-label={intl.formatMessage(
-                      { id: 'revisionImpact.badge' },
-                      { count: context.pendingRevisionImpactCount },
-                    )}
-                  >
-                    {context.pendingRevisionImpactCount}
+              <div key={context.contextId} className={styles.contextRow}>
+                <Button
+                  className={`${styles.contextButton!} ${state.scope.kind === 'context' && state.scope.contextId === context.contextId ? styles.activeContext : ''}`}
+                  onPress={() =>
+                    void store.selectManagementScope({
+                      kind: 'context',
+                      contextId: context.contextId,
+                    })
+                  }
+                >
+                  <Boxes aria-hidden="true" size={17} />
+                  <span>
+                    <strong>{context.displayName}</strong>
+                    <small>
+                      <FormattedMessage
+                        id="manage.itemCount"
+                        values={{ count: context.itemCount }}
+                      />
+                    </small>
                   </span>
+                  {context.pendingRevisionImpactCount > 0 && (
+                    <span
+                      className={styles.impactBadge}
+                      aria-label={intl.formatMessage(
+                        { id: 'revisionImpact.badge' },
+                        { count: context.pendingRevisionImpactCount },
+                      )}
+                    >
+                      {context.pendingRevisionImpactCount}
+                    </span>
+                  )}
+                </Button>
+                {activeContextId === context.contextId && (
+                  <InventoryActions
+                    label={intl.formatMessage(
+                      { id: 'manage.actionsFor' },
+                      { name: context.displayName },
+                    )}
+                    disabled={isBusy}
+                    actions={[
+                      {
+                        id: 'edit',
+                        label: intl.formatMessage({ id: 'manage.editContext' }),
+                        icon: <Pencil size={16} />,
+                        onPress: () => setEditContext(true),
+                      },
+                      {
+                        id: 'delete',
+                        label: intl.formatMessage({
+                          id: 'manage.deleteContext',
+                        }),
+                        icon: <Trash2 size={16} />,
+                        destructive: true,
+                        onPress: () =>
+                          void store.prepareContextDeletion(context.contextId),
+                      },
+                    ]}
+                  />
                 )}
-              </Button>
+              </div>
             ))}
             {state.contexts.nextCursor !== undefined && (
               <Button
@@ -307,6 +400,46 @@ export function ManageView({
             </RadioGroup>
           )}
 
+          <RadioGroup
+            className={styles.inventoryScope!}
+            value={state.inventoryPresentation}
+            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            onChange={(value) =>
+              void store.setInventoryPresentation(
+                value as 'folders' | 'origins',
+              )
+            }
+            orientation="horizontal"
+            aria-label={intl.formatMessage({ id: 'folders.presentation' })}
+          >
+            <Radio value="folders" className={styles.scopeOption!}>
+              <FormattedMessage id="folders.view" />
+            </Radio>
+            <Radio value="origins" className={styles.scopeOption!}>
+              <FormattedMessage id="folders.origins" />
+            </Radio>
+          </RadioGroup>
+          {state.inventoryPresentation === 'folders' && (
+            <>
+              <InventoryFolderView
+                state={state}
+                store={store}
+                items={visibleItems}
+                onItemCommand={(item, command) =>
+                  void itemCommand(item, command)
+                }
+              />
+              {state.inventory.nextCursor !== undefined && (
+                <Button
+                  className={styles.loadMoreButton!}
+                  onPress={() => void store.loadMoreInventory()}
+                  isDisabled={state.busyCommand !== undefined}
+                >
+                  <FormattedMessage id="manage.loadMoreInventory" />
+                </Button>
+              )}
+            </>
+          )}
           {state.inventory.items.length === 0 ? (
             <div className={styles.emptyInventory}>
               <FileSearch aria-hidden="true" size={25} />
@@ -341,7 +474,7 @@ export function ManageView({
                 </Button>
               )}
             </div>
-          ) : (
+          ) : state.inventoryPresentation === 'origins' ? (
             <div className={styles.inventoryList}>
               <div
                 className={styles.familyViewport}
@@ -366,6 +499,9 @@ export function ManageView({
                           return next;
                         });
                       }}
+                      onItemCommand={(item, command) =>
+                        void itemCommand(item, command)
+                      }
                     />
                   ))}
                 </ul>
@@ -380,7 +516,7 @@ export function ManageView({
                 </Button>
               )}
             </div>
-          )}
+          ) : null}
         </section>
 
         <aside className={styles.inspector} aria-labelledby="inspector-title">
@@ -391,30 +527,70 @@ export function ManageView({
               </h2>
             </div>
           </div>
-          {selectedItem === undefined ? (
-            <ContextSummary
-              key={activeContextId ?? 'free'}
-              state={state}
-              store={store}
-            />
+          {selectedFolder !== undefined ? (
+            <FolderInspector group={selectedFolder} state={state} />
+          ) : selectedItem === undefined ? (
+            <ContextSummary key={activeContextId ?? 'free'} state={state} />
           ) : (
-            <ItemInspector
+            <ItemInspector item={selectedItem} state={state} store={store} />
+          )}
+        </aside>
+      </div>
+      {itemAction !== undefined &&
+        selectedItem?.itemId === itemAction.itemId && (
+          <ManagementDialog
+            titleId={
+              itemAction.kind === 'rename'
+                ? 'inventory.rename'
+                : itemAction.kind === 'resolve'
+                  ? 'revisionImpact.review'
+                  : 'manage.openAnalysisDraftTitle'
+            }
+            busy={isBusy}
+            errorCode={state.errorCode}
+            onClose={() => void closeItemAction()}
+          >
+            <ItemActionContent
+              key={`${activeContextId ?? 'free'}-${selectedItem.itemId}-${itemAction.kind}`}
+              kind={itemAction.kind}
               item={selectedItem}
               state={state}
               store={store}
+              onClose={() => void closeItemAction()}
               {...(selectedImpact === undefined
                 ? {}
                 : { revisionImpact: selectedImpact })}
             />
-          )}
-        </aside>
-      </div>
+          </ManagementDialog>
+        )}
+      {editContext && state.contextWorkspace !== undefined && (
+        <ManagementDialog
+          titleId="manage.editContext"
+          busy={isBusy}
+          errorCode={state.errorCode}
+          onClose={() => setEditContext(false)}
+        >
+          <ContextMetadataForm
+            onCancel={() => setEditContext(false)}
+            context={state.contextWorkspace.context}
+            isBusy={isBusy}
+            onSave={async (request) => {
+              const saved = await store.updateWorkingContextMetadata(
+                state.contextWorkspace!.context.contextId,
+                request,
+              );
+              if (saved) setEditContext(false);
+              return saved;
+            }}
+          />
+        </ManagementDialog>
+      )}
       {analysisStart !== undefined && (
         <AnalysisSetupDialog
           key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${analysisStart}`}
           isOpen
           requestedStart={analysisStart}
-          hasScratch={state.analysis.scratch !== undefined}
+          hasScratch={state.analysis.scratchHasChanges}
           isBusy={state.busyCommand !== undefined}
           store={store}
           onOpenChange={(open) => {
@@ -680,6 +856,7 @@ function InventoryFamily({
   store,
   collapsedFamilies,
   onToggle,
+  onItemCommand,
 }: {
   readonly node: InventoryFamilyNode;
   readonly depth: number;
@@ -687,6 +864,10 @@ function InventoryFamily({
   readonly store: PlysmithApplicationStore;
   readonly collapsedFamilies: ReadonlySet<string>;
   readonly onToggle: (itemId: string) => void;
+  readonly onItemCommand: (
+    item: InventoryItem,
+    command: InventoryItemCommand,
+  ) => void;
 }) {
   const intl = useIntl();
   const { item } = node;
@@ -792,6 +973,13 @@ function InventoryFamily({
             {content}
           </div>
         )}
+        {node.isMatch && (
+          <InventoryItemActions
+            item={item}
+            state={state}
+            onCommand={onItemCommand}
+          />
+        )}
       </div>
       {isExpanded && node.children.length > 0 && (
         <ul className={styles.familyList}>
@@ -804,6 +992,7 @@ function InventoryFamily({
               store={store}
               collapsedFamilies={collapsedFamilies}
               onToggle={onToggle}
+              onItemCommand={onItemCommand}
             />
           ))}
         </ul>
@@ -812,53 +1001,82 @@ function InventoryFamily({
   );
 }
 
+function ManagementDialog({
+  titleId,
+  busy,
+  errorCode,
+  onClose,
+  children,
+}: {
+  readonly titleId: string;
+  readonly busy: boolean;
+  readonly errorCode?: string | undefined;
+  readonly onClose: () => void;
+  readonly children: React.ReactNode;
+}) {
+  const intl = useIntl();
+  const dialog = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (
+      !busy &&
+      dialog.current !== null &&
+      !dialog.current.contains(document.activeElement)
+    )
+      dialog.current.focus();
+  }, [busy]);
+  return (
+    <ModalOverlay
+      className={styles.lossOverlay!}
+      isOpen
+      isDismissable={!busy}
+      isKeyboardDismissDisabled={busy}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Modal className={styles.lossModal!}>
+        <Dialog
+          ref={dialog}
+          className={styles.lossDialog!}
+          aria-labelledby="management-dialog-title"
+        >
+          <header className={styles.managementHeader}>
+            <h2 id="management-dialog-title">
+              <FormattedMessage id={titleId} />
+            </h2>
+            <Button
+              className={styles.expandButton!}
+              aria-label={intl.formatMessage({ id: 'action.cancel' })}
+              isDisabled={busy}
+              onPress={onClose}
+            >
+              <X aria-hidden="true" size={18} />
+            </Button>
+          </header>
+          <div className={styles.managementBody}>
+            {errorCode !== undefined && (
+              <ErrorNotice
+                errorCode={errorCode}
+                className={styles.impactWarning}
+              />
+            )}
+            {children}
+          </div>
+        </Dialog>
+      </Modal>
+    </ModalOverlay>
+  );
+}
+
 function ItemInspector({
   item,
   state,
   store,
-  revisionImpact,
 }: {
   readonly item: InventoryItem;
   readonly state: ReadyState;
   readonly store: PlysmithApplicationStore;
-  readonly revisionImpact?: RevisionImpactSummary;
 }) {
-  const contextId =
-    state.scope.kind === 'context' ? state.scope.contextId : undefined;
-  const isContextMember =
-    contextId !== undefined && item.contextIds.includes(contextId);
-  const isBusy = state.busyCommand !== undefined || state.refreshing;
-  const [showRename, setShowRename] = useState(false);
-  const renameOpen = showRename;
-  const [showScratchDecision, setShowScratchDecision] = useState(false);
-  const hasOpenAnalysisDraft = state.analysis.scratch !== undefined;
-  const renameDraft =
-    state.manageInventoryRevisionDraft?.itemId === item.itemId
-      ? state.manageInventoryRevisionDraft
-      : undefined;
-  const renamedRevision =
-    renameDraft === undefined
-      ? undefined
-      : {
-          ...renameDraft.previousRevision,
-          displayName: renameDraft.preview.displayName,
-          ...(renameDraft.preview.summary === undefined
-            ? { summary: undefined }
-            : { summary: renameDraft.preview.summary }),
-          steps: [
-            ...renameDraft.previousRevision.steps.slice(
-              0,
-              renameDraft.preview.preservedMoveCount,
-            ),
-            ...renameDraft.preview.addedSteps,
-          ],
-        };
-
-  useEffect(() => {
-    setShowRename(false);
-    setShowScratchDecision(false);
-  }, [item.itemId, item.currentRevisionId]);
-
   return (
     <div className={styles.inspectorBody}>
       <div className={styles.inspectorTitle}>
@@ -887,87 +1105,119 @@ function ItemInspector({
         item={item}
         store={store}
       />
-      {revisionImpact === undefined &&
-        renameOpen &&
-        renameDraft === undefined && (
-          <div className={styles.renameForm}>
-            <strong>
-              <FormattedMessage id="inventory.rename" />
-            </strong>
-            <InventoryMetadataForm
-              displayName={item.displayName}
-              summary={item.summary}
-              isBusy={isBusy}
-              onCancel={() => setShowRename(false)}
-              onPrepare={(displayName, summary) =>
-                void store.prepareInventoryItemRename(
-                  item,
-                  displayName,
-                  summary,
-                )
-              }
-            />
+    </div>
+  );
+}
+
+function FolderInspector({
+  group,
+  state,
+}: {
+  readonly group: InventoryFolderGroup;
+  readonly state: ReadyState;
+}) {
+  const folder = state.inventoryOrganization.folders.find(
+    (entry) => entry.folderId === group.folderId,
+  );
+  return (
+    <div className={styles.inspectorBody}>
+      <div className={styles.inspectorTitle}>
+        <Folder aria-hidden="true" size={22} />
+        <strong>
+          {folder?.displayName ?? <FormattedMessage id="folders.unfiled" />}
+        </strong>
+      </div>
+      <dl>
+        {folder !== undefined && (
+          <div>
+            <dt>
+              <FormattedMessage id="folders.path" />
+            </dt>
+            <dd>{group.path}</dd>
           </div>
         )}
-      {revisionImpact === undefined &&
-        renameDraft !== undefined &&
-        renamedRevision !== undefined && (
-          <section className={styles.managedRevisionDraft}>
-            <RevisionLineComparison
-              previous={renameDraft.previousRevision}
-              next={renamedRevision}
-              unchangedCount={renameDraft.preview.preservedMoveCount}
+        <div>
+          <dt>
+            <FormattedMessage id="manage.contents" />
+          </dt>
+          <dd>
+            <FormattedMessage
+              id="manage.itemCount"
+              values={{ count: group.itemCount }}
             />
-            {renameDraft.preview.affectedContexts.length > 0 && (
-              <div className={styles.impactWarning}>
-                <AlertTriangle aria-hidden="true" size={18} />
-                <div>
-                  <strong>
-                    <FormattedMessage id="inventory.contextsAffected" />
-                  </strong>
-                  <p>
-                    <FormattedMessage id="inventory.contextsAffectedDetail" />
-                  </p>
-                  <ul>
-                    {renameDraft.preview.affectedContexts.map((context) => (
-                      <li key={context.contextId}>{context.contextName}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-            <RevisionFollowingContexts
-              contexts={renameDraft.preview.followingContexts}
-              metadataOnly
-            />
-            <div className={styles.managedRevisionActions}>
-              <Button
-                className={styles.destructiveButton!}
-                onPress={async () => {
-                  if (await store.discardManagedInventoryRevision()) {
-                    setShowRename(false);
-                  }
-                }}
-                isDisabled={isBusy}
-              >
-                <Trash2 aria-hidden="true" size={15} />
-                <FormattedMessage id="inventory.discardRevision" />
-              </Button>
-              <Button
-                className={styles.primaryButton!}
-                onPress={async () => {
-                  if (await store.saveManagedInventoryRevision()) {
-                    setShowRename(false);
-                  }
-                }}
-                isDisabled={isBusy || renameDraft.preview.noOp}
-              >
-                <Save aria-hidden="true" size={15} />
-                <FormattedMessage id="inventory.saveRevision" />
-              </Button>
-            </div>
-          </section>
+          </dd>
+        </div>
+        {folder !== undefined && (
+          <div>
+            <dt>
+              <FormattedMessage id="folders.subfolders" />
+            </dt>
+            <dd>
+              {
+                state.inventoryOrganization.folders.filter(
+                  (entry) => entry.parentFolderId === folder.folderId,
+                ).length
+              }
+            </dd>
+          </div>
         )}
+      </dl>
+    </div>
+  );
+}
+
+function ItemActionContent({
+  item,
+  state,
+  store,
+  revisionImpact,
+  kind,
+  onClose,
+}: {
+  readonly item: InventoryItem;
+  readonly state: ReadyState;
+  readonly store: PlysmithApplicationStore;
+  readonly revisionImpact?: RevisionImpactSummary;
+  readonly kind: 'open' | 'rename' | 'resolve';
+  readonly onClose: () => void;
+}) {
+  const contextId =
+    state.scope.kind === 'context' ? state.scope.contextId : undefined;
+  const isContextMember =
+    contextId !== undefined && item.contextIds.includes(contextId);
+  const isBusy = state.busyCommand !== undefined || state.refreshing;
+  const renameOpen = kind === 'rename';
+  const showScratchDecision = kind === 'open';
+  const renameBlocked =
+    state.scope.kind === 'free' &&
+    state.analysis.scratchHasChanges &&
+    state.manageInventoryRevisionDraft === undefined;
+
+  return (
+    <div>
+      <strong>{item.displayName}</strong>
+      {revisionImpact === undefined && renameOpen && (
+        <div className={styles.renameForm}>
+          {renameBlocked && (
+            <p role="alert">
+              <FormattedMessage id="manage.renameScratchOccupied" />
+            </p>
+          )}
+          <InventoryMetadataForm
+            store={store}
+            itemId={item.itemId}
+            displayName={item.displayName}
+            summary={item.summary}
+            isBusy={isBusy}
+            saveBlocked={renameBlocked}
+            onCancel={onClose}
+            onPrepare={async (displayName, summary) => {
+              if (await store.renameInventoryItem(item, displayName, summary))
+                onClose();
+            }}
+          />
+        </div>
+      )}
       {revisionImpact === undefined &&
       (contextId === undefined || isContextMember) &&
       showScratchDecision ? (
@@ -984,7 +1234,7 @@ function ItemInspector({
             <Button
               className={styles.primaryButton!}
               onPress={() => {
-                setShowScratchDecision(false);
+                onClose();
                 store.setActivity('analyze');
               }}
               isDisabled={isBusy}
@@ -998,7 +1248,7 @@ function ItemInspector({
                 if (
                   await store.discardAnalysisScratchAndOpenInventoryItem(item)
                 ) {
-                  setShowScratchDecision(false);
+                  onClose();
                 }
               }}
               isDisabled={isBusy}
@@ -1008,7 +1258,7 @@ function ItemInspector({
             </Button>
             <Button
               className={styles.secondaryButton!}
-              onPress={() => setShowScratchDecision(false)}
+              onPress={onClose}
               isDisabled={isBusy}
             >
               <X aria-hidden="true" size={16} />
@@ -1016,77 +1266,18 @@ function ItemInspector({
             </Button>
           </div>
         </section>
-      ) : revisionImpact === undefined &&
-        !renameOpen &&
-        renameDraft === undefined &&
-        !showScratchDecision ? (
-        <div className={styles.inspectorActions}>
-          {(contextId === undefined || isContextMember) && (
-            <Button
-              className={styles.primaryButton!}
-              onPress={() => {
-                if (hasOpenAnalysisDraft) {
-                  setShowScratchDecision(true);
-                  return;
-                }
-                void store.openInventoryItem(item);
-              }}
-              isDisabled={isBusy}
-            >
-              <ArrowRight aria-hidden="true" size={16} />
-              <FormattedMessage id="activity.analyze" />
-            </Button>
-          )}
-          <Button
-            className={styles.primaryButton!}
-            onPress={() => setShowRename((visible) => !visible)}
-            isDisabled={isBusy}
-          >
-            <Pencil aria-hidden="true" size={16} />
-            <FormattedMessage id="inventory.rename" />
-          </Button>
-          {contextId !== undefined && !isContextMember && (
-            <Button
-              className={styles.primaryButton!}
-              onPress={() => void store.addInventoryItemToCurrentContext(item)}
-              isDisabled={isBusy}
-            >
-              <Plus aria-hidden="true" size={16} />
-              <FormattedMessage id="manage.useInContext" />
-            </Button>
-          )}
-          {contextId !== undefined && isContextMember && (
-            <Button
-              className={styles.destructiveButton!}
-              onPress={() => {
-                setShowRename(false);
-                void store.prepareContextItemRemoval(item);
-              }}
-              isDisabled={isBusy}
-            >
-              <Trash2 aria-hidden="true" size={16} />
-              <FormattedMessage id="manage.removeFromContext" />
-            </Button>
-          )}
-          <Button
-            className={styles.destructiveButton!}
-            onPress={() => void store.prepareInventoryItemDeletion(item)}
-            isDisabled={isBusy}
-          >
-            <Trash2 aria-hidden="true" size={16} />
-            <FormattedMessage id="manage.deleteInventoryItem" />
-          </Button>
-        </div>
-      ) : revisionImpact !== undefined &&
+      ) : kind === 'resolve' &&
+        revisionImpact !== undefined &&
         state.revisionImpact?.impact.impactId === revisionImpact.impactId ? (
         <div className={styles.impactResolution}>
           <RevisionImpactResolutionPanel
             details={state.revisionImpact}
             store={store}
             isBusy={isBusy}
+            onResolved={onClose}
           />
         </div>
-      ) : revisionImpact !== undefined ? (
+      ) : kind === 'resolve' ? (
         <div className={styles.impactLoading}>
           <FormattedMessage id="revisionImpact.loading" />
         </div>
@@ -1095,13 +1286,7 @@ function ItemInspector({
   );
 }
 
-function ContextSummary({
-  state,
-  store,
-}: {
-  readonly state: ReadyState;
-  readonly store: PlysmithApplicationStore;
-}) {
+function ContextSummary({ state }: { readonly state: ReadyState }) {
   if (state.scope.kind === 'free') {
     return (
       <div className={styles.contextSummary}>
@@ -1115,18 +1300,8 @@ function ContextSummary({
   const workspace = state.contextWorkspace;
   return (
     <section className={styles.contextDetails}>
-      {workspace !== undefined && (
-        <ContextMetadataForm
-          context={workspace.context}
-          isBusy={state.busyCommand !== undefined || state.refreshing}
-          onSave={(request) =>
-            store.updateWorkingContextMetadata(
-              workspace.context.contextId,
-              request,
-            )
-          }
-        />
-      )}
+      <strong>{workspace?.context.displayName}</strong>
+      {workspace?.context.purpose && <p>{workspace.context.purpose}</p>}
       <dl>
         <div>
           <dt>
@@ -1134,24 +1309,12 @@ function ContextSummary({
           </dt>
           <dd>
             <FormattedMessage
-              id="manage.referenceCount"
-              values={{ count: workspace?.references.length ?? 0 }}
+              id="manage.itemCount"
+              values={{ count: workspace?.context.itemCount ?? 0 }}
             />
           </dd>
         </div>
       </dl>
-      {workspace !== undefined && (
-        <Button
-          className={styles.destructiveButton!}
-          onPress={() =>
-            void store.prepareContextDeletion(workspace.context.contextId)
-          }
-          isDisabled={state.busyCommand !== undefined || state.refreshing}
-        >
-          <Trash2 aria-hidden="true" size={16} />
-          <FormattedMessage id="manage.deleteContext" />
-        </Button>
-      )}
     </section>
   );
 }
@@ -1160,9 +1323,11 @@ function ContextMetadataForm({
   context,
   isBusy,
   onSave,
+  onCancel,
 }: {
   readonly context: NonNullable<ReadyState['contextWorkspace']>['context'];
   readonly isBusy: boolean;
+  readonly onCancel: () => void;
   readonly onSave: (request: {
     readonly displayName: string;
     readonly purpose: string | null;
@@ -1207,16 +1372,7 @@ function ContextMetadataForm({
       setDraft(undefined);
   }
   return (
-    <form
-      className={styles.contextMetadataForm}
-      onSubmit={submit}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !isBusy) {
-          event.preventDefault();
-          setDraft(undefined);
-        }
-      }}
-    >
+    <form className={styles.contextMetadataForm} onSubmit={submit}>
       <label htmlFor="context-edit-name">
         <FormattedMessage id="manage.contextName" />
       </label>
@@ -1242,8 +1398,8 @@ function ContextMetadataForm({
       <div className={styles.formActions}>
         <Button
           className={styles.tertiaryButton!}
-          isDisabled={isBusy || draft === undefined}
-          onPress={() => setDraft(undefined)}
+          isDisabled={isBusy}
+          onPress={onCancel}
         >
           <X aria-hidden="true" size={15} />
           <FormattedMessage id="action.cancel" />

@@ -24,6 +24,10 @@ import type {
 } from '../../../application/analysis/index.ts';
 import type {
   GetInventoryRevisionUseCase,
+  GetInventoryOrganizationUseCase,
+  ChangeInventoryOrganizationUseCase,
+  PreviewContextFolderRemovalUseCase,
+  CheckInventoryNameAvailabilityUseCase,
   DeleteInventoryItemUseCase,
   PreviewInventoryItemDeletionUseCase,
   GetPendingRevisionImpactUseCase,
@@ -43,6 +47,7 @@ import type {
   ListWorkingContextsUseCase,
   RemoveContextItemUseCase,
   SetWorkScopeResumeUseCase,
+  SetManagementPresentationUseCase,
   GetWorkScopeWorkspace,
   GetStartupResume,
   SetStartupResume,
@@ -66,6 +71,10 @@ import type {
 } from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
+  readonly getInventoryOrganization: GetInventoryOrganizationUseCase;
+  readonly changeInventoryOrganization: ChangeInventoryOrganizationUseCase;
+  readonly previewContextFolderRemoval: PreviewContextFolderRemovalUseCase;
+  readonly checkInventoryNameAvailability: CheckInventoryNameAvailabilityUseCase;
   readonly previewInventoryItemDeletion: PreviewInventoryItemDeletionUseCase;
   readonly deleteInventoryItem: DeleteInventoryItemUseCase;
   readonly getWorkScopeWorkspace: Pick<GetWorkScopeWorkspace, 'execute'>;
@@ -113,6 +122,7 @@ export interface HostDependencies {
   readonly addContextReference: AddContextReferenceUseCase;
   readonly removeContextItem: RemoveContextItemUseCase;
   readonly setWorkScopeResume: SetWorkScopeResumeUseCase;
+  readonly setManagementPresentation: SetManagementPresentationUseCase;
   readonly listMovePolicyProviders: ListMovePolicyProvidersUseCase;
   readonly getPlayout: GetPlayoutUseCase;
   readonly startPlayout: StartPlayoutUseCase;

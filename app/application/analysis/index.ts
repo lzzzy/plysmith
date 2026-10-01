@@ -22,6 +22,7 @@ export {
   GetAnalysisWorkspace,
   type GetAnalysisWorkspaceUseCase,
 } from './get-analysis-workspace.ts';
+export { analysisScratchHasChanges } from './analysis-scratch-changes.ts';
 export {
   UpdateAnalysisScratch,
   type UpdateAnalysisScratchUseCase,

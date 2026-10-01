@@ -10,6 +10,7 @@ import type {
 } from '../../../application/analysis/index.ts';
 import type {
   InventoryRevisionPreview,
+  ContextFolderRemovalPreview,
   InventoryItemDeletionPreview,
   InventoryItemUsageSummary,
   DeleteInventoryItemResult,
@@ -35,6 +36,7 @@ import type {
   ManagementResume,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
+  SetManagementPresentationResult,
   WorkingContextSummary,
   WorkingContextWorkspace,
   WorkScopeWorkspace,
@@ -241,7 +243,7 @@ export function parseResumeRequest(
     | {
         readonly area: 'manage';
         readonly expectedResumeVersion: number | null;
-        readonly presentation: 'list' | 'atlas';
+        readonly presentation: 'folders' | 'origins';
         readonly selectedItemId?: string;
         readonly selectedAnchorId?: string;
       }
@@ -305,6 +307,7 @@ export function analysisWorkspaceDto(model: AnalysisWorkspace) {
       ? {}
       : { record: analysisRecordDto(model.record) }),
     currentState: chessStateDto(model.currentState),
+    scratchHasChanges: model.scratchHasChanges,
     legalMoves: model.legalMoves.map(canonicalMoveDto),
     allowedActions: [...model.allowedActions],
   };
@@ -585,6 +588,12 @@ export function listWorkingContextsResultDto(model: {
 export function workingContextWorkspaceDto(model: WorkingContextWorkspace) {
   return {
     context: workingContextSummaryDto(model.context),
+    members: model.members.map((member) => ({
+      itemId: idDto(member.itemId),
+      currentRevisionId: idDto(member.currentRevisionId),
+      itemType: member.itemType,
+      displayName: member.displayName,
+    })),
     references: model.references.map(contextReferenceDto),
     pendingRevisionImpacts: model.pendingRevisionImpacts.map((impact) => ({
       impactId: idDto(impact.impactId),
@@ -625,6 +634,16 @@ export function removeContextItemResultDto(model: RemoveContextItemResult) {
   return {
     contextId: idDto(model.contextId),
     itemId: idDto(model.itemId),
+    dataRevision: model.dataRevision,
+  };
+}
+
+export function setManagementPresentationResultDto(
+  model: SetManagementPresentationResult,
+) {
+  return {
+    area: model.area,
+    resume: managementResumeDto(model.resume),
     dataRevision: model.dataRevision,
   };
 }
@@ -731,6 +750,7 @@ function inventoryItemUsageSummaryDto(model: InventoryItemUsageSummary) {
     activeNoteCount: model.activeNoteCount,
     noteMoveCount: model.noteMoveCount,
     scratchCount: model.scratchCount,
+    changedScratchCount: model.changedScratchCount,
     scratchMoveCount: model.scratchMoveCount,
     scratchNoteCount: model.scratchNoteCount,
     managementResumeAffected: model.managementResumeAffected,
@@ -788,7 +808,6 @@ function contextPlayoutWorkDto(model: ContextPlayoutWork) {
 }
 
 export function contextRemovalPreviewDto(model: ContextRemovalPreview) {
-  const { losses } = model;
   return {
     contextId: idDto(model.contextId),
     contextName: model.contextName,
@@ -799,42 +818,62 @@ export function contextRemovalPreviewDto(model: ContextRemovalPreview) {
       displayName: item.displayName,
     })),
     referenceCount: model.referenceCount,
-    losses: {
-      notes: losses.notes.map((note) => ({
-        contributionId: idDto(note.contributionId),
-        body: note.body,
-        moveCount: note.moveCount,
-        ...(note.itemId === undefined ? {} : { itemId: idDto(note.itemId) }),
-      })),
-      ...(losses.scratch === undefined
-        ? {}
-        : {
-            scratch: {
-              scratchId: losses.scratch.scratchId,
-              scratchRevision: losses.scratch.scratchRevision,
-              stepCount: losses.scratch.stepCount,
-              intent: losses.scratch.intent,
-              ...(losses.scratch.noteBody === undefined
-                ? {}
-                : { noteBody: losses.scratch.noteBody }),
-              ...(losses.scratch.itemId === undefined
-                ? {}
-                : { itemId: idDto(losses.scratch.itemId) }),
-            },
-          }),
-      ...(losses.managementResume === undefined
-        ? {}
-        : { managementResume: managementResumeDto(losses.managementResume) }),
-      ...(losses.analysisResume === undefined
-        ? {}
-        : { analysisResume: analysisResumeDto(losses.analysisResume) }),
-      ...(losses.playout === undefined
-        ? {}
-        : { playout: contextPlayoutWorkDto(losses.playout) }),
-    },
+    losses: contextWorkLossesDto(model.losses),
     ...(model.retainedPlayout === undefined
       ? {}
       : { retainedPlayout: contextPlayoutWorkDto(model.retainedPlayout) }),
+  };
+}
+
+export function contextFolderRemovalPreviewDto(
+  model: ContextFolderRemovalPreview,
+) {
+  return {
+    folderId: idDto(model.folderId),
+    contextId: idDto(model.contextId),
+    folderIds: model.folderIds.map(idDto),
+    linkedFolderIds: model.linkedFolderIds.map(idDto),
+    itemIds: model.itemIds.map(idDto),
+    loss: model.loss,
+    losses: contextWorkLossesDto(model.losses),
+    dataRevision: model.dataRevision,
+  };
+}
+
+function contextWorkLossesDto(losses: ContextRemovalPreview['losses']) {
+  return {
+    notes: losses.notes.map((note) => ({
+      contributionId: idDto(note.contributionId),
+      body: note.body,
+      moveCount: note.moveCount,
+      ...(note.itemId === undefined ? {} : { itemId: idDto(note.itemId) }),
+    })),
+    ...(losses.scratch === undefined
+      ? {}
+      : {
+          scratch: {
+            scratchId: losses.scratch.scratchId,
+            scratchRevision: losses.scratch.scratchRevision,
+            hasChanges: losses.scratch.hasChanges,
+            stepCount: losses.scratch.stepCount,
+            intent: losses.scratch.intent,
+            ...(losses.scratch.noteBody === undefined
+              ? {}
+              : { noteBody: losses.scratch.noteBody }),
+            ...(losses.scratch.itemId === undefined
+              ? {}
+              : { itemId: idDto(losses.scratch.itemId) }),
+          },
+        }),
+    ...(losses.managementResume === undefined
+      ? {}
+      : { managementResume: managementResumeDto(losses.managementResume) }),
+    ...(losses.analysisResume === undefined
+      ? {}
+      : { analysisResume: analysisResumeDto(losses.analysisResume) }),
+    ...(losses.playout === undefined
+      ? {}
+      : { playout: contextPlayoutWorkDto(losses.playout) }),
   };
 }
 
@@ -1064,6 +1103,9 @@ function canonicalMoveDto(model: CanonicalMove) {
 
 function inventorySearchItemDto(model: InventorySearchItem) {
   return {
+    ...(model.folderId === undefined
+      ? {}
+      : { folderId: idDto(model.folderId) }),
     lifecycle: model.lifecycle,
     itemId: idDto(model.itemId),
     currentRevisionId: idDto(model.currentRevisionId),
@@ -1092,6 +1134,7 @@ function workingContextSummaryDto(model: WorkingContextSummary) {
       : { pinnedOrder: model.pinnedOrder }),
     contextVersion: model.contextVersion,
     referenceCount: model.referenceCount,
+    itemCount: model.itemCount,
     pendingRevisionImpactCount: model.pendingRevisionImpactCount,
     ...(model.managementResumeVersion === undefined
       ? {}

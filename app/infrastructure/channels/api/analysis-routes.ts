@@ -174,6 +174,14 @@ export function registerAnalysisRoutes(
     async (request) =>
       createAnalysisRecordResultDto(
         await dependencies.createAnalysisRecord.execute({
+          ...(request.body.folderId === undefined
+            ? {}
+            : {
+                folderId:
+                  request.body.folderId === null
+                    ? null
+                    : parseLocalId('inventory-folder', request.body.folderId),
+              }),
           scope: parseWorkScope(request.body.scope),
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,

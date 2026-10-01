@@ -10,6 +10,41 @@ export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
 
 const catalog = {
+  'inventory.invalid_organization': [
+    400,
+    'Invalid inventory organization',
+    'The inventory organization request is invalid.',
+  ],
+  'inventory.invalid_name': [
+    400,
+    'Invalid inventory name',
+    'Choose a nonempty name without surrounding whitespace.',
+  ],
+  'inventory.name_conflict': [
+    409,
+    'Folder name conflict',
+    'A sibling folder already uses this name.',
+  ],
+  'inventory.folder_not_found': [
+    404,
+    'Folder not found',
+    'The selected inventory folder no longer exists.',
+  ],
+  'inventory.folder_not_in_context': [
+    403,
+    'Folder not in context',
+    'Choose a folder included in the working context.',
+  ],
+  'inventory.cycle': [
+    409,
+    'Folder cycle',
+    'A folder cannot be moved into its own subtree.',
+  ],
+  'inventory.organization_conflict': [
+    409,
+    'Inventory organization conflict',
+    'Read the current organization before submitting another change.',
+  ],
   'inventory.display_name_conflict': [
     409,
     'Inventory name conflict',
@@ -434,6 +469,19 @@ export function installProblemHandling(
     }
     if (error instanceof ApplicationProblem) {
       switch (error.problemCode) {
+        case 'inventory.invalid_organization':
+        case 'inventory.invalid_name':
+        case 'inventory.name_conflict':
+        case 'inventory.folder_not_found':
+        case 'inventory.folder_not_in_context':
+        case 'inventory.cycle':
+        case 'inventory.organization_conflict':
+          return replyWithProblem(
+            request,
+            reply,
+            error.problemCode,
+            correlationIdFactory,
+          );
         case 'preference.invalid_ui_language':
         case 'preference.invalid_revision':
         case 'diagnostics.invalid_log_level':

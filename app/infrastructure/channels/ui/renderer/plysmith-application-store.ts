@@ -54,6 +54,7 @@ import {
   type SetDiagnosticLogLevelResultDto,
   type SetWorkScopeResumeRequestDto,
   type SetWorkScopeResumeResultDto,
+  type SetManagementPresentationRequestDto,
   type StartInventoryRevisionRequestDto,
   type StartInventoryRevisionResultDto,
   type SystemStatusDto,
@@ -81,6 +82,7 @@ import type {
 } from '../desktop/contract.ts';
 import { localizeSan } from './chess-display.ts';
 import { analysisPathPresentation } from './analysis-path-presentation.ts';
+import { contextRemovalHasContentLoss } from './work-loss-presentation.ts';
 import type { UiLocale } from './messages.ts';
 import {
   EngineConfigurationDrafts,
@@ -93,10 +95,24 @@ import {
 export type ActivityId = 'manage' | 'analyze' | 'playout' | 'settings';
 export type WorkScope = AnalysisWorkspaceDto['scope'];
 export type InventoryItem = SearchInventoryResultDto['items'][number];
+export type InventoryOrganization = Awaited<
+  ReturnType<PlysmithHostClient['getInventoryOrganization']>
+>;
+export type InventoryOrganizationChange = Parameters<
+  PlysmithHostClient['changeInventoryOrganization']
+>[0]['change'];
+export type ContextFolderRemovalPreview = Awaited<
+  ReturnType<PlysmithHostClient['previewContextFolderRemoval']>
+>;
 export type WorkingContext = ListWorkingContextsResultDto['contexts'][number];
 type MoveRequest = NonNullable<StartInventoryRevisionRequestDto['firstMove']>;
 type CanonicalMove = AnalysisWorkspaceDto['legalMoves'][number];
+type ObjectiveBudget = Extract<
+  AnalyzePositionRequestDto['mode'],
+  { kind: 'objective' }
+>['budget'];
 export type ApplicationCommand =
+  | 'change_inventory_organization'
   | 'set_language'
   | 'set_diagnostic_log_level'
   | 'create_diagnostic_report'
@@ -144,6 +160,10 @@ export type ApplicationCommand =
   | 'remove_engine_provider';
 
 export interface PlysmithApplicationClient {
+  getInventoryOrganization: PlysmithHostClient['getInventoryOrganization'];
+  changeInventoryOrganization: PlysmithHostClient['changeInventoryOrganization'];
+  previewContextFolderRemoval: PlysmithHostClient['previewContextFolderRemoval'];
+  checkInventoryNameAvailability: PlysmithHostClient['checkInventoryNameAvailability'];
   getSystemStatus(): Promise<SystemStatusDto>;
   getUserPreferences(): Promise<UserPreferencesDto>;
   setUiLanguage(request: {
@@ -261,6 +281,9 @@ export interface PlysmithApplicationClient {
   ): Promise<RemoveContextItemResultDto>;
   setWorkScopeResume(
     request: SetWorkScopeResumeRequestDto,
+  ): Promise<SetWorkScopeResumeResultDto>;
+  setManagementPresentation(
+    request: SetManagementPresentationRequestDto,
   ): Promise<SetWorkScopeResumeResultDto>;
   listMovePolicyProviders(): Promise<ListMovePolicyProvidersResultDto>;
   listPositionAnalysisProviders(): Promise<ListPositionAnalysisProvidersResultDto>;
@@ -409,6 +432,10 @@ export type PlysmithApplicationState =
       readonly diagnosticReportManifest: DiagnosticReportManifestDto;
       readonly contexts: ListWorkingContextsResultDto;
       readonly inventory: SearchInventoryResultDto;
+      readonly inventoryOrganization: InventoryOrganization;
+      readonly selectedInventoryFolderId?: string;
+      readonly inspectedInventoryFolderId?: string | null;
+      readonly inventoryPresentation: 'folders' | 'origins';
       readonly analysis: AnalysisWorkspaceDto;
       readonly analysisUnavailable?: AnalysisUnavailable;
       readonly analysisProviders: ListPositionAnalysisProvidersResultDto;
@@ -460,11 +487,15 @@ export class PlysmithApplicationStore {
   #activity: ActivityId = 'manage';
   #scope: WorkScope = Object.freeze({ kind: 'free' });
   #analysisFocus: AnalysisFocus | undefined;
+  #positionAnalysisBudget: ObjectiveBudget = 'fast';
   #positionAnalysisHumanSelection: ReadonlySet<string> | undefined;
   #inventoryQuery = '';
   #inventoryContextOnly = false;
+  readonly #selectedInventoryFolders = new Map<string, string>();
+  #inventoryPresentation: 'folders' | 'origins' = 'folders';
   // Undefined restores resume; null is an explicit empty management selection.
   #selectedInventoryItemId: string | null | undefined;
+  #inspectedInventoryFolderId: string | null | undefined;
   readonly #engineConfigurationDrafts = new EngineConfigurationDrafts();
   #busyCommand: ApplicationCommand | undefined;
   #errorCode: string | undefined;
@@ -476,6 +507,7 @@ export class PlysmithApplicationStore {
   #startupSavePromise: Promise<void> = Promise.resolve();
   #destructiveAction: DestructiveAction | undefined;
   #destructiveVersion = 0;
+  #folderRemovalPreviewVersion = 0;
   readonly #contextAnalysisItems = new Map<
     string,
     Pick<AnalysisUnavailable, 'itemId' | 'displayName'>
@@ -507,6 +539,14 @@ export class PlysmithApplicationStore {
 
   getPositionAnalysisHumanSelection(): ReadonlySet<string> | undefined {
     return this.#positionAnalysisHumanSelection;
+  }
+
+  getPositionAnalysisBudget(): ObjectiveBudget {
+    return this.#positionAnalysisBudget;
+  }
+
+  setPositionAnalysisBudget(budget: ObjectiveBudget): void {
+    this.#positionAnalysisBudget = budget;
   }
 
   setPositionAnalysisHumanSelection(ids: ReadonlySet<string>): void {
@@ -624,6 +664,7 @@ export class PlysmithApplicationStore {
             diagnosticReportManifest,
             contexts,
             inventory,
+            inventoryOrganization,
             analysisResult,
             workspace,
             scopeWorkspace,
@@ -638,6 +679,9 @@ export class PlysmithApplicationStore {
             client.getDiagnosticReportManifest(),
             client.listWorkingContexts({ pageSize: '100' }),
             client.searchInventory(this.#inventoryRequest()),
+            client.getInventoryOrganization(
+              contextId === undefined ? {} : { contextId },
+            ),
             client.getAnalysisWorkspace(analysisRequest).then(
               (analysis) => ({ kind: 'completed' as const, analysis }),
               (error: unknown) => ({ kind: 'failed' as const, error }),
@@ -660,7 +704,7 @@ export class PlysmithApplicationStore {
               if (readKey !== this.#readKey()) this.#refreshAgain = true;
               continue;
             }
-            // Recover an explicit focus only when fresh references prove its removal.
+            // Recover an explicit focus only when fresh membership proves its removal.
             if (
               !recoveredContextFocus &&
               analysisRequest.scopeKind === 'context' &&
@@ -669,8 +713,8 @@ export class PlysmithApplicationStore {
                 'workspace.inventory_work_not_allowed' &&
               workspace !== undefined &&
               workspace.context.contextId === analysisRequest.contextId &&
-              !workspace.references.some(
-                (reference) => reference.itemId === analysisRequest.itemId,
+              !workspace.members.some(
+                (member) => member.itemId === analysisRequest.itemId,
               ) &&
               sameDataRevision(
                 status,
@@ -702,6 +746,8 @@ export class PlysmithApplicationStore {
           const analysis = analysisResult.analysis;
           if (
             scopeWorkspace.dataRevision !== status.persistence.dataRevision ||
+            inventoryOrganization.dataRevision !==
+              status.persistence.dataRevision ||
             !sameScope(scopeWorkspace.scope, this.#scope) ||
             !sameDataRevision(
               status,
@@ -755,6 +801,25 @@ export class PlysmithApplicationStore {
             continue;
           }
           this.#committedReadVersion = readVersion;
+          this.#inventoryPresentation =
+            scopeWorkspace.managementResume?.presentation ?? 'folders';
+          const folderKey = scopeKey(this.#scope);
+          const selectedFolder = this.#selectedInventoryFolders.get(folderKey);
+          if (
+            selectedFolder !== undefined &&
+            !inventoryOrganization.folders.some(
+              (folder) => folder.folderId === selectedFolder,
+            )
+          ) {
+            this.#selectedInventoryFolders.delete(folderKey);
+          }
+          if (
+            this.#inspectedInventoryFolderId != null &&
+            !inventoryOrganization.folders.some(
+              (folder) => folder.folderId === this.#inspectedInventoryFolderId,
+            )
+          )
+            this.#inspectedInventoryFolderId = undefined;
           this.#committedReadKey = readKey;
           this.#updateAnalysisUnavailable(analysis, workspace);
           const analysisUnavailable =
@@ -798,6 +863,20 @@ export class PlysmithApplicationStore {
               diagnosticReportManifest,
               contexts,
               inventory,
+              inventoryOrganization,
+              inventoryPresentation: this.#inventoryPresentation,
+              ...(this.#inspectedInventoryFolderId === undefined
+                ? {}
+                : {
+                    inspectedInventoryFolderId:
+                      this.#inspectedInventoryFolderId,
+                  }),
+              ...(this.#selectedInventoryFolders.get(folderKey) === undefined
+                ? {}
+                : {
+                    selectedInventoryFolderId:
+                      this.#selectedInventoryFolders.get(folderKey)!,
+                  }),
               analysis,
               scopeWorkspace,
               ...(this.#startupNotice === undefined
@@ -1222,6 +1301,7 @@ export class PlysmithApplicationStore {
     displayName: string,
     addToContext: boolean,
     manualResult?: CompletePlayoutRequestDto['manualResult'],
+    folderId?: string | null,
   ): Promise<boolean> {
     if (this.#busyCommand !== undefined) return false;
     if (this.#pendingPlayoutCompletion === undefined) {
@@ -1240,6 +1320,7 @@ export class PlysmithApplicationStore {
           completionId: crypto.randomUUID(),
           displayName: displayName.trim(),
           languageTag: this.#readyState()?.preferences.uiLocale ?? 'de-DE',
+          ...(folderId === undefined ? {} : { folderId }),
           ...(manualResult === undefined ? {} : { manualResult }),
           ...(addToContext && this.#scope.kind === 'context'
             ? { targetContextId: this.#scope.contextId }
@@ -1326,6 +1407,7 @@ export class PlysmithApplicationStore {
     this.cancelDestructiveAction();
     this.#startupNotice = undefined;
     this.#scope = Object.freeze({ ...scope });
+    this.#inspectedInventoryFolderId = undefined;
     this.#analysisFocus = undefined;
     this.#selectedInventoryItemId = undefined;
     this.#revisionImpact = undefined;
@@ -1343,6 +1425,7 @@ export class PlysmithApplicationStore {
   async selectManagementScope(scope: WorkScope): Promise<void> {
     if (this.#busyCommand !== undefined) return;
     await this.setScope(scope);
+    this.#inspectedInventoryFolderId = undefined;
     this.#selectedInventoryItemId = null;
     this.#revisionImpact = undefined;
     this.#publishViewState();
@@ -1350,6 +1433,7 @@ export class PlysmithApplicationStore {
   }
 
   async searchInventory(query: string): Promise<void> {
+    this.#inspectedInventoryFolderId = undefined;
     this.#inventoryQuery = query.trim();
     this.#selectedInventoryItemId = null;
     this.#publishViewState();
@@ -1357,6 +1441,7 @@ export class PlysmithApplicationStore {
   }
 
   async setInventoryContextOnly(contextOnly: boolean): Promise<void> {
+    this.#inspectedInventoryFolderId = undefined;
     this.#inventoryContextOnly = this.#scope.kind === 'context' && contextOnly;
     this.#selectedInventoryItemId = null;
     this.#publishViewState();
@@ -1465,6 +1550,7 @@ export class PlysmithApplicationStore {
   async selectInventoryItem(item: InventoryItem): Promise<void> {
     if (this.#busyCommand !== undefined) return;
     this.cancelDestructiveAction();
+    this.#inspectedInventoryFolderId = undefined;
     this.#selectedInventoryItemId =
       this.#selectedInventoryItemId === item.itemId ? null : item.itemId;
     if (this.#revisionImpact?.impact.itemId !== item.itemId) {
@@ -1474,6 +1560,118 @@ export class PlysmithApplicationStore {
     await this.#persistManagementSelection(
       this.#selectedInventoryItemId === null ? undefined : item,
     );
+  }
+
+  async inspectInventoryItem(item: InventoryItem): Promise<void> {
+    if (this.#busyCommand !== undefined) return;
+    this.cancelDestructiveAction();
+    this.#inspectedInventoryFolderId = undefined;
+    this.#selectedInventoryItemId = item.itemId;
+    if (this.#revisionImpact?.impact.itemId !== item.itemId) {
+      this.#revisionImpact = undefined;
+    }
+    this.#publishViewState();
+    await this.#persistManagementSelection(item);
+  }
+
+  async selectInventoryFolder(folderId?: string): Promise<void> {
+    if (this.#busyCommand !== undefined) return;
+    this.cancelDestructiveAction();
+    this.#selectedInventoryItemId = null;
+    this.#revisionImpact = undefined;
+    this.#inspectedInventoryFolderId = folderId ?? null;
+    const key = scopeKey(this.#scope);
+    if (folderId === undefined) this.#selectedInventoryFolders.delete(key);
+    else this.#selectedInventoryFolders.set(key, folderId);
+    this.#publishViewState();
+    await this.#persistManagementSelection();
+  }
+
+  async setInventoryPresentation(
+    presentation: 'folders' | 'origins',
+  ): Promise<void> {
+    const state = this.#readyState();
+    if (
+      state === undefined ||
+      state.refreshing ||
+      this.#busyCommand !== undefined ||
+      presentation === state.inventoryPresentation
+    )
+      return;
+    this.#folderRemovalPreviewVersion++;
+    await this.#runCommand('set_resume', (client) =>
+      client.setManagementPresentation({
+        scope: state.scope,
+        expectedResumeVersion:
+          state.scopeWorkspace.managementResume?.resumeVersion ?? null,
+        presentation,
+      }),
+    );
+  }
+
+  async changeInventoryOrganization(
+    change: InventoryOrganizationChange,
+    expectedDataRevision?: number,
+  ): Promise<boolean> {
+    const state = this.#readyState();
+    if (state === undefined || state.refreshing) return false;
+    const result = await this.#runCommand(
+      'change_inventory_organization',
+      (client) =>
+        client.changeInventoryOrganization({
+          change,
+          expectedDataRevision:
+            expectedDataRevision ?? state.inventoryOrganization.dataRevision,
+        }),
+    );
+    if (result === undefined) return false;
+    if (change.kind === 'create_folder' && result.folderId !== undefined)
+      await this.selectInventoryFolder(result.folderId);
+    return true;
+  }
+
+  async previewContextFolderRemoval(
+    folderId: string,
+  ): Promise<ContextFolderRemovalPreview | undefined> {
+    const state = this.#readyState();
+    const client = this.#client;
+    if (
+      state?.scope.kind !== 'context' ||
+      client === undefined ||
+      this.#busyCommand !== undefined
+    )
+      return undefined;
+    const readKey = this.#readKey();
+    const lifecycle = this.#lifecycle;
+    const activity = this.#activity;
+    const version = ++this.#folderRemovalPreviewVersion;
+    const current = () =>
+      lifecycle === this.#lifecycle &&
+      client === this.#client &&
+      activity === this.#activity &&
+      readKey === this.#readKey() &&
+      version === this.#folderRemovalPreviewVersion;
+    try {
+      const preview = await client.previewContextFolderRemoval({
+        folderId,
+        contextId: state.scope.contextId,
+      });
+      if (!current()) return undefined;
+      return preview;
+    } catch (error) {
+      if (!current()) return undefined;
+      this.#setReadyError(hostErrorCode(error));
+      return undefined;
+    }
+  }
+
+  async checkInventoryName(displayName: string, excludingItemId?: string) {
+    if (this.#client === undefined || displayName.trim() === '')
+      return undefined;
+    return this.#client.checkInventoryNameAvailability({
+      displayName: displayName.trim(),
+      ...(excludingItemId === undefined ? {} : { excludingItemId }),
+    });
   }
 
   async readInventoryDetails(
@@ -1500,6 +1698,8 @@ export class PlysmithApplicationStore {
   }
 
   async #persistManagementSelection(item?: InventoryItem): Promise<void> {
+    const state = this.#readyState();
+    if (state === undefined) return;
     if (
       this.#scope.kind === 'context' &&
       item !== undefined &&
@@ -1510,14 +1710,13 @@ export class PlysmithApplicationStore {
     if (item !== undefined && this.#hasPendingRevisionImpact(item.itemId))
       return;
     const expectedResumeVersion =
-      this.#readyState()?.scopeWorkspace.managementResume?.resumeVersion ??
-      null;
+      state.scopeWorkspace.managementResume?.resumeVersion ?? null;
     await this.#runCommand('set_resume', async (client) =>
       client.setWorkScopeResume({
-        scope: this.#scope,
+        scope: state.scope,
         area: 'manage',
         expectedResumeVersion,
-        presentation: 'list',
+        presentation: state.inventoryPresentation,
         ...(item === undefined
           ? {}
           : {
@@ -1529,6 +1728,8 @@ export class PlysmithApplicationStore {
   }
 
   async openInventoryItem(item: InventoryItem): Promise<boolean> {
+    const scope = this.#scope;
+    const lifecycle = this.#lifecycle;
     if (item.lifecycle !== 'active') return false;
     if (
       this.#scope.kind === 'context' &&
@@ -1536,6 +1737,13 @@ export class PlysmithApplicationStore {
     )
       return false;
     if (this.#hasPendingRevisionImpact(item.itemId)) return false;
+    const workspace = this.#readyState()?.analysis;
+    if (workspace?.scratch !== undefined) {
+      if (workspace.scratchHasChanges) return false;
+      if (!(await this.discardAnalysisScratch())) return false;
+      if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
+        return false;
+    }
     const revisionId = this.#effectiveRevisionId(item);
     this.#analysisFocus = Object.freeze({
       itemId: item.itemId,
@@ -1616,8 +1824,8 @@ export class PlysmithApplicationStore {
       state !== undefined &&
       (known === undefined || known.lifecycle === 'active') &&
       (state.scope.kind === 'free' ||
-        state.contextWorkspace?.references.some(
-          (reference) => reference.itemId === itemId,
+        state.contextWorkspace?.members.some(
+          (member) => member.itemId === itemId,
         ) === true)
     );
   }
@@ -1730,6 +1938,7 @@ export class PlysmithApplicationStore {
   }
 
   cancelDestructiveAction(): void {
+    this.#folderRemovalPreviewVersion++;
     if (this.#destructiveAction?.status === 'submitting') return;
     this.#destructiveVersion++;
     this.#destructiveAction = undefined;
@@ -1741,7 +1950,8 @@ export class PlysmithApplicationStore {
     if (client === undefined || this.#busyCommand !== undefined) return;
     const version = ++this.#destructiveVersion;
     const lifecycle = this.#lifecycle;
-    this.#destructiveAction = action;
+    this.#destructiveAction =
+      action.kind === 'context_item' ? undefined : action;
     this.#publishViewState();
     try {
       const prepared: DestructiveAction =
@@ -1765,13 +1975,29 @@ export class PlysmithApplicationStore {
       if (version !== this.#destructiveVersion || lifecycle !== this.#lifecycle)
         return;
       const dataRevision = this.#readyState()?.status.persistence.dataRevision;
+      if (
+        prepared.kind === 'context_item' &&
+        prepared.preview !== undefined &&
+        !contextRemovalHasContentLoss(prepared.preview)
+      ) {
+        if (prepared.preview.dataRevision !== dataRevision) {
+          this.#setReadyError('workspace.removal_preview_conflict');
+          return;
+        }
+        await this.#submitDestructiveAction(prepared, false);
+        return;
+      }
       this.#destructiveAction =
         prepared.preview!.dataRevision === dataRevision
           ? prepared
           : { ...prepared, status: 'stale' };
-    } catch {
+    } catch (error) {
       if (version !== this.#destructiveVersion || lifecycle !== this.#lifecycle)
         return;
+      if (action.kind === 'context_item') {
+        this.#setReadyError(hostErrorCode(error));
+        return;
+      }
       this.#destructiveAction = {
         ...action,
         status: 'error',
@@ -1782,7 +2008,13 @@ export class PlysmithApplicationStore {
   }
 
   async confirmDestructiveAction(): Promise<boolean> {
-    const action = this.#destructiveAction;
+    return this.#submitDestructiveAction(this.#destructiveAction, true);
+  }
+
+  async #submitDestructiveAction(
+    action: DestructiveAction | undefined,
+    showDialog: boolean,
+  ): Promise<boolean> {
     const state = this.#readyState();
     if (
       action?.status !== 'ready' ||
@@ -1792,11 +2024,17 @@ export class PlysmithApplicationStore {
     )
       return false;
     if (action.preview.dataRevision !== state.status.persistence.dataRevision) {
+      if (!showDialog) {
+        this.#setReadyError('workspace.removal_preview_conflict');
+        return false;
+      }
       this.#destructiveAction = { ...action, status: 'stale' };
       this.#publishViewState();
       return false;
     }
-    this.#destructiveAction = { ...action, status: 'submitting' };
+    this.#destructiveAction = showDialog
+      ? { ...action, status: 'submitting' }
+      : undefined;
     const lifecycle = this.#lifecycle;
     this.#publishViewState();
     const result = await this.#runCommand(
@@ -1847,6 +2085,7 @@ export class PlysmithApplicationStore {
               reason: 'deleted',
             };
             this.#scope = { kind: 'free' };
+            this.#inspectedInventoryFolderId = undefined;
             this.#analysisFocus = undefined;
             this.#selectedInventoryItemId = undefined;
             this.#inventoryContextOnly = false;
@@ -1881,6 +2120,7 @@ export class PlysmithApplicationStore {
     );
     if (lifecycle !== this.#lifecycle) return false;
     if (result === undefined) {
+      if (!showDialog) return false;
       const conflict = this.#errorCode?.endsWith('_conflict') === true;
       this.#destructiveAction = {
         ...action,
@@ -2034,6 +2274,64 @@ export class PlysmithApplicationStore {
     this.#finishCommand();
   }
 
+  async renameInventoryItem(
+    item: InventoryItem,
+    displayName: string,
+    summary: string | null,
+  ): Promise<boolean> {
+    const state = this.#readyState();
+    if (state === undefined || this.#busyCommand !== undefined) return false;
+    const lifecycle = this.#lifecycle;
+    if (
+      state.scope.kind === 'free' &&
+      state.analysis.scratch !== undefined &&
+      this.#manageInventoryRevisionDraft === undefined
+    ) {
+      if (state.analysis.scratchHasChanges) return false;
+      if (!(await this.discardAnalysisScratch())) return false;
+      if (lifecycle !== this.#lifecycle || !sameScope(state.scope, this.#scope))
+        return false;
+    }
+    const draft = this.#manageInventoryRevisionDraft;
+    if (
+      draft !== undefined &&
+      (draft.itemId !== item.itemId ||
+        draft.preview.displayName !== displayName ||
+        draft.preview.summary !== (summary ?? undefined))
+    ) {
+      if (!(await this.discardManagedInventoryRevision())) return false;
+      if (lifecycle !== this.#lifecycle || !sameScope(state.scope, this.#scope))
+        return false;
+    }
+    if (this.#manageInventoryRevisionDraft === undefined) {
+      await this.prepareInventoryItemRename(item, displayName, summary);
+      if (lifecycle !== this.#lifecycle || !sameScope(state.scope, this.#scope))
+        return false;
+    } else {
+      const currentDraft = this.#manageInventoryRevisionDraft;
+      const preview = await this.#runCommand(
+        'prepare_inventory_metadata_revision',
+        (client) =>
+          client.previewInventoryRevision({
+            scope: { kind: 'free' },
+            expectedScratchId: currentDraft.scratchId,
+            expectedScratchRevision: currentDraft.scratchRevision,
+          }),
+        false,
+      );
+      if (preview === undefined) return false;
+      this.#manageInventoryRevisionDraft = { ...currentDraft, preview };
+      this.#finishCommand();
+      if (lifecycle !== this.#lifecycle || !sameScope(state.scope, this.#scope))
+        return false;
+    }
+    if (this.#manageInventoryRevisionDraft === undefined) return false;
+    if (this.#manageInventoryRevisionDraft.preview.noOp) {
+      return this.discardManagedInventoryRevision();
+    }
+    return this.saveManagedInventoryRevision();
+  }
+
   async saveManagedInventoryRevision(): Promise<boolean> {
     const draft = this.#manageInventoryRevisionDraft;
     if (draft === undefined) return false;
@@ -2061,13 +2359,31 @@ export class PlysmithApplicationStore {
     if (draft === undefined) return false;
     const result = await this.#runCommand(
       'discard_managed_inventory_revision',
-      (client) =>
-        client.updateAnalysisScratch({
-          scope: { kind: 'free' },
-          expectedScratchId: draft.scratchId,
-          expectedScratchRevision: draft.scratchRevision,
-          action: { kind: 'discard' },
-        }),
+      async (client) => {
+        const current = await client.getAnalysisWorkspace({
+          scopeKind: 'free',
+        });
+        const owned = (scratch: AnalysisWorkspaceDto['scratch']) =>
+          scratch?.scratchId === draft.scratchId &&
+          scratch.scratchRevision === draft.scratchRevision;
+        if (!owned(current.scratch)) return { discarded: false };
+        try {
+          return await client.updateAnalysisScratch({
+            scope: { kind: 'free' },
+            expectedScratchId: draft.scratchId,
+            expectedScratchRevision: draft.scratchRevision,
+            action: { kind: 'discard' },
+          });
+        } catch (error) {
+          if (hostErrorCode(error) === 'analysis.scratch_revision_conflict') {
+            const latest = await client.getAnalysisWorkspace({
+              scopeKind: 'free',
+            });
+            if (!owned(latest.scratch)) return { discarded: false };
+          }
+          throw error;
+        }
+      },
       false,
     );
     if (result === undefined) return false;
@@ -2420,6 +2736,7 @@ export class PlysmithApplicationStore {
     destination: 'inventory' | 'context',
     noteScope: 'global' | 'context',
     noteBody: string,
+    folderId?: string | null,
   ): Promise<boolean> {
     const state = this.#readyState();
     const scratch = state?.analysis.scratch;
@@ -2469,6 +2786,7 @@ export class PlysmithApplicationStore {
           expectedScratchRevision,
           displayName: displayName.trim(),
           languageTag: state.preferences.uiLocale,
+          ...(folderId === undefined ? {} : { folderId }),
           ...(targetContextId === undefined ? {} : { targetContextId }),
           ...(!includesNote
             ? {}
@@ -2648,6 +2966,7 @@ export class PlysmithApplicationStore {
       kind: 'context',
       contextId: result.context.contextId,
     });
+    this.#inspectedInventoryFolderId = undefined;
     this.#inventoryContextOnly = true;
     this.#selectedInventoryItemId = null;
     this.#analysisFocus = undefined;
@@ -3062,8 +3381,15 @@ export class PlysmithApplicationStore {
     firstMove?: MoveRequest,
   ): Promise<boolean> {
     const state = this.#readyState();
-    if (state === undefined || state.analysis.scratch !== undefined)
-      return false;
+    const lifecycle = this.#lifecycle;
+    if (state === undefined) return false;
+    if (state.analysis.scratch !== undefined) {
+      if (state.analysis.scratchHasChanges) return false;
+      if (!(await this.discardAnalysisScratch())) return false;
+      if (lifecycle !== this.#lifecycle || !sameScope(state.scope, this.#scope))
+        return false;
+      return this.#startScratch(origin, firstMove);
+    }
     const result = await this.#runCommand(
       'start_scratch',
       (client) =>
@@ -3205,10 +3531,10 @@ export class PlysmithApplicationStore {
   #effectiveRevisionId(item: InventoryItem): string {
     const state = this.#readyState();
     if (state?.scope.kind !== 'context') return item.currentRevisionId;
-    const reference = state.contextWorkspace?.references.find(
+    const member = state.contextWorkspace?.members.find(
       (candidate) => candidate.itemId === item.itemId,
     );
-    if (reference !== undefined) return reference.currentRevisionId;
+    if (member !== undefined) return member.currentRevisionId;
     return (
       state.contextWorkspace?.pendingRevisionImpacts.find(
         (impact) => impact.itemId === item.itemId,
@@ -3405,6 +3731,7 @@ export class PlysmithApplicationStore {
           : { displayName: state.contextWorkspace.context.displayName }),
       };
       this.#scope = { kind: 'free' };
+      this.#inspectedInventoryFolderId = undefined;
       this.#analysisFocus = undefined;
       this.#selectedInventoryItemId = undefined;
       this.#inventoryContextOnly = false;
@@ -3507,17 +3834,13 @@ export class PlysmithApplicationStore {
       analysis.record !== undefined || analysis.scratch !== undefined;
     if (
       hasContent ||
-      workspace.references.some(
-        (reference) => reference.itemId === notice?.itemId,
-      )
+      workspace.members.some((member) => member.itemId === notice?.itemId)
     ) {
       this.#analysisUnavailable.delete(contextId);
     } else if (
       notice?.reason !== 'deleted_from_inventory' &&
       previous !== undefined &&
-      !workspace.references.some(
-        (reference) => reference.itemId === previous.itemId,
-      )
+      !workspace.members.some((member) => member.itemId === previous.itemId)
     ) {
       this.#analysisUnavailable.set(contextId, {
         reason: 'removed_from_context',
@@ -3531,15 +3854,13 @@ export class PlysmithApplicationStore {
       (analysis.scratch?.origin.kind === 'inventory_anchor'
         ? analysis.scratch.origin.itemId
         : undefined);
-    const reference = workspace.references.find(
-      (entry) => entry.itemId === itemId,
-    );
-    if (reference === undefined) {
+    const member = workspace.members.find((entry) => entry.itemId === itemId);
+    if (member === undefined) {
       this.#contextAnalysisItems.delete(contextId);
     } else {
       this.#contextAnalysisItems.set(contextId, {
-        itemId: reference.itemId,
-        displayName: analysis.record?.displayName ?? reference.displayName,
+        itemId: member.itemId,
+        displayName: analysis.record?.displayName ?? member.displayName,
       });
     }
   }
@@ -3574,6 +3895,19 @@ export class PlysmithApplicationStore {
         diagnosticReportManifest: state.diagnosticReportManifest,
         contexts: state.contexts,
         inventory: state.inventory,
+        inventoryOrganization: state.inventoryOrganization,
+        inventoryPresentation: this.#inventoryPresentation,
+        ...(this.#inspectedInventoryFolderId === undefined
+          ? {}
+          : { inspectedInventoryFolderId: this.#inspectedInventoryFolderId }),
+        ...(this.#selectedInventoryFolders.get(scopeKey(this.#scope)) ===
+        undefined
+          ? {}
+          : {
+              selectedInventoryFolderId: this.#selectedInventoryFolders.get(
+                scopeKey(this.#scope),
+              )!,
+            }),
         analysis: state.analysis,
         scopeWorkspace: state.scopeWorkspace,
         ...(this.#startupNotice === undefined

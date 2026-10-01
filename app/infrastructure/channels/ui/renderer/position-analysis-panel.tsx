@@ -65,7 +65,9 @@ export function PositionAnalysisPanel({
   const [objectiveProviderId, setObjectiveProviderId] = useState(
     () => objectiveProviders[0]?.instanceId,
   );
-  const [budget, setBudget] = useState<ObjectiveBudget>('fast');
+  const [budget, setBudget] = useState<ObjectiveBudget>(() =>
+    store.getPositionAnalysisBudget(),
+  );
   const [selectedHumanProviderIds, setSelectedHumanProviderIds] = useState(
     () =>
       new Set(
@@ -313,6 +315,11 @@ export function PositionAnalysisPanel({
     if (sortBy === instanceId) setSortBy('stockfish');
   }
 
+  function selectBudget(next: ObjectiveBudget): void {
+    store.setPositionAnalysisBudget(next);
+    setBudget(next);
+  }
+
   return (
     <section
       className={styles.analysisPanel}
@@ -351,7 +358,9 @@ export function PositionAnalysisPanel({
           className={styles.providerSelect}
           aria-label={intl.formatMessage({ id: 'positionAnalysis.budget' })}
           value={budget}
-          onChange={(event) => setBudget(event.target.value as ObjectiveBudget)}
+          onChange={(event) =>
+            selectBudget(event.target.value as ObjectiveBudget)
+          }
         >
           {(['fast', 'thorough', 'very_deep'] as const).map((value) => (
             <option key={value} value={value}>

@@ -1,5 +1,54 @@
 export const messages = {
   'de-DE': {
+    'manage.actionsFor': 'Aktionen für „{name}“',
+    'manage.selectionActions': 'Aktionen für die Auswahl',
+    'manage.selectedCount': '{count} ausgewählt',
+    'manage.clearSelection': 'Auswahl aufheben',
+    'manage.editContext': 'Arbeitskontext bearbeiten',
+    'folders.path': 'Pfad',
+    'folders.subfolders': 'Unterordner',
+    'folders.presentation': 'Bestandsansicht',
+    'folders.view': 'Ordner',
+    'folders.unavailable': 'Ablageziel nicht verfügbar',
+    'folders.chooseAvailable': 'Wählen Sie ein verfügbares Ablageziel.',
+    'folders.origins': 'Herkunft',
+    'folders.unfiled': 'Nicht eingeordnet',
+    'folders.new': 'Neuer Ordner',
+    'folders.newChild': 'Unterordner anlegen',
+    'folders.name': 'Ordnername',
+    'folders.delete': 'Ordner mit Unterordnern löschen',
+    'folders.include': 'Ordner in Arbeitskontext aufnehmen',
+    'folders.removeContext': 'Ordner aus Arbeitskontext entfernen',
+    'folders.selectItem': '„{name}“ zum Verschieben auswählen',
+    'folders.expand': '„{name}“ aufklappen',
+    'folders.collapse': '„{name}“ zuklappen',
+    'folders.empty': 'Keine Einträge',
+    'folders.noMatches': 'Keine passenden Einträge',
+    'folders.notLoaded': 'Einträge noch nicht geladen',
+    'folders.dialog.create': 'Ordner anlegen',
+    'folders.dialog.rename': 'Ordner umbenennen',
+    'folders.dialog.delete': 'Ordner löschen?',
+    'folders.dialog.include': 'In Arbeitskontext aufnehmen',
+    'folders.dialog.remove': 'Aus Arbeitskontext entfernen?',
+    'folders.confirm.create': 'Anlegen',
+    'folders.confirm.rename': 'Umbenennen',
+    'folders.confirm.delete': 'Ordner löschen',
+    'folders.confirm.include': 'Aufnehmen',
+    'folders.confirm.remove': 'Entfernen bestätigen',
+    'folders.includeDetail':
+      'Dieser Ordner und seine aktuellen Unterordner werden als Ziele aufgenommen. Spätere Einträge und Unterordner werden nicht automatisch aufgenommen.',
+    'folders.includeItems':
+      'Auch die aktuellen Einträge in diesen Ordnern aufnehmen',
+    'folders.deleteDetail':
+      'Dieser Ordner und alle Unterordner werden gelöscht. Ihre Einträge bleiben unter „Nicht eingeordnet“ erhalten, ebenso Herkunft, Arbeitskontexte, Notizen und Arbeitsstände.',
+    'folders.removeDetail':
+      'Dieser Ordner, seine aktuellen Unterordner und die dort eingeordneten Einträge werden aus diesem Arbeitskontext entfernt. Die folgende eigene Arbeit wird gelöscht. Der Bestand und andere Arbeitskontexte bleiben erhalten.',
+    'folders.failed':
+      'Die Änderung wurde nicht angewendet. Prüfe den Ordnernamen und das Ziel; Namen müssen unter demselben übergeordneten Ordner eindeutig sein.',
+    'folders.saveDestination': 'Ablage',
+    'folders.inheritDestination': 'Ordner des Ursprungs',
+    'name.suggestion': 'Dieser Name ist bereits vergeben. Verfügbar: „{name}“',
+    'name.useSuggestion': 'Vorschlag übernehmen',
     'loss.references': 'Gebundene Verwendungen',
     'loss.none':
       'Keine gebundenen Notizen oder Analysearbeitsstände betroffen.',
@@ -86,8 +135,8 @@ export const messages = {
 
     'manage.contents': 'Inhalt',
 
-    'manage.referenceCount':
-      '{count, plural, =0 {Keine Referenzen} one {# Referenz} other {# Referenzen}}',
+    'manage.itemCount':
+      '{count, plural, =0 {Keine Einträge} one {# Eintrag} other {# Einträge}}',
 
     'manage.allInventory': 'Gesamter Bestand',
     'manage.inventoryScope': 'Bestandsumfang',
@@ -109,6 +158,8 @@ export const messages = {
     'manage.openAnalysisDraftDetail':
       'In diesem Arbeitskontext ist noch ein Analyseentwurf offen. Entscheiden Sie zuerst, ob Sie ihn fortsetzen oder verwerfen möchten.',
     'manage.continueAnalysisDraft': 'Vorhandene Analyse fortsetzen',
+    'manage.renameScratchOccupied':
+      'Im Gesamtbestand liegt eine ungespeicherte Analyse. Sie muss zuerst gespeichert oder verworfen werden.',
     'manage.discardDraftAndOpenItem': 'Entwurf verwerfen und Eintrag öffnen',
     'manage.useInContext': 'Im Arbeitskontext verwenden',
     'manage.removeFromContext': 'Aus Arbeitskontext entfernen',
@@ -568,6 +619,54 @@ export const messages = {
       'Eine aktive Analyse mit diesem Namen ist bereits im Bestand. Wählen Sie einen anderen Namen; Ihr Entwurf bleibt erhalten.',
   },
   'en-GB': {
+    'manage.actionsFor': 'Actions for “{name}”',
+    'manage.selectionActions': 'Actions for selection',
+    'manage.selectedCount': '{count} selected',
+    'manage.clearSelection': 'Clear selection',
+    'manage.editContext': 'Edit working context',
+    'folders.path': 'Path',
+    'folders.subfolders': 'Subfolders',
+    'folders.presentation': 'Inventory view',
+    'folders.view': 'Folders',
+    'folders.unavailable': 'Folder destination unavailable',
+    'folders.chooseAvailable': 'Choose an available folder destination.',
+    'folders.origins': 'Origins',
+    'folders.unfiled': 'Unfiled',
+    'folders.new': 'New folder',
+    'folders.newChild': 'Create subfolder',
+    'folders.name': 'Folder name',
+    'folders.delete': 'Delete folder and subfolders',
+    'folders.include': 'Include folder in working context',
+    'folders.removeContext': 'Remove folder from working context',
+    'folders.selectItem': 'Select “{name}” for moving',
+    'folders.expand': 'Expand “{name}”',
+    'folders.collapse': 'Collapse “{name}”',
+    'folders.empty': 'No records',
+    'folders.noMatches': 'No matching records',
+    'folders.notLoaded': 'Records not loaded yet',
+    'folders.dialog.create': 'Create folder',
+    'folders.dialog.rename': 'Rename folder',
+    'folders.dialog.delete': 'Delete folder?',
+    'folders.dialog.include': 'Include in working context',
+    'folders.dialog.remove': 'Remove from working context?',
+    'folders.confirm.create': 'Create',
+    'folders.confirm.rename': 'Rename',
+    'folders.confirm.delete': 'Delete folder',
+    'folders.confirm.include': 'Include',
+    'folders.confirm.remove': 'Confirm removal',
+    'folders.includeDetail':
+      'This folder and its current subfolders will become destinations. Later records and subfolders will not be included automatically.',
+    'folders.includeItems': 'Also include the current records in these folders',
+    'folders.deleteDetail':
+      'This folder and all its subfolders will be deleted. Their records remain under “Unfiled”, with origins, working contexts, notes and work in progress unchanged.',
+    'folders.removeDetail':
+      'This folder, its current subfolders and the records filed there will be removed from this working context. The following work will be deleted. Inventory and other contexts remain unchanged.',
+    'folders.failed':
+      'The change was not applied. Check the folder name and destination; names must be unique within their parent folder.',
+    'folders.saveDestination': 'Location',
+    'folders.inheritDestination': 'Origin folder',
+    'name.suggestion': 'This name is already taken. Available: “{name}”',
+    'name.useSuggestion': 'Use suggestion',
     'loss.none': 'No associated notes or analysis work states are affected.',
     'loss.references': 'Bound references',
     'loss.notes': 'Bound notes',
@@ -652,8 +751,8 @@ export const messages = {
 
     'manage.contents': 'Contents',
 
-    'manage.referenceCount':
-      '{count, plural, =0 {No references} one {# reference} other {# references}}',
+    'manage.itemCount':
+      '{count, plural, =0 {No items} one {# item} other {# items}}',
 
     'manage.allInventory': 'All inventory',
     'manage.inventoryScope': 'Inventory scope',
@@ -675,6 +774,8 @@ export const messages = {
     'manage.openAnalysisDraftDetail':
       'An analysis draft is still open in this context. Decide first whether to continue or discard it.',
     'manage.continueAnalysisDraft': 'Continue existing analysis',
+    'manage.renameScratchOccupied':
+      'All inventory has an unsaved analysis. It must be saved or discarded first.',
     'manage.discardDraftAndOpenItem': 'Discard draft and open item',
     'manage.useInContext': 'Use in context',
     'manage.removeFromContext': 'Remove from context',

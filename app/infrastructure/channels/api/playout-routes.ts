@@ -174,6 +174,14 @@ export function registerPlayoutRoutes(
     async (request) =>
       completePlayoutResultDto(
         await dependencies.completePlayout.execute({
+          ...(request.body.folderId === undefined
+            ? {}
+            : {
+                folderId:
+                  request.body.folderId === null
+                    ? null
+                    : parseLocalId('inventory-folder', request.body.folderId),
+              }),
           ...expected(request.body),
           completionId: request.body.completionId,
           ...(request.body.manualResult === undefined

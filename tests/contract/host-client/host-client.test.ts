@@ -51,15 +51,26 @@ test('rediscovering lifecycle mutations never replay after connection loss', asy
     scope: { kind: 'free' as const },
     area: 'manage' as const,
     expectedResumeVersion: 1,
-    presentation: 'list' as const,
+    presentation: 'folders' as const,
   };
   const deletion = { expectedCurrentRevisionId: '8', expectedDataRevision: 12 };
+  const presentation = {
+    scope: { kind: 'free' as const },
+    expectedResumeVersion: 1,
+    presentation: 'origins' as const,
+  };
   for (const invoke of [
     () => client.setStartupResume(startup),
     () => client.setWorkScopeResume(resume),
+    () => client.setManagementPresentation(presentation),
     () => client.removeContextItem('2', '7', confirmation),
     () => client.deleteWorkingContext('2', confirmation),
     () => client.deleteInventoryItem('7', deletion),
+    () =>
+      client.changeInventoryOrganization({
+        expectedDataRevision: 12,
+        change: { kind: 'delete_folder', folderId: '3' },
+      }),
   ])
     await assert.rejects(
       invoke,
@@ -70,9 +81,17 @@ test('rediscovering lifecycle mutations never replay after connection loss', asy
   assert.deepEqual(writes, [
     { path: '/workspace/startup', body: startup },
     { path: '/workspace/resume', body: resume },
+    { path: '/workspace/management-presentation', body: presentation },
     { path: '/working-contexts/2/items/7', body: confirmation },
     { path: '/working-contexts/2', body: confirmation },
     { path: '/inventory/items/7', body: deletion },
+    {
+      path: '/inventory/organization',
+      body: {
+        expectedDataRevision: 12,
+        change: { kind: 'delete_folder', folderId: '3' },
+      },
+    },
   ]);
 });
 

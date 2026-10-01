@@ -25,6 +25,14 @@ need Git and the Node.js and pnpm versions listed under `engines.node` and
 pnpm install --frozen-lockfile
 ```
 
+Script commands check dependencies but never install them automatically. After
+changes to the package files, run `pnpm install --frozen-lockfile` again if needed.
+If pnpm asks to recreate `node_modules` entirely, cancel first: a different pnpm
+store may be the cause. Compare `pnpm config get storeDir` with `storeDir` in
+`node_modules/.modules.yaml`. Add `--store-dir "<previous store root>"` to the
+install command to keep using the previous store without changing global
+configuration. Do not include the version subdirectory, such as `v11`.
+
 Start the Host and Desktop in two separate terminals in the repository:
 
 ```powershell

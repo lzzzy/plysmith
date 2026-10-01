@@ -23,6 +23,7 @@ import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprin
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
+import { creationFolder } from './sqlite-inventory-organization.ts';
 import { removeContextItemUsage } from './sqlite-context-item.ts';
 import { readInventoryItemUsage } from './sqlite-revision-impact-state.ts';
 import {
@@ -966,10 +967,15 @@ function clonePinnedRevision(
     .prepare(
       `INSERT INTO inventory_item
          (item_type, origin_kind, lifecycle, current_revision_id,
-          created_at_utc, updated_at_utc)
-       VALUES ('analysis', ?, 'active', NULL, ?, ?)`,
+          created_at_utc, updated_at_utc, folder_id)
+       VALUES ('analysis', ?, 'active', NULL, ?, ?, ?)`,
     )
-    .run(source.originKind, occurredAt, occurredAt);
+    .run(
+      source.originKind,
+      occurredAt,
+      occurredAt,
+      creationFolder(database, undefined, impact.itemId),
+    );
   const itemId = localId('inventory-item', Number(itemInsert.lastInsertRowid));
   const revisionInsert = database
     .prepare(

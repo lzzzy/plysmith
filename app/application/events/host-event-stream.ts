@@ -15,6 +15,8 @@ import type {
 import type {
   AnalysisRecordCreated,
   InventoryChangedPublisher,
+  InventoryOrganizationChanged,
+  InventoryOrganizationChangedPublisher,
   InventoryItemDeleted,
   InventoryItemDeletedPublisher,
   InventoryRevisionSaved,
@@ -32,6 +34,7 @@ import type {
 } from '../playout/index.ts';
 
 export type HostEvent =
+  | InventoryOrganizationChangedHostEvent
   | PreferenceUiLanguageChangedHostEvent
   | AnalysisScratchChangedHostEvent
   | AnalysisContributionCreatedHostEvent
@@ -48,6 +51,14 @@ export type HostEvent =
   | WorkspaceItemRemovedHostEvent
   | WorkspaceResumeUpdatedHostEvent
   | ReplayGapHostEvent;
+
+export interface InventoryOrganizationChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'inventory.organization-changed';
+  readonly payload: Pick<
+    InventoryOrganizationChanged,
+    'folderId' | 'contextId' | 'itemIds'
+  >;
+}
 
 export interface PreferenceUiLanguageChangedHostEvent extends HostEventMetadata {
   readonly kind: 'preference.ui-language-changed';
@@ -201,6 +212,7 @@ export class HostEventStream
     AnalysisContributionCreatedPublisher,
     AnalysisContributionChangedPublisher,
     InventoryChangedPublisher,
+    InventoryOrganizationChangedPublisher,
     InventoryItemDeletedPublisher,
     InventoryRevisionSavedPublisher,
     PlayoutChangedPublisher,
@@ -230,6 +242,7 @@ export class HostEventStream
   }
 
   publish(event: UiLanguageChanged): void;
+  publish(event: InventoryOrganizationChanged): void;
   publish(event: AnalysisScratchChanged): void;
   publish(event: AnalysisContributionCreated): void;
   publish(event: AnalysisContributionChanged): void;
@@ -242,6 +255,7 @@ export class HostEventStream
   publish(
     event:
       | UiLanguageChanged
+      | InventoryOrganizationChanged
       | AnalysisScratchChanged
       | AnalysisContributionCreated
       | AnalysisContributionChanged
@@ -363,6 +377,7 @@ export class HostEventStream
 }
 
 type PublishableEvent =
+  | InventoryOrganizationChanged
   | InventoryItemDeleted
   | UiLanguageChanged
   | AnalysisScratchChanged
@@ -379,6 +394,20 @@ function toHostEvent(
   metadata: HostEventMetadata,
 ): Exclude<HostEvent, ReplayGapHostEvent> {
   switch (event.kind) {
+    case 'inventory.organization-changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          ...(event.folderId === undefined ? {} : { folderId: event.folderId }),
+          ...(event.contextId === undefined
+            ? {}
+            : { contextId: event.contextId }),
+          ...(event.itemIds === undefined
+            ? {}
+            : { itemIds: Object.freeze([...event.itemIds]) }),
+        }),
+      });
     case 'inventory.item-deleted':
       return Object.freeze({
         ...metadata,

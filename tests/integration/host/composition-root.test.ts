@@ -106,7 +106,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 7,
+      schemaVersion: 8,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');

@@ -1,5 +1,6 @@
 export {
   HostEventSchema,
+  InventoryOrganizationChangedEventSchema,
   UiLanguageChangedEventSchema,
   ReplayGapEventSchema,
   AnalysisScratchChangedEventSchema,

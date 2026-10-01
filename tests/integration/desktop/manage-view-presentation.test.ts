@@ -8,6 +8,7 @@ import { createElement, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'react-intl';
 import type { SearchInventoryResultDto } from '../../../app/infrastructure/channels/host_client/index.ts';
+import { messages } from '../../../app/infrastructure/channels/ui/renderer/messages.ts';
 
 let ManageView: ComponentType<{ state: unknown; store: unknown }>;
 
@@ -73,6 +74,12 @@ function render(
     free?: boolean;
     ancestorMember?: boolean;
     query?: string;
+    itemCount?: number;
+    folders?: boolean;
+    linkedFolders?: boolean;
+    contextOnly?: boolean;
+    folderContextItemCount?: number;
+    inspectedFolderId?: string | null;
     inventory?: Pick<
       SearchInventoryResultDto,
       'items' | 'ancestors' | 'provenanceEdges'
@@ -84,7 +91,8 @@ function render(
     displayName: 'Preparation',
     purpose: 'Existing description',
     contextVersion: 7,
-    referenceCount: 1,
+    referenceCount: 0,
+    itemCount: options.itemCount ?? 1,
     pendingRevisionImpactCount: 0,
   };
   return renderToStaticMarkup(
@@ -92,7 +100,7 @@ function render(
       IntlProvider,
       {
         locale: 'en-GB',
-        messages: {},
+        messages: options.itemCount === undefined ? {} : messages['en-GB'],
         onError: () => undefined,
       },
       createElement(ManageView, {
@@ -104,6 +112,7 @@ function render(
           contexts: { contexts: [context] },
           contextWorkspace: {
             context,
+            members: [],
             references: [],
             pendingRevisionImpacts: [],
           },
@@ -122,7 +131,24 @@ function render(
             ],
           },
           inventoryQuery: options.query ?? '',
-          inventoryContextOnly: true,
+          inventoryOrganization: {
+            folders: options.folders
+              ? [
+                  {
+                    folderId: 'folder',
+                    displayName: 'Openings',
+                    itemCount: 1,
+                    contextItemCount: options.folderContextItemCount ?? 0,
+                    contextLinkCount: 0,
+                  },
+                ]
+              : [],
+            linkedFolderIds: options.linkedFolders ? ['folder'] : [],
+            dataRevision: 0,
+          },
+          inventoryPresentation: options.folders ? 'folders' : 'origins',
+          inspectedInventoryFolderId: options.inspectedFolderId,
+          inventoryContextOnly: options.contextOnly ?? true,
           selectedInventoryItemId: options.selected ? 'child' : undefined,
           analysis: {},
           refreshing: false,
@@ -136,6 +162,12 @@ function render(
 function buttons(markup: string): readonly string[] {
   return markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 }
+
+test('context sidebar and inspector count canonical items without anchor references', () => {
+  const markup = render({ itemCount: 3 });
+  assert.equal((markup.match(/3 items/g) ?? []).length, 2);
+  assert.doesNotMatch(markup, /No references|No items/);
+});
 
 test('empty inventory, context and search are distinct with relevant actions', () => {
   const empty = { items: [], ancestors: [], provenanceEdges: [] };
@@ -157,24 +189,100 @@ test('inventory scope is the single page heading without a redundant activity ti
   assert.equal((markup.match(/<h1\b/g) ?? []).length, 1);
 });
 
-test('context inspector immediately exposes name and description with save and cancel', () => {
+test('context inspector is read-only and editing is exposed on the active context row', () => {
   const markup = render();
-  assert.match(markup, /id="context-edit-name"[^>]*value="Preparation"/);
-  assert.match(
-    markup,
-    /<textarea[^>]*id="context-edit-purpose"[^>]*>Existing description<\/textarea>/,
-  );
+  assert.match(markup, /Existing description/);
+  assert.doesNotMatch(markup, /context-edit-name|context-edit-purpose/);
   assert.ok(
-    buttons(markup).some(
-      (button) =>
-        button.includes('manage.saveContext') && button.includes('disabled'),
-    ),
+    buttons(markup).some((button) => button.includes('manage.editContext')),
   );
-  assert.ok(buttons(markup).some((button) => button.includes('action.cancel')));
   assert.doesNotMatch(
     markup,
     /manage\.(eyebrow|title|selection|workScope|contextBoundary|nextStep)/,
   );
+});
+
+test('folder inspection replaces the item preview and never exposes global actions on the right', () => {
+  const markup = render({
+    selected: true,
+    free: true,
+    folders: true,
+    inspectedFolderId: 'folder',
+    itemCount: 1,
+  });
+  const inspector = markup.match(
+    /<aside\b[^>]*aria-labelledby="inspector-title"[^>]*>([\s\S]*?)<\/aside>/,
+  )?.[1];
+  assert.ok(inspector);
+  assert.match(inspector, /Openings|Path/);
+  assert.doesNotMatch(inspector, /Record child|<button|<input|<textarea/);
+  assert.match(markup, /aria-pressed="true"[^>]*>[\s\S]*?Openings/);
+});
+
+test('item row retains rename and deletion but no move command or inspector management buttons', () => {
+  const markup = render({ selected: true, free: true, itemCount: 1 });
+  const inspector = markup.match(
+    /<aside\b[^>]*aria-labelledby="inspector-title"[^>]*>([\s\S]*?)<\/aside>/,
+  )?.[1];
+  assert.ok(inspector);
+  assert.doesNotMatch(
+    inspector,
+    /Rename|Delete from inventory|Move|<input|<textarea/,
+  );
+  for (const label of ['Rename', 'Delete from inventory'])
+    assert.ok(buttons(markup).some((button) => button.includes(label)));
+  assert.doesNotMatch(markup, /aria-label="Move"|lucide-folder-input/);
+  assert.ok(
+    markup.indexOf('<strong>Record child</strong>') <
+      markup.indexOf('aria-label="Rename"'),
+  );
+});
+
+test('folder and item context removal use minus while inventory deletion alone uses trash', () => {
+  const markup = render({ member: true, folders: true, linkedFolders: true });
+  const removalButtons = buttons(markup).filter((button) =>
+    /folders.removeContext|manage.removeFromContext/.test(button),
+  );
+  assert.equal(removalButtons.length, 2);
+  for (const button of removalButtons) {
+    assert.match(button, /lucide-minus/);
+    assert.doesNotMatch(button, /lucide-trash/);
+  }
+  const deleteButton = buttons(markup).find((button) =>
+    button.includes('manage.deleteInventoryItem'),
+  );
+  assert.ok(deleteButton);
+  assert.match(deleteButton, /lucide-trash/);
+});
+
+test('global folder and item rows expose no move action', () => {
+  const markup = render({ free: true, folders: true });
+  assert.doesNotMatch(markup, /folders.move|lucide-folder-input/);
+  assert.match(markup, /draggable="true"/);
+});
+
+test('all-inventory folder actions reflect context links and member locations, not the view', () => {
+  for (const [linkedFolders, folderContextItemCount, action] of [
+    [true, 0, 'folders.removeContext'],
+    [false, 1, 'folders.removeContext'],
+    [false, 0, 'folders.include'],
+  ] as const) {
+    const markup = render({
+      folders: true,
+      contextOnly: false,
+      linkedFolders,
+      folderContextItemCount,
+    });
+    const folderActions = buttons(markup).filter((button) =>
+      /folders.removeContext|folders.include/.test(button),
+    );
+    assert.equal(folderActions.length, 1);
+    assert.match(folderActions[0]!, new RegExp(action));
+    assert.match(
+      folderActions[0]!,
+      action === 'folders.removeContext' ? /lucide-minus/ : /lucide-plus/,
+    );
+  }
 });
 
 test('named-context nonmembers retain global rename but cannot start analysis', () => {

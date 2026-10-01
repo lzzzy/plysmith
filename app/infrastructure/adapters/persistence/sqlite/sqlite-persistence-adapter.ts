@@ -15,6 +15,9 @@ import type {
 } from '../../../../application/analysis/index.ts';
 import type {
   InventoryReader,
+  InventoryOrganizationReader,
+  InventoryOrganizationWriter,
+  InventoryNameAvailabilityReader,
   InventoryLifecycleReader,
   InventoryLifecycleWriter,
   InventoryRevisionReader,
@@ -44,6 +47,7 @@ import type {
 import type {
   AddContextReferenceRequest,
   SetWorkScopeResumeRequest,
+  SetManagementPresentationRequest,
   WorkingContextReader,
   WorkingContextWriter,
   StartupResumePort,
@@ -58,6 +62,12 @@ import type {
 } from '../../../../domain/identity/index.ts';
 import type { WorkingContextDraft } from '../../../../domain/workspace/index.ts';
 import { migrateStore } from './migrate.ts';
+import {
+  readInventoryOrganization,
+  changeInventoryOrganization,
+  previewContextFolderRemoval,
+  checkInventoryNameAvailability,
+} from './sqlite-inventory-organization.ts';
 import {
   createAnalysisRecord as writeAnalysisRecord,
   readAnalysisRecordView,
@@ -111,6 +121,7 @@ import {
   readWorkingContextWorkspace,
   removeContextItem as writeRemoveContextItem,
   setWorkScopeResume as writeWorkScopeResume,
+  setManagementPresentation as writeManagementPresentation,
   readWorkScopeWorkspace,
   readStartupResume,
   setStartupResume as writeStartupResume,
@@ -139,6 +150,9 @@ export class SqlitePersistenceAdapter
     PreferencesUnitOfWork,
     StoreStatusReader,
     InventoryReader,
+    InventoryOrganizationReader,
+    InventoryOrganizationWriter,
+    InventoryNameAvailabilityReader,
     InventoryLifecycleReader,
     InventoryLifecycleWriter,
     StartupResumePort,
@@ -192,6 +206,47 @@ export class SqlitePersistenceAdapter
 
   async readUserPreferences(): Promise<UserPreferences> {
     return this.#readSnapshot((reader) => readPreferences(reader));
+  }
+
+  async readInventoryOrganization(
+    request: Parameters<
+      InventoryOrganizationReader['readInventoryOrganization']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      readInventoryOrganization(reader, request),
+    );
+  }
+
+  async previewContextFolderRemoval(
+    request: Parameters<
+      InventoryOrganizationReader['previewContextFolderRemoval']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      previewContextFolderRemoval(reader, request),
+    );
+  }
+
+  async checkInventoryNameAvailability(
+    request: Parameters<
+      InventoryNameAvailabilityReader['checkInventoryNameAvailability']
+    >[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      checkInventoryNameAvailability(reader, request),
+    );
+  }
+
+  changeInventoryOrganization(
+    request: Parameters<
+      InventoryOrganizationWriter['changeInventoryOrganization']
+    >[0],
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      changeInventoryOrganization(this.#writer, request, occurredAt),
+    );
   }
 
   async previewInventoryItemDeletion(
@@ -431,6 +486,15 @@ export class SqlitePersistenceAdapter
   setWorkScopeResume(request: SetWorkScopeResumeRequest, occurredAt: string) {
     return this.#enqueueWrite(() =>
       writeWorkScopeResume(this.#writer, request, occurredAt),
+    );
+  }
+
+  setManagementPresentation(
+    request: SetManagementPresentationRequest,
+    occurredAt: string,
+  ) {
+    return this.#enqueueWrite(() =>
+      writeManagementPresentation(this.#writer, request, occurredAt),
     );
   }
 

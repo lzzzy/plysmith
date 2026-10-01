@@ -13,6 +13,7 @@ import { FormattedMessage, IntlProvider, useIntl } from 'react-intl';
 
 import { AnalysisView } from './analysis-view.tsx';
 import { ManageView } from './manage-view.tsx';
+import { ErrorNotice } from './error-notice.tsx';
 import { messages } from './messages.ts';
 import {
   type ActivityId,
@@ -174,7 +175,10 @@ function ApplicationFrame({
         )}
 
         {state.errorCode !== undefined && (
-          <ErrorNotice errorCode={state.errorCode} />
+          <ErrorNotice
+            errorCode={state.errorCode}
+            className={styles.errorNotice}
+          />
         )}
         <div className={styles.announcement} aria-live="polite">
           {state.announcement !== undefined && (
@@ -253,38 +257,4 @@ function UnavailableState({ onRetry }: { readonly onRetry: () => void }) {
       </Button>
     </div>
   );
-}
-
-function ErrorNotice({ errorCode }: { readonly errorCode: string }) {
-  return (
-    <div className={styles.errorNotice} role="alert">
-      <AlertTriangle aria-hidden="true" size={16} />
-      <FormattedMessage id={errorMessageId(errorCode)} />
-    </div>
-  );
-}
-
-function errorMessageId(errorCode: string): string {
-  if (errorCode === 'inventory.display_name_conflict')
-    return 'error.inventoryNameConflict';
-  if (errorCode === 'chess.invalid_fen') return 'error.invalidFen';
-  if (errorCode === 'chess.illegal_move') return 'error.illegalMove';
-  if (errorCode === 'chess.invalid_move_input') return 'error.invalidMove';
-  if (errorCode === 'workspace.context_version_conflict')
-    return 'error.contextChanged';
-  if (errorCode === 'workspace.inventory_work_not_allowed')
-    return 'error.workOutsideContext';
-  if (errorCode.endsWith('revision_conflict')) return 'error.revision';
-  if (errorCode === 'workspace.reference_exists')
-    return 'error.referenceExists';
-  if (errorCode === 'playout.provider_timeout') return 'error.engineTimeout';
-  if (
-    errorCode.startsWith('playout.provider_') ||
-    errorCode === 'playout.move_policy_unavailable' ||
-    errorCode === 'playout.capability_missing' ||
-    errorCode === 'playout.illegal_engine_move'
-  )
-    return 'error.engine';
-  if (errorCode === 'host.unavailable') return 'error.unavailable';
-  return 'error.generic';
 }

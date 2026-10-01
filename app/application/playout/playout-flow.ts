@@ -529,6 +529,7 @@ export class CompletePlayout implements CompletePlayoutUseCase {
       throw invalidPlayout();
     }
     return this.#dependencies.writer.completePlayout({
+      ...(request.folderId === undefined ? {} : { folderId: request.folderId }),
       scope: request.scope,
       draftId: request.draftId,
       expectedDraftRevision: request.expectedDraftRevision,

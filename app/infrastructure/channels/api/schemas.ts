@@ -27,6 +27,123 @@ export const UiLocaleSchema = Type.Union([
 ]);
 
 export const EmptyQuerySchema = Type.Object({}, objectOptions);
+export const InventoryOrganizationQuerySchema = Type.Object(
+  { contextId: Type.Optional(localId) },
+  { ...objectOptions, $id: 'InventoryOrganizationQuery' },
+);
+export const InventoryOrganizationSchema = Type.Object(
+  {
+    folders: Type.Array(
+      Type.Object(
+        {
+          folderId: localId,
+          parentFolderId: Type.Optional(localId),
+          displayName: Type.String(),
+          itemCount: revision,
+          contextLinkCount: revision,
+          contextItemCount: Type.Optional(revision),
+        },
+        objectOptions,
+      ),
+    ),
+    linkedFolderIds: Type.Array(localId),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'InventoryOrganization' },
+);
+export const ChangeInventoryOrganizationBodySchema = Type.Object(
+  {
+    expectedDataRevision: revision,
+    change: Type.Union([
+      Type.Object(
+        {
+          kind: Type.Literal('create_folder'),
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+          parentFolderId: Type.Optional(localId),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('rename_folder'),
+          folderId: localId,
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('move_folder'),
+          folderId: localId,
+          parentFolderId: Type.Optional(localId),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        { kind: Type.Literal('delete_folder'), folderId: localId },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('move_items'),
+          itemIds: Type.Array(localId, { minItems: 1, uniqueItems: true }),
+          folderId: Type.Optional(localId),
+          contextId: Type.Optional(localId),
+          workContextId: Type.Optional(localId),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('include_folder'),
+          folderId: localId,
+          contextId: localId,
+          includeItems: Type.Boolean(),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('remove_context_folder'),
+          folderId: localId,
+          contextId: localId,
+        },
+        objectOptions,
+      ),
+    ]),
+  },
+  { ...objectOptions, $id: 'ChangeInventoryOrganizationBody' },
+);
+export const ChangeInventoryOrganizationResultSchema = Type.Object(
+  {
+    dataRevision: revision,
+    folderId: Type.Optional(localId),
+  },
+  { ...objectOptions, $id: 'ChangeInventoryOrganizationResult' },
+);
+export const ContextFolderRemovalQuerySchema = Type.Object(
+  {
+    folderId: localId,
+    contextId: localId,
+  },
+  { ...objectOptions, $id: 'ContextFolderRemovalQuery' },
+);
+export const InventoryNameAvailabilityQuerySchema = Type.Object(
+  {
+    displayName: Type.String({ minLength: 1, maxLength: 200 }),
+    excludingItemId: Type.Optional(localId),
+  },
+  { ...objectOptions, $id: 'InventoryNameAvailabilityQuery' },
+);
+export const InventoryNameAvailabilitySchema = Type.Object(
+  {
+    displayName: Type.String(),
+    available: Type.Boolean(),
+    suggestedDisplayName: Type.String(),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'InventoryNameAvailability' },
+);
 
 export const UserPreferencesSchema = Type.Object(
   {
@@ -738,6 +855,7 @@ export const AnalysisWorkspaceSchema = Type.Object(
     contextName: Type.Optional(Type.String({ minLength: 1, maxLength: 160 })),
     resumeVersion: Type.Optional(positiveRevision),
     scratch: Type.Optional(Type.Ref(AnalysisScratchSchema)),
+    scratchHasChanges: Type.Boolean(),
     record: Type.Optional(Type.Ref(AnalysisRecordSchema)),
     currentState: Type.Ref(ChessStateSchema),
     legalMoves: Type.Array(Type.Ref(CanonicalMoveSchema)),
@@ -871,6 +989,7 @@ export const UpdateAnalysisScratchResultSchema = Type.Object(
 
 export const CreateAnalysisRecordBodySchema = Type.Object(
   {
+    folderId: Type.Optional(Type.Union([localId, Type.Null()])),
     scope: Type.Ref(WorkScopeSchema),
     expectedScratchId: identifier,
     expectedScratchRevision: positiveRevision,
@@ -1328,6 +1447,7 @@ export const SubmitPlayoutMoveBodySchema = Type.Object(
 
 export const CompletePlayoutBodySchema = Type.Object(
   {
+    folderId: Type.Optional(Type.Union([localId, Type.Null()])),
     ...expectedPlayoutFields,
     completionId: identifier,
     manualResult: Type.Optional(
@@ -1454,6 +1574,7 @@ export const InventorySearchQuerySchema = Type.Object(
 
 export const InventorySearchItemSchema = Type.Object(
   {
+    folderId: Type.Optional(localId),
     lifecycle: Type.Union([
       Type.Literal('active'),
       Type.Literal('archived'),
@@ -1762,6 +1883,7 @@ export const WorkingContextSummarySchema = Type.Object(
     pinnedOrder: Type.Optional(revision),
     contextVersion: positiveRevision,
     referenceCount: revision,
+    itemCount: revision,
     pendingRevisionImpactCount: revision,
     managementResumeVersion: Type.Optional(positiveRevision),
     analysisResumeVersion: Type.Optional(positiveRevision),
@@ -1806,7 +1928,10 @@ export const ContextReferenceSummarySchema = Type.Object(
 export const ManagementResumeSchema = Type.Object(
   {
     resumeVersion: positiveRevision,
-    presentation: Type.Union([Type.Literal('list'), Type.Literal('atlas')]),
+    presentation: Type.Union([
+      Type.Literal('folders'),
+      Type.Literal('origins'),
+    ]),
     selectedItemId: Type.Optional(localId),
     selectedAnchorId: Type.Optional(localId),
     updatedAt: timestamp,
@@ -1848,6 +1973,21 @@ export const WorkingContextRevisionImpactSummarySchema = Type.Object(
 export const WorkingContextWorkspaceSchema = Type.Object(
   {
     context: Type.Ref(WorkingContextSummarySchema),
+    members: Type.Array(
+      Type.Object(
+        {
+          itemId: localId,
+          currentRevisionId: localId,
+          itemType: Type.Union([
+            Type.Literal('game'),
+            Type.Literal('analysis'),
+            Type.Literal('source'),
+          ]),
+          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+        },
+        objectOptions,
+      ),
+    ),
     references: Type.Array(Type.Ref(ContextReferenceSummarySchema)),
     pendingRevisionImpacts: Type.Array(
       Type.Ref(WorkingContextRevisionImpactSummarySchema),
@@ -1913,7 +2053,10 @@ export const SetWorkScopeResumeBodySchema = Type.Union(
         area: Type.Literal('manage'),
         scope: Type.Ref(WorkScopeSchema),
         expectedResumeVersion: Type.Union([positiveRevision, Type.Null()]),
-        presentation: Type.Union([Type.Literal('list'), Type.Literal('atlas')]),
+        presentation: Type.Union([
+          Type.Literal('folders'),
+          Type.Literal('origins'),
+        ]),
         selectedItemId: Type.Optional(localId),
         selectedAnchorId: Type.Optional(localId),
       },
@@ -1937,6 +2080,27 @@ export const SetWorkScopeResumeBodySchema = Type.Union(
     ),
   ],
   { $id: 'SetWorkScopeResumeBody' },
+);
+
+export const SetManagementPresentationBodySchema = Type.Object(
+  {
+    scope: Type.Ref(WorkScopeSchema),
+    expectedResumeVersion: Type.Union([positiveRevision, Type.Null()]),
+    presentation: Type.Union([
+      Type.Literal('folders'),
+      Type.Literal('origins'),
+    ]),
+  },
+  { ...objectOptions, $id: 'SetManagementPresentationBody' },
+);
+
+export const SetManagementPresentationResultSchema = Type.Object(
+  {
+    area: Type.Literal('manage'),
+    resume: Type.Ref(ManagementResumeSchema),
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'SetManagementPresentationResult' },
 );
 
 export const SetWorkScopeResumeResultSchema = Type.Union(
@@ -1967,6 +2131,7 @@ export const InventoryItemUsageSummarySchema = Type.Object(
     activeNoteCount: revision,
     noteMoveCount: revision,
     scratchCount: revision,
+    changedScratchCount: revision,
     scratchMoveCount: revision,
     scratchNoteCount: revision,
     managementResumeAffected: Type.Boolean(),
@@ -2124,6 +2289,7 @@ export const ContextRemovalPreviewSchema = Type.Object(
             {
               scratchId: identifier,
               scratchRevision: positiveRevision,
+              hasChanges: Type.Boolean(),
               stepCount: revision,
               noteBody: Type.Optional(Type.String()),
               intent: Type.Union([
@@ -2144,6 +2310,20 @@ export const ContextRemovalPreviewSchema = Type.Object(
     retainedPlayout: Type.Optional(contextPlayoutWork),
   },
   { ...objectOptions, $id: 'ContextRemovalPreview' },
+);
+
+export const ContextFolderRemovalPreviewSchema = Type.Object(
+  {
+    folderId: localId,
+    contextId: localId,
+    folderIds: Type.Array(localId),
+    linkedFolderIds: Type.Array(localId),
+    itemIds: Type.Array(localId),
+    loss: Type.Ref(InventoryItemUsageSummarySchema),
+    losses: ContextRemovalPreviewSchema.properties.losses,
+    dataRevision: revision,
+  },
+  { ...objectOptions, $id: 'ContextFolderRemovalPreview' },
 );
 
 export const RemoveContextItemBodySchema = Type.Object(
@@ -2199,6 +2379,22 @@ const eventMetadata = {
   subscriptionRevision: positiveRevision,
   correlationId: identifier,
 };
+
+export const InventoryOrganizationChangedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('inventory.organization-changed'),
+    payload: Type.Object(
+      {
+        folderId: Type.Optional(localId),
+        contextId: Type.Optional(localId),
+        itemIds: Type.Optional(Type.Array(localId)),
+      },
+      objectOptions,
+    ),
+  },
+  { ...objectOptions, $id: 'InventoryOrganizationChangedEvent' },
+);
 
 export const UiLanguageChangedEventSchema = Type.Object(
   {
@@ -2420,6 +2616,7 @@ export const HostEventSchema = Type.Union(
     Type.Ref(WorkspaceContextDeletedEventSchema),
     Type.Ref(WorkspaceStartupUpdatedEventSchema),
     Type.Ref(UiLanguageChangedEventSchema),
+    Type.Ref(InventoryOrganizationChangedEventSchema),
     Type.Ref(AnalysisScratchChangedEventSchema),
     Type.Ref(AnalysisContributionCreatedEventSchema),
     Type.Ref(AnalysisContributionChangedEventSchema),
@@ -2442,6 +2639,15 @@ export const EventHeadersSchema = Type.Object(
 );
 
 export const apiSchemas = [
+  InventoryOrganizationQuerySchema,
+  InventoryOrganizationSchema,
+  ChangeInventoryOrganizationBodySchema,
+  ChangeInventoryOrganizationResultSchema,
+  ContextFolderRemovalQuerySchema,
+  ContextFolderRemovalPreviewSchema,
+  InventoryNameAvailabilityQuerySchema,
+  InventoryNameAvailabilitySchema,
+  InventoryOrganizationChangedEventSchema,
   InventoryItemDeletedEventSchema,
   WorkspaceContextDeletedEventSchema,
   WorkspaceStartupUpdatedEventSchema,
@@ -2569,6 +2775,8 @@ export const apiSchemas = [
   AddContextReferenceResultSchema,
   RemoveContextItemResultSchema,
   SetWorkScopeResumeBodySchema,
+  SetManagementPresentationBodySchema,
+  SetManagementPresentationResultSchema,
   SetWorkScopeResumeResultSchema,
   ProblemDetailsSchema,
   UiLanguageChangedEventSchema,

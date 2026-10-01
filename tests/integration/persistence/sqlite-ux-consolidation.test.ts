@@ -113,7 +113,7 @@ test('context metadata uses CAS and preserves references and independent resumes
     scope: { kind: 'context', contextId },
     area: 'manage',
     expectedResumeVersion: null,
-    presentation: 'list',
+    presentation: 'folders',
     selectedItemId: record.itemId,
     selectedAnchorId: record.rootAnchorId,
   });

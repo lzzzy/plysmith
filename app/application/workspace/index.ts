@@ -48,10 +48,15 @@ export {
   SetWorkScopeResume,
   type SetWorkScopeResumeUseCase,
 } from './set-work-scope-resume.ts';
+export {
+  SetManagementPresentation,
+  type SetManagementPresentationUseCase,
+} from './set-management-presentation.ts';
 export type {
   AddContextReferenceRequest,
   AddContextReferenceResult,
   AnalysisResume,
+  ContextInventoryMemberSummary,
   ContextReferenceSummary,
   CreateWorkingContextRequest,
   CreateWorkingContextResult,
@@ -61,6 +66,8 @@ export type {
   RemoveContextItemResult,
   SetWorkScopeResumeRequest,
   SetWorkScopeResumeResult,
+  SetManagementPresentationRequest,
+  SetManagementPresentationResult,
   WorkingContextSummary,
   WorkingContextRevisionImpactSummary,
   WorkingContextWorkspace,
@@ -72,6 +79,7 @@ export type {
   WorkspaceClock,
   WorkingContextReader,
   WorkingContextWriter,
+  ManagementPresentationWriter,
 } from './workspace-ports.ts';
 export {
   contextReferenceConflict,

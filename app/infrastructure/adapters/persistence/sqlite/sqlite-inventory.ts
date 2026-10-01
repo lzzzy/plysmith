@@ -14,6 +14,7 @@ import {
 } from './sqlite-store-helpers.ts';
 
 interface InventoryRow {
+  readonly folderId: number | null;
   readonly lifecycle: InventorySearchItem['lifecycle'];
   readonly itemId: number;
   readonly currentRevisionId: number;
@@ -103,6 +104,7 @@ export function searchInventory(
 function inventorySql(withTextQuery: boolean, byId = false): string {
   return `
     SELECT i.item_id AS itemId,
+           i.folder_id AS folderId,
            i.lifecycle AS lifecycle,
            i.current_revision_id AS currentRevisionId,
            COALESCE(root_anchor.anchor_id, item_anchor.anchor_id) AS rootAnchorId,
@@ -268,6 +270,9 @@ function mapInventoryItem(
   return Object.freeze({
     lifecycle: row.lifecycle,
     itemId: localId('inventory-item', row.itemId),
+    ...(row.folderId === null
+      ? {}
+      : { folderId: localId('inventory-folder', row.folderId) }),
     currentRevisionId: localId('item-revision', row.currentRevisionId),
     rootAnchorId: localId('anchor', row.rootAnchorId),
     itemType: row.itemType,

@@ -416,6 +416,14 @@ function createStore(
     dataRevision: 0,
   };
   const client: PlysmithApplicationClient = {
+    getInventoryOrganization: async () => ({
+      folders: [],
+      linkedFolderIds: [],
+      dataRevision: 0,
+    }),
+    changeInventoryOrganization: unexpected,
+    previewContextFolderRemoval: unexpected,
+    checkInventoryNameAvailability: unexpected,
     getStartupResume: async () => startup,
     setStartupResume: async (request) => {
       assert.equal(request.expectedStartupVersion, startup.startupVersion);
@@ -499,6 +507,7 @@ function createStore(
     addContextReference: unexpected,
     removeContextItem: unexpected,
     setWorkScopeResume: unexpected,
+    setManagementPresentation: unexpected,
     analyzePosition: unexpected,
     startPlayout: unexpected,
     submitPlayoutMove: unexpected,
@@ -526,6 +535,7 @@ function createStore(
 
 function emptyAnalysis(): AnalysisWorkspaceDto {
   return {
+    scratchHasChanges: false,
     scope: { kind: 'free' },
     dataRevision: 0,
     allowedActions: ['start_scratch'],

@@ -1,4 +1,12 @@
 export {
+  InventoryFolderPolicyError,
+  inventoryFolderNameKey,
+  inventoryFolderSubtree,
+  validateInventoryFolderPlacement,
+  type InventoryFolder,
+  type InventoryFolderViolation,
+} from './inventory-folder.ts';
+export {
   createAnalysisRecordDraft,
   type AnalysisRecordDraft,
 } from './analysis-record.ts';
@@ -9,6 +17,7 @@ export {
 } from './game-record.ts';
 export {
   inventoryRevisionCandidateSteps,
+  inventoryRevisionHasChanges,
   planInventoryRevision,
   promoteAnalysisExplorationToRevision,
   type InventoryRevisionLine,

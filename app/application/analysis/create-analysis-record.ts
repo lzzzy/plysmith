@@ -132,6 +132,7 @@ export class CreateAnalysisRecord implements CreateAnalysisRecordUseCase {
     );
     const occurredAt = this.#clock.now();
     const result = await this.#writer.createAnalysisRecord({
+      ...(request.folderId === undefined ? {} : { folderId: request.folderId }),
       sourceScope: request.scope,
       expectedScratchId: request.expectedScratchId,
       expectedScratchRevision: request.expectedScratchRevision,

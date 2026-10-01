@@ -77,8 +77,10 @@ function validateResume(request: SetWorkScopeResumeRequest): void {
   }
   if (request.area === 'manage') {
     if (
+      (request.presentation !== 'folders' &&
+        request.presentation !== 'origins') ||
       (request.selectedItemId === undefined) !==
-      (request.selectedAnchorId === undefined)
+        (request.selectedAnchorId === undefined)
     ) {
       throw invalidResume();
     }

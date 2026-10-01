@@ -41,9 +41,7 @@ export async function requireInventoryWorkAccess(
   if (itemId !== undefined) {
     assertInventoryWorkAccess(
       scope,
-      workspace.references.some(
-        (reference) => reference.itemId.value === itemId.value,
-      ),
+      workspace.members.some((member) => member.itemId.value === itemId.value),
     );
   }
 }

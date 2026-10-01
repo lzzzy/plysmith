@@ -29,12 +29,13 @@ import {
 } from '../../../../domain/identity/index.ts';
 import {
   inventoryRevisionCandidateSteps,
+  inventoryRevisionHasChanges,
   type InventoryRevisionLine,
 } from '../../../../domain/inventory/index.ts';
 import type { WorkScope } from '../../../../domain/workspace/index.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
-import { readContextScratch } from './sqlite-analysis-scratch.ts';
+import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
 import { ensurePosition } from './sqlite-chess-state.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
@@ -420,10 +421,7 @@ function buildCandidate(
         }
       : {}),
   });
-  const noOp =
-    intent.displayName === base.displayName &&
-    intent.summary === base.summary &&
-    sameSteps(candidateSteps, base.steps);
+  const noOp = !inventoryRevisionHasChanges({ base: line, scratch });
   const dataRevision = readDataRevision(database);
   return Object.freeze({
     base,
@@ -1206,25 +1204,6 @@ function assertCurrentRevision(
   if (row?.currentRevisionId !== revisionId.value) {
     throw inventoryRevisionConflict();
   }
-}
-
-function sameSteps(
-  left: readonly AnalysisScratchStep[],
-  right: readonly AnalysisScratchStep[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((step, index) => {
-      const other = right[index];
-      return (
-        other !== undefined &&
-        step.move.from === other.move.from &&
-        step.move.to === other.move.to &&
-        step.move.promotion === other.move.promotion &&
-        step.after.fen === other.after.fen
-      );
-    })
-  );
 }
 
 function findPosition(
