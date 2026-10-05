@@ -15,6 +15,7 @@ import type {
   InventoryItemDeletionPreview,
   PreviewInventoryItemDeletionRequest,
   InventoryRevisionPreview,
+  InventoryRevisionComment,
   InventoryRevisionSaved,
   ListInventoryRevisionsResult,
   PendingRevisionImpact,
@@ -55,6 +56,7 @@ export interface InventoryRevisionReader {
     readonly anchorId?: AnchorId;
   }): Promise<AnalysisRecordView | undefined>;
   previewInventoryRevision(request: {
+    readonly comment?: InventoryRevisionComment;
     readonly scope: WorkScope;
     readonly scratch: AnalysisScratch;
   }): Promise<InventoryRevisionPreview>;
@@ -70,6 +72,7 @@ export interface InventoryRevisionReader {
 
 export interface InventoryRevisionWriter {
   saveInventoryRevision(request: {
+    readonly comment?: InventoryRevisionComment;
     readonly scope: WorkScope;
     readonly scratch: AnalysisScratch;
     readonly expectedScratchId: string;

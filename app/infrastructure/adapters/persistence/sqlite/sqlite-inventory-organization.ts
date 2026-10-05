@@ -67,7 +67,7 @@ export function readInventoryOrganization(
     .prepare(
       `SELECT folder_id AS folderId, count(*) AS itemCount,
     sum(CASE WHEN EXISTS (SELECT 1 FROM workspace_context_item AS member WHERE member.item_id = item.item_id AND member.context_id = ?) THEN 1 ELSE 0 END) AS contextItemCount
-    FROM inventory_item AS item WHERE lifecycle = 'active' AND folder_id IS NOT NULL GROUP BY folder_id`,
+    FROM inventory_item AS item WHERE lifecycle = 'active' AND current_revision_id IS NOT NULL AND folder_id IS NOT NULL GROUP BY folder_id`,
     )
     .all(request.contextId?.value ?? null) as {
     folderId: number;
@@ -131,7 +131,7 @@ function subtreeItems(
 ): readonly InventoryItemId[] {
   const rows = database
     .prepare(
-      `SELECT item_id AS itemId FROM inventory_item AS item WHERE (? IS NOT NULL OR lifecycle = 'active')
+      `SELECT item_id AS itemId FROM inventory_item AS item WHERE current_revision_id IS NOT NULL AND (? IS NOT NULL OR lifecycle = 'active')
     AND folder_id IN (${folderIds.map(() => '?').join(',')})
     AND (? IS NULL OR EXISTS (SELECT 1 FROM workspace_context_item AS member WHERE member.item_id = item.item_id AND member.context_id = ?)) ORDER BY item_id`,
     )
@@ -304,7 +304,7 @@ export function changeInventoryOrganization(
       if (
         database
           .prepare(
-            "SELECT 1 FROM inventory_item WHERE item_id = ? AND lifecycle = 'active'",
+            "SELECT 1 FROM inventory_item WHERE item_id = ? AND lifecycle = 'active' AND current_revision_id IS NOT NULL",
           )
           .get(itemId.value) === undefined
       )
@@ -472,7 +472,7 @@ export function checkInventoryNameAvailability(
     request.excludingItemId?.value,
   );
   let suggestedDisplayName = request.displayName;
-  const maxLength = request.excludingItemId === undefined ? 200 : 160;
+  const maxLength = 160;
   for (
     let suffix = 2;
     !inventoryDisplayNameIsAvailable(

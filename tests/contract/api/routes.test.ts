@@ -10,6 +10,7 @@ import {
 } from '../playout-fixtures.ts';
 import {
   buildFixture,
+  buildRouteFixture,
   createFixture,
   headers,
   occurredAt,
@@ -40,7 +41,7 @@ const initialPosition = {
 };
 
 test('working context reads expose canonical members independently from references', async (t) => {
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getWorkingContextWorkspace: {
       execute: async () => ({
         context: {
@@ -87,7 +88,7 @@ test('working context reads expose canonical members independently from referenc
 
 test('cancel completion binds scope and revision once and preserves the paused view', async (t) => {
   const received: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     cancelPlayoutCompletion: {
       execute: async (request) => {
         received.push(request);
@@ -124,7 +125,7 @@ test('cancel completion binds scope and revision once and preserves the paused v
 });
 
 test('cancel completion rejects malformed or extra input before invoking the use case', async (t) => {
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     cancelPlayoutCompletion: {
       execute: async () => assert.fail('invalid input reached the use case'),
     },
@@ -167,7 +168,7 @@ test('status includes the application read model and release handshake only', as
 
 test('context metadata route preserves version and explicit description clearing', async (t) => {
   const received: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     updateWorkingContextMetadata: {
       execute: async (request) => {
         received.push(request);
@@ -228,7 +229,7 @@ test('context metadata route preserves version and explicit description clearing
 });
 
 test('engine provider mutation routes bind concrete instance id paths', async (t) => {
-  const { host } = await buildFixture(t);
+  const { host } = await buildRouteFixture(t);
   for (const method of ['PUT', 'DELETE'] as const) {
     const response = await host.inject({
       method,
@@ -251,7 +252,8 @@ test('engine provider configuration read serializes each closed provider variant
       arguments: [],
       threads: 1,
       hashMb: 64,
-      moveTimeMs: 500,
+      detailLevels: { fast: 500, thorough: 1_500, very_deep: 5_000 },
+      playoutBudget: 'thorough' as const,
       startupTimeoutMs: 5_000,
       moveTimeoutMs: 10_000,
       stopTimeoutMs: 1_000,
@@ -275,7 +277,7 @@ test('engine provider configuration read serializes each closed provider variant
       restartRequired: true,
     },
   ];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getEngineProviderConfigurations: {
       execute: async () => ({ providers }),
     },
@@ -290,8 +292,51 @@ test('engine provider configuration read serializes each closed provider variant
   assert.deepEqual(response.json(), { providers });
 });
 
+test('Stockfish accepts exactly three configurable levels and one playout selection', async (t) => {
+  const { host } = await buildRouteFixture(t, {
+    previewEngineProviderConfiguration: {
+      execute: async () => ({ valid: true, issues: [] }),
+    },
+  });
+  const input = {
+    instanceId: 'stockfish-main',
+    providerType: 'stockfish-uci',
+    displayName: 'Stockfish',
+    executablePath: 'C:/engines/stockfish.exe',
+    arguments: [],
+    threads: 2,
+    hashMb: 64,
+    detailLevels: { fast: 500, thorough: 1_500, very_deep: 600_000 },
+    playoutBudget: 'thorough',
+    startupTimeoutMs: 5_000,
+    moveTimeoutMs: 10_000,
+    stopTimeoutMs: 1_000,
+    maxOutputBytes: 1_048_576,
+  };
+  for (const [payload, status] of [
+    [input, 200],
+    [{ ...input, playoutBudget: 'custom' }, 400],
+    [{ ...input, detailLevels: { fast: 500, thorough: 1_500 } }, 400],
+    [{ ...input, detailLevels: { ...input.detailLevels, extra: 5_000 } }, 400],
+    [{ ...input, detailLevels: { ...input.detailLevels, fast: 9 } }, 400],
+    [
+      { ...input, detailLevels: { ...input.detailLevels, very_deep: 600_001 } },
+      400,
+    ],
+    [{ ...input, moveTimeMs: 500 }, 400],
+  ] as const) {
+    const response = await host.inject({
+      method: 'POST',
+      url: '/engine-providers/configuration-preview',
+      headers,
+      payload,
+    });
+    assert.equal(response.statusCode, status, response.body);
+  }
+});
+
 test('Maia timeout validation matches the persisted provider schema', async (t) => {
-  const { host } = await buildFixture(t);
+  const { host } = await buildRouteFixture(t);
   const response = await host.inject({
     method: 'POST',
     url: '/engine-providers/configuration-preview',
@@ -314,7 +359,7 @@ test('Maia timeout validation matches the persisted provider schema', async (t) 
 
 test('context item removal binds both local ids and returns the removed relationship', async (t) => {
   const received: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     removeContextItem: {
       execute: async (request) => {
         received.push(request);
@@ -351,7 +396,7 @@ test('context item removal binds both local ids and returns the removed relation
 });
 
 test('real application use cases preserve success, no-op and stale-write semantics', async (t) => {
-  const { host, published } = await buildFixture(t);
+  const { host, published } = await buildRouteFixture(t);
   const initial = await host.inject({ url: '/preferences', headers });
   assert.equal(initial.json().uiLocale, 'de-DE');
   const noOp = await host.inject({
@@ -400,7 +445,7 @@ test('real application use cases preserve success, no-op and stale-write semanti
 
 test('diagnostic routes expose settings and manifest while keeping report targets write-only', async (t) => {
   const received: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     setDiagnosticLogLevel: {
       execute: async (request) => {
         received.push(request);
@@ -480,7 +525,7 @@ test('diagnostic write schemas reject invalid and additional fields before appli
       throw new Error('must not be called');
     },
   };
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     setDiagnosticLogLevel: unavailable,
     createDiagnosticReport: unavailable,
   });
@@ -533,7 +578,7 @@ test('diagnostic write schemas reject invalid and additional fields before appli
 });
 
 test('concurrent writes invoke the application once per request without retry', async (t) => {
-  const { host, published } = await buildFixture(t);
+  const { host, published } = await buildRouteFixture(t);
   const results = await Promise.all(
     [1, 2].map(() =>
       host.inject({
@@ -554,7 +599,7 @@ test('concurrent writes invoke the application once per request without retry', 
 test('request schema rejects extras, coercion, invalid languages and invalid revisions before application', async (t) => {
   let calls = 0;
   const fixture = createFixture();
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     setUiLanguage: {
       execute: (request) => {
         calls++;
@@ -594,7 +639,7 @@ test('request schema rejects extras, coercion, invalid languages and invalid rev
 });
 
 test('malformed JSON, missing routes, media type and oversized body use neutral problem details', async (t) => {
-  const { host } = await buildFixture(t);
+  const { host } = await buildRouteFixture(t);
   const scenarios = [
     {
       url: '/preferences/ui-language',
@@ -680,7 +725,7 @@ const applicationProblemCases = [
 
 test('application problems map to their stable status without exposing messages or arbitrary parameters', async (t) => {
   let problemCode: string;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     setUiLanguage: {
       execute: async () => {
         throw new ApplicationProblem(problemCode, 'C:/secret/CANARY', {
@@ -771,7 +816,7 @@ test('host problems and request diagnostics preserve the client correlation', as
 
 test('analysis query rejects inconsistent scopes and incomplete previews before application', async (t) => {
   let calls = 0;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getAnalysisWorkspace: {
       execute: async () => {
         calls += 1;
@@ -795,7 +840,7 @@ test('analysis query rejects inconsistent scopes and incomplete previews before 
 
 test('analysis setup validation is read-only and returns stable issues', async (t) => {
   let received: unknown;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     validateAnalysisSetup: {
       execute: async (request) => {
         received = request;
@@ -831,7 +876,7 @@ test('position analysis routes preserve provider capabilities and the exact focu
     readiness: 'ready' as const,
     status: 'available' as const,
   };
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     listPositionAnalysisProviders: { execute: () => [provider] },
     analyzePosition: {
       execute: async (request) => {
@@ -922,7 +967,7 @@ test('position analysis routes preserve provider capabilities and the exact focu
 });
 
 test('terminal Maia analysis needs no model WDL', async (t) => {
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     analyzePosition: {
       execute: async () => ({
         kind: 'human_policy' as const,
@@ -971,7 +1016,7 @@ test('terminal Maia analysis needs no model WDL', async (t) => {
 
 test('analysis note route maps explicit source and visibility ids without transport leakage', async (t) => {
   let received: unknown;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     createAnalysisNote: {
       execute: async (request) => {
         received = request;
@@ -1036,7 +1081,7 @@ test('position note routes map exact anchors and optimistic note revisions', asy
     contributionVersion: 2,
     dataRevision: 9,
   };
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     createPositionNote: {
       execute: async (request) => {
         received.push(request);
@@ -1146,7 +1191,7 @@ test('inventory revision write routes preserve scope, identity and preview bindi
     cursor: 0,
   };
   const fingerprint = `sha256:${'a'.repeat(64)}`;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     startInventoryRevision: {
       execute: async (request) => {
         received.push(['start', request]);
@@ -1330,7 +1375,7 @@ test('inventory revision write routes preserve scope, identity and preview bindi
 
 test('inventory revision reads and impact routes preserve historical and resolution semantics', async (t) => {
   const received: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getInventoryRevision: {
       execute: async (request) => {
         received.push(['get-revision', request]);
@@ -1503,7 +1548,7 @@ test('inventory revision reads and impact routes preserve historical and resolut
 
 test('HTTP scratch update maps the explicit return to exploration with its expected versions', async (t) => {
   let received;
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     updateAnalysisScratch: {
       execute: async (request) => {
         received = request;
@@ -1529,7 +1574,7 @@ test('HTTP scratch update maps the explicit return to exploration with its expec
 });
 
 test('iteration-two application problems keep stable status and zero revision sentinels', async (t) => {
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     updateAnalysisScratch: {
       execute: async () => {
         throw new ApplicationProblem(
@@ -1568,7 +1613,7 @@ test('explicit DTOs and response schemas prevent nested and top-level response l
     updatedAt: occurredAt,
     secret: 'CANARY',
   };
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getSystemStatus: {
       execute: async () => ({
         state: 'ready',

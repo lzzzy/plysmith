@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -113,14 +120,53 @@ test('engine provider settings are previewed, bound, versioned and removed atomi
 
   await writeFile(executablePath, 'replacement engine', 'utf8');
   const replaced = await save.execute({
-    input: { ...input(executablePath), moveTimeMs: 600 },
+    input: {
+      ...input(executablePath),
+      detailLevels: { fast: 600, thorough: 2_000, very_deep: 9_000 },
+      playoutBudget: 'very_deep',
+    },
     expectedConfigurationRevision: created.configurationRevision,
   });
   assert.notEqual(replaced.effectiveFingerprint, created.effectiveFingerprint);
+  const reloaded = (
+    await new FileEngineProviderConfigurationRepository(home).list()
+  ).find((provider) => provider.instanceId === 'stockfish-main');
+  assert.ok(reloaded?.providerType === 'stockfish-uci');
+  assert.deepEqual(reloaded.detailLevels, {
+    fast: 600,
+    thorough: 2_000,
+    very_deep: 9_000,
+  });
+  assert.equal(reloaded.playoutBudget, 'very_deep');
+  assert.equal(reloaded.threads, 1);
+  assert.equal(reloaded.hashMb, 64);
+  const document = JSON.parse(
+    await readFile(
+      path.join(home, 'configuration', 'active', 'stockfish-main.json'),
+      'utf8',
+    ),
+  );
+  assert.equal(document.schemaVersion, 2);
+  assert.equal('moveTimeMs' in document.stockfish, false);
+  const getAfterRestart = new GetEngineProviderConfigurations({
+    repository,
+    activeFingerprints: new Map([
+      [reloaded.instanceId, reloaded.effectiveFingerprint],
+    ]),
+  });
+  assert.equal(
+    (await getAfterRestart.execute()).providers.find(
+      (provider) => provider.instanceId === reloaded.instanceId,
+    )?.restartRequired,
+    false,
+  );
 
   await assert.rejects(
     save.execute({
-      input: { ...input(executablePath), moveTimeMs: 750 },
+      input: {
+        ...input(executablePath),
+        detailLevels: { fast: 750, thorough: 2_000, very_deep: 9_000 },
+      },
       expectedConfigurationRevision: created.configurationRevision,
     }),
     isProblem('configuration.engine_conflict'),
@@ -154,6 +200,87 @@ test('engine provider settings are previewed, bound, versioned and removed atomi
   };
   assert.deepEqual(afterRemoval.bindings.analysisEngines, ['maia-1900']);
   assert.deepEqual(afterRemoval.bindings.playoutEngines, ['maia-1900']);
+});
+
+test('directory paths cannot be previewed or saved as engine files or Maia weights', async (t) => {
+  const home = await configuredHome(t);
+  const active = path.join(home, 'configuration', 'active');
+  const centralPath = path.join(active, 'plysmith.json');
+  const centralBefore = await readFile(centralPath, 'utf8');
+  const repository = new FileEngineProviderConfigurationRepository(home);
+  const save = new SaveEngineProviderConfiguration(repository);
+  for (const [candidate, issue] of [
+    [input(home), 'executable_not_found'],
+    [
+      maiaInput(home, process.execPath, 'maia-executable', 1500),
+      'executable_not_found',
+    ],
+    [
+      maiaInput(process.execPath, home, 'maia-weights', 1500),
+      'weights_not_found',
+    ],
+  ] as const) {
+    assert.deepEqual(await repository.preview(candidate), {
+      valid: false,
+      issues: [issue],
+    });
+    await assert.rejects(
+      save.execute({ input: candidate, expectedConfigurationRevision: null }),
+      isProblem('configuration.engine_invalid'),
+    );
+  }
+  assert.deepEqual(await readdir(active), ['plysmith.json']);
+  assert.equal(await readFile(centralPath, 'utf8'), centralBefore);
+});
+
+test('incompatible Stockfish files stay untouched and block accidental same-id creation', async (t) => {
+  const home = await configuredHome(t);
+  const active = path.join(home, 'configuration', 'active');
+  const executablePath = path.join(home, 'stockfish.exe');
+  await writeFile(executablePath, 'fake engine', 'utf8');
+  const centralPath = path.join(active, 'plysmith.json');
+  const central = JSON.parse(await readFile(centralPath, 'utf8'));
+  central.bindings.analysisEngines = ['stockfish-main'];
+  central.bindings.playoutEngines = ['stockfish-main'];
+  await writeFile(centralPath, JSON.stringify(central), 'utf8');
+  const oldSettings: Record<string, unknown> = { ...input(executablePath) };
+  for (const field of [
+    'instanceId',
+    'providerType',
+    'displayName',
+    'detailLevels',
+    'playoutBudget',
+  ])
+    delete oldSettings[field];
+  const providerPath = path.join(active, 'stockfish-main.json');
+  const source = JSON.stringify({
+    schemaVersion: 1,
+    provider: 'stockfish-uci',
+    displayName: 'Stockfish',
+    stockfish: { ...oldSettings, moveTimeMs: 5_000 },
+  });
+  await writeFile(providerPath, source, 'utf8');
+  const repository = new FileEngineProviderConfigurationRepository(home);
+  assert.deepEqual(await repository.list(), []);
+  await assert.rejects(
+    new SaveEngineProviderConfiguration(repository).execute({
+      input: input(executablePath),
+      expectedConfigurationRevision: null,
+    }),
+    isProblem('configuration.engine_conflict'),
+  );
+  assert.equal(await readFile(providerPath, 'utf8'), source);
+  const repaired = JSON.parse(source);
+  repaired.schemaVersion = 2;
+  delete repaired.stockfish.moveTimeMs;
+  repaired.stockfish.detailLevels = {
+    fast: 500,
+    thorough: 1_500,
+    very_deep: 5_000,
+  };
+  repaired.stockfish.playoutBudget = 'thorough';
+  await writeFile(providerPath, JSON.stringify(repaired), 'utf8');
+  assert.equal((await repository.list())[0]?.instanceId, 'stockfish-main');
 });
 
 test('an engine configuration cannot overwrite another provider document', async (t) => {
@@ -198,7 +325,8 @@ function input(executablePath: string) {
     arguments: [] as readonly string[],
     threads: 1,
     hashMb: 64,
-    moveTimeMs: 500,
+    detailLevels: { fast: 500, thorough: 1_500, very_deep: 5_000 },
+    playoutBudget: 'thorough' as const,
     startupTimeoutMs: 5_000,
     moveTimeoutMs: 10_000,
     stopTimeoutMs: 1_000,

@@ -8,6 +8,8 @@ import { ChessBoardSurface } from './chess-board-surface.tsx';
 import { parseFenBoard, pieceName, sideName } from './chess-display.ts';
 import { inventoryContentPresentation } from './inventory-content-presentation.ts';
 import { GameOutcomeLabel } from './game-outcome-label.tsx';
+import { chessTreePath } from './chess-tree-presentation.ts';
+import { ChessTreeMoveList } from './chess-tree-view.tsx';
 import styles from './inventory-content-preview.module.css';
 
 export function InventoryContentPreview({
@@ -28,7 +30,14 @@ function InventoryContent({ record }: { readonly record: AnalysisRecordDto }) {
   const locale = intl.locale.startsWith('de') ? 'de-DE' : 'en-GB';
   const movesId = useId();
   const [cursor, setCursor] = useState(0);
-  const content = inventoryContentPresentation(record, cursor, locale);
+  const [branchAnchor, setBranchAnchor] = useState(record.rootAnchorId);
+  const previewRecord =
+    record.tree === undefined
+      ? record
+      : { ...record, ...chessTreePath(record, branchAnchor) };
+  const content = inventoryContentPresentation(previewRecord, cursor, locale);
+  const currentAnchor =
+    previewRecord.steps[content.cursor - 1]?.anchorId ?? record.rootAnchorId;
   const pieces = new Map(
     [...parseFenBoard(content.state.fen)].map(([square, piece]) => [
       square,
@@ -155,7 +164,7 @@ function InventoryContent({ record }: { readonly record: AnalysisRecordDto }) {
         <h3 id={movesId}>
           <FormattedMessage id="analysis.moveList" defaultMessage="Moves" />
         </h3>
-        {content.moves.length === 0 ? (
+        {(record.tree?.nodes.length ?? record.steps.length) === 0 ? (
           <p className={styles.empty}>
             <FormattedMessage
               id="inventory.content.noMoves"
@@ -163,18 +172,15 @@ function InventoryContent({ record }: { readonly record: AnalysisRecordDto }) {
             />
           </p>
         ) : (
-          <div className={styles.moves}>
-            {content.moves.map((move) => (
-              <Button
-                key={move.ply}
-                className={styles.moveButton!}
-                aria-current={content.cursor === move.ply ? 'step' : false}
-                onPress={() => setCursor(move.ply)}
-              >
-                {move.label}
-              </Button>
-            ))}
-          </div>
+          <ChessTreeMoveList
+            record={record}
+            anchorId={currentAnchor}
+            disabled={false}
+            onSelect={(anchorId) => {
+              setBranchAnchor(anchorId);
+              setCursor(chessTreePath(record, anchorId).cursor);
+            }}
+          />
         )}
       </section>
       {content.source !== undefined && (

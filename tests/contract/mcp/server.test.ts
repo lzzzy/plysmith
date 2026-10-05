@@ -91,6 +91,11 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
   assert.deepEqual(
     tools.map((tool) => tool.name),
     [
+      'register_import_input',
+      'prepare_import',
+      'check_import_names',
+      'publish_import',
+      'discard_import',
       'get_system_status',
       'get_user_preferences',
       'get_diagnostic_settings',
@@ -173,8 +178,31 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       },
     },
   });
-  assert.equal(tools[0]?.annotations?.readOnlyHint, true);
-  assert.equal(tools[1]?.annotations?.readOnlyHint, true);
+  assert.equal(
+    tools.find((tool) => tool.name === 'get_system_status')?.annotations
+      ?.readOnlyHint,
+    true,
+  );
+  assert.equal(
+    tools.find((tool) => tool.name === 'get_user_preferences')?.annotations
+      ?.readOnlyHint,
+    true,
+  );
+  assert.equal(
+    tools.find((tool) => tool.name === 'check_import_names')?.annotations
+      ?.readOnlyHint,
+    true,
+  );
+  assert.equal(
+    tools.find((tool) => tool.name === 'publish_import')?.annotations
+      ?.idempotentHint,
+    false,
+  );
+  assert.equal(
+    tools.find((tool) => tool.name === 'discard_import')?.annotations
+      ?.idempotentHint,
+    true,
+  );
   assert.equal(languageTool?.annotations?.readOnlyHint, false);
   assert.equal(languageTool?.annotations?.idempotentHint, false);
   assert.equal(
@@ -1484,4 +1512,123 @@ test('error wrappers and fields outside the shared problem contract are not expo
   });
   const result = await client.callTool({ name: 'get_system_status' });
   assertToolData(result, revisionConflict);
+});
+
+test('slim import MCP methods forward complete requests exactly once without rewriting names', async (t) => {
+  const previewId = '12345678-1234-1234-1234-123456789abc';
+  const descriptor = {
+    inputHandle: previewId,
+    displayName: 'study.pgn',
+    inputSize: 100,
+  };
+  const preview = {
+    previewId,
+    sourceDisplayName: 'study.pgn',
+    inputSize: 100,
+    encoding: 'utf-8' as const,
+    formatId: 'pgn',
+    candidates: [],
+  };
+  const checks = {
+    candidates: [
+      {
+        sourceOrder: 0,
+        displayName: 'x'.repeat(159),
+        available: false,
+        suggestedDisplayName: 'x'.repeat(159) + ' (2)',
+      },
+    ],
+    dataRevision: 1,
+  };
+  const published = {
+    items: [{ sourceOrder: 0, itemId: '2', revisionId: '3' }],
+    folderId: '4',
+    dataRevision: 2,
+  };
+  const { client, calls } = await connectMcp(t, {
+    registerImportInput: async () => descriptor,
+    prepareImport: async () => preview,
+    checkImportNames: async () => checks,
+    publishImport: async () => published,
+    discardImport: async () => ({ discarded: true }),
+  });
+  const steps = [
+    [
+      'register_import_input',
+      'registerImportInput',
+      { inputLocator: 'C:/study.pgn' },
+      descriptor,
+    ],
+    [
+      'prepare_import',
+      'prepareImport',
+      { inputHandle: previewId, languageTag: 'en-GB', formatId: 'pgn' },
+      preview,
+    ],
+    [
+      'check_import_names',
+      'checkImportNames',
+      { candidates: [{ sourceOrder: 0, displayName: 'x'.repeat(159) }] },
+      checks,
+    ],
+    [
+      'publish_import',
+      'publishImport',
+      {
+        previewId,
+        candidates: [
+          {
+            sourceOrder: 0,
+            itemType: 'analysis',
+            displayName: 'study.pgn - Chapter',
+          },
+        ],
+        folder: { kind: 'new', displayName: 'study.pgn', parentFolderId: '1' },
+        confirmWarnings: true,
+      },
+      published,
+    ],
+    ['discard_import', 'discardImport', { previewId }, { discarded: true }],
+  ] as const;
+  for (const [name, , args, expected] of steps) {
+    assertToolData(await client.callTool({ name, arguments: args }), expected);
+  }
+  assert.deepEqual(
+    calls,
+    steps.map(([, method, request]) => ({ method, request })),
+  );
+});
+
+test('slim import MCP rejects removed plan and context fields before delegation', async (t) => {
+  const { client, calls } = await connectMcp(t);
+  const previewId = '12345678-1234-1234-1234-123456789abc';
+  for (const [name, args] of [
+    [
+      'prepare_import',
+      { inputHandle: previewId, languageTag: 'de-DE', targetContextId: '1' },
+    ],
+    [
+      'publish_import',
+      {
+        previewId,
+        candidates: [
+          { sourceOrder: 0, displayName: 'Chapter', itemType: 'analysis' },
+        ],
+        folder: { kind: 'unfiled' },
+        confirmWarnings: false,
+        expectedPlanRevision: 1,
+      },
+    ],
+    ['discard_import', { previewId, operationId: previewId }],
+    ['check_import_names', { candidates: [], contextDestination: '1' }],
+  ] as const) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true);
+    assert.ok(
+      result.structuredContent && typeof result.structuredContent === 'object',
+    );
+    assert.ok('code' in result.structuredContent);
+    assert.equal(result.structuredContent.code, 'request.invalid');
+  }
+  assert.deepEqual(calls, []);
 });

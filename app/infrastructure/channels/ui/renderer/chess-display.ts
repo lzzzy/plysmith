@@ -96,6 +96,24 @@ export function pieceName(piece: BoardPiece, locale: UiLocale): string {
   return `${names[piece.colour]} ${names[piece.kind]}`;
 }
 
+export function formatMoveSequence(
+  steps: readonly {
+    readonly before: {
+      readonly playState: { readonly fullmoveNumber: number };
+      readonly position: { readonly sideToMove: 'white' | 'black' };
+    };
+    readonly move: { readonly san: string };
+  }[],
+  locale: UiLocale,
+): string {
+  return steps
+    .map(
+      (step) =>
+        `${step.before.playState.fullmoveNumber}${step.before.position.sideToMove === 'black' ? '...' : '.'} ${localizeSan(step.move.san, locale)}`,
+    )
+    .join(' ');
+}
+
 export function sideName(side: PieceColour, locale: UiLocale): string {
   if (locale === 'de-DE') return side === 'white' ? 'Weiß' : 'Schwarz';
   return side === 'white' ? 'White' : 'Black';

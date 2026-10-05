@@ -29,7 +29,8 @@ const stockfish: EngineProviderConfigurationDto = {
   arguments: [],
   threads: 1,
   hashMb: 64,
-  moveTimeMs: 500,
+  detailLevels: { fast: 500, thorough: 1_500, very_deep: 5_000 },
+  playoutBudget: 'thorough',
   startupTimeoutMs: 5_000,
   moveTimeoutMs: 10_000,
   stopTimeoutMs: 1_000,
@@ -416,6 +417,12 @@ function createStore(
     dataRevision: 0,
   };
   const client: PlysmithApplicationClient = {
+    registerImportInput: async () =>
+      assert.fail('no import operation expected'),
+    prepareImport: async () => assert.fail('no import operation expected'),
+    publishImport: async () => assert.fail('no import operation expected'),
+    discardImport: async () => assert.fail('no import operation expected'),
+    checkImportNames: async () => assert.fail('no import operation expected'),
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],

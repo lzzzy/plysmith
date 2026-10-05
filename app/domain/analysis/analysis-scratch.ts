@@ -24,7 +24,12 @@ export type AnalysisScratchIntent =
   | { readonly kind: 'exploration' }
   | {
       readonly kind: 'inventory_revision';
-      readonly mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata';
+      readonly mode:
+        | 'extend'
+        | 'truncate_after'
+        | 'replace_move'
+        | 'metadata'
+        | 'add_variation';
       readonly itemId: InventoryItemId;
       readonly baseRevisionId: ItemRevisionId;
       readonly cutAnchorId: AnchorId;
@@ -89,6 +94,9 @@ export function appendAnalysisMove(
   scratch: AnalysisScratch,
   applied: AppliedMove,
 ): AnalysisScratch {
+  if (scratch.cursor !== scratch.steps.length) {
+    throw new Error('Only the final analysis position can be continued.');
+  }
   if (
     applied.before.position.positionKey !==
       currentAnalysisState(scratch).position.positionKey ||
@@ -96,7 +104,7 @@ export function appendAnalysisMove(
   ) {
     throw new Error('The applied move does not continue the scratch cursor.');
   }
-  const steps = [...scratch.steps.slice(0, scratch.cursor), applied];
+  const steps = [...scratch.steps, applied];
   return freezeScratch({
     ...withoutNoteDraft(scratch),
     scratchRevision: scratch.scratchRevision + 1,

@@ -12,6 +12,41 @@ import { createAnalysisRecordDraft } from '../../../app/domain/inventory/index.t
 
 const rules = new ChessJsRulesAdapter();
 
+test('analysis creation shares the inventory name budget', () => {
+  const empty = startAnalysisScratch('budget', rules.initialState());
+  const scratch = appendAnalysisMove(
+    empty,
+    requireMove(empty, { kind: 'coordinates', value: 'e2e4' }),
+  );
+  const input = { displayName: 'x'.repeat(160), languageTag: 'en-GB', scratch };
+  assert.equal(createAnalysisRecordDraft(input).displayName.length, 160);
+  assert.throws(() =>
+    createAnalysisRecordDraft({ ...input, displayName: 'x'.repeat(161) }),
+  );
+});
+
+test('analysis creation accepts the complete editable note budget', () => {
+  const empty = startAnalysisScratch('budget', rules.initialState());
+  const scratch = appendAnalysisMove(
+    empty,
+    requireMove(empty, { kind: 'coordinates', value: 'e2e4' }),
+  );
+  const input = { displayName: 'Budget check', languageTag: 'en-GB', scratch };
+  assert.equal(
+    createAnalysisRecordDraft({
+      ...input,
+      scratch: prepareAnalysisNote(scratch, 'x'.repeat(128000)),
+    }).note?.body.length,
+    128000,
+  );
+  assert.throws(() =>
+    createAnalysisRecordDraft({
+      ...input,
+      scratch: prepareAnalysisNote(scratch, 'x'.repeat(128001)),
+    }),
+  );
+});
+
 test('an analysis record keeps its optional comment separate from its move path', () => {
   let scratch = startAnalysisScratch('scratch-1', rules.initialState());
   scratch = appendAnalysisMove(

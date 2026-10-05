@@ -76,6 +76,7 @@ export type {
   InventoryRevisionContextImpactSummary,
   InventoryRevisionFollowingContextSummary,
   InventoryRevisionPreview,
+  InventoryRevisionComment,
   InventoryRevisionSaved,
   InventoryRevisionSummary,
   InventorySearchItem,
@@ -128,3 +129,12 @@ export {
   PreviewInventoryItemDeletion,
   type PreviewInventoryItemDeletionUseCase,
 } from './preview-inventory-item-deletion.ts';
+export {
+  ActiveImportPreviews,
+  RegisterImportInput,
+  PrepareImport,
+  CheckImportNames,
+  PublishImport,
+  DiscardImport,
+} from './import-use-cases.ts';
+export { normalizeInventoryRevisionComment } from './inventory-revision-comment.ts';

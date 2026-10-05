@@ -45,7 +45,7 @@
             "type": "string"
           },
           "body": {
-            "maxLength": 8000,
+            "maxLength": 128000,
             "type": "string"
           },
           "contextId": {
@@ -74,7 +74,6 @@
             "items": {
               "$ref": "#/components/schemas/CanonicalMove"
             },
-            "maxItems": 1000,
             "type": "array"
           },
           "scopeKind": {
@@ -444,7 +443,6 @@
             "type": "string"
           },
           "cursor": {
-            "maximum": 1000,
             "minimum": 0,
             "type": "integer"
           },
@@ -667,12 +665,66 @@
             "items": {
               "$ref": "#/components/schemas/AnalysisRecordStep"
             },
-            "maxItems": 1000,
             "type": "array"
           },
           "summary": {
             "maxLength": 2000,
             "type": "string"
+          },
+          "tree": {
+            "additionalProperties": false,
+            "properties": {
+              "nodes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "$ref": "#/components/schemas/ChessState"
+                    },
+                    "anchorId": {
+                      "pattern": "^[1-9]\\d{0,15}$",
+                      "type": "string"
+                    },
+                    "move": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    },
+                    "nodeIndex": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "parentNodeIndex": {
+                      "anyOf": [
+                        {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "siblingOrder": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "nodeIndex",
+                    "parentNodeIndex",
+                    "siblingOrder",
+                    "anchorId",
+                    "move",
+                    "after"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "nodes"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -789,7 +841,6 @@
         "additionalProperties": false,
         "properties": {
           "cursor": {
-            "maximum": 1000,
             "minimum": 0,
             "type": "integer"
           },
@@ -800,14 +851,13 @@
             "additionalProperties": false,
             "properties": {
               "body": {
-                "maxLength": 8000,
+                "maxLength": 128000,
                 "type": "string"
               },
               "moves": {
                 "items": {
                   "$ref": "#/components/schemas/CanonicalMove"
                 },
-                "maxItems": 1000,
                 "type": "array"
               }
             },
@@ -838,7 +888,6 @@
             "items": {
               "$ref": "#/components/schemas/AnalysisStep"
             },
-            "maxItems": 1000,
             "type": "array"
           }
         },
@@ -1385,7 +1434,6 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
             "type": "array"
           }
         },
@@ -2056,6 +2104,39 @@
         ],
         "type": "object"
       },
+      "CheckImportNamesBody": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "displayName": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceOrder": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sourceOrder",
+                "displayName"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "candidates"
+        ],
+        "type": "object"
+      },
       "ChessState": {
         "additionalProperties": false,
         "properties": {
@@ -2198,7 +2279,7 @@
             "type": "string"
           },
           "displayName": {
-            "maxLength": 200,
+            "maxLength": 160,
             "minLength": 1,
             "type": "string"
           },
@@ -3391,7 +3472,7 @@
             "type": "string"
           },
           "body": {
-            "maxLength": 8000,
+            "maxLength": 128000,
             "minLength": 1,
             "type": "string"
           },
@@ -3755,6 +3836,31 @@
         ],
         "type": "object"
       },
+      "DiscardImportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "previewId": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "previewId"
+        ],
+        "type": "object"
+      },
+      "DiscardImportResult": {
+        "additionalProperties": false,
+        "properties": {
+          "discarded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "discarded"
+        ],
+        "type": "object"
+      },
       "DiscardPlayoutResult": {
         "additionalProperties": false,
         "properties": {
@@ -3786,6 +3892,32 @@
                 "pattern": "^sha256:[a-f0-9]{64}$",
                 "type": "string"
               },
+              "detailLevels": {
+                "additionalProperties": false,
+                "properties": {
+                  "fast": {
+                    "maximum": 600000,
+                    "minimum": 10,
+                    "type": "integer"
+                  },
+                  "thorough": {
+                    "maximum": 600000,
+                    "minimum": 10,
+                    "type": "integer"
+                  },
+                  "very_deep": {
+                    "maximum": 600000,
+                    "minimum": 10,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "fast",
+                  "thorough",
+                  "very_deep"
+                ],
+                "type": "object"
+              },
               "displayName": {
                 "maxLength": 160,
                 "minLength": 1,
@@ -3816,15 +3948,32 @@
                 "minimum": 1024,
                 "type": "integer"
               },
-              "moveTimeMs": {
-                "maximum": 600000,
-                "minimum": 10,
-                "type": "integer"
-              },
               "moveTimeoutMs": {
                 "maximum": 660000,
                 "minimum": 100,
                 "type": "integer"
+              },
+              "playoutBudget": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "fast"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "thorough"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "very_deep"
+                    ],
+                    "type": "string"
+                  }
+                ]
               },
               "providerType": {
                 "enum": [
@@ -3863,7 +4012,8 @@
               "arguments",
               "threads",
               "hashMb",
-              "moveTimeMs",
+              "detailLevels",
+              "playoutBudget",
               "configurationRevision",
               "effectiveFingerprint",
               "restartRequired"
@@ -4249,6 +4399,611 @@
           "selectionMode",
           "historyMode",
           "reproducibility"
+        ],
+        "type": "object"
+      },
+      "ImportCandidatePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "findings": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "disposition": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "preserved"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "normalized"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "preserved_opaque"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "unsupported"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "invalid"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                "feature": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "nodeIndex": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "severity": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "info"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "warning"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "error"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "code",
+                "disposition",
+                "severity",
+                "feature"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "moveCount": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rootFen": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "sourceOrder": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ready"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "warning"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "rejected"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "suggestedName": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "variationCount": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sourceOrder",
+          "status",
+          "suggestedName",
+          "moveCount",
+          "variationCount",
+          "findings"
+        ],
+        "type": "object"
+      },
+      "ImportFidelityFinding": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "enum": [
+                  "preserved"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "normalized"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "preserved_opaque"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "unsupported"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "invalid"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "feature": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "nodeIndex": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "info"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "warning"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "error"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "disposition",
+          "severity",
+          "feature"
+        ],
+        "type": "object"
+      },
+      "ImportFolderDestination": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "unfiled"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "folderId": {
+                "pattern": "^[1-9][0-9]{0,15}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "existing"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "folderId"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "displayName": {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "new"
+                ],
+                "type": "string"
+              },
+              "parentFolderId": {
+                "pattern": "^[1-9][0-9]{0,15}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "displayName"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "ImportInputDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "inputHandle": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          },
+          "inputSize": {
+            "maximum": 16777216,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "inputHandle",
+          "displayName",
+          "inputSize"
+        ],
+        "type": "object"
+      },
+      "ImportNameChecks": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "displayName": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceOrder": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "suggestedDisplayName": {
+                  "maxLength": 256,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "sourceOrder",
+                "displayName",
+                "available",
+                "suggestedDisplayName"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "dataRevision": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "candidates",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "ImportPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "findings": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "code": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "disposition": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "preserved"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "normalized"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "preserved_opaque"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "unsupported"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "invalid"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "feature": {
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "nodeIndex": {
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "severity": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "info"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "warning"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "error"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "code",
+                      "disposition",
+                      "severity",
+                      "feature"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 1000,
+                  "type": "array"
+                },
+                "moveCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rootFen": {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                "sourceOrder": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "ready"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "warning"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "rejected"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                "suggestedName": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "variationCount": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sourceOrder",
+                "status",
+                "suggestedName",
+                "moveCount",
+                "variationCount",
+                "findings"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "utf-8"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "iso-8859-1"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "formatId": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "inputSize": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "previewId": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          },
+          "sourceDisplayName": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "previewId",
+          "sourceDisplayName",
+          "inputSize",
+          "encoding",
+          "formatId",
+          "candidates"
+        ],
+        "type": "object"
+      },
+      "ImportPublished": {
+        "additionalProperties": false,
+        "properties": {
+          "dataRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "folderId": {
+            "pattern": "^[1-9][0-9]{0,15}$",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "itemId": {
+                  "pattern": "^[1-9][0-9]{0,15}$",
+                  "type": "string"
+                },
+                "revisionId": {
+                  "pattern": "^[1-9][0-9]{0,15}$",
+                  "type": "string"
+                },
+                "sourceOrder": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "revisionId",
+                "sourceOrder"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "dataRevision"
         ],
         "type": "object"
       },
@@ -4790,6 +5545,30 @@
         },
         "type": "object"
       },
+      "InventoryRevisionComment": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "maxLength": 128000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "languageTag": {
+            "maxLength": 35,
+            "minLength": 1,
+            "type": "string"
+          },
+          "noteScope": {
+            "$ref": "#/components/schemas/AnalysisNoteScope"
+          }
+        },
+        "required": [
+          "body",
+          "languageTag",
+          "noteScope"
+        ],
+        "type": "object"
+      },
       "InventoryRevisionContextImpactSummary": {
         "additionalProperties": false,
         "properties": {
@@ -4841,6 +5620,11 @@
             "minimum": 0,
             "type": "integer"
           },
+          "changedScratchCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "contextId": {
             "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
@@ -4875,6 +5659,7 @@
           "updatedAutomatically",
           "referenceCount",
           "contributionCount",
+          "changedScratchCount",
           "managementResumeCount",
           "analysisResumeCount"
         ],
@@ -4885,6 +5670,12 @@
           {
             "enum": [
               "extend"
+            ],
+            "type": "string"
+          },
+          {
+            "enum": [
+              "add_variation"
             ],
             "type": "string"
           },
@@ -4933,7 +5724,6 @@
             "items": {
               "$ref": "#/components/schemas/AnalysisStep"
             },
-            "maxItems": 1000,
             "type": "array"
           },
           "affectedContexts": {
@@ -4990,7 +5780,6 @@
             "items": {
               "$ref": "#/components/schemas/AnalysisStep"
             },
-            "maxItems": 1000,
             "type": "array"
           },
           "summary": {
@@ -5122,6 +5911,9 @@
       "InventoryRevisionScratchBody": {
         "additionalProperties": false,
         "properties": {
+          "comment": {
+            "$ref": "#/components/schemas/InventoryRevisionComment"
+          },
           "expectedScratchId": {
             "maxLength": 160,
             "minLength": 1,
@@ -6014,7 +6806,6 @@
             "items": {
               "$ref": "#/components/schemas/PlayoutStep"
             },
-            "maxItems": 1000,
             "type": "array"
           }
         },
@@ -6088,7 +6879,6 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
             "type": "array"
           }
         },
@@ -6960,6 +7750,57 @@
           }
         ]
       },
+      "PrepareImportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "encoding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "utf-8"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "iso-8859-1"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "formatId": {
+            "maxLength": 100,
+            "minLength": 1,
+            "type": "string"
+          },
+          "inputHandle": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          },
+          "languageTag": {
+            "anyOf": [
+              {
+                "enum": [
+                  "de-DE"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "en-GB"
+                ],
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "inputHandle",
+          "languageTag"
+        ],
+        "type": "object"
+      },
       "PreviewEngineProviderConfigurationBody": {
         "$ref": "#/components/schemas/EngineProviderConfigurationInput"
       },
@@ -7047,6 +7888,12 @@
             "minimum": 1,
             "type": "integer"
           },
+          "mode": {
+            "enum": [
+              "add_variation"
+            ],
+            "type": "string"
+          },
           "scope": {
             "$ref": "#/components/schemas/WorkScope"
           }
@@ -7057,6 +7904,145 @@
           "anchorId",
           "expectedScratchId",
           "expectedScratchRevision"
+        ],
+        "type": "object"
+      },
+      "PublishImportBody": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "displayName": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "itemType": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "analysis"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "game"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                "sourceOrder": {
+                  "maximum": 100000,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sourceOrder",
+                "itemType",
+                "displayName"
+              ],
+              "type": "object"
+            },
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "confirmWarnings": {
+            "type": "boolean"
+          },
+          "folder": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "unfiled"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "folderId": {
+                    "pattern": "^[1-9][0-9]{0,15}$",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "existing"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "folderId"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "displayName": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "new"
+                    ],
+                    "type": "string"
+                  },
+                  "parentFolderId": {
+                    "pattern": "^[1-9][0-9]{0,15}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "displayName"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "previewId": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "previewId",
+          "candidates",
+          "folder",
+          "confirmWarnings"
+        ],
+        "type": "object"
+      },
+      "RegisterImportInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "inputLocator": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputLocator"
         ],
         "type": "object"
       },
@@ -7229,7 +8215,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "displayName": {
-                    "maxLength": 200,
+                    "maxLength": 160,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -7371,6 +8357,9 @@
       "SaveInventoryRevisionBody": {
         "additionalProperties": false,
         "properties": {
+          "comment": {
+            "$ref": "#/components/schemas/InventoryRevisionComment"
+          },
           "expectedScratchId": {
             "maxLength": 160,
             "minLength": 1,
@@ -7401,6 +8390,10 @@
       "SaveInventoryRevisionResult": {
         "additionalProperties": false,
         "properties": {
+          "commentContributionId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
           "currentAnchorId": {
             "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
@@ -8011,6 +9004,10 @@
               }
             ]
           },
+          "lineAnchorId": {
+            "pattern": "^[1-9]\\d{0,15}$",
+            "type": "string"
+          },
           "mode": {
             "$ref": "#/components/schemas/InventoryRevisionMode"
           },
@@ -8581,6 +9578,32 @@
             "maxItems": 32,
             "type": "array"
           },
+          "detailLevels": {
+            "additionalProperties": false,
+            "properties": {
+              "fast": {
+                "maximum": 600000,
+                "minimum": 10,
+                "type": "integer"
+              },
+              "thorough": {
+                "maximum": 600000,
+                "minimum": 10,
+                "type": "integer"
+              },
+              "very_deep": {
+                "maximum": 600000,
+                "minimum": 10,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "fast",
+              "thorough",
+              "very_deep"
+            ],
+            "type": "object"
+          },
           "displayName": {
             "maxLength": 160,
             "minLength": 1,
@@ -8606,15 +9629,32 @@
             "minimum": 1024,
             "type": "integer"
           },
-          "moveTimeMs": {
-            "maximum": 600000,
-            "minimum": 10,
-            "type": "integer"
-          },
           "moveTimeoutMs": {
             "maximum": 660000,
             "minimum": 100,
             "type": "integer"
+          },
+          "playoutBudget": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fast"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "thorough"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "very_deep"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "providerType": {
             "enum": [
@@ -8650,7 +9690,8 @@
           "arguments",
           "threads",
           "hashMb",
-          "moveTimeMs"
+          "detailLevels",
+          "playoutBudget"
         ],
         "type": "object"
       },
@@ -8920,7 +9961,7 @@
         "additionalProperties": false,
         "properties": {
           "body": {
-            "maxLength": 8000,
+            "maxLength": 128000,
             "minLength": 1,
             "type": "string"
           },
@@ -9232,7 +10273,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "body": {
-                    "maxLength": 8000,
+                    "maxLength": 128000,
                     "type": "string"
                   },
                   "kind": {
@@ -10410,7 +11451,7 @@
   },
   "info": {
     "title": "Plysmith Application Host",
-    "version": "0.1.0-alpha.6"
+    "version": "0.1.0-alpha.7"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -10725,7 +11766,7 @@
                 "additionalProperties": false,
                 "properties": {
                   "body": {
-                    "maxLength": 8000,
+                    "maxLength": 128000,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -11164,7 +12205,7 @@
                     "type": "string"
                   },
                   "body": {
-                    "maxLength": 8000,
+                    "maxLength": 128000,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -11712,7 +12753,7 @@
                         "additionalProperties": false,
                         "properties": {
                           "body": {
-                            "maxLength": 8000,
+                            "maxLength": 128000,
                             "type": "string"
                           },
                           "kind": {
@@ -13704,6 +14745,812 @@
         }
       }
     },
+    "/inventory/import-inputs": {
+      "post": {
+        "operationId": "RegisterImportInput",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "inputLocator": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "inputLocator"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportInputDescriptor"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/imports/discard": {
+      "post": {
+        "operationId": "DiscardImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "previewId": {
+                    "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "previewId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscardImportResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/imports/names": {
+      "post": {
+        "operationId": "CheckImportNames",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidates": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "displayName": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "sourceOrder": {
+                          "maximum": 100000,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "sourceOrder",
+                        "displayName"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1000,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "candidates"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportNameChecks"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/imports/preview": {
+      "post": {
+        "operationId": "PrepareImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "encoding": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "utf-8"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "iso-8859-1"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "formatId": {
+                    "maxLength": 100,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "inputHandle": {
+                    "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+                    "type": "string"
+                  },
+                  "languageTag": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "de-DE"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "en-GB"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "inputHandle",
+                  "languageTag"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPreview"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/imports/publish": {
+      "post": {
+        "operationId": "PublishImport",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "candidates": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "displayName": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "itemType": {
+                          "anyOf": [
+                            {
+                              "enum": [
+                                "analysis"
+                              ],
+                              "type": "string"
+                            },
+                            {
+                              "enum": [
+                                "game"
+                              ],
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "sourceOrder": {
+                          "maximum": 100000,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "sourceOrder",
+                        "itemType",
+                        "displayName"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1000,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "confirmWarnings": {
+                    "type": "boolean"
+                  },
+                  "folder": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "unfiled"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "folderId": {
+                            "pattern": "^[1-9][0-9]{0,15}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "existing"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "folderId"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "displayName": {
+                            "maxLength": 160,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "new"
+                            ],
+                            "type": "string"
+                          },
+                          "parentFolderId": {
+                            "pattern": "^[1-9][0-9]{0,15}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "displayName"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "previewId": {
+                    "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "previewId",
+                  "candidates",
+                  "folder",
+                  "confirmWarnings"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportPublished"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
     "/inventory/items/{itemId}": {
       "delete": {
         "operationId": "DeleteInventoryItem",
@@ -14087,6 +15934,10 @@
                       }
                     ]
                   },
+                  "lineAnchorId": {
+                    "pattern": "^[1-9]\\d{0,15}$",
+                    "type": "string"
+                  },
                   "mode": {
                     "$ref": "#/components/schemas/InventoryRevisionMode"
                   },
@@ -14261,6 +16112,12 @@
                     "maximum": 9007199254740991,
                     "minimum": 1,
                     "type": "integer"
+                  },
+                  "mode": {
+                    "enum": [
+                      "add_variation"
+                    ],
+                    "type": "string"
                   },
                   "scope": {
                     "$ref": "#/components/schemas/WorkScope"
@@ -15385,6 +17242,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "comment": {
+                    "$ref": "#/components/schemas/InventoryRevisionComment"
+                  },
                   "expectedScratchId": {
                     "maxLength": 160,
                     "minLength": 1,
@@ -15524,6 +17384,9 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "comment": {
+                    "$ref": "#/components/schemas/InventoryRevisionComment"
+                  },
                   "expectedScratchId": {
                     "maxLength": 160,
                     "minLength": 1,
@@ -16613,7 +18476,7 @@
                     "type": "string"
                   },
                   "displayName": {
-                    "maxLength": 200,
+                    "maxLength": 160,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -19807,7 +21670,7 @@
                         "additionalProperties": false,
                         "properties": {
                           "displayName": {
-                            "maxLength": 200,
+                            "maxLength": 160,
                             "minLength": 1,
                             "type": "string"
                           },

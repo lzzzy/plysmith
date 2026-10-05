@@ -115,3 +115,4 @@ export {
   invalidAnalysisSetup,
   invalidAnalysisUpdate,
 } from './analysis-problems.ts';
+export { validatePositionNoteInput } from './create-position-note.ts';

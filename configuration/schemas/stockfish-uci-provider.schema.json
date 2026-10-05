@@ -12,7 +12,7 @@
       "type": "string"
     },
     "schemaVersion": {
-      "const": 1,
+      "const": 2,
       "type": "number"
     },
     "stockfish": {
@@ -25,6 +25,32 @@
           },
           "maxItems": 32,
           "type": "array"
+        },
+        "detailLevels": {
+          "additionalProperties": false,
+          "properties": {
+            "fast": {
+              "maximum": 600000,
+              "minimum": 10,
+              "type": "integer"
+            },
+            "thorough": {
+              "maximum": 600000,
+              "minimum": 10,
+              "type": "integer"
+            },
+            "very_deep": {
+              "maximum": 600000,
+              "minimum": 10,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fast",
+            "thorough",
+            "very_deep"
+          ],
+          "type": "object"
         },
         "executablePath": {
           "maxLength": 1024,
@@ -41,15 +67,26 @@
           "minimum": 1024,
           "type": "integer"
         },
-        "moveTimeMs": {
-          "maximum": 600000,
-          "minimum": 10,
-          "type": "integer"
-        },
         "moveTimeoutMs": {
           "maximum": 660000,
           "minimum": 100,
           "type": "integer"
+        },
+        "playoutBudget": {
+          "anyOf": [
+            {
+              "const": "fast",
+              "type": "string"
+            },
+            {
+              "const": "thorough",
+              "type": "string"
+            },
+            {
+              "const": "very_deep",
+              "type": "string"
+            }
+          ]
         },
         "startupTimeoutMs": {
           "maximum": 60000,
@@ -72,7 +109,8 @@
         "arguments",
         "threads",
         "hashMb",
-        "moveTimeMs",
+        "detailLevels",
+        "playoutBudget",
         "startupTimeoutMs",
         "moveTimeoutMs",
         "stopTimeoutMs",

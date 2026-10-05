@@ -518,34 +518,69 @@ function EngineSettings({
               <EngineFieldError draft={selected} field="displayName" />
             </div>
             {selected.form.providerType === 'stockfish-uci' ? (
-              (['moveTimeMs', 'threads', 'hashMb'] as const).map((field) => (
-                <div className={styles.engineField} key={field}>
-                  <label htmlFor={`engine-${field}`}>
-                    <FormattedMessage
-                      id={
-                        field === 'moveTimeMs'
-                          ? 'engines.moveTime'
-                          : field === 'hashMb'
+              <>
+                {(
+                  [
+                    'threads',
+                    'hashMb',
+                    'fast',
+                    'thorough',
+                    'very_deep',
+                  ] as const
+                ).map((field) => (
+                  <div className={styles.engineField} key={field}>
+                    <label htmlFor={`engine-${field}`}>
+                      <FormattedMessage
+                        id={
+                          field === 'hashMb'
                             ? 'engines.hash'
-                            : 'engines.threads'
+                            : field === 'threads'
+                              ? 'engines.threads'
+                              : `engines.detailLevel.${field}`
+                        }
+                      />
+                    </label>
+                    <input
+                      {...fieldAttributes(field)}
+                      type="text"
+                      inputMode="numeric"
+                      disabled={busy}
+                      value={
+                        selected.form.providerType === 'stockfish-uci'
+                          ? field === 'threads' || field === 'hashMb'
+                            ? selected.form[field]
+                            : selected.form.detailLevels[field]
+                          : ''
                       }
+                      onChange={(event) => update(field, event.target.value)}
                     />
+                    <EngineFieldError draft={selected} field={field} />
+                  </div>
+                ))}
+                <div className={styles.engineField}>
+                  <label htmlFor="engine-playoutBudget">
+                    <FormattedMessage id="engines.playoutBudget" />
                   </label>
-                  <input
-                    {...fieldAttributes(field)}
-                    type="text"
-                    inputMode="numeric"
+                  <select
+                    {...fieldAttributes('playoutBudget')}
                     disabled={busy}
-                    value={
-                      selected.form.providerType === 'stockfish-uci'
-                        ? selected.form[field]
-                        : ''
+                    value={selected.form.playoutBudget}
+                    onChange={(event) =>
+                      update('playoutBudget', event.target.value)
                     }
-                    onChange={(event) => update(field, event.target.value)}
-                  />
-                  <EngineFieldError draft={selected} field={field} />
+                  >
+                    {(['fast', 'thorough', 'very_deep'] as const).map(
+                      (budget) => (
+                        <option key={budget} value={budget}>
+                          {intl.formatMessage({
+                            id: `positionAnalysis.budget.${budget}`,
+                          })}
+                        </option>
+                      ),
+                    )}
+                  </select>
                 </div>
-              ))
+              </>
             ) : (
               <div className={styles.wideField}>
                 <label htmlFor="engine-weightsPath">

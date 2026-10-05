@@ -10,6 +10,7 @@ import {
   createStockfishUciRuntime,
   StockfishUciMovePolicyAdapter,
   StockfishUciPositionAnalysisAdapter,
+  type StockfishUciConfiguration,
 } from '../../../app/infrastructure/adapters/engine/index.ts';
 import {
   LineProcessSupervisor,
@@ -20,6 +21,113 @@ const fakeEngine = fileURLToPath(
   new URL('../../fixtures/uci/fake-uci-engine.mjs', import.meta.url),
 );
 const rules = new ChessJsRulesAdapter();
+
+test('shared custom detail levels drive analysis and playout commands with sufficient search deadlines', async (t) => {
+  const commands: string[] = [];
+  const searchTimeouts: number[] = [];
+  let activeSearchBudget: number | undefined;
+  const supervisor = new (class extends LineProcessSupervisor {
+    override async open(): Promise<LineProcessHandle> {
+      const responses: string[] = [];
+      return {
+        processId: 1,
+        session: {
+          writeLine(line) {
+            commands.push(line);
+            if (line === 'uci')
+              responses.push(
+                'option name Threads type spin default 1 min 1 max 8',
+                'option name Hash type spin default 16 min 1 max 128',
+                'option name MultiPV type spin default 1 min 1 max 8',
+                'option name UCI_ShowWDL type check default false',
+                'option name UCI_LimitStrength type check default false',
+                'uciok',
+              );
+            if (line === 'isready') responses.push('readyok');
+            if (line.startsWith('go movetime ')) {
+              activeSearchBudget = Number(line.split(' ')[2]);
+              responses.push(
+                'info depth 10 multipv 1 score cp 25 wdl 350 500 150 pv e2e4',
+                'bestmove e2e4',
+              );
+            }
+          },
+          async readLine(timeoutMs) {
+            if (activeSearchBudget !== undefined) {
+              assert.ok(
+                timeoutMs > activeSearchBudget,
+                `Search ${activeSearchBudget} received only ${timeoutMs} ms`,
+              );
+              searchTimeouts.push(timeoutMs);
+            }
+            const line = responses.shift();
+            if (line === undefined) throw new Error('No response queued.');
+            if (line.startsWith('bestmove')) activeSearchBudget = undefined;
+            return line;
+          },
+          resetOutputBudget() {},
+        },
+        waitForExit: async () => true,
+        terminate: async () => undefined,
+      };
+    }
+  })();
+  const configuration: StockfishUciConfiguration = {
+    ...stockfishConfiguration(),
+    detailLevels: { fast: 12_000, thorough: 23_456, very_deep: 600_000 },
+    playoutBudget: 'thorough',
+    moveTimeoutMs: 10_000,
+  };
+  const runtime = createStockfishUciRuntime(configuration, supervisor);
+  t.after(() => runtime.close());
+  const guardedRuntime = {
+    get readiness() {
+      return runtime.readiness;
+    },
+    use: ((work, options) => {
+      assert.ok(
+        options.waitTimeoutMs > 600_000,
+        'A queued request must allow the longest configured search to finish.',
+      );
+      return runtime.use(work, options);
+    }) as typeof runtime.use,
+    close: () => runtime.close(),
+  };
+  const analysis = new StockfishUciPositionAnalysisAdapter(
+    configuration,
+    guardedRuntime,
+    rules,
+  );
+  const root = rules.initialState();
+  for (const budget of ['fast', 'thorough', 'very_deep'] as const) {
+    const snapshot = await analysis.analyze({
+      candidateCount: 1,
+      focus: { focusKey: 'initial', root, moves: [], current: root },
+      mode: { kind: 'objective', budget },
+    });
+    assert.equal(
+      snapshot.search.limiter.value,
+      configuration.detailLevels[budget],
+    );
+    const playout = new StockfishUciMovePolicyAdapter(
+      { ...configuration, playoutBudget: budget },
+      guardedRuntime,
+    );
+    await playout.chooseMove({ root, moves: [], current: root, decisionId: 1 });
+  }
+  assert.deepEqual(
+    commands.filter((line) => line.startsWith('go ')),
+    [
+      'go movetime 12000',
+      'go movetime 12000',
+      'go movetime 23456',
+      'go movetime 23456',
+      'go movetime 600000',
+      'go movetime 600000',
+    ],
+  );
+  assert.ok(searchTimeouts.length >= 6);
+});
 
 test('uses the last complete MultiPV pass with distinct root moves', async (t) => {
   const info = (depth: number, rank: number, move: string) =>
@@ -164,7 +272,7 @@ test('maps Stockfish MultiPV, score, WDL, PV and search observations', async (t)
     ],
   );
   assert.deepEqual(snapshot.search, {
-    limiter: { kind: 'movetime', value: 300 },
+    limiter: { kind: 'movetime', value: 500 },
     depth: 12,
     selectiveDepth: 18,
     nodes: 12_000,
@@ -235,7 +343,8 @@ function stockfishConfiguration(tracePath?: string) {
     ],
     threads: 1,
     hashMb: 16,
-    moveTimeMs: 10,
+    detailLevels: { fast: 500, thorough: 10, very_deep: 5_000 },
+    playoutBudget: 'thorough' as const,
     startupTimeoutMs: 1_000,
     moveTimeoutMs: 1_000,
     stopTimeoutMs: 100,
@@ -297,7 +406,7 @@ test('restricted Stockfish search preserves black focus and exact history', asyn
   assert.equal(snapshot.rootWdl?.perspective, 'black');
   const trace = await readFile(tracePath, 'utf8');
   assert.ok(trace.includes(`position fen ${root.fen} moves e2e4`));
-  assert.match(trace, /^go movetime 300 searchmoves c7c5$/m);
+  assert.match(trace, /^go movetime 500 searchmoves c7c5$/m);
   assert.match(trace, /^setoption name MultiPV value 1$/m);
   const unrestricted = await provider.analyze({
     candidateCount: 2,

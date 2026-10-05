@@ -112,11 +112,14 @@
 
 .workspaceGrid > :first-child {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1;
 }
 
 .linePanel {
-  grid-column: 2;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
   min-width: 0;
   background: #ffffff;
   border: 1px solid #d7dce3;
@@ -126,6 +129,7 @@
 
 .panelHeading {
   display: flex;
+  flex-shrink: 0;
   min-height: 58px;
   align-items: center;
   justify-content: space-between;
@@ -199,12 +203,21 @@
 .moveList {
   display: grid;
   gap: 2px;
-  max-height: min(28vh, 280px);
   margin: 0;
   padding: 8px;
+  list-style: none;
+}
+
+.lineContent {
+  min-height: 0;
+  flex: 1;
   overflow-x: hidden;
   overflow-y: auto;
-  list-style: none;
+}
+
+.lineContent:focus-visible {
+  outline: 2px solid #2f66bd;
+  outline-offset: -2px;
 }
 
 .moveRow {
@@ -213,6 +226,17 @@
   grid-template-columns: 28px repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 3px;
+}
+
+.variationCommentChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-block: 8px;
+}
+.variationCommentChoice input {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .moveCell {
@@ -709,6 +733,33 @@
   background: #fffaf0;
 }
 
+.inlineNote:not(.contextNote),
+.globalNoteEditor {
+  color: #424b56;
+  background: #f5f6f8;
+  border-left-color: transparent;
+}
+
+.inlineNote:not(.contextNote) p,
+.inlineNote:not(.contextNote) .noteIconButton,
+.inlineNote:not(.contextNote) .inlineNoteForm label,
+.globalNoteEditor .inlineNoteForm label,
+.globalNoteEditor .visibilityLabel {
+  color: #424b56;
+}
+
+.inlineNote:not(.contextNote) .noteMeta,
+.inlineNote:not(.contextNote) .notePath,
+.globalNoteEditor .noteMeta {
+  color: #68717c;
+}
+
+.inlineNote:not(.contextNote) .noteIconButton[data-hovered] {
+  color: #244f88;
+  background: #e6eef8;
+  border-color: #b9c2cd;
+}
+
 .noteMeta {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -943,6 +994,11 @@
 }
 
 @media (max-width: 820px) {
+  .lineContent {
+    max-height: min(70vh, 720px);
+    flex: initial;
+  }
+
   .analysisView {
     padding: 20px 18px 30px;
   }

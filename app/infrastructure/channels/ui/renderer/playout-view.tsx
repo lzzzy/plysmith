@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -12,14 +12,12 @@ import {
 import { Button, Dialog, Modal, ModalOverlay } from 'react-aria-components';
 import { FormattedMessage, useIntl } from 'react-intl';
 
-import type {
-  AnalysisWorkspaceDto,
-  CompletePlayoutRequestDto,
-} from '../../host_client/index.ts';
+import type { AnalysisWorkspaceDto } from '../../host_client/index.ts';
 import { ChessBoard } from './chess-board.tsx';
 import {
   type PlysmithApplicationState,
   type PlysmithApplicationStore,
+  type PlayoutCompletionFormDraft,
 } from './plysmith-application-store.ts';
 import styles from './playout-view.module.css';
 import { playoutMoveRows } from './playout-presentation.ts';
@@ -69,6 +67,7 @@ export function PlayoutView({
       playout?.draft.draftId,
       playout?.draft.draftRevision,
       playout?.draft.steps.length,
+      playout?.draft.status.kind,
     ],
   );
 
@@ -86,15 +85,19 @@ export function PlayoutView({
   }
 
   const draft = playout.draft;
-
+  const canReview =
+    draft.status.kind === 'stopped' || draft.status.kind === 'terminal';
+  const displayedPosition: ReviewPosition = canReview
+    ? reviewPosition
+    : { kind: 'playout', ply: draft.steps.length };
   const atCurrentPosition =
-    reviewPosition.kind === 'playout' &&
-    reviewPosition.ply === draft.steps.length;
+    displayedPosition.kind === 'playout' &&
+    displayedPosition.ply === draft.steps.length;
   const currentState = stateAtReviewPosition(
     draft.sourcePath,
     draft.root,
     draft.steps,
-    reviewPosition,
+    displayedPosition,
   );
   const workspace: AnalysisWorkspaceDto = {
     scope: state.scope,
@@ -152,8 +155,8 @@ export function PlayoutView({
             root={draft.root}
             steps={draft.steps}
             locale={state.preferences.uiLocale}
-            reviewPosition={reviewPosition}
-            onSelect={setReviewPosition}
+            reviewPosition={displayedPosition}
+            onSelect={canReview ? setReviewPosition : undefined}
           />
           <div className={styles.providerLine}>
             <span>
@@ -204,10 +207,6 @@ export function PlayoutView({
             draft={draft}
             saved={saved}
             isBusy={isBusy}
-            atCurrentPosition={atCurrentPosition}
-            onReturnToGame={() =>
-              setReviewPosition({ kind: 'playout', ply: draft.steps.length })
-            }
           />
         </section>
       </div>
@@ -447,7 +446,7 @@ function MoveList({
   readonly steps: NonNullable<ReadyState['playout']>['draft']['steps'];
   readonly locale: ReadyState['preferences']['uiLocale'];
   readonly reviewPosition: ReviewPosition;
-  readonly onSelect: (position: ReviewPosition) => void;
+  readonly onSelect: ((position: ReviewPosition) => void) | undefined;
 }) {
   const rows = useMemo(
     () => playoutMoveRows(root, steps, locale),
@@ -492,20 +491,23 @@ function MoveList({
       {sourcePath !== undefined && (
         <div className={styles.sourceHeading}>{sourcePath.displayName}</div>
       )}
-      <Button
+      <MoveControl
         className={`${styles.rootMove!} ${sourcePath === undefined ? (playoutSelected(0) ? styles.currentMove : '') : sourceSelected(0) ? styles.currentMove : ''}`}
-        data-current-move={
+        selected={
           sourcePath === undefined ? playoutSelected(0) : sourceSelected(0)
         }
-        onPress={() =>
-          onSelect({
-            kind: sourcePath === undefined ? 'playout' : 'source',
-            ply: 0,
-          })
+        onPress={
+          onSelect === undefined
+            ? undefined
+            : () =>
+                onSelect({
+                  kind: sourcePath === undefined ? 'playout' : 'source',
+                  ply: 0,
+                })
         }
       >
         <FormattedMessage id="playout.startPosition" />
-      </Button>
+      </MoveControl>
       {sourceRows.map((row) => (
         <div className={styles.moveRow} key={`source-${row.moveNumber}`}>
           <span>{row.moveNumber}.</span>
@@ -532,13 +534,17 @@ function MoveList({
         </div>
       ))}
       {sourcePath !== undefined && (
-        <Button
+        <MoveControl
           className={`${styles.playoutBoundary!} ${playoutSelected(0) ? styles.currentMove : ''}`}
-          data-current-move={playoutSelected(0)}
-          onPress={() => onSelect({ kind: 'playout', ply: 0 })}
+          selected={playoutSelected(0)}
+          onPress={
+            onSelect === undefined
+              ? undefined
+              : () => onSelect({ kind: 'playout', ply: 0 })
+          }
         >
           <FormattedMessage id="playout.gameStart" />
-        </Button>
+        </MoveControl>
       )}
       {rows.map((row) => (
         <div className={styles.moveRow} key={`playout-${row.moveNumber}`}>
@@ -578,15 +584,45 @@ function MoveButton({
   readonly kind: ReviewPosition['kind'];
   readonly move: { readonly notation: string; readonly ply: number };
   readonly selected: boolean;
-  readonly onSelect: (position: ReviewPosition) => void;
+  readonly onSelect: ((position: ReviewPosition) => void) | undefined;
 }) {
   return (
-    <Button
+    <MoveControl
       className={`${styles.moveButton!} ${selected ? styles.currentMove : ''}`}
-      data-current-move={selected}
-      onPress={() => onSelect({ kind, ply: move.ply })}
+      selected={selected}
+      onPress={
+        onSelect === undefined
+          ? undefined
+          : () => onSelect({ kind, ply: move.ply })
+      }
     >
       {move.notation}
+    </MoveControl>
+  );
+}
+
+function MoveControl({
+  className,
+  selected,
+  onPress,
+  children,
+}: {
+  readonly className: string;
+  readonly selected: boolean;
+  readonly onPress: (() => void) | undefined;
+  readonly children: ReactNode;
+}) {
+  return onPress === undefined ? (
+    <span className={className} data-current-move={selected}>
+      {children}
+    </span>
+  ) : (
+    <Button
+      className={className}
+      data-current-move={selected}
+      onPress={onPress}
+    >
+      {children}
     </Button>
   );
 }
@@ -640,40 +676,46 @@ function PlayoutActions({
   draft,
   saved,
   isBusy,
-  atCurrentPosition,
-  onReturnToGame,
 }: {
   readonly state: ReadyState;
   readonly store: PlysmithApplicationStore;
   readonly draft: NonNullable<ReadyState['playout']>['draft'];
   readonly saved: boolean;
   readonly isBusy: boolean;
-  readonly atCurrentPosition: boolean;
-  readonly onReturnToGame: () => void;
 }) {
   const intl = useIntl();
-  const [title, setTitle] = useState(
-    state.pendingPlayoutCompletion?.request.displayName ?? '',
-  );
-  const [addToContext, setAddToContext] = useState(
-    state.pendingPlayoutCompletion === undefined
-      ? state.scope.kind === 'context'
-      : state.pendingPlayoutCompletion.request.targetContextId !== undefined,
-  );
-  const [folderId, setFolderId] = useState<string | null | undefined>(
-    state.pendingPlayoutCompletion === undefined
-      ? draft.origin.kind === 'inventory_anchor'
-        ? undefined
-        : inventoryDefaultFolder(
-            state.inventoryOrganization,
-            state.selectedInventoryFolderId,
-            state.scope.kind === 'context',
-          )
-      : state.pendingPlayoutCompletion.request.folderId,
-  );
-  const [manualResult, setManualResult] = useState<
-    NonNullable<CompletePlayoutRequestDto['manualResult']>
-  >(state.pendingPlayoutCompletion?.request.manualResult ?? 'unfinished');
+  const [form, setForm] = useState<PlayoutCompletionFormDraft>(() => {
+    const pending = state.pendingPlayoutCompletion?.request;
+    const remembered = store.getPlayoutCompletionForm(
+      state.scope,
+      draft.draftId,
+    );
+    if (pending === undefined && remembered !== undefined) return remembered;
+    return {
+      title: pending?.displayName ?? '',
+      addToContext:
+        pending === undefined
+          ? state.scope.kind === 'context'
+          : pending.targetContextId !== undefined,
+      folderId:
+        pending === undefined
+          ? draft.origin.kind === 'inventory_anchor'
+            ? undefined
+            : inventoryDefaultFolder(
+                state.inventoryOrganization,
+                state.selectedInventoryFolderId,
+                state.scope.kind === 'context',
+              )
+          : pending.folderId,
+      manualResult: pending?.manualResult ?? 'unfinished',
+    };
+  });
+  function updateForm(patch: Partial<PlayoutCompletionFormDraft>) {
+    const next = { ...form, ...patch };
+    store.setPlayoutCompletionForm(state.scope, draft.draftId, next);
+    setForm(next);
+  }
+  const { title, addToContext, folderId, manualResult } = form;
   const completed =
     draft.status.kind === 'stopped' || draft.status.kind === 'terminal';
   const completionPending = state.pendingPlayoutCompletion !== undefined;
@@ -717,8 +759,8 @@ function PlayoutActions({
           <input
             disabled={isBusy || completionPending}
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            maxLength={200}
+            onChange={(event) => updateForm({ title: event.target.value })}
+            maxLength={160}
             placeholder={intl.formatMessage({
               id: 'playout.gameTitlePlaceholder',
             })}
@@ -727,13 +769,13 @@ function PlayoutActions({
         <InventoryNameSuggestion
           name={title}
           store={store}
-          onChoose={setTitle}
+          onChoose={(title) => updateForm({ title })}
           disabled={isBusy || completionPending}
         />
         <InventoryFolderField
           state={state}
           value={folderId}
-          onChange={setFolderId}
+          onChange={(folderId) => updateForm({ folderId })}
           contextOnly={addToContext}
           canInherit={draft.origin.kind === 'inventory_anchor'}
           disabled={isBusy || completionPending}
@@ -747,7 +789,9 @@ function PlayoutActions({
               value={manualResult}
               disabled={isBusy || completionPending}
               onChange={(event) =>
-                setManualResult(event.target.value as typeof manualResult)
+                updateForm({
+                  manualResult: event.target.value as typeof manualResult,
+                })
               }
             >
               <option value="unfinished">
@@ -786,7 +830,9 @@ function PlayoutActions({
               type="checkbox"
               disabled={isBusy || completionPending}
               checked={addToContext}
-              onChange={(event) => setAddToContext(event.target.checked)}
+              onChange={(event) =>
+                updateForm({ addToContext: event.target.checked })
+              }
             />
             <span>
               <FormattedMessage id="playout.addToContext" />
@@ -834,11 +880,6 @@ function PlayoutActions({
 
   return (
     <div className={styles.runningActions}>
-      {!atCurrentPosition && (
-        <Button className={styles.secondaryButton!} onPress={onReturnToGame}>
-          <FormattedMessage id="playout.returnToGame" />
-        </Button>
-      )}
       {draft.status.kind === 'paused' ? (
         <Button
           className={styles.primaryButton!}

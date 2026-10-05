@@ -975,10 +975,22 @@ test('stores a context note at the source anchor without creating another invent
   );
   assert.equal(storedNote?.body, 'Schwarz besetzt das Zentrum.');
   assert.equal(storedNote?.anchorId.value, sourceAnchorId?.value);
-  assert.deepEqual(
-    storedNote?.moves.map((move) => move.san),
-    ['e5'],
+  assert.deepEqual(storedNote?.moves, []);
+  await analysis.updateNote.execute({
+    scope,
+    contributionId: note.contributionId,
+    expectedContributionVersion: 1,
+    body: '1... e5: Frei bearbeitete Zugfolge und Kommentar.',
+  });
+  const edited = await analysis.get.execute({ scope });
+  const editedNote = edited.record?.contributions.find(
+    (entry) => entry.contributionId.value === note.contributionId.value,
   );
+  assert.equal(
+    editedNote?.body,
+    '1... e5: Frei bearbeitete Zugfolge und Kommentar.',
+  );
+  assert.deepEqual(editedNote?.moves, []);
 
   const freeView = await analysis.get.execute({
     scope: freeWorkScope(),
@@ -1732,7 +1744,7 @@ test('context and inventory cursors remain stable for equal timestamps', async (
   const firstItems = await inventory.execute({ pageSize: 2 });
   assert.deepEqual(
     firstItems.items.map((item) => item.displayName),
-    ['Gamma', 'Beta'],
+    ['Alpha', 'Beta'],
   );
   assert.ok(firstItems.nextCursor);
   const secondItems = await inventory.execute({
@@ -1741,7 +1753,7 @@ test('context and inventory cursors remain stable for equal timestamps', async (
   });
   assert.deepEqual(
     secondItems.items.map((item) => item.displayName),
-    ['Alpha'],
+    ['Gamma'],
   );
 });
 

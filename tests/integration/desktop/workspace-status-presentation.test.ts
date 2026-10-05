@@ -67,6 +67,8 @@ function render(
     status?: 'stopped' | 'paused' | 'terminal';
     busy?: boolean;
     saved?: boolean;
+    notes?: boolean;
+    normalizedRevision?: boolean;
     winner?: 'white' | 'black';
     drawReason?:
       | 'stalemate'
@@ -80,7 +82,7 @@ function render(
       IntlProvider,
       {
         locale: 'en-GB',
-        messages: {},
+        messages: { 'inventory.moveCount': '{count} added moves' },
         onError: () => undefined,
       },
       createElement(view === 'analysis' ? AnalysisView : PlayoutView, {
@@ -102,10 +104,125 @@ function render(
           },
           ...(options.busy ? { busyCommand: 'cancel_playout_completion' } : {}),
           analysis: {
+            scope: { kind: 'free' },
             currentState: root,
             legalMoves: [],
             allowedActions: ['start_scratch'],
+            ...(options.notes
+              ? {
+                  record: {
+                    itemType: 'analysis',
+                    itemId: '2',
+                    revisionId: '3',
+                    currentRevisionId: '3',
+                    revisionNumber: 1,
+                    historical: false,
+                    displayName: 'Opening',
+                    rootAnchorId: '4',
+                    currentAnchorId: '4',
+                    root,
+                    steps: [],
+                    cursor: 0,
+                    origin: { kind: 'initial_position' },
+                    contextMember: true,
+                    contributions: ['global', 'context'].map((scopeKind) => ({
+                      contributionId: scopeKind,
+                      contributionVersion: 1,
+                      anchorId: '4',
+                      scopeKind,
+                      body: scopeKind + ' note body',
+                      moves: [],
+                      languageTag: 'en-GB',
+                      createdAt: '2026-10-02T10:00:00Z',
+                      updatedAt: '2026-10-02T10:00:00Z',
+                    })),
+                  },
+                }
+              : {}),
+            ...(options.normalizedRevision
+              ? {
+                  record: {
+                    itemType: 'analysis',
+                    itemId: '2',
+                    revisionId: '3',
+                    currentRevisionId: '3',
+                    revisionNumber: 1,
+                    historical: false,
+                    displayName: 'Opening',
+                    rootAnchorId: '4',
+                    currentAnchorId: '5',
+                    root,
+                    origin: { kind: 'initial_position' },
+                    contextMember: false,
+                    contributions: [],
+                    cursor: 1,
+                    steps: [
+                      {
+                        anchorId: '5',
+                        before: root,
+                        after: root,
+                        move: { from: 'e2', to: 'e4', san: 'e4' },
+                      },
+                    ],
+                  },
+                  scratch: {
+                    scratchId: 'scratch',
+                    scratchRevision: 1,
+                    root,
+                    cursor: 2,
+                    origin: {
+                      kind: 'inventory_anchor',
+                      itemId: '2',
+                      revisionId: '3',
+                      anchorId: '4',
+                    },
+                    intent: {
+                      kind: 'inventory_revision',
+                      mode: 'truncate_after',
+                      itemId: '2',
+                      baseRevisionId: '3',
+                      cutAnchorId: '4',
+                      returnAnchorId: '5',
+                      displayName: 'Opening',
+                    },
+                    steps: [
+                      {
+                        before: root,
+                        after: root,
+                        move: { from: 'e2', to: 'e4', san: 'e4' },
+                      },
+                      {
+                        before: root,
+                        after: root,
+                        move: { from: 'e7', to: 'e5', san: 'e5' },
+                      },
+                    ],
+                  },
+                }
+              : {}),
           },
+          ...(options.normalizedRevision
+            ? {
+                inventoryRevisionPreview: {
+                  mode: 'extend',
+                  displayName: 'Opening',
+                  preservedMoveCount: 1,
+                  addedSteps: [
+                    {
+                      before: root,
+                      after: root,
+                      move: { from: 'e7', to: 'e5', san: 'e5' },
+                    },
+                  ],
+                  removedSteps: [],
+                  historicalGlobalContributionCount: 0,
+                  affectedContexts: [],
+                  followingContexts: [],
+                  noOp: false,
+                },
+              }
+            : {}),
+          analysisProviders: { providers: [], dataRevision: 1 },
           ...(options.removed
             ? {
                 analysisUnavailable: {
@@ -184,11 +301,43 @@ function render(
               }
             : {}),
         },
-        store: { canWorkWithInventoryItem: () => true },
+        store: {
+          canWorkWithInventoryItem: () => true,
+          getPlayoutCompletionForm: () => undefined,
+          setPlayoutCompletionForm: () => undefined,
+          getPositionAnalysisBudget: () => 'fast',
+          getPositionAnalysisHumanSelection: () => [],
+          getPositionAnalysisObjectiveProvider: () => undefined,
+          getPositionAnalysisSort: () => 'stockfish',
+        },
       }),
     ),
   );
 }
+
+test('revision UI uses normalized mode, added count and preserved prefix instead of raw scratch intent', () => {
+  const markup = render('analysis', { normalizedRevision: true });
+  assert.match(markup, /inventory.mode.extend/);
+  assert.match(markup, /1 added moves/);
+  assert.doesNotMatch(markup, /2 added moves/);
+  assert.doesNotMatch(
+    markup,
+    /inventory.mode.truncate_after|inventory.globalNotesAffected|<del/,
+  );
+  assert.equal((markup.match(/<ins\b/g) ?? []).length, 1);
+  assert.match(markup, /1\.\.\. e5<\/ins>/);
+  assert.doesNotMatch(markup, /2\. e5/);
+  const moveButtons = (
+    markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? []
+  ).filter(
+    (button) => button.includes('data-path-position') && />e4</.test(button),
+  );
+  assert.equal(
+    moveButtons.length,
+    1,
+    'An unchanged reentered move appears only once in the move list.',
+  );
+});
 
 test('empty analysis explains only a proven removed assignment at its own action location', () => {
   assert.doesNotMatch(render('analysis'), /analysis.removedFromContext/);
@@ -196,6 +345,36 @@ test('empty analysis explains only a proven removed assignment at its own action
   assert.match(markup, /role="status"/);
   assert.match(markup, /analysis.removedFromContext/);
   assert.match(markup, /activity.manage/);
+});
+
+test('note scope remains accessible without interrupting the reading text', () => {
+  const markup = render('analysis', { notes: true });
+  assert.doesNotMatch(markup, /<time|2026-10-02|analysis.createVariation/);
+  for (const [scope, label] of [
+    ['global', 'analysis.generalNote'],
+    ['context', 'analysis.contextNote'],
+  ] as const) {
+    const article = markup.match(
+      new RegExp(
+        `<article[^>]*data-note-scope="${scope}"[^>]*>[\\s\\S]*?</article>`,
+      ),
+    )?.[0];
+    assert.ok(article);
+    assert.match(article, new RegExp(`aria-label="${label}"`));
+    assert.ok(article.includes(scope + ' note body'));
+    assert.ok(!article.replace(/<[^>]*>/g, '').includes(label));
+  }
+});
+
+test('panel divider describes its orientation, limits and controlled panes only when an engine panel exists', () => {
+  assert.doesNotMatch(render('analysis'), /role="separator"/);
+  const markup = render('analysis', { notes: true });
+  const divider = markup.match(/<div[^>]*role="separator"[^>]*>/)?.[0];
+  assert.ok(divider);
+  assert.match(divider, /aria-orientation="horizontal"/);
+  assert.match(divider, /tabindex="0"/);
+  assert.match(divider, /aria-valuenow="55"/);
+  assert.match(divider, /aria-controls="[^"]+-moves [^"]+-engine"/);
 });
 
 test('manual completion has a return action, terminal completion never does', () => {

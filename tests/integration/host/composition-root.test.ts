@@ -29,7 +29,7 @@ test('composition root wires the real store and use cases without listening', as
   await writeFile(
     path.join(initialized.activeDirectory, 'uci-test.json'),
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       provider: 'stockfish-uci',
       displayName: 'UCI-Testanbieter',
       stockfish: {
@@ -39,7 +39,8 @@ test('composition root wires the real store and use cases without listening', as
         ],
         threads: 1,
         hashMb: 16,
-        moveTimeMs: 10,
+        detailLevels: { fast: 500, thorough: 10, very_deep: 5_000 },
+        playoutBudget: 'thorough',
         startupTimeoutMs: 2_000,
         moveTimeoutMs: 2_000,
         stopTimeoutMs: 1_000,
@@ -106,7 +107,7 @@ test('composition root wires the real store and use cases without listening', as
       headers,
     });
     assert.deepEqual(status.json().persistence, {
-      schemaVersion: 8,
+      schemaVersion: 9,
       dataRevision: 1,
     });
     assert.equal(status.json().state, 'ready');

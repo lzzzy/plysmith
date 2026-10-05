@@ -36,6 +36,7 @@ import {
   addContextReference,
   readWorkingContextWorkspace,
   listWorkingContexts,
+  setWorkScopeResume,
 } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-workspace.ts';
 import { insertAnalysisNoteContribution } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-note.ts';
 import { replaceContextAnalysisScratch } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-analysis-scratch.ts';
@@ -153,6 +154,56 @@ test('folder membership authorizes work without manufacturing anchor references'
   };
   const scope = { kind: 'context', contextId } as const;
   await requireInventoryWorkAccess(reader, scope, member.itemId);
+  const selection = {
+    scope,
+    area: 'manage' as const,
+    expectedResumeVersion: null,
+    presentation: 'folders' as const,
+    selectedItemId: member.itemId,
+    selectedAnchorId: member.rootAnchorId,
+  };
+  for (const invalid of [
+    {
+      selectedItemId: outsider.itemId,
+      selectedAnchorId: outsider.rootAnchorId,
+    },
+    { selectedAnchorId: outsider.rootAnchorId },
+    { selectedAnchorId: localId('anchor', 999_999) },
+  ]) {
+    assert.throws(
+      () =>
+        setWorkScopeResume(database, { ...selection, ...invalid }, timestamp),
+      { problemCode: 'workspace.reference_target_not_found' },
+    );
+  }
+  const saved = setWorkScopeResume(database, selection, timestamp);
+  assert.ok(saved.area === 'manage');
+  assert.equal(saved.resume.selectedItemId?.value, member.itemId.value);
+  assert.equal(saved.resume.selectedAnchorId?.value, member.rootAnchorId.value);
+  assert.deepEqual(
+    readWorkingContextWorkspace(database, contextId)?.references,
+    [],
+  );
+  database
+    .prepare(
+      "UPDATE inventory_item SET lifecycle = 'trashed' WHERE item_id = ?",
+    )
+    .run(member.itemId.value);
+  assert.throws(
+    () =>
+      setWorkScopeResume(
+        database,
+        {
+          ...selection,
+          expectedResumeVersion: saved.resume.resumeVersion,
+        },
+        timestamp,
+      ),
+    { problemCode: 'workspace.reference_target_not_found' },
+  );
+  database
+    .prepare("UPDATE inventory_item SET lifecycle = 'active' WHERE item_id = ?")
+    .run(member.itemId.value);
   await assert.rejects(
     requireInventoryWorkAccess(reader, scope, outsider.itemId),
     {
@@ -204,11 +255,38 @@ test('canonical membership exposes pinned revision metadata without anchor refer
       itemType: 'analysis',
     },
   ]);
+  const selection = {
+    scope: { kind: 'context' as const, contextId },
+    area: 'manage' as const,
+    expectedResumeVersion: null,
+    presentation: 'folders' as const,
+    selectedItemId: member.itemId,
+    selectedAnchorId: member.rootAnchorId,
+  };
+  assert.throws(() => setWorkScopeResume(database, selection, timestamp), {
+    problemCode: 'workspace.reference_target_not_found',
+  });
   database
     .prepare(
       "UPDATE workspace_context_item SET pinned_revision_id = ?, pin_reason = 'pending_revision_impact' WHERE context_id = ? AND item_id = ?",
     )
     .run(member.revisionId.value, contextId.value, member.itemId.value);
+  const saved = setWorkScopeResume(database, selection, timestamp);
+  assert.ok(saved.area === 'manage');
+  assert.equal(saved.resume.selectedAnchorId?.value, member.rootAnchorId.value);
+  assert.throws(
+    () =>
+      addContextReference(
+        database,
+        {
+          contextId,
+          itemId: member.itemId,
+          anchorId: member.rootAnchorId,
+        },
+        timestamp,
+      ),
+    { problemCode: 'workspace.reference_target_not_found' },
+  );
   assert.deepEqual(readWorkingContextWorkspace(database, contextId)?.members, [
     {
       itemId: member.itemId,
@@ -224,7 +302,7 @@ test('canonical membership exposes pinned revision metadata without anchor refer
   assert.deepEqual(database.pragma('foreign_key_check'), []);
 });
 
-test('rename suggestions respect the revision name limit without shortening creation names', (t) => {
+test('rename and creation suggestions respect the shared inventory name limit', (t) => {
   const { database, item } = fixture(t);
   const name = 'A'.repeat(160);
   item(name);
@@ -243,13 +321,13 @@ test('rename suggestions respect the revision name limit without shortening crea
     }).suggestedDisplayName,
     `${'A'.repeat(156)} (3)`,
   );
-  const creationName = 'B'.repeat(200);
+  const creationName = 'B'.repeat(160);
   item(creationName);
   assert.equal(
     checkInventoryNameAvailability(database, {
       displayName: creationName,
     }).suggestedDisplayName,
-    `${'B'.repeat(196)} (2)`,
+    `${'B'.repeat(156)} (2)`,
   );
 });
 
@@ -616,7 +694,7 @@ test('folder writes revalidate names, cycles, revisions and every item before an
   assert.equal(readInventoryOrganization(database, {}).folders.length, 2);
 });
 
-test('creation inherits source placement once, accepts explicit overrides, and suggestions retain analysis-only uniqueness', (t) => {
+test('creation inherits source placement once, accepts explicit overrides, and suggestions respect global names', (t) => {
   const { database, change, folder, item } = fixture(t);
   const first = folder('First');
   const second = folder('Second');
@@ -821,7 +899,7 @@ test('playout completion inherits once and receipts distinguish explicit unfiled
       draftId: stopped.draft.draftId,
       expectedDraftRevision: stopped.draft.draftRevision,
       completionId: `completion-${String(destination?.value ?? destination)}`,
-      displayName: 'Game name',
+      displayName: `Game name ${String(destination?.value ?? destination)}`,
       languageTag: 'en-GB',
       manualResult: 'unfinished' as const,
       ...(destination === undefined ? {} : { folderId: destination }),
@@ -860,9 +938,10 @@ test('playout completion inherits once and receipts distinguish explicit unfiled
       { problemCode: 'playout.invalid' },
     );
     assert.equal(
-      checkInventoryNameAvailability(database, { displayName: 'Game name' })
-        .available,
-      true,
+      checkInventoryNameAvailability(database, {
+        displayName: request.displayName,
+      }).available,
+      false,
     );
     if (destination !== undefined) {
       change({ kind: 'move_items', itemIds: [completed.itemId] });

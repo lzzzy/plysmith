@@ -6,6 +6,7 @@ import {
   desktopDiagnosticsChannel,
   desktopEngineExecutableChannel,
   desktopEngineWeightsChannel,
+  desktopPgnImportFileChannel,
   type DesktopBootstrap,
   type PlysmithDesktopApi,
   type RendererDiagnosticEvent,
@@ -32,6 +33,10 @@ const api: PlysmithDesktopApi = Object.freeze({
   async chooseEngineWeights(): Promise<string | undefined> {
     const weights = await ipcRenderer.invoke(desktopEngineWeightsChannel);
     return typeof weights === 'string' ? weights : undefined;
+  },
+  async chooseImportFile(): Promise<string | undefined> {
+    const file = await ipcRenderer.invoke(desktopPgnImportFileChannel);
+    return typeof file === 'string' ? file : undefined;
   },
   recordDiagnostic(event: RendererDiagnosticEvent): void {
     ipcRenderer.send(desktopDiagnosticsChannel, event);

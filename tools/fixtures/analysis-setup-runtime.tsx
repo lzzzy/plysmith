@@ -63,6 +63,8 @@ function command(operation: Operation): Promise<boolean> {
 // Only the dialog's store boundary is fake; React hooks, portals and events are real.
 const store = {
   canWorkWithInventoryItem: () => true,
+  getPlayoutCompletionForm: () => undefined,
+  setPlayoutCompletionForm: () => undefined,
   openCompletedPlayout: async () => {
     calls.push('openCompletedPlayout');
   },

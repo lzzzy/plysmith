@@ -37,12 +37,14 @@ export function PositionAnalysisPanel({
   locale,
   providers,
   store,
+  stretch = false,
 }: {
   readonly focus: AnalysisFocus;
   readonly work: AnalyzePositionRequestDto['work'];
   readonly locale: UiLocale;
   readonly providers: ListPositionAnalysisProvidersResultDto;
   readonly store: PlysmithApplicationStore;
+  readonly stretch?: boolean;
 }) {
   const objectiveProviders = useMemo(
     () =>
@@ -63,7 +65,11 @@ export function PositionAnalysisPanel({
     [providers],
   );
   const [objectiveProviderId, setObjectiveProviderId] = useState(
-    () => objectiveProviders[0]?.instanceId,
+    () =>
+      objectiveProviders.find(
+        (provider) =>
+          provider.instanceId === store.getPositionAnalysisObjectiveProvider(),
+      )?.instanceId ?? objectiveProviders[0]?.instanceId,
   );
   const [budget, setBudget] = useState<ObjectiveBudget>(() =>
     store.getPositionAnalysisBudget(),
@@ -75,7 +81,7 @@ export function PositionAnalysisPanel({
           humanProviders.slice(0, 1).map((provider) => provider.instanceId),
       ),
   );
-  const [sortBy, setSortBy] = useState('stockfish');
+  const [sortBy, setSortBy] = useState(() => store.getPositionAnalysisSort());
   const [retry, setRetry] = useState(0);
   const initializedHumanSelection = useRef(
     store.getPositionAnalysisHumanSelection() !== undefined ||
@@ -104,6 +110,7 @@ export function PositionAnalysisPanel({
   const objectiveProvider = objectiveProviders.find(
     (provider) => provider.instanceId === objectiveProviderId,
   );
+  const effectiveObjectiveProviderId = objectiveProvider?.instanceId;
   const selectedHumanProviders = humanProviders.filter((provider) =>
     selectedHumanProviderIds.has(provider.instanceId),
   );
@@ -116,7 +123,8 @@ export function PositionAnalysisPanel({
     [selectedHumanKey],
   );
   const effectiveSortBy =
-    sortBy === 'stockfish' || selectedHumanProviderIds.has(sortBy)
+    sortBy === 'stockfish' ||
+    selectedHumanProviders.some((provider) => provider.instanceId === sortBy)
       ? sortBy
       : 'stockfish';
   const workKey = JSON.stringify(work);
@@ -138,13 +146,13 @@ export function PositionAnalysisPanel({
   }>({ key: '', candidates: [], failed: new Set() });
 
   useEffect(() => {
-    if (objectiveProviderId === undefined) return;
+    if (effectiveObjectiveProviderId === undefined) return;
     let current = true;
     setObjectiveState({ key: objectiveKey, value: { kind: 'loading' } });
     void store
       .analyzePosition({
         laneId: 'objective',
-        providerInstanceId: objectiveProviderId,
+        providerInstanceId: effectiveObjectiveProviderId,
         candidateCount: 5,
         ...requestRef.current,
         mode: { kind: 'objective', budget },
@@ -162,7 +170,7 @@ export function PositionAnalysisPanel({
     return () => {
       current = false;
     };
-  }, [budget, objectiveKey, objectiveProviderId, store]);
+  }, [budget, objectiveKey, effectiveObjectiveProviderId, store]);
 
   useEffect(() => {
     let current = true;
@@ -229,7 +237,7 @@ export function PositionAnalysisPanel({
 
   useEffect(() => {
     if (
-      objectiveProviderId === undefined ||
+      effectiveObjectiveProviderId === undefined ||
       objectiveSnapshot === undefined ||
       !humanReady
     )
@@ -254,7 +262,7 @@ export function PositionAnalysisPanel({
         const batch = missing.slice(index, index + 8);
         const result = await store.analyzePosition({
           laneId: 'objective',
-          providerInstanceId: objectiveProviderId,
+          providerInstanceId: effectiveObjectiveProviderId,
           candidateCount: batch.length,
           ...requestRef.current,
           mode: { kind: 'objective', budget, rootMoves: batch },
@@ -290,7 +298,7 @@ export function PositionAnalysisPanel({
     extraKey,
     humanReady,
     humanSnapshots,
-    objectiveProviderId,
+    effectiveObjectiveProviderId,
     objectiveSnapshot,
     store,
   ]);
@@ -312,7 +320,10 @@ export function PositionAnalysisPanel({
     else next.add(instanceId);
     store.setPositionAnalysisHumanSelection(next);
     setSelectedHumanProviderIds(next);
-    if (sortBy === instanceId) setSortBy('stockfish');
+    if (sortBy === instanceId) {
+      store.setPositionAnalysisSort('stockfish');
+      setSortBy('stockfish');
+    }
   }
 
   function selectBudget(next: ObjectiveBudget): void {
@@ -322,7 +333,7 @@ export function PositionAnalysisPanel({
 
   return (
     <section
-      className={styles.analysisPanel}
+      className={`${styles.analysisPanel!} ${stretch ? styles.stretched : ''}`}
       aria-labelledby="engine-analysis-title"
     >
       <header className={styles.analysisHeader}>
@@ -345,7 +356,10 @@ export function PositionAnalysisPanel({
             className={styles.providerSelect}
             aria-label="Stockfish"
             value={objectiveProviderId}
-            onChange={(event) => setObjectiveProviderId(event.target.value)}
+            onChange={(event) => {
+              store.setPositionAnalysisObjectiveProvider(event.target.value);
+              setObjectiveProviderId(event.target.value);
+            }}
           >
             {objectiveProviders.map((provider) => (
               <option key={provider.instanceId} value={provider.instanceId}>
@@ -373,7 +387,10 @@ export function PositionAnalysisPanel({
             className={styles.providerSelect}
             aria-label={intl.formatMessage({ id: 'positionAnalysis.sort' })}
             value={effectiveSortBy}
-            onChange={(event) => setSortBy(event.target.value)}
+            onChange={(event) => {
+              store.setPositionAnalysisSort(event.target.value);
+              setSortBy(event.target.value);
+            }}
           >
             <option value="stockfish">Stockfish</option>
             {selectedHumanProviders.map((provider) => (

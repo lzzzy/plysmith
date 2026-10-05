@@ -30,6 +30,22 @@ const draft = createPlayoutDraft({
   },
 });
 const stopped = stopPlayoutDraft(draft);
+test('game names remain within the inventory metadata budget', () => {
+  const input = {
+    ...stopped,
+    ...resolvePlayoutResult(stopped, 'unfinished'),
+    displayName: 'x'.repeat(160),
+    languageTag: 'en-GB',
+    provider: {
+      providerType: 'test-engine',
+      providerDisplayName: 'Test engine',
+    },
+  };
+  assert.equal(createGameRecordDraft(input).displayName.length, 160);
+  assert.throws(() =>
+    createGameRecordDraft({ ...input, displayName: 'x'.repeat(161) }),
+  );
+});
 const choices: readonly [ManualGameResult, GameOutcome][] = [
   ['white_win', { kind: 'win', winner: 'white' }],
   ['black_win', { kind: 'win', winner: 'black' }],

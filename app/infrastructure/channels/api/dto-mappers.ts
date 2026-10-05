@@ -483,6 +483,7 @@ export function inventoryRevisionPreviewDto(model: InventoryRevisionPreview) {
       updatedAutomatically: context.updatedAutomatically,
       referenceCount: context.referenceCount,
       contributionCount: context.contributionCount,
+      changedScratchCount: context.changedScratchCount,
       managementResumeCount: context.managementResumeCount,
       analysisResumeCount: context.analysisResumeCount,
     })),
@@ -496,6 +497,9 @@ export function saveInventoryRevisionResultDto(
   model: SaveInventoryRevisionResult,
 ) {
   return {
+    ...(model.commentContributionId === undefined
+      ? {}
+      : { commentContributionId: model.commentContributionId }),
     itemId: idDto(model.itemId),
     revisionId: idDto(model.revisionId),
     revisionNumber: model.revisionNumber,
@@ -934,6 +938,20 @@ function analysisScratchDto(model: AnalysisScratch) {
 
 export function analysisRecordDto(model: AnalysisRecordView) {
   return {
+    ...(model.tree === undefined
+      ? {}
+      : {
+          tree: {
+            nodes: model.tree.nodes.map((node) => ({
+              nodeIndex: node.nodeIndex,
+              parentNodeIndex: node.parentNodeIndex,
+              siblingOrder: node.siblingOrder,
+              anchorId: idDto(node.anchorId),
+              move: canonicalMoveDto(node.move),
+              after: chessStateDto(node.after),
+            })),
+          },
+        }),
     itemType: model.itemType,
     itemId: idDto(model.itemId),
     revisionId: idDto(model.revisionId),

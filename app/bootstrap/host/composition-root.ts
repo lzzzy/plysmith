@@ -34,6 +34,12 @@ import {
   PreviewContextFolderRemoval,
   CheckInventoryNameAvailability,
   StartInventoryRevision,
+  ActiveImportPreviews,
+  RegisterImportInput,
+  PrepareImport,
+  CheckImportNames,
+  PublishImport,
+  DiscardImport,
 } from '../../application/inventory/index.ts';
 import {
   GetUserPreferences,
@@ -82,6 +88,8 @@ import {
   DeleteWorkingContext,
 } from '../../application/workspace/index.ts';
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
+import { LocalFileSourceAcquisition } from '../../infrastructure/adapters/content/local/local-file-source-acquisition.ts';
+import { PgnContentFormatAdapter } from '../../infrastructure/adapters/content/pgn/index.ts';
 import {
   ConfiguredMovePolicyRegistry,
   ConfiguredPositionAnalysisRegistry,
@@ -146,6 +154,7 @@ export async function composeHost(
   let persistence: SqlitePersistenceAdapter | undefined;
   let host: FastifyInstance | undefined;
   let diagnostics: FileDiagnosticLog | undefined;
+  let importPreparations: ActiveImportPreviews | undefined;
   const engineRuntimes: UciEngineRuntime[] = [];
 
   try {
@@ -221,6 +230,19 @@ export async function composeHost(
       events: eventStream,
     });
     const rules = new ChessJsRulesAdapter();
+    const importSource = new LocalFileSourceAcquisition();
+    importPreparations = new ActiveImportPreviews({
+      source: importSource,
+      formats: [new PgnContentFormatAdapter(rules)],
+      clock,
+      createPreviewId: randomUUID,
+    });
+    const importDependencies = {
+      repository: persistence,
+      active: importPreparations,
+      clock,
+      events: eventStream,
+    };
     const engineProviderConfigurations =
       new FileEngineProviderConfigurationRepository(options.applicationHome);
     type RuntimeBinding =
@@ -276,7 +298,8 @@ export async function composeHost(
         arguments: settings.stockfish.arguments,
         threads: settings.stockfish.threads,
         hashMb: settings.stockfish.hashMb,
-        moveTimeMs: settings.stockfish.moveTimeMs,
+        detailLevels: settings.stockfish.detailLevels,
+        playoutBudget: settings.stockfish.playoutBudget,
         startupTimeoutMs: settings.stockfish.startupTimeoutMs,
         moveTimeoutMs: settings.stockfish.moveTimeoutMs,
         stopTimeoutMs: settings.stockfish.stopTimeoutMs,
@@ -578,6 +601,11 @@ export async function composeHost(
     const correlationIdFactory = options.correlationIdFactory ?? randomUUID;
 
     host = await buildHost({
+      registerImportInput: new RegisterImportInput(importSource),
+      prepareImport: new PrepareImport(importPreparations),
+      checkImportNames: new CheckImportNames(persistence),
+      publishImport: new PublishImport(importDependencies),
+      discardImport: new DiscardImport(importPreparations),
       getSystemStatus,
       getDiagnosticSettings,
       setDiagnosticLogLevel,
@@ -656,6 +684,7 @@ export async function composeHost(
       host,
       diagnostics,
       engineRuntimes,
+      importPreparations,
     });
   } catch (error) {
     diagnostics?.write({
@@ -664,6 +693,7 @@ export async function composeHost(
       status: 'failed',
     });
     await host?.close();
+    await importPreparations?.close();
     await Promise.allSettled(engineRuntimes.map((runtime) => runtime.close()));
     await persistence?.close();
     await lease.release();
@@ -681,6 +711,7 @@ function createComposedHost(input: {
   readonly host: FastifyInstance;
   readonly diagnostics: FileDiagnosticLog;
   readonly engineRuntimes: readonly UciEngineRuntime[];
+  readonly importPreparations: ActiveImportPreviews;
 }): ComposedHost {
   let closePromise: Promise<void> | undefined;
 
@@ -714,6 +745,7 @@ async function closeComposedHost(input: {
   readonly host: FastifyInstance;
   readonly diagnostics: FileDiagnosticLog;
   readonly engineRuntimes: readonly UciEngineRuntime[];
+  readonly importPreparations: ActiveImportPreviews;
 }): Promise<void> {
   input.runtimeStatus.setState('shutting_down');
   input.diagnostics.write({
@@ -733,6 +765,7 @@ async function closeComposedHost(input: {
       .map((result) => result.reason),
   );
   for (const close of [
+    () => input.importPreparations.close(),
     () => input.persistence.close(),
     () => input.lease.release(),
   ]) {

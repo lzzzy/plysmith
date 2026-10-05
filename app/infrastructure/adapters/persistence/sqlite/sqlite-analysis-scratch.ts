@@ -135,7 +135,10 @@ export function replaceContextAnalysisScratch(
     database
       .prepare(
         `UPDATE analysis_scratch_draft
-            SET root_position_id = ?, cursor_index = ?, scratch_revision = ?,
+            SET origin_mode = ?, origin_item_id = ?, origin_revision_id = ?,
+                origin_anchor_id = ?, root_position_id = ?,
+                root_halfmove_clock = ?, root_fullmove_number = ?,
+                root_history_knowledge = ?, cursor_index = ?, scratch_revision = ?,
                 note_body = ?, scratch_mode = ?, edit_mode = ?,
                 edit_item_id = ?, base_revision_id = ?, cut_anchor_id = ?,
                 return_anchor_id = ?, candidate_display_name = ?,
@@ -143,7 +146,20 @@ export function replaceContextAnalysisScratch(
           WHERE scratch_draft_id = ?`,
       )
       .run(
+        request.scratch.origin.kind,
+        request.scratch.origin.kind === 'inventory_anchor'
+          ? request.scratch.origin.itemId.value
+          : null,
+        request.scratch.origin.kind === 'inventory_anchor'
+          ? request.scratch.origin.revisionId.value
+          : null,
+        request.scratch.origin.kind === 'inventory_anchor'
+          ? request.scratch.origin.anchorId.value
+          : null,
         rootPositionId,
+        request.scratch.root.playState.halfmoveClock,
+        request.scratch.root.playState.fullmoveNumber,
+        request.scratch.root.playState.historyKnowledge,
         request.scratch.cursor,
         request.scratch.scratchRevision,
         request.scratch.noteDraft?.body ?? null,

@@ -20,6 +20,14 @@ type Summary = PendingRevisionImpactDto['useTargetLoss'];
 let LossSummary: ComponentType<{ summary: Summary }>;
 let contextRemovalSummary: (preview: ContextRemovalPreviewDto) => Summary;
 let ManageView: ComponentType<{ state: unknown; store: unknown }>;
+let RevisionFollowingContexts: ComponentType<{
+  contexts: readonly {
+    contextId: string;
+    contextName: string;
+    contributionCount: number;
+    changedScratchCount: number;
+  }[];
+}>;
 let RevisionImpactResolutionPanel: ComponentType<{
   details: unknown;
   store: unknown;
@@ -31,6 +39,7 @@ before(async () => {
     stdin: {
       contents: `export { LossSummary, contextRemovalSummary } from './loss-summary.tsx';
 export { ManageView } from './manage-view.tsx';
+export { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 export { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';`,
       resolveDir: fileURLToPath(
         new URL(
@@ -63,6 +72,7 @@ export { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';`,
     LossSummary,
     contextRemovalSummary,
     ManageView,
+    RevisionFollowingContexts,
     RevisionImpactResolutionPanel,
   } = await import(
     `data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`
@@ -130,6 +140,71 @@ test('only notes and actual scratch changes require content-loss confirmation', 
       },
     }),
     true,
+  );
+});
+
+test('automatic revision following hides harmless own and other context updates', () => {
+  assert.equal(
+    render(
+      createElement(RevisionFollowingContexts, {
+        contexts: ['Own context', 'Other context'].map((contextName) => ({
+          contextId: contextName,
+          contextName,
+          contributionCount: 0,
+          changedScratchCount: 0,
+        })),
+      }),
+    ),
+    '',
+  );
+});
+
+test('automatic revision following shows only concrete note and changed scratch losses', () => {
+  const markup = render(
+    createElement(RevisionFollowingContexts, {
+      contexts: [
+        {
+          contextId: 'own',
+          contextName: 'Own notes',
+          contributionCount: 2,
+          changedScratchCount: 0,
+        },
+        {
+          contextId: 'other',
+          contextName: 'Other draft',
+          contributionCount: 0,
+          changedScratchCount: 1,
+        },
+        {
+          contextId: 'both',
+          contextName: 'Both losses',
+          contributionCount: 1,
+          changedScratchCount: 1,
+        },
+        {
+          contextId: 'safe',
+          contextName: 'Harmless resume',
+          contributionCount: 0,
+          changedScratchCount: 0,
+        },
+      ],
+    }),
+  );
+  assert.match(markup, /Own notes/);
+  assert.match(markup, /Other draft/);
+  assert.match(markup, /Both losses/);
+  assert.equal(
+    (markup.match(/inventory.followingContextNotesHistorical/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (markup.match(/inventory.followingContextScratchLoss/g) ?? []).length,
+    2,
+  );
+  assert.match(markup, /inventory.automaticContextLosses/);
+  assert.doesNotMatch(
+    markup,
+    /Harmless resume|inventory.contextsUpdated|inventory.contextsRenamed/,
   );
 });
 

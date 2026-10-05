@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
-import type { CanonicalMove } from '../../../app/domain/chess_graph/index.ts';
+import {
+  analysisSetupFromState,
+  type CanonicalMove,
+} from '../../../app/domain/chess_graph/index.ts';
 
 test('terminal status is derived from the rules rather than an engine', () => {
   const rules = new ChessJsRulesAdapter();
@@ -154,6 +157,73 @@ test('illegal and malformed moves are distinguished without leaking library erro
     ok: false,
     reason: 'invalid_fen',
   });
+});
+
+test('FEN rejects illegal king positions and inconsistent castling rights', () => {
+  const rules = new ChessJsRulesAdapter();
+  for (const fen of [
+    '8/8/8/8/8/8/4k3/4K3 w - - 0 1',
+    '8/8/8/8/8/8/4k3/4K3 b - - 0 1',
+    '4k3/8/8/8/8/8/8/K3R3 w - - 0 1',
+    '4r2k/8/8/8/8/8/8/4K3 b - - 0 1',
+    '4k3/8/8/8/8/8/8/4K3 w K - 0 1',
+  ]) {
+    assert.deepEqual(
+      rules.parseFen(fen),
+      { ok: false, reason: 'invalid_fen' },
+      fen,
+    );
+  }
+});
+
+test('FEN and structured setup share king safety while allowing the moving king to be in check', () => {
+  const rules = new ChessJsRulesAdapter();
+  for (const fen of [
+    '4k3/8/8/8/8/8/8/K3R3 b - - 7 12',
+    '4r2k/8/8/8/8/8/8/4K3 w - - 7 12',
+  ]) {
+    const parsed = rules.parseFen(fen);
+    assert(parsed.ok, fen);
+    assert.equal(parsed.value.fen, fen);
+    const setup = analysisSetupFromState(parsed.value);
+    assert.equal(rules.validateSetup(setup).valid, true);
+    const invalid = rules.validateSetup({
+      ...setup,
+      sideToMove: setup.sideToMove === 'white' ? 'black' : 'white',
+    });
+    assert.equal(invalid.valid, false);
+    if (!invalid.valid)
+      assert(invalid.issues.some((issue) => issue.code === 'invalid_position'));
+  }
+});
+
+test('FEN validation preserves castling, effective en passant and terminal positions', () => {
+  const rules = new ChessJsRulesAdapter();
+  for (const fen of [
+    'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1',
+    '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 2',
+    '7k/6Q1/5K2/8/8/8/8/8 b - - 0 1',
+    '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1',
+  ]) {
+    const parsed = rules.parseFen(fen);
+    assert(parsed.ok, fen);
+    assert.equal(parsed.value.fen, fen);
+    const setup = rules.validateSetup(analysisSetupFromState(parsed.value));
+    assert(setup.valid, fen);
+    assert.deepEqual(setup.state, parsed.value);
+    const legal = rules.legalMoves(parsed.value, []);
+    assert(legal.ok, fen);
+    for (const move of legal.value) {
+      const applied = rules.applyMove(parsed.value, [], {
+        kind: 'coordinates',
+        value: move.from + move.to,
+      });
+      assert(applied.ok, move.san);
+      const reparsed = rules.parseFen(applied.value.after.fen);
+      assert(reparsed.ok, applied.value.after.fen);
+      assert.equal(reparsed.value.fen, applied.value.after.fen);
+    }
+  }
 });
 
 test('a structured setup becomes one canonical state with unknown history', () => {

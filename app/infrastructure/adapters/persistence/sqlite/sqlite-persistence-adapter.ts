@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import Database from 'better-sqlite3';
+import type { ImportRepository } from '../../../../application/inventory/import-ports.ts';
+import * as imports from './sqlite-import.ts';
 import type {
   AnalysisRecordWriter,
   FreeAnalysisPersistence,
@@ -146,6 +148,7 @@ export interface SqlitePersistenceOptions {
 
 export class SqlitePersistenceAdapter
   implements
+    ImportRepository,
     UserPreferencesReader,
     PreferencesUnitOfWork,
     StoreStatusReader,
@@ -206,6 +209,20 @@ export class SqlitePersistenceAdapter
 
   async readUserPreferences(): Promise<UserPreferences> {
     return this.#readSnapshot((reader) => readPreferences(reader));
+  }
+
+  async checkImportNames(
+    request: Parameters<ImportRepository['checkImportNames']>[0],
+  ) {
+    return this.#readSnapshot((reader) =>
+      imports.checkImportNames(reader, request),
+    );
+  }
+
+  publishImport(request: Parameters<ImportRepository['publishImport']>[0]) {
+    return this.#enqueueWrite(() =>
+      imports.publishImport(this.#writer, request),
+    );
   }
 
   async readInventoryOrganization(

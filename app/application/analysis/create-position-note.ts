@@ -33,7 +33,7 @@ export class CreatePositionNote implements CreatePositionNoteUseCase {
   async execute(
     request: CreatePositionNoteRequest,
   ): Promise<AnalysisNoteMutationResult> {
-    validateRequest(request);
+    validatePositionNoteInput(request);
     const occurredAt = this.#clock.now();
     const result = await this.#writer.createPositionNote({
       scope: request.scope,
@@ -61,10 +61,15 @@ export class CreatePositionNote implements CreatePositionNoteUseCase {
   }
 }
 
-function validateRequest(request: CreatePositionNoteRequest): void {
+export function validatePositionNoteInput(
+  request: Pick<
+    CreatePositionNoteRequest,
+    'scope' | 'body' | 'languageTag' | 'noteScope'
+  >,
+): void {
   if (
     request.body.trim().length === 0 ||
-    request.body.trim().length > 8_000 ||
+    request.body.trim().length > 128_000 ||
     !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(request.languageTag) ||
     (request.scope.kind === 'free' && request.noteScope.kind !== 'global') ||
     (request.noteScope.kind === 'context' &&

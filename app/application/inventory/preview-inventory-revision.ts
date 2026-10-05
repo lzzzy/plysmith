@@ -7,6 +7,7 @@ import type {
 import type { InventoryRevisionReader } from './inventory-ports.ts';
 import { invalidInventoryRevision } from './inventory-problems.ts';
 import { readRevisionScratch } from './revision-scratch-access.ts';
+import { normalizeInventoryRevisionComment } from './inventory-revision-comment.ts';
 
 export interface PreviewInventoryRevisionUseCase {
   execute(
@@ -39,6 +40,10 @@ export class PreviewInventoryRevision implements PreviewInventoryRevisionUseCase
     ) {
       throw invalidInventoryRevision();
     }
+    const comment = normalizeInventoryRevisionComment(
+      request.scope,
+      request.comment,
+    );
     const scratch = await readRevisionScratch({
       ...request,
       contextReader: this.#contextReader,
@@ -47,6 +52,7 @@ export class PreviewInventoryRevision implements PreviewInventoryRevisionUseCase
     return this.#inventory.previewInventoryRevision({
       scope: request.scope,
       scratch,
+      ...(comment === undefined ? {} : { comment }),
     });
   }
 }

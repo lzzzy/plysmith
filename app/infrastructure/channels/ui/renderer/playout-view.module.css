@@ -146,6 +146,14 @@
 .playoutBoundary[data-hovered] {
   background: #eef2f7;
 }
+span.moveButton,
+span.rootMove,
+span.playoutBoundary {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  cursor: default;
+}
 .currentMove {
   color: #173f72;
   background: #e7f0fd;

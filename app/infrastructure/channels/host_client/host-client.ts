@@ -17,6 +17,24 @@ import {
   type SafeHostProblem,
 } from './host-client-problem.ts';
 
+export type RegisterImportInputRequestDto =
+  components['schemas']['RegisterImportInputBody'];
+export type ImportInputDescriptorDto =
+  components['schemas']['ImportInputDescriptor'];
+export type PrepareImportRequestDto =
+  components['schemas']['PrepareImportBody'];
+export type ImportPreviewDto = components['schemas']['ImportPreview'];
+export type CheckImportNamesRequestDto =
+  components['schemas']['CheckImportNamesBody'];
+export type ImportNameChecksDto = components['schemas']['ImportNameChecks'];
+export type PublishImportRequestDto =
+  components['schemas']['PublishImportBody'];
+export type ImportPublishedDto = components['schemas']['ImportPublished'];
+export type DiscardImportRequestDto =
+  components['schemas']['DiscardImportBody'];
+export type DiscardImportResultDto =
+  components['schemas']['DiscardImportResult'];
+
 export type GetInventoryOrganizationRequestDto =
   components['schemas']['InventoryOrganizationQuery'];
 export type InventoryOrganizationDto =
@@ -196,6 +214,86 @@ export class PlysmithHostClient {
       baseUrl: connection.endpoint,
       fetch: createHostFetch(connection, options),
     });
+  }
+
+  async registerImportInput(
+    request: RegisterImportInputRequestDto,
+  ): Promise<ImportInputDescriptorDto> {
+    try {
+      const result = await this.#client.POST('/inventory/import-inputs', {
+        body: request,
+      });
+      return unwrap<ImportInputDescriptorDto>(
+        result.data as unknown as ImportInputDescriptorDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async prepareImport(
+    request: PrepareImportRequestDto,
+  ): Promise<ImportPreviewDto> {
+    try {
+      const result = await this.#client.POST('/inventory/imports/preview', {
+        body: request,
+      });
+      return unwrap<ImportPreviewDto>(
+        result.data as unknown as ImportPreviewDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async checkImportNames(
+    request: CheckImportNamesRequestDto,
+  ): Promise<ImportNameChecksDto> {
+    try {
+      const result = await this.#client.POST('/inventory/imports/names', {
+        body: request,
+      });
+      return unwrap<ImportNameChecksDto>(
+        result.data as unknown as ImportNameChecksDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async publishImport(
+    request: PublishImportRequestDto,
+  ): Promise<ImportPublishedDto> {
+    try {
+      const result = await this.#client.POST('/inventory/imports/publish', {
+        body: request,
+      });
+      return unwrap<ImportPublishedDto>(
+        result.data as unknown as ImportPublishedDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async discardImport(
+    request: DiscardImportRequestDto,
+  ): Promise<DiscardImportResultDto> {
+    try {
+      const result = await this.#client.POST('/inventory/imports/discard', {
+        body: request,
+      });
+      return unwrap<DiscardImportResultDto>(
+        result.data as unknown as DiscardImportResultDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
   }
 
   async getWorkScopeWorkspace(

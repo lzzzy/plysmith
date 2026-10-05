@@ -59,7 +59,7 @@ function validateRequest(request: UpdateAnalysisNoteRequest): void {
     !Number.isSafeInteger(request.expectedContributionVersion) ||
     request.expectedContributionVersion < 1 ||
     request.body.trim().length === 0 ||
-    request.body.trim().length > 8_000
+    request.body.trim().length > 128_000
   ) {
     throw invalidAnalysisNote();
   }

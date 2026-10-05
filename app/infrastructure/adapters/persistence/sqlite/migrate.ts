@@ -18,6 +18,7 @@ const migrations = [
   loadMigration(6, './migrations/006-playout-drafts.sql'),
   loadMigration(7, './migrations/007-game-source-path.sql'),
   loadMigration(8, './migrations/008-inventory-folders.sql'),
+  loadMigration(9, './migrations/009-inventory-chess-tree.sql'),
 ] satisfies readonly Migration[];
 
 export function migrateStore(

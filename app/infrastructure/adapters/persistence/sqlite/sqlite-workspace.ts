@@ -1021,6 +1021,13 @@ export function resolveAnchorPosition(
   revisionId: number,
   anchorId: number,
 ): number | undefined {
+  const visible = database
+    .prepare(
+      `SELECT 1 FROM item_revision r JOIN inventory_item i ON i.item_id = r.item_id
+    WHERE r.item_id = ? AND r.revision_id = ? AND i.current_revision_id IS NOT NULL`,
+    )
+    .get(itemId, revisionId);
+  if (visible === undefined) return undefined;
   const row = database
     .prepare(
       `SELECT CASE a.anchor_kind
@@ -1030,16 +1037,11 @@ export function resolveAnchorPosition(
                 WHEN 'move_node' THEN child.position_id
               END AS positionId
          FROM chess_anchor AS a
-         LEFT JOIN inventory_analysis_revision AS analysis
+         LEFT JOIN inventory_chess_revision AS analysis
            ON analysis.item_id = ? AND analysis.revision_id = ?
-         LEFT JOIN inventory_game_revision AS game
-           ON game.item_id = ? AND game.revision_id = ?
          LEFT JOIN chess_occurrence_snapshot AS root
            ON root.revision_id = ?
-          AND root.occurrence_id = COALESCE(
-                analysis.root_occurrence_id,
-                game.root_occurrence_id
-              )
+          AND root.occurrence_id = analysis.root_occurrence_id
          LEFT JOIN chess_occurrence_snapshot AS occurrence
            ON occurrence.revision_id = ?
           AND occurrence.occurrence_id = a.occurrence_id
@@ -1064,8 +1066,6 @@ export function resolveAnchorPosition(
           )`,
     )
     .get(
-      itemId,
-      revisionId,
       itemId,
       revisionId,
       revisionId,
@@ -1116,11 +1116,20 @@ function requireContextSelection(
 ): void {
   const row = database
     .prepare(
-      `SELECT 1 FROM workspace_context_reference
-        WHERE context_id = ? AND item_id = ? AND anchor_id = ?`,
+      `SELECT coalesce(member.pinned_revision_id, item.current_revision_id)
+                AS effectiveRevisionId
+         FROM workspace_context_item AS member
+         JOIN inventory_item AS item ON item.item_id = member.item_id
+        WHERE member.context_id = ? AND member.item_id = ?
+          AND item.lifecycle = 'active'`,
     )
-    .get(contextId, itemId, anchorId);
-  if (row === undefined) throw contextReferenceNotFound();
+    .get(contextId, itemId) as
+    { effectiveRevisionId: number | null } | undefined;
+  if (
+    row?.effectiveRevisionId == null ||
+    !anchorBelongsToItem(database, anchorId, itemId, row.effectiveRevisionId)
+  )
+    throw contextReferenceNotFound();
 }
 
 function requireEffectiveContextRevision(

@@ -6,6 +6,36 @@
   overflow: hidden;
 }
 
+.stretched {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.stretched > :not(.groups) {
+  flex-shrink: 0;
+}
+
+.stretched .groups {
+  max-height: none;
+  min-height: 80px;
+  flex: 1;
+}
+
+@media (max-width: 820px) {
+  .stretched {
+    height: auto;
+  }
+
+  .stretched .groups {
+    max-height: min(37vh, 390px);
+    min-height: 0;
+    flex: initial;
+  }
+}
+
 .analysisHeader {
   display: flex;
   min-height: 48px;

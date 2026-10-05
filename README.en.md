@@ -38,6 +38,12 @@ alpha versions are not guaranteed to read older data or configuration.
 
 ## Getting Started
 
+**Upgrading to alpha.7:** The data format has changed. This version cannot open
+inventory created by alpha.6, and there is no migration. Close Plysmith and
+back up the complete data folder before upgrading. To start a new inventory,
+move the previous data folder to a safe location. A new one will be created
+on the next startup. Old data is never automatically deleted or converted.
+
 In **Manage**, you can create a new analysis from the starting position or
 a position you set up yourself, without creating a working context first.
 Analyses and games remain visible in **All inventory**. When you want to work
@@ -51,6 +57,23 @@ human-like move suggestions and can be an opponent when you play out a
 position. You can also play against Stockfish. The installer contains
 neither engines nor model weights.
 
+## Variations and Comments
+
+The analysis view initially shows the main line. Expand a variation using its
+branch symbol. Nested variations appear within their parent variation.
+Selecting a move shows its position without hiding other expanded alternatives.
+
+Explore a continuation on the board, then choose how to save it at the end of
+the analysis path. **Save as variation** extends the same analysis in the global inventory
+without replacing its main line. Optionally save the move sequence as an editable
+comment at the same time. The comment can be global or limited to the current
+working context; the structural variation always belongs to the inventory.
+Alternatively, save only the comment or create a separate named analysis linked
+to its starting point. A game's played move sequence remains unchanged.
+
+Delete a variation from its symbol row, or take back its last move. Before
+saving, review the change and any affected notes.
+
 ## Folders and Working Contexts
 
 In **Manage > Folders**, you can organize analyses and games in nested folders.
@@ -62,11 +85,16 @@ each working context, including after a restart.
 
 Folder and item actions are available at their rows: as icons or, when space
 is limited, in the **…** menu. The right-hand panel shows details and a
-position preview. Move checked items together by dragging one of them to the
-destination folder; deletion applies
-to one item at a time and requires confirmation.
+position preview. Move checked items together using the selection action or by
+dragging one of them to the destination folder. Selection actions can also add
+multiple items to the current working context, remove them from that context,
+or delete them from inventory after confirmation. If an operation fails, the
+remaining items stay selected.
 The plus adds content to a working context; the minus removes it only from
 that context. The trash icon deletes from the inventory.
+
+Items appear in ascending creation order. Imported chapters follow their order
+in the PGN file; later edits or moves do not change this order.
 
 A working context can include a folder and its subfolders as empty destinations
 or together with their current items. Items added later are not included
@@ -78,6 +106,41 @@ under **Unfiled**. Removing a folder from a working context instead removes
 its associated items and work from that context only. Plysmith asks before
 discarding context notes or drafts. The inventory items themselves remain.
 
+## Importing PGN
+
+In **Manage > Import**, choose a local `.pgn` file and prepare a preview.
+Select the entries you want and choose whether to import them as **Analysis**
+or **Game**. Analysis suits an opening repertoire; a PGN result does not
+automatically determine the type. Imports always go into the global inventory.
+
+Choose an existing or new destination folder and a common name prefix.
+Plysmith suggests the file name, for example folder `italian-game.pgn` and
+prefix `italian-game.pgn - `. Afterwards, review, rename, move or delete items,
+or include them in working contexts. **Unfiled** imports without a folder.
+
+The preview shows name conflicts, warnings and preserved content. Edit names
+or apply the offered name suggestions together. **Import selection** creates
+new items; it does not replace or merge existing items. Importing again with
+different names creates additional items. The preview belongs to the current
+import only; closing it or restarting discards it without changing inventory.
+
+The main line and variations are preserved. Comment text and
+useful details such as players, opening or result become ordinary notes that
+you can edit or delete. Comments at the same position are combined into one
+note. Expand side variations in the position preview or analysis view.
+You can also play out an imported position.
+Technical board markings, evaluations, clock annotations and evaluation symbols
+are not imported. The author's explanations are preserved unchanged.
+
+Standard-chess PGN is supported up to 16 MiB and 1,000 entries, with bounded
+size per entry. UTF-8 is the default; for older files, Plysmith can offer an
+explicit ISO-8859-1 retry. Unsupported content is identified in the preview.
+Archives and URL downloads are not supported yet.
+
+The [source catalogue (German)](docs/import-sources.md) lists openings,
+tactics, endgames and master games to try, with direct download links and
+material-specific notes.
+
 ## Setting Up Chess Engines
 
 Stockfish, Lc0, and Maia weights come from separate projects. Check their
@@ -88,6 +151,9 @@ sources, licenses, and system requirements before installing them.
    it to a permanent folder. Under **Settings > Chess engine > Add Stockfish**,
    select the extracted `stockfish*.exe` as the **Executable**. Review the
    configuration and choose **Save changed configuration**.
+   New configurations suggest 2 threads and **Fast** (500 ms), **Thorough**
+   (1,500 ms), and **Deep** (5,000 ms). These configurable detail levels apply
+   to both analysis and playout; playout defaults to **Thorough**.
 2. **Maia Chess:** Download and extract a stable
    [Lc0 Windows build](https://github.com/LeelaChessZero/lc0/releases).
    CPU packages are available if your computer lacks a suitable GPU. Download
@@ -105,6 +171,18 @@ folder. Do not move them while Plysmith uses them. If Plysmith asks for a
 restart, close and reopen it. Stockfish and Maia are independent and optional.
 You can create separate configurations for different Maia strengths using
 their corresponding weights files.
+
+The entire technical configuration is checked at startup. If any part is
+invalid or unsupported, the complete active set is discarded and recreated from
+current defaults, just like a first installation. No old values or valid partial
+configurations are retained. Set up the engines you need again from scratch.
+There is no additional reset button or manual file-repair workflow.
+
+The database itself is not deleted. The default setup opens `data/plysmith.db`
+again. If its data format matches this version, the inventory, notes, contexts
+and work in progress stored there become available again. An incompatible
+inventory blocks startup and remains untouched. A manually customized previous database path is not retained;
+its file remains untouched.
 
 ## Reporting Bugs and Ideas
 

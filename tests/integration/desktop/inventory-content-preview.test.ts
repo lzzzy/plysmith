@@ -223,6 +223,30 @@ test('root-only analysis always renders a board and all navigation controls disa
   assert.doesNotMatch(markup, /<details/);
 });
 
+test('a root with only an explicit variation still displays its selectable move tree', () => {
+  const value = record();
+  const markup = render({
+    ...value,
+    steps: [],
+    tree: {
+      nodes: [
+        {
+          nodeIndex: 0,
+          parentNodeIndex: null,
+          siblingOrder: 1,
+          anchorId: 'variation',
+          move: value.steps[0]!.move,
+          after: value.steps[0]!.after,
+        },
+      ],
+    },
+  });
+  assert.match(markup, /data-tree-line="variation"/);
+  assert.match(markup, /aria-expanded="false"/);
+  assert.doesNotMatch(markup, /data-tree-anchor="variation"/);
+  assert.doesNotMatch(markup, /No moves/);
+});
+
 test('game metadata uses player side, provider display name and localized stored outcomes', () => {
   const outcomes: readonly [
     NonNullable<AnalysisRecordDto['game']>['outcome'],

@@ -163,6 +163,7 @@ async function loadEngine(
       }
       await access(engine.executablePath);
       Object.freeze(engine.arguments);
+      Object.freeze(engine.detailLevels);
       Object.freeze(engine);
       Object.freeze(configuration);
       return Object.freeze({

@@ -42,6 +42,13 @@ noch keine Übernahme älterer Daten oder Konfigurationen.
 
 ## Erste Schritte
 
+**Wechsel auf alpha.7:** Das Datenformat wurde geändert. Bestände aus alpha.6
+lassen sich nicht in dieser Version öffnen; eine Migration gibt es nicht.
+Schließen Sie Plysmith und sichern Sie vor der Aktualisierung den vollständigen
+Datenordner. Für einen neuen Bestand können Sie den bisherigen Datenordner
+an einen sicheren Ort verschieben. Beim nächsten Start wird ein neuer angelegt.
+Alte Daten werden weder automatisch gelöscht noch konvertiert.
+
 In **Verwalten** können Sie ohne Arbeitskontext eine neue Analyse aus der
 Grundstellung oder einer selbst aufgebauten Stellung beginnen. Analysen und
 Partien bleiben im gesamten Bestand sichtbar. Wenn Sie mehrere Vorhaben
@@ -55,6 +62,24 @@ menschenähnliche Zugvorschläge und kann als Gegner beim Ausspielen dienen.
 Auch mit Stockfish können Sie ausspielen. Der Installer enthält weder
 Engines noch Modellgewichte.
 
+## Varianten und Kommentare
+
+Beim Analysieren sehen Sie zunächst den Hauptpfad. Über das Variantensymbol
+an einer Abzweigstelle klappen Sie Nebenvarianten auf. Untervarianten stehen
+innerhalb der jeweiligen Elternvariante. Ein Klick auf einen Zug zeigt die
+Stellung, ohne andere aufgeklappte Alternativen auszublenden.
+
+Erkunden Sie eine Fortsetzung auf dem Brett. Am Ende des Analysepfads wählen Sie,
+wie Sie ihn ablegen möchten. **Als Variante speichern** ergänzt dieselbe Analyse
+im Gesamtbestand; die Hauptlinie bleibt erhalten. Optional übernehmen Sie die
+Zugfolge zugleich als frei bearbeitbaren Kommentar. Der Kommentar gilt allgemein
+oder nur im aktiven Arbeitskontext; die strukturelle Variante gilt immer im Bestand.
+Alternativ speichern Sie nur den Kommentar oder eine eigene benannte Analyse
+mit Bezug zum Ausgangspunkt. Die gespielte Zugfolge einer Partie bleibt unverändert.
+
+Eine Variante löschen Sie an ihrer Symbolzeile, den letzten Zug über die
+Zugrücknahme. Vor dem Speichern sehen Sie die Änderung und betroffene Notizen.
+
 ## Ordner und Arbeitskontexte
 
 In **Verwalten > Ordner** können Sie Analysen und Partien in verschachtelten
@@ -66,11 +91,17 @@ Arbeitskontext getrennt, auch nach einem Neustart.
 
 Aktionen für Ordner und Einträge finden Sie an ihrer Zeile: als Symbole oder,
 bei wenig Platz, im Menü **…**. Rechts sehen Sie die Details und die
-Stellungsvorschau. Angekreuzte Einträge verschieben Sie gemeinsam, indem Sie
-einen davon in den gewünschten Ordner ziehen.
-Gelöscht wird jeweils ein einzelner Eintrag nach Bestätigung.
+Stellungsvorschau. Angekreuzte Einträge verschieben Sie gemeinsam per Auswahlaktion
+oder indem Sie einen davon in den gewünschten Ordner ziehen. Die Auswahlaktionen
+können mehrere Einträge auch in den aktuellen Arbeitskontext aufnehmen, daraus
+entfernen oder nach Bestätigung aus dem Bestand löschen. Bei einem Fehler bleiben
+die noch nicht erledigten Einträge ausgewählt.
 Das Plus nimmt Inhalte in einen Arbeitskontext auf, das Minus entfernt sie
 nur daraus. Der Mülleimer löscht aus dem Bestand.
+
+Einträge stehen in aufsteigender Erstellungsreihenfolge. Importierte Kapitel
+folgen ihrer Reihenfolge in der PGN-Datei; spätere Bearbeitungen oder
+Verschiebungen ändern diese Reihenfolge nicht.
 
 Ein Arbeitskontext kann einen Ordner samt Unterordnern aufnehmen: nur als
 leere Ablageziele oder zusätzlich mit den derzeit darin liegenden Einträgen.
@@ -84,6 +115,47 @@ aus einem Arbeitskontext, entfallen dagegen dessen zugehörige Einträge und
 Arbeitsstände nur dort. Vor einem Verlust von Kontextnotizen oder Entwürfen
 fragt Plysmith nach. Die Einträge im Gesamtbestand bleiben erhalten.
 
+## PGN importieren
+
+Unter **Verwalten > Import** wählen Sie eine lokale `.pgn`-Datei und bereiten
+eine Vorschau vor. Wählen Sie die gewünschten Einträge aus und entscheiden
+Sie, ob sie als **Analyse** oder **Partie** übernommen werden. Für ein
+Eröffnungsrepertoire eignet sich Analyse; ein PGN-Ergebnis bestimmt den Typ
+nicht automatisch. Importiert wird immer in den Gesamtbestand.
+
+Wählen Sie einen bestehenden oder neuen Zielordner und einen gemeinsamen
+Namenspräfix. Plysmith schlägt den Dateinamen vor: etwa Ordner
+`italian-game.pgn` und Präfix `italian-game.pgn - `. Danach können Sie die
+Einträge sichten, umbenennen, verschieben, löschen oder in Arbeitskontexten
+verwenden. **Nicht eingeordnet** importiert ohne Ordner.
+
+Die Vorschau zeigt Namenskonflikte, Warnungen und erhaltene Inhalte. Sie können
+Namen bearbeiten oder die angebotenen Namensvorschläge gemeinsam übernehmen.
+**Auswahl importieren** legt neue Einträge an; vorhandene Einträge werden
+nicht ersetzt oder zusammengeführt. Ein erneuter Import mit anderen Namen
+erzeugt weitere Einträge. Die Vorschau gilt nur für den aktuellen Import;
+Schließen oder ein Neustart verwirft sie, ohne den Bestand zu verändern.
+
+Hauptpfad und Nebenvarianten bleiben erhalten. Kommentartext und
+nützliche Angaben wie Spieler, Eröffnung oder Ergebnis werden als normale
+Notizen übernommen, die Sie bearbeiten und löschen können. Angaben an derselben
+Stellung stehen zusammen in einer Notiz. Nebenvarianten lassen sich in der
+Stellungsvorschau und beim Analysieren aufklappen.
+Sie können auch aus einer importierten Stellung ausspielen.
+Technische Angaben zu Brettmarkierungen, Bewertungen und Uhren sowie
+Bewertungszeichen werden nicht übernommen. Erklärungen des Autors bleiben
+unverändert erhalten.
+
+Unterstützt wird Standardschach-PGN bis 16 MiB und 1.000 Einträge, mit
+begrenzter Größe je Eintrag. UTF-8 ist die Vorgabe; für ältere Dateien bietet
+Plysmith bei Bedarf ISO-8859-1 als ausdrückliche Wiederholungswahl an. Nicht
+unterstützte Inhalte werden in der Vorschau benannt. Archive und Downloads
+von einer URL sind noch nicht enthalten.
+
+Der [Quellenkatalog](docs/import-sources.md) bietet Eröffnungen, Taktik,
+Endspiele und Meisterpartien zum Ausprobieren, mit direkten Downloadlinks
+und konkreten Hinweisen zum jeweiligen Material.
+
 ## Schachengines einrichten
 
 Stockfish, Lc0 und Maia-Gewichte stammen von externen Projekten. Prüfen Sie
@@ -94,6 +166,10 @@ Quelle, Lizenz und Systemanforderungen vor der Installation.
    **Einstellungen > Schachengine > Stockfish hinzufügen** bei **Programmdatei**
    die entpackte `stockfish*.exe` auswählen. Anschließend die Konfiguration
    prüfen und **Geänderte Konfiguration speichern** wählen.
+   Neue Konfigurationen schlagen 2 Threads und die Detaillevel **Schnell**
+   (500 ms), **Gründlich** (1.500 ms) und **Tief** (5.000 ms) vor. Die Zeiten
+   gelten für Analyse und Ausspielen; letzteres verwendet standardmäßig
+   **Gründlich**. Alle Werte können in der Konfiguration geändert werden.
 2. **Maia Chess:** Eine stabile
    [Lc0-Windows-Version](https://github.com/LeelaChessZero/lc0/releases)
    herunterladen und entpacken. Für Rechner ohne geeignete GPU gibt es
@@ -112,6 +188,20 @@ Falls ein Neustart angezeigt wird, schließen und öffnen Sie Plysmith erneut.
 Stockfish und Maia sind unabhängig und optional. Für verschiedene
 Maia-Spielstärken können Sie eigene Konfigurationen mit den jeweiligen
 Gewichtsdateien anlegen.
+
+Beim Start wird die gesamte technische Konfiguration geprüft. Ist irgendein
+Teil ungültig oder nicht unterstützt, wird der komplette aktive Satz verworfen
+und wie beim Erststart aus aktuellen Standards neu erstellt. Es werden keine
+alten Werte übernommen, auch keine gültigen Teilkonfigurationen. Richten Sie
+die gewünschten Engines anschließend von Anfang an neu ein. Dafür gibt es
+keinen zusätzlichen Rücksetzungsbutton und keine Dateireparatur.
+
+Die Datenbank selbst wird nicht gelöscht. Die Standardkonfiguration öffnet
+wieder `data/plysmith.db`; sofern deren Datenformat zu dieser Version passt,
+ist der dort vorhandene Bestand samt Notizen, Kontexten und Arbeitsständen
+wieder verfügbar. Ein inkompatibler Bestand blockiert den Start und bleibt
+unangetastet. Ein manuell abweichender
+alter Datenbankpfad wird nicht übernommen; dessen Datei bleibt unangetastet.
 
 ## Fehler und Ideen melden
 

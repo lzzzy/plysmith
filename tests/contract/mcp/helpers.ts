@@ -104,6 +104,33 @@ export async function connectMcp(
 ) {
   const calls: { method: string; request?: unknown }[] = [];
   const hostClient: HostClient = {
+    async registerImportInput(request) {
+      calls.push({ method: 'registerImportInput', request });
+      if (overrides.registerImportInput)
+        return overrides.registerImportInput(request);
+      throw new Error('registerImportInput fixture not configured');
+    },
+    async prepareImport(request) {
+      calls.push({ method: 'prepareImport', request });
+      if (overrides.prepareImport) return overrides.prepareImport(request);
+      throw new Error('prepareImport fixture not configured');
+    },
+    async checkImportNames(request) {
+      calls.push({ method: 'checkImportNames', request });
+      if (overrides.checkImportNames)
+        return overrides.checkImportNames(request);
+      throw new Error('checkImportNames fixture not configured');
+    },
+    async publishImport(request) {
+      calls.push({ method: 'publishImport', request });
+      if (overrides.publishImport) return overrides.publishImport(request);
+      throw new Error('publishImport fixture not configured');
+    },
+    async discardImport(request) {
+      calls.push({ method: 'discardImport', request });
+      if (overrides.discardImport) return overrides.discardImport(request);
+      throw new Error('discardImport fixture not configured');
+    },
     async getWorkScopeWorkspace(request) {
       calls.push({ method: 'getWorkScopeWorkspace', request });
       if (overrides.getWorkScopeWorkspace)

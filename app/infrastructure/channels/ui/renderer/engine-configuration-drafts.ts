@@ -1,3 +1,7 @@
+import {
+  STOCKFISH_DETAIL_LEVEL_DEFAULTS,
+  STOCKFISH_DETAIL_LEVEL_LIMITS,
+} from '../../../../../contracts/host/engine-provider-configuration.ts';
 import type {
   EngineProviderConfigurationDto,
   EngineProviderConfigurationInputDto,
@@ -8,10 +12,12 @@ type StockfishInput = Extract<
   { providerType: 'stockfish-uci' }
 >;
 export type EngineConfigurationForm =
-  | (Omit<StockfishInput, 'threads' | 'hashMb' | 'moveTimeMs'> & {
+  | (Omit<StockfishInput, 'threads' | 'hashMb' | 'detailLevels'> & {
       readonly threads: string;
       readonly hashMb: string;
-      readonly moveTimeMs: string;
+      readonly detailLevels: Readonly<
+        Record<StockfishInput['playoutBudget'], string>
+      >;
     })
   | Extract<
       EngineProviderConfigurationInputDto,
@@ -24,7 +30,10 @@ export type EngineConfigurationField =
   | 'weightsPath'
   | 'threads'
   | 'hashMb'
-  | 'moveTimeMs';
+  | 'fast'
+  | 'thorough'
+  | 'very_deep'
+  | 'playoutBudget';
 export type EngineConfigurationDraftPatch = Partial<
   Record<EngineConfigurationField, string>
 >;
@@ -49,7 +58,18 @@ export interface EngineConfigurationDraftsState {
 export const ENGINE_CONFIGURATION_FIELD_LIMITS = {
   threads: { min: 1, max: 256 },
   hashMb: { min: 1, max: 65_536 },
-  moveTimeMs: { min: 10, max: 600_000 },
+  fast: {
+    min: STOCKFISH_DETAIL_LEVEL_LIMITS.minimum,
+    max: STOCKFISH_DETAIL_LEVEL_LIMITS.maximum,
+  },
+  thorough: {
+    min: STOCKFISH_DETAIL_LEVEL_LIMITS.minimum,
+    max: STOCKFISH_DETAIL_LEVEL_LIMITS.maximum,
+  },
+  very_deep: {
+    min: STOCKFISH_DETAIL_LEVEL_LIMITS.minimum,
+    max: STOCKFISH_DETAIL_LEVEL_LIMITS.maximum,
+  },
 } as const;
 
 // Owned by the application store for the current session only.
@@ -121,9 +141,14 @@ export class EngineConfigurationDrafts {
             ...common,
             providerType,
             arguments: [],
-            threads: '1',
+            threads: '2',
             hashMb: '64',
-            moveTimeMs: '500',
+            detailLevels: {
+              fast: String(STOCKFISH_DETAIL_LEVEL_DEFAULTS.fast),
+              thorough: String(STOCKFISH_DETAIL_LEVEL_DEFAULTS.thorough),
+              very_deep: String(STOCKFISH_DETAIL_LEVEL_DEFAULTS.very_deep),
+            },
+            playoutBudget: 'thorough',
             startupTimeoutMs: 5_000,
             moveTimeoutMs: 10_000,
           }
@@ -162,12 +187,19 @@ export class EngineConfigurationDrafts {
         else if (field === 'weightsPath' && form.providerType === 'maia-chess')
           form.weightsPath = value;
         else if (
-          (field === 'threads' ||
-            field === 'hashMb' ||
-            field === 'moveTimeMs') &&
+          (field === 'threads' || field === 'hashMb') &&
           form.providerType === 'stockfish-uci'
         )
           form[field] = value;
+        else if (form.providerType === 'stockfish-uci') {
+          if (field === 'fast' || field === 'thorough' || field === 'very_deep')
+            form.detailLevels = { ...form.detailLevels, [field]: value };
+          else if (
+            field === 'playoutBudget' &&
+            (value === 'fast' || value === 'thorough' || value === 'very_deep')
+          )
+            form.playoutBudget = value;
+        }
       }
       if (entry.baseline === null && patch.displayName !== undefined) {
         form.instanceId = this.#instanceId(
@@ -228,7 +260,11 @@ export class EngineConfigurationDrafts {
             ...entry.form,
             threads: Number(entry.form.threads),
             hashMb: Number(entry.form.hashMb),
-            moveTimeMs: Number(entry.form.moveTimeMs),
+            detailLevels: {
+              fast: Number(entry.form.detailLevels.fast),
+              thorough: Number(entry.form.detailLevels.thorough),
+              very_deep: Number(entry.form.detailLevels.very_deep),
+            },
           }
         : { ...entry.form };
     return {
@@ -321,11 +357,21 @@ export function validateEngineConfigurationForm(
       });
   }
   if (form.providerType === 'stockfish-uci') {
-    for (const field of ['threads', 'hashMb', 'moveTimeMs'] as const) {
+    for (const field of [
+      'threads',
+      'hashMb',
+      'fast',
+      'thorough',
+      'very_deep',
+    ] as const) {
       const { min, max } = ENGINE_CONFIGURATION_FIELD_LIMITS[field];
-      const value = Number(form[field]);
+      const raw =
+        field === 'threads' || field === 'hashMb'
+          ? form[field]
+          : form.detailLevels[field];
+      const value = Number(raw);
       if (
-        form[field].trim() === '' ||
+        raw.trim() === '' ||
         !Number.isInteger(value) ||
         value < min ||
         value > max
@@ -374,7 +420,12 @@ function fromProvider(
           arguments: [...provider.arguments],
           threads: String(provider.threads),
           hashMb: String(provider.hashMb),
-          moveTimeMs: String(provider.moveTimeMs),
+          detailLevels: {
+            fast: String(provider.detailLevels.fast),
+            thorough: String(provider.detailLevels.thorough),
+            very_deep: String(provider.detailLevels.very_deep),
+          },
+          playoutBudget: provider.playoutBudget,
         }
       : {
           ...common,

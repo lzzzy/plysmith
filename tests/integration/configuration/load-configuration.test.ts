@@ -83,7 +83,7 @@ test('loads Stockfish and Maia playout instances and isolates invalid optional p
   await writeFile(
     path.join(initialized.activeDirectory, 'stockfish-main.json'),
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       provider: 'stockfish-uci',
       displayName: 'Stockfish',
       stockfish: {
@@ -91,7 +91,8 @@ test('loads Stockfish and Maia playout instances and isolates invalid optional p
         arguments: [],
         threads: 1,
         hashMb: 64,
-        moveTimeMs: 250,
+        detailLevels: { fast: 250, thorough: 1_500, very_deep: 5_000 },
+        playoutBudget: 'fast',
         startupTimeoutMs: 2_000,
         moveTimeoutMs: 3_000,
         stopTimeoutMs: 500,
@@ -117,6 +118,9 @@ test('loads Stockfish and Maia playout instances and isolates invalid optional p
     ],
   );
   assert.ok(Object.isFrozen(runtime.playoutEngines));
+  const stockfish = runtime.playoutEngines[0];
+  assert.ok(stockfish?.provider === 'stockfish-uci');
+  assert.ok(Object.isFrozen(stockfish.configuration.stockfish.detailLevels));
   assert.equal(runtime.playoutEngines[1]?.provider, 'maia-chess');
 
   await writeFile(executablePath, 'replaced stockfish', 'utf8');
@@ -126,6 +130,27 @@ test('loads Stockfish and Maia playout instances and isolates invalid optional p
   await writeFile(weightsPath, 'replaced Maia weights', 'utf8');
   const changedWeights = await loadConfiguration(applicationHome);
   assert.equal(changedWeights.playoutEngines[1]?.status, 'available');
+
+  const stockfishPath = path.join(
+    initialized.activeDirectory,
+    'stockfish-main.json',
+  );
+  const original = JSON.parse(await readFile(stockfishPath, 'utf8'));
+  original.schemaVersion = 1;
+  original.stockfish.moveTimeMs = 5_000;
+  delete original.stockfish.detailLevels;
+  delete original.stockfish.playoutBudget;
+  const incompatible = `${JSON.stringify(original)}\n`;
+  await writeFile(stockfishPath, incompatible, 'utf8');
+  const withoutStockfish = await loadConfiguration(applicationHome);
+  assert.deepEqual(withoutStockfish.playoutEngines[0], {
+    instanceId: 'stockfish-main',
+    provider: 'unknown',
+    status: 'unavailable',
+    problemCode: 'configuration.provider_invalid',
+  });
+  assert.equal(withoutStockfish.playoutEngines[1]?.status, 'available');
+  assert.equal(await readFile(stockfishPath, 'utf8'), incompatible);
 });
 
 test('reports a missing active configuration without seeding it', async (context) => {

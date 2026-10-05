@@ -1,6 +1,10 @@
 import { Type, type Static } from '@sinclair/typebox';
+import { importSchemas } from './import-schemas.ts';
 
-import { ENGINE_PROVIDER_TIMEOUT_LIMITS } from '../../../../contracts/host/engine-provider-configuration.ts';
+import {
+  ENGINE_PROVIDER_TIMEOUT_LIMITS,
+  STOCKFISH_DETAIL_LEVEL_LIMITS,
+} from '../../../../contracts/host/engine-provider-configuration.ts';
 
 const objectOptions = { additionalProperties: false } as const;
 const revision = Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER });
@@ -240,7 +244,19 @@ const stockfishUciEngineProviderConfiguration = {
   arguments: Type.Array(Type.String({ maxLength: 1_024 }), { maxItems: 32 }),
   threads: Type.Integer({ minimum: 1, maximum: 256 }),
   hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
-  moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
+  detailLevels: Type.Object(
+    {
+      fast: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+      thorough: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+      very_deep: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+    },
+    objectOptions,
+  ),
+  playoutBudget: Type.Union([
+    Type.Literal('fast'),
+    Type.Literal('thorough'),
+    Type.Literal('very_deep'),
+  ]),
 };
 
 export const StockfishUciEngineProviderConfigurationInputSchema = Type.Object(
@@ -627,6 +643,7 @@ export const AnalysisOriginSchema = Type.Union(
 export const InventoryRevisionModeSchema = Type.Union(
   [
     Type.Literal('extend'),
+    Type.Literal('add_variation'),
     Type.Literal('truncate_after'),
     Type.Literal('replace_move'),
     Type.Literal('metadata'),
@@ -661,13 +678,13 @@ export const AnalysisScratchSchema = Type.Object(
     origin: Type.Ref(AnalysisOriginSchema),
     intent: Type.Ref(AnalysisScratchIntentSchema),
     root: Type.Ref(ChessStateSchema),
-    steps: Type.Array(Type.Ref(AnalysisStepSchema), { maxItems: 1_000 }),
-    cursor: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    steps: Type.Array(Type.Ref(AnalysisStepSchema)),
+    cursor: Type.Integer({ minimum: 0 }),
     noteDraft: Type.Optional(
       Type.Object(
         {
-          moves: Type.Array(Type.Ref(CanonicalMoveSchema), { maxItems: 1_000 }),
-          body: Type.String({ maxLength: 8_000 }),
+          moves: Type.Array(Type.Ref(CanonicalMoveSchema)),
+          body: Type.String({ maxLength: 128_000 }),
         },
         objectOptions,
       ),
@@ -680,8 +697,8 @@ export const AnalysisContributionSchema = Type.Object(
   {
     contributionId: localId,
     anchorId: localId,
-    body: Type.String({ maxLength: 8_000 }),
-    moves: Type.Array(Type.Ref(CanonicalMoveSchema), { maxItems: 1_000 }),
+    body: Type.String({ maxLength: 128_000 }),
+    moves: Type.Array(Type.Ref(CanonicalMoveSchema)),
     languageTag,
     scopeKind: Type.Union([Type.Literal('global'), Type.Literal('context')]),
     contextId: Type.Optional(localId),
@@ -731,7 +748,6 @@ export const AnalysisSourceLineSchema = Type.Object(
         },
         objectOptions,
       ),
-      { maxItems: 1_000 },
     ),
     contributions: Type.Array(Type.Ref(AnalysisContributionSchema)),
   },
@@ -836,11 +852,34 @@ export const AnalysisRecordSchema = Type.Object(
       ),
     ),
     origin: Type.Ref(AnalysisOriginSchema),
+    tree: Type.Optional(
+      Type.Object(
+        {
+          nodes: Type.Array(
+            Type.Object(
+              {
+                nodeIndex: Type.Integer({ minimum: 0 }),
+                parentNodeIndex: Type.Union([
+                  Type.Integer({ minimum: 0 }),
+                  Type.Null(),
+                ]),
+                siblingOrder: Type.Integer({ minimum: 0 }),
+                anchorId: localId,
+                move: Type.Ref(CanonicalMoveSchema),
+                after: Type.Ref(ChessStateSchema),
+              },
+              objectOptions,
+            ),
+          ),
+        },
+        objectOptions,
+      ),
+    ),
     sourceLine: Type.Optional(Type.Ref(AnalysisSourceLineSchema)),
     sourcePath: Type.Optional(Type.Ref('PlayoutSourcePath')),
     root: Type.Ref(ChessStateSchema),
-    steps: Type.Array(Type.Ref(AnalysisRecordStepSchema), { maxItems: 1_000 }),
-    cursor: Type.Integer({ minimum: 0, maximum: 1_000 }),
+    steps: Type.Array(Type.Ref(AnalysisRecordStepSchema)),
+    cursor: Type.Integer({ minimum: 0 }),
     contributions: Type.Array(Type.Ref(AnalysisContributionSchema)),
     contextMember: Type.Boolean(),
     historical: Type.Boolean(),
@@ -962,7 +1001,7 @@ export const UpdateAnalysisScratchBodySchema = Type.Object(
       Type.Object(
         {
           kind: Type.Literal('prepare_note'),
-          body: Type.String({ maxLength: 8_000 }),
+          body: Type.String({ maxLength: 128_000 }),
         },
         objectOptions,
       ),
@@ -1343,7 +1382,6 @@ export const PlayoutSourcePathSchema = Type.Object(
         },
         objectOptions,
       ),
-      { maxItems: 1_000 },
     ),
   },
   { ...objectOptions, $id: 'PlayoutSourcePath' },
@@ -1359,7 +1397,7 @@ export const PlayoutDraftSchema = Type.Object(
     root: Type.Ref(ChessStateSchema),
     playerSide: Type.Union([Type.Literal('white'), Type.Literal('black')]),
     policy: Type.Ref(MovePolicyBindingSchema),
-    steps: Type.Array(Type.Ref(PlayoutStepSchema), { maxItems: 1_000 }),
+    steps: Type.Array(Type.Ref(PlayoutStepSchema)),
     status: Type.Ref(PlayoutStatusSchema),
   },
   { ...objectOptions, $id: 'PlayoutDraft' },
@@ -1458,7 +1496,7 @@ export const CompletePlayoutBodySchema = Type.Object(
         Type.Literal('unfinished'),
       ]),
     ),
-    displayName: Type.String({ minLength: 1, maxLength: 200 }),
+    displayName: Type.String({ minLength: 1, maxLength: 160 }),
     languageTag,
     targetContextId: Type.Optional(localId),
   },
@@ -1527,7 +1565,7 @@ export const CreatePositionNoteBodySchema = Type.Object(
     itemId: localId,
     revisionId: localId,
     anchorId: localId,
-    body: Type.String({ minLength: 1, maxLength: 8_000 }),
+    body: Type.String({ minLength: 1, maxLength: 128_000 }),
     languageTag,
     noteScope: Type.Ref(AnalysisNoteScopeSchema),
   },
@@ -1538,7 +1576,7 @@ export const UpdateAnalysisNoteBodySchema = Type.Object(
   {
     scope: Type.Ref(WorkScopeSchema),
     expectedContributionVersion: positiveRevision,
-    body: Type.String({ minLength: 1, maxLength: 8_000 }),
+    body: Type.String({ minLength: 1, maxLength: 128_000 }),
   },
   { ...objectOptions, $id: 'UpdateAnalysisNoteBody' },
 );
@@ -1651,6 +1689,7 @@ export const StartInventoryRevisionBodySchema = Type.Object(
     scope: Type.Ref(WorkScopeSchema),
     baseRevisionId: localId,
     anchorId: localId,
+    lineAnchorId: Type.Optional(localId),
     mode: Type.Ref(InventoryRevisionModeSchema),
     expectedScratchId: Type.Union([identifier, Type.Null()]),
     expectedScratchRevision: Type.Union([positiveRevision, Type.Null()]),
@@ -1674,6 +1713,7 @@ export const StartInventoryRevisionResultSchema = Type.Object(
 
 export const PromoteAnalysisToInventoryRevisionBodySchema = Type.Object(
   {
+    mode: Type.Optional(Type.Literal('add_variation')),
     scope: Type.Ref(WorkScopeSchema),
     baseRevisionId: localId,
     anchorId: localId,
@@ -1683,8 +1723,18 @@ export const PromoteAnalysisToInventoryRevisionBodySchema = Type.Object(
   { ...objectOptions, $id: 'PromoteAnalysisToInventoryRevisionBody' },
 );
 
+export const InventoryRevisionCommentSchema = Type.Object(
+  {
+    body: Type.String({ minLength: 1, maxLength: 128_000 }),
+    languageTag,
+    noteScope: Type.Ref(AnalysisNoteScopeSchema),
+  },
+  { ...objectOptions, $id: 'InventoryRevisionComment' },
+);
+
 export const InventoryRevisionScratchBodySchema = Type.Object(
   {
+    comment: Type.Optional(Type.Ref(InventoryRevisionCommentSchema)),
     scope: Type.Ref(WorkScopeSchema),
     expectedScratchId: identifier,
     expectedScratchRevision: positiveRevision,
@@ -1711,6 +1761,7 @@ export const InventoryRevisionFollowingContextSummarySchema = Type.Object(
     updatedAutomatically: Type.Boolean(),
     referenceCount: revision,
     contributionCount: revision,
+    changedScratchCount: revision,
     managementResumeCount: revision,
     analysisResumeCount: revision,
   },
@@ -1725,8 +1776,8 @@ export const InventoryRevisionPreviewSchema = Type.Object(
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
     summary: Type.Optional(Type.String({ maxLength: 2_000 })),
     preservedMoveCount: revision,
-    addedSteps: Type.Array(Type.Ref(AnalysisStepSchema), { maxItems: 1_000 }),
-    removedSteps: Type.Array(Type.Ref(AnalysisStepSchema), { maxItems: 1_000 }),
+    addedSteps: Type.Array(Type.Ref(AnalysisStepSchema)),
+    removedSteps: Type.Array(Type.Ref(AnalysisStepSchema)),
     historicalGlobalContributionCount: revision,
     affectedContexts: Type.Array(
       Type.Ref(InventoryRevisionContextImpactSummarySchema),
@@ -1743,6 +1794,7 @@ export const InventoryRevisionPreviewSchema = Type.Object(
 
 export const SaveInventoryRevisionBodySchema = Type.Object(
   {
+    comment: Type.Optional(Type.Ref(InventoryRevisionCommentSchema)),
     scope: Type.Ref(WorkScopeSchema),
     expectedScratchId: identifier,
     expectedScratchRevision: positiveRevision,
@@ -1753,6 +1805,7 @@ export const SaveInventoryRevisionBodySchema = Type.Object(
 
 export const SaveInventoryRevisionResultSchema = Type.Object(
   {
+    commentContributionId: Type.Optional(localId),
     itemId: localId,
     revisionId: localId,
     revisionNumber: positiveRevision,
@@ -1830,7 +1883,7 @@ export const ResolvePendingRevisionImpactBodySchema = Type.Object(
       Type.Object(
         {
           kind: Type.Literal('keep_copy'),
-          displayName: Type.String({ minLength: 1, maxLength: 200 }),
+          displayName: Type.String({ minLength: 1, maxLength: 160 }),
         },
         objectOptions,
       ),
@@ -2639,6 +2692,7 @@ export const EventHeadersSchema = Type.Object(
 );
 
 export const apiSchemas = [
+  ...importSchemas,
   InventoryOrganizationQuerySchema,
   InventoryOrganizationSchema,
   ChangeInventoryOrganizationBodySchema,
@@ -2747,6 +2801,7 @@ export const apiSchemas = [
   StartInventoryRevisionResultSchema,
   PromoteAnalysisToInventoryRevisionBodySchema,
   InventoryRevisionScratchBodySchema,
+  InventoryRevisionCommentSchema,
   InventoryRevisionContextImpactSummarySchema,
   InventoryRevisionFollowingContextSummarySchema,
   InventoryRevisionPreviewSchema,

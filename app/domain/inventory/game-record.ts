@@ -34,7 +34,7 @@ export function createGameRecordDraft(input: GameRecordDraft): GameRecordDraft {
   if (
     input.displayName.trim() !== input.displayName ||
     input.displayName.length < 1 ||
-    input.displayName.length > 200 ||
+    input.displayName.length > 160 ||
     input.languageTag.length < 2 ||
     input.languageTag.length > 35 ||
     input.provider.providerType.trim().length === 0 ||

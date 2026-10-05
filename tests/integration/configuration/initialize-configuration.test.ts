@@ -44,7 +44,7 @@ test('publishes the complete default set once', async (context) => {
   );
 });
 
-test('never overwrites an existing active path', async (context) => {
+test('replaces an invalid active set with current defaults', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const activeDirectory = path.join(applicationHome, 'configuration', 'active');
   await mkdir(activeDirectory, { recursive: true });
@@ -59,10 +59,10 @@ test('never overwrites an existing active path', async (context) => {
     defaultsDirectory,
   });
 
-  assert.equal(result.status, 'already-initialized');
+  assert.equal(result.status, 'initialized');
   assert.equal(
     await readFile(path.join(activeDirectory, 'plysmith.json'), 'utf8'),
-    'invalid',
+    await readFile(path.join(defaultsDirectory, 'plysmith.json'), 'utf8'),
   );
 });
 

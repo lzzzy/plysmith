@@ -14,6 +14,7 @@ import type {
   SaveInventoryRevisionResult,
 } from './inventory-models.ts';
 import { invalidInventoryRevision } from './inventory-problems.ts';
+import { normalizeInventoryRevisionComment } from './inventory-revision-comment.ts';
 import {
   assertRevisionScratch,
   readRevisionScratch,
@@ -61,6 +62,14 @@ export class SaveInventoryRevision implements SaveInventoryRevisionUseCase {
     ) {
       throw invalidInventoryRevision();
     }
+    const comment = normalizeInventoryRevisionComment(
+      request.scope,
+      request.comment,
+    );
+    const normalizedRequest = {
+      ...request,
+      ...(comment === undefined ? {} : { comment }),
+    };
     const occurredAt = this.#clock.now();
     const result =
       request.scope.kind === 'free'
@@ -71,7 +80,7 @@ export class SaveInventoryRevision implements SaveInventoryRevisionUseCase {
               request.expectedScratchRevision,
             );
             const saved = await this.#writer.saveInventoryRevision({
-              ...request,
+              ...normalizedRequest,
               scratch,
               occurredAt,
             });
@@ -82,7 +91,7 @@ export class SaveInventoryRevision implements SaveInventoryRevisionUseCase {
             };
           })
         : await this.#writer.saveInventoryRevision({
-            ...request,
+            ...normalizedRequest,
             scratch: await readRevisionScratch({
               ...request,
               contextReader: this.#reader,

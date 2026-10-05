@@ -7,6 +7,7 @@ import {
   ChevronRight,
   FileSearch,
   FilePlus2,
+  Download,
   Folder,
   FolderPlus,
   Library,
@@ -35,6 +36,7 @@ import {
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
 import { AnalysisSetupDialog } from './analysis-setup-dialog.tsx';
+import { ImportDialog } from './import-dialog.tsx';
 import { InventoryMetadataForm } from './inventory-metadata-form.tsx';
 import { InventoryTypeIcon } from './inventory-type-icon.tsx';
 import { InventoryDetailsView } from './inventory-details-view.tsx';
@@ -56,6 +58,7 @@ import {
 } from './inventory-family-presentation.ts';
 import styles from './manage-view.module.css';
 import { RevisionImpactResolutionPanel } from './revision-impact-view.tsx';
+import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 import { LossSummary, contextRemovalSummary } from './loss-summary.tsx';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
@@ -194,6 +197,14 @@ export function ManageView({
     <main className={styles.manageView}>
       <header className={styles.viewHeader}>
         <div className={styles.headerActions}>
+          <Button
+            className={styles.secondaryButton!}
+            isDisabled={isBusy}
+            onPress={() => void store.openImport()}
+          >
+            <Download aria-hidden="true" size={16} />
+            <FormattedMessage id="import.open" />
+          </Button>
           <span className={styles.inventoryCount}>
             <FormattedMessage
               id="manage.resultCount"
@@ -230,6 +241,7 @@ export function ManageView({
         </div>
       </header>
 
+      <ImportDialog state={state} store={store} />
       <div className={styles.manageGrid}>
         <aside className={styles.contextPanel} aria-labelledby="contexts-title">
           <div className={styles.panelHeading}>
@@ -1202,6 +1214,13 @@ function ItemActionContent({
             <p role="alert">
               <FormattedMessage id="manage.renameScratchOccupied" />
             </p>
+          )}
+          {state.manageInventoryRevisionDraft?.itemId === item.itemId && (
+            <RevisionFollowingContexts
+              contexts={
+                state.manageInventoryRevisionDraft.preview.followingContexts
+              }
+            />
           )}
           <InventoryMetadataForm
             store={store}

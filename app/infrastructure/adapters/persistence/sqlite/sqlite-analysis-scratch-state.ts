@@ -35,7 +35,12 @@ interface ScratchRow {
   readonly noteBody: string | null;
   readonly scratchMode: AnalysisScratchIntent['kind'];
   readonly editMode:
-    'extend' | 'truncate_after' | 'replace_move' | 'metadata' | null;
+    | 'extend'
+    | 'truncate_after'
+    | 'replace_move'
+    | 'metadata'
+    | 'add_variation'
+    | null;
   readonly editItemId: number | null;
   readonly baseRevisionId: number | null;
   readonly cutAnchorId: number | null;

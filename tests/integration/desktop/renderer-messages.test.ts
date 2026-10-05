@@ -76,11 +76,21 @@ test('draft review does not imply that the first action already saves', () => {
   assert.equal(messages['en-GB']['draft.unsavedChange'], 'Unsaved change');
   assert.equal(messages['de-DE']['draft.reviewChange'], 'Änderung prüfen…');
   assert.equal(messages['en-GB']['draft.reviewChange'], 'Review change…');
-  assert.match(messages['de-DE']['inventory.contextsRenamedDetail'], /Name/);
-  assert.match(messages['de-DE']['inventory.contextsUpdatedDetail'], /Fassung/);
-  assert.doesNotMatch(
-    messages['de-DE']['inventory.contextsRenamedDetail'],
-    /Revision|Bestandsverknüpfung/,
+  assert.equal(
+    messages['de-DE']['inventory.mode.truncate_after'],
+    'Zugfolge kürzen',
+  );
+  assert.equal(
+    messages['en-GB']['inventory.mode.truncate_after'],
+    'Shorten line',
+  );
+  assert.match(
+    messages['de-DE']['inventory.automaticContextLosses'],
+    /Kontextinhalte/,
+  );
+  assert.match(
+    messages['de-DE']['inventory.followingContextScratchLoss'],
+    /Änderungen.*verworfen/,
   );
   assert.equal(
     messages['de-DE']['inventory.revisionSaved'],

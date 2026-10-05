@@ -73,7 +73,10 @@ export class GetAnalysisWorkspace implements GetAnalysisWorkspaceUseCase {
             ? await this.#reader.readAnalysisRecord({
                 itemId: scratch.origin.itemId,
                 revisionId: scratch.origin.revisionId,
-                anchorId: scratch.origin.anchorId,
+                anchorId:
+                  scratch.intent.kind === 'inventory_revision'
+                    ? scratch.intent.returnAnchorId
+                    : scratch.origin.anchorId,
               })
             : undefined;
         if (
@@ -262,12 +265,18 @@ function allowedActions(
     return Object.freeze(['start_scratch']);
   }
   const actions: AnalysisWorkspace['allowedActions'][number][] = [
-    'apply_move',
     'move_cursor',
     'discard_scratch',
   ];
-  if (scratch.steps.length > 0 && scratch.cursor === scratch.steps.length) {
-    actions.push('remove_last_move');
+  if (
+    scratch.cursor === scratch.steps.length &&
+    !(
+      scratch.intent.kind === 'inventory_revision' &&
+      scratch.intent.mode === 'metadata'
+    )
+  ) {
+    actions.unshift('apply_move');
+    if (scratch.steps.length > 0) actions.push('remove_last_move');
   }
   if (scratch.intent.kind === 'inventory_revision') {
     if (canContinueAnalysisExploration(scratch))

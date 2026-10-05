@@ -22,13 +22,13 @@ export function createAnalysisRecordDraft(input: {
       'An inventory revision scratch cannot create another item.',
     );
   }
-  requireTrimmedText(input.displayName, 200, 'display name');
+  requireTrimmedText(input.displayName, 160, 'display name');
   if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.languageTag)) {
     throw new Error('An analysis record requires a BCP-47 language tag.');
   }
   const noteDraft = input.scratch.noteDraft;
   if (noteDraft !== undefined) {
-    requireTrimmedText(noteDraft.body, 100_000, 'note');
+    requireTrimmedText(noteDraft.body, 128_000, 'note');
   }
 
   return Object.freeze({

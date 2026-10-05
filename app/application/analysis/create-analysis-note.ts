@@ -24,6 +24,7 @@ import {
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
 import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
+import { validatePositionNoteInput } from './create-position-note.ts';
 
 export interface CreateAnalysisNoteUseCase {
   execute(
@@ -126,6 +127,7 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
       throw invalidAnalysisNote();
     }
 
+    validatePositionNoteInput({ ...request, body: note.body });
     const occurredAt = this.#clock.now();
     const result = await this.#writer.createAnalysisNote({
       sourceScope: request.scope,
@@ -139,7 +141,7 @@ export class CreateAnalysisNote implements CreateAnalysisNoteUseCase {
             expectedScratchRevision: request.expectedScratchRevision,
           }),
       origin,
-      note,
+      note: Object.freeze({ body: note.body.trim(), moves: Object.freeze([]) }),
       noteScope: request.noteScope,
       languageTag: request.languageTag,
       occurredAt,

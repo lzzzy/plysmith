@@ -35,7 +35,7 @@ export async function createApplicationHostFixture(t: TestContext) {
   await writeFile(
     path.join(activeDirectory, 'uci-test.json'),
     `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       provider: 'stockfish-uci',
       displayName: 'MCP test engine',
       stockfish: {
@@ -47,7 +47,8 @@ export async function createApplicationHostFixture(t: TestContext) {
         ],
         threads: 1,
         hashMb: 16,
-        moveTimeMs: 10,
+        detailLevels: { fast: 500, thorough: 10, very_deep: 5_000 },
+        playoutBudget: 'thorough',
         startupTimeoutMs: 5_000,
         moveTimeoutMs: 5_000,
         stopTimeoutMs: 1_000,

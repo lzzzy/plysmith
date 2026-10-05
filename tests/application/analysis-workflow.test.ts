@@ -17,6 +17,8 @@ import {
 } from '../../app/application/analysis/index.ts';
 import {
   appendAnalysisMove,
+  moveAnalysisCursor,
+  prepareAnalysisNote,
   startAnalysisScratch,
   type AnalysisScratch,
 } from '../../app/domain/analysis/index.ts';
@@ -177,6 +179,122 @@ test('the free analysis workspace applies localized moves and rejects stale upda
 });
 
 for (const inContext of [false, true]) {
+  test(`scratch move permissions follow the line end without losing work (context: ${inContext})`, async () => {
+    const { freeSession } = freeSessionFixture();
+    const contextId = localId('working-context', 1);
+    const scope = inContext ? contextWorkScope(contextId) : freeWorkScope();
+    const root = rules.initialState();
+    const first = rules.applyMove(root, [], {
+      kind: 'coordinates',
+      value: 'e2e4',
+    });
+    assert.ok(first.ok);
+    const second = rules.applyMove(root, [first.value.move], {
+      kind: 'coordinates',
+      value: 'e7e5',
+    });
+    assert.ok(second.ok);
+    let scratch = prepareAnalysisNote(
+      moveAnalysisCursor(
+        appendAnalysisMove(
+          appendAnalysisMove(
+            startAnalysisScratch('end-only', root),
+            first.value,
+          ),
+          second.value,
+        ),
+        1,
+      ),
+      'Preserve my path',
+    );
+    await freeSession.run(() => ({ scratch, result: undefined }));
+    let writes = 0;
+    const events: AnalysisScratchChanged[] = [];
+    const reader: ContextAnalysisReader = {
+      ...unavailableContext,
+      readContextAnalysisWorkspace: async () => ({
+        contextId,
+        contextName: 'Training',
+        dataRevision: 7,
+        scratch,
+      }),
+    };
+    const writer: ContextAnalysisWriter = {
+      ...unavailableContext,
+      replaceContextAnalysisScratch: async (request) => {
+        writes++;
+        scratch = request.scratch;
+        return { scratch, dataRevision: 7, resumeVersion: writes };
+      },
+    };
+    const storeStatus = {
+      readStoreStatus: async () => ({ schemaVersion: 9, dataRevision: 7 }),
+    };
+    const get = new GetAnalysisWorkspace({
+      reader,
+      freeSession,
+      rules,
+      storeStatus,
+    });
+    const update = new UpdateAnalysisScratch({
+      reader,
+      writer,
+      freeSession,
+      rules,
+      storeStatus,
+      clock: { now: () => timestamp },
+      events: { publish: (event) => events.push(event) },
+      scratchId: () => 'unused',
+    });
+    const before = await get.execute({ scope });
+    assert.equal(before.allowedActions.includes('apply_move'), false);
+    assert.equal(before.allowedActions.includes('remove_last_move'), false);
+    assert.ok(before.allowedActions.includes('move_cursor'));
+    assert.ok(before.allowedActions.includes('prepare_note'));
+    assert.ok(before.legalMoves.length > 0);
+    await assert.rejects(
+      update.execute({
+        scope,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+        action: {
+          kind: 'apply_move',
+          move: { kind: 'coordinates', value: 'c7c5' },
+        },
+      }),
+      { problemCode: 'analysis.invalid_update' },
+    );
+    assert.deepEqual(await get.execute({ scope }), before);
+    assert.equal(writes, 0);
+    assert.equal(events.length, 0);
+    const end = (
+      await update.execute({
+        scope,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+        action: { kind: 'move_cursor', cursor: 2 },
+      })
+    ).scratch!;
+    const atEnd = await get.execute({ scope });
+    assert.ok(atEnd.allowedActions.includes('apply_move'));
+    assert.ok(atEnd.allowedActions.includes('remove_last_move'));
+    const continued = await update.execute({
+      scope,
+      expectedScratchId: end.scratchId,
+      expectedScratchRevision: end.scratchRevision,
+      action: {
+        kind: 'apply_move',
+        move: { kind: 'coordinates', value: 'g1f3' },
+      },
+    });
+    assert.deepEqual(
+      continued.scratch?.steps.map((step) => step.move.san),
+      ['e4', 'e5', 'Nf3'],
+    );
+    assert.equal(continued.scratch?.cursor, 3);
+    assert.equal(events.length, 2);
+  });
+
   test(`root-only exploration offers record creation without path notes (context: ${inContext})`, async () => {
     const { freeSession } = freeSessionFixture();
     const contextId = localId('working-context', 1);
@@ -299,6 +417,13 @@ test('continue exploration is offered only for valid revisions and rejects inval
     await freeSession.run(() => ({ scratch, result: undefined }));
     const workspace = await get.execute({ scope: freeWorkScope() });
     if (scratch.intent.kind === 'inventory_revision') {
+      if (scratch.intent.mode === 'metadata') {
+        assert.equal(workspace.allowedActions.includes('apply_move'), false);
+        assert.equal(
+          workspace.allowedActions.includes('remove_last_move'),
+          false,
+        );
+      }
       assert.equal(
         workspace.allowedActions.includes('create_analysis_record'),
         false,

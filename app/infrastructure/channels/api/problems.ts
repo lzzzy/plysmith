@@ -10,6 +10,96 @@ export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
 
 const catalog = {
+  'import.publication_busy': [
+    409,
+    'Import publication busy',
+    'Wait for the current publication to finish.',
+  ],
+  'import.invalid_candidate': [
+    400,
+    'Invalid import candidate',
+    'The candidate has no valid complete chess tree.',
+  ],
+  'import.invalid_request': [
+    400,
+    'Invalid import request',
+    'The import request does not match the current preview.',
+  ],
+  'import.warning_confirmation_required': [
+    409,
+    'Import review required',
+    'Acknowledge fidelity warnings before publication.',
+  ],
+  'import.input_not_found': [
+    404,
+    'Import input unavailable',
+    'Select an accessible local PGN file again.',
+  ],
+  'import.input_changed': [
+    409,
+    'Import input changed',
+    'The selected file changed during preparation. Select it again.',
+  ],
+  'import.input_too_large': [
+    413,
+    'Import input too large',
+    'The local PGN file exceeds the supported import size.',
+  ],
+  'import.format_not_recognized': [
+    415,
+    'Unsupported import format',
+    'Select a standard-chess PGN file.',
+  ],
+  'import.encoding_choice_required': [
+    400,
+    'Encoding choice required',
+    'This file is not valid UTF-8. Choose an explicit supported character encoding.',
+  ],
+  'import.encoding_unsupported': [
+    415,
+    'Unsupported encoding',
+    'The selected file encoding is not supported.',
+  ],
+  'import.input_limit': [
+    409,
+    'Too many import inputs',
+    'Finish an existing import before selecting another file.',
+  ],
+  'import.input_incomplete': [
+    409,
+    'Incomplete import input',
+    'The selected file has not been fully verified.',
+  ],
+  'import.interrupted': [
+    409,
+    'Import interrupted',
+    'Preparation was interrupted and must be started again.',
+  ],
+  'import.preparation_busy': [
+    409,
+    'Import preparation busy',
+    'Finish an existing preparation before starting another.',
+  ],
+  'import.provider_resource_exhausted': [
+    413,
+    'Import resource limit',
+    'This PGN exceeds a supported import complexity limit.',
+  ],
+  'import.not_found': [
+    404,
+    'Import preview unavailable',
+    'The requested import preview no longer exists.',
+  ],
+  'import.name_conflict': [
+    409,
+    'Import name conflict',
+    'Resolve global inventory name conflicts in the import preview.',
+  ],
+  'import.invalid_selection': [
+    400,
+    'Invalid import selection',
+    'Select only importable candidates.',
+  ],
   'inventory.invalid_organization': [
     400,
     'Invalid inventory organization',
@@ -468,6 +558,17 @@ export function installProblemHandling(
       return replyWithProblem(request, reply, error.code, correlationIdFactory);
     }
     if (error instanceof ApplicationProblem) {
+      if (
+        error.problemCode.startsWith('import.') &&
+        Object.hasOwn(catalog, error.problemCode)
+      ) {
+        return replyWithProblem(
+          request,
+          reply,
+          error.problemCode as ApiProblemCode,
+          correlationIdFactory,
+        );
+      }
       switch (error.problemCode) {
         case 'inventory.invalid_organization':
         case 'inventory.invalid_name':

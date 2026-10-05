@@ -24,7 +24,12 @@ Klonen des Repositories:
 
 ```powershell
 pnpm install --frozen-lockfile
+pnpm exec install-electron
 ```
+
+Electron lädt seine Desktop-Runtime erst mit `install-electron` herunter.
+SQLite verwendet die mitgelieferten nativen Module; ein eigener Compiler ist
+für die Windows-x64-Entwicklung nicht nötig.
 
 Die Skriptstarts prüfen die Abhängigkeiten, installieren aber nichts automatisch.
 Nach Änderungen an den Paketdateien kann erneut `pnpm install --frozen-lockfile`

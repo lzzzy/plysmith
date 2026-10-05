@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readChessTree } from './sqlite-import-graph.ts';
 import type Database from 'better-sqlite3';
 
 import {
@@ -307,9 +308,8 @@ function readAnalysisRecordViewInternal(
               revision.language_tag AS languageTag,
               revision.revision_number AS revisionNumber,
               item.current_revision_id AS currentRevisionId,
-              COALESCE(analysis.origin_mode, game.origin_mode) AS originMode,
-              COALESCE(analysis.root_occurrence_id,
-                       game.root_occurrence_id) AS rootOccurrenceId,
+              graph.origin_mode AS originMode,
+              graph.root_occurrence_id AS rootOccurrenceId,
               COALESCE(analysis_origin.source_item_id,
                        game_origin.source_item_id) AS sourceItemId,
               COALESCE(analysis_origin.source_revision_id,
@@ -336,6 +336,7 @@ function readAnalysisRecordViewInternal(
          LEFT JOIN inventory_analysis_revision AS analysis
            ON analysis.item_id = item.item_id
           AND analysis.revision_id = revision.revision_id
+         JOIN inventory_chess_revision AS graph ON graph.revision_id = revision.revision_id
          LEFT JOIN inventory_game_revision AS game
            ON game.item_id = item.item_id
           AND game.revision_id = revision.revision_id
@@ -344,7 +345,7 @@ function readAnalysisRecordViewInternal(
          LEFT JOIN inventory_game_origin AS game_origin
            ON game_origin.game_revision_id = game.revision_id
         WHERE item.item_id = ? AND item.item_type IN ('analysis', 'game')
-          AND (analysis.revision_id IS NOT NULL OR game.revision_id IS NOT NULL)`,
+          AND item.current_revision_id IS NOT NULL`,
     )
     .get(request.revisionId.value, request.itemId.value) as
     | {
@@ -388,6 +389,7 @@ function readAnalysisRecordViewInternal(
     database,
     request.revisionId.value,
     header.rootOccurrenceId,
+    request.anchorId.value,
   );
   if (rows.length === 0) throw invalidAnalysisRecord();
   if (
@@ -479,6 +481,7 @@ function readAnalysisRecordViewInternal(
               WHERE context_id = ? AND item_id = ?`,
           )
           .get(request.contextId.value, request.itemId.value) !== undefined;
+  const tree = readChessTree(database, request.revisionId.value);
   return Object.freeze({
     itemType: header.itemType,
     itemId: request.itemId,
@@ -490,7 +493,8 @@ function readAnalysisRecordViewInternal(
     displayName: header.displayName,
     ...(header.summary === null ? {} : { summary: header.summary }),
     languageTag: header.languageTag,
-    ...(header.itemType === 'game' ? { game: gameDetails(header) } : {}),
+    ...(header.playerSide === null ? {} : { game: gameDetails(header) }),
+    ...(tree === undefined ? {} : { tree }),
     origin,
     ...(sourceLine === undefined ? {} : { sourceLine }),
     ...(sourcePath === undefined ? {} : { sourcePath }),

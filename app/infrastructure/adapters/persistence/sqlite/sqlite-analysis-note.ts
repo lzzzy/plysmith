@@ -119,29 +119,7 @@ export function createPositionNote(
   database: Database.Database,
   request: PersistPositionNoteRequest,
 ): AnalysisNoteMutationResult {
-  if (request.scope.kind === 'context') {
-    assertNoOpenRevisionImpact(
-      database,
-      request.scope.contextId.value,
-      request.itemId.value,
-    );
-  }
-  if (
-    resolveAnchorPosition(
-      database,
-      request.itemId.value,
-      request.revisionId.value,
-      request.anchorId.value,
-    ) === undefined
-  ) {
-    throw invalidAnalysisNote();
-  }
-  validatePositionNoteScope(
-    database,
-    request.noteScope,
-    request.scope,
-    request.itemId,
-  );
+  validatePositionNoteTarget(database, request);
   const contributionId = insertAnalysisNoteContribution(database, {
     itemId: request.itemId,
     anchorId: request.anchorId,
@@ -158,6 +136,39 @@ export function createPositionNote(
     1,
     request.occurredAt,
   );
+}
+
+export function validatePositionNoteTarget(
+  database: Database.Database,
+  request: Pick<
+    PersistPositionNoteRequest,
+    'scope' | 'itemId' | 'revisionId' | 'anchorId' | 'noteScope'
+  >,
+): void {
+  if (request.scope.kind === 'context') {
+    assertNoOpenRevisionImpact(
+      database,
+      request.scope.contextId.value,
+      request.itemId.value,
+    );
+  }
+  const effectiveRevisionId = validatePositionNoteScope(
+    database,
+    request.noteScope,
+    request.scope,
+    request.itemId,
+  );
+  if (
+    request.revisionId.value !== effectiveRevisionId ||
+    resolveAnchorPosition(
+      database,
+      request.itemId.value,
+      request.revisionId.value,
+      request.anchorId.value,
+    ) === undefined
+  ) {
+    throw invalidAnalysisNote();
+  }
 }
 
 export function updateAnalysisNote(
@@ -414,17 +425,35 @@ function validatePositionNoteScope(
   noteScope: AnalysisNoteScope,
   scope: PersistPositionNoteRequest['scope'],
   itemId: InventoryItemId,
-): void {
-  if (scope.kind === 'context') {
-    requireContextItemAccess(database, scope.contextId, itemId);
-  }
-  if (noteScope.kind === 'global') return;
+): number {
+  const currentRevisionId = readActiveNoteItemRevision(database, itemId);
+  const effectiveRevisionId =
+    scope.kind === 'context'
+      ? (requireContextItemAccess(database, scope.contextId, itemId) ??
+        currentRevisionId)
+      : currentRevisionId;
+  if (noteScope.kind === 'global') return effectiveRevisionId;
   if (
     scope.kind !== 'context' ||
     noteScope.contextId.value !== scope.contextId.value
   ) {
     throw invalidAnalysisNote();
   }
+  return effectiveRevisionId;
+}
+
+function readActiveNoteItemRevision(
+  database: Database.Database,
+  itemId: InventoryItemId,
+): number {
+  const item = database
+    .prepare(
+      `SELECT current_revision_id AS revisionId FROM inventory_item
+      WHERE item_id = ? AND lifecycle = 'active' AND current_revision_id IS NOT NULL`,
+    )
+    .get(itemId.value) as { revisionId: number } | undefined;
+  if (item === undefined) throw invalidAnalysisNote();
+  return item.revisionId;
 }
 
 interface EditableNote {
@@ -456,16 +485,18 @@ function readEditableNote(
     )
     .get(contributionId.value) as
     | {
-        itemId: number;
+        itemId: number | null;
         anchorId: number;
         scopeKind: 'global' | 'context';
         contextId: number | null;
         contributionVersion: number;
       }
     | undefined;
-  if (row === undefined) throw invalidAnalysisNote();
+  if (row === undefined || row.itemId === null) throw invalidAnalysisNote();
+  const itemId = localId('inventory-item', row.itemId);
+  readActiveNoteItemRevision(database, itemId);
   return Object.freeze({
-    itemId: localId('inventory-item', row.itemId),
+    itemId,
     anchorId: localId('anchor', row.anchorId),
     scopeKind: row.scopeKind,
     contextId:
@@ -483,6 +514,11 @@ function validateMutationScope(
 ): void {
   if (scope.kind === 'context') {
     requireContextItemAccess(database, scope.contextId, note.itemId);
+    assertNoOpenRevisionImpact(
+      database,
+      scope.contextId.value,
+      note.itemId.value,
+    );
   }
   if (note.scopeKind === 'global') return;
   if (
@@ -497,15 +533,17 @@ function requireContextItemAccess(
   database: Database.Database,
   contextId: WorkingContextId,
   itemId: InventoryItemId,
-): void {
+): number | null {
   requireActiveContext(database, contextId);
   const membership = database
     .prepare(
-      `SELECT 1 FROM workspace_context_item
+      `SELECT pinned_revision_id AS pinnedRevisionId FROM workspace_context_item
         WHERE context_id = ? AND item_id = ?`,
     )
-    .get(contextId.value, itemId.value);
+    .get(contextId.value, itemId.value) as
+    { pinnedRevisionId: number | null } | undefined;
   if (membership === undefined) throw invalidAnalysisNote();
+  return membership.pinnedRevisionId;
 }
 
 function assertContributionVersion(

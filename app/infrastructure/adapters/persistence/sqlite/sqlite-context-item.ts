@@ -16,7 +16,7 @@ export function requireContextInventoryWorkAccess(
     itemId !== undefined &&
     database
       .prepare(
-        "SELECT 1 FROM inventory_item WHERE item_id = ? AND lifecycle = 'active'",
+        "SELECT 1 FROM inventory_item WHERE item_id = ? AND lifecycle = 'active' AND current_revision_id IS NOT NULL",
       )
       .get(itemId.value) === undefined
   ) {

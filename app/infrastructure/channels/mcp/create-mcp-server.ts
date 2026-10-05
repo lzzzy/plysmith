@@ -10,6 +10,18 @@ import {
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Value } from '@sinclair/typebox/value';
+import {
+  RegisterImportInputBodySchema,
+  ImportInputDescriptorSchema,
+  PrepareImportBodySchema,
+  ImportPreviewSchema,
+  CheckImportNamesBodySchema,
+  ImportNameChecksSchema,
+  DiscardImportBodySchema,
+  DiscardImportResultSchema,
+  PublishImportBodySchema,
+  ImportPublishedSchema,
+} from './import-schemas.ts';
 import type { HostClient } from './host-client.ts';
 import { hostProblem, localProblem } from './problems.ts';
 import {
@@ -179,6 +191,70 @@ export function createMcpServer({
     destructiveHint: true,
   };
   const tools: Tool[] = [
+    {
+      name: 'register_import_input',
+      title: 'Register local import input',
+      description: 'Register a local file and receive an opaque input handle.',
+      inputSchema: RegisterImportInputBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ImportInputDescriptorSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'prepare_import',
+      title: 'Prepare import preview',
+      description:
+        'Parse a registered file and return all candidate summaries for this host session.',
+      inputSchema: PrepareImportBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ImportPreviewSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'check_import_names',
+      title: 'Check import names',
+      description:
+        'Check complete names against the current inventory and the supplied candidate names.',
+      inputSchema: CheckImportNamesBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ImportNameChecksSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'publish_import',
+      title: 'Publish import',
+      description:
+        'Atomically create the selected inventory items with their final names and folder destination.',
+      inputSchema: PublishImportBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [ImportPublishedSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'discard_import',
+      title: 'Discard import preview',
+      description:
+        'Discard a session preview without changing inventory items.',
+      inputSchema: DiscardImportBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [DiscardImportResultSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, idempotentHint: true },
+      _meta: problemMetadata,
+    },
     {
       name: 'get_system_status',
       title: 'Get system status',
@@ -451,7 +527,7 @@ export function createMcpServer({
       name: 'start_inventory_revision',
       title: 'Start inventory revision',
       description:
-        'Start an extend, truncate-after or replace-move revision draft from the current revision and an exact anchor. Replaces the scope scratch using optimistic concurrency.',
+        'Start an extension, variation, truncation, move replacement or metadata revision from the current revision and an exact anchor, using optimistic concurrency. A variation preserves all existing branches.',
       inputSchema: StartInventoryRevisionArgumentsSchema,
       outputSchema: {
         type: 'object',
@@ -464,7 +540,7 @@ export function createMcpServer({
       name: 'preview_inventory_revision',
       title: 'Preview inventory revision',
       description:
-        'Preview the exact immutable revision and all affected working contexts before saving. Use the returned fingerprint for the save.',
+        'Preview the exact immutable revision and context effects, optionally including an editable text comment. The returned fingerprint binds the comment and must be used for the same save request.',
       inputSchema: PreviewInventoryRevisionArgumentsSchema,
       outputSchema: {
         type: 'object',
@@ -475,9 +551,9 @@ export function createMcpServer({
     },
     {
       name: 'promote_analysis_to_inventory_revision',
-      title: 'Replace continuation with explored line',
+      title: 'Promote explored line to inventory revision',
       description:
-        'Promote the current transient exploration from an inventory anchor into a truncate-after revision draft without replaying its moves.',
+        'Promote transient exploration without replaying moves. Explicit add_variation preserves existing branches; otherwise the explored line extends or replaces the selected continuation.',
       inputSchema: PromoteAnalysisToInventoryRevisionArgumentsSchema,
       outputSchema: {
         type: 'object',
@@ -490,7 +566,7 @@ export function createMcpServer({
       name: 'save_inventory_revision',
       title: 'Save inventory revision',
       description:
-        'Publish the previewed draft as a new immutable current revision. Affected contexts remain pinned until their impacts are resolved. This sends one write only.',
+        'Publish the previewed draft and optional ordinary scoped text comment atomically. An existing variation is a no-op and creates no duplicate comment. This sends one write only.',
       inputSchema: SaveInventoryRevisionArgumentsSchema,
       outputSchema: {
         type: 'object',
@@ -934,6 +1010,46 @@ export function createMcpServer({
 
     try {
       switch (params.name) {
+        case 'register_import_input': {
+          if (!Value.Check(RegisterImportInputBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.registerImportInput(args);
+          if (!Value.Check(ImportInputDescriptorSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Register local import input completed.');
+        }
+        case 'prepare_import': {
+          if (!Value.Check(PrepareImportBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.prepareImport(args);
+          if (!Value.Check(ImportPreviewSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Prepare import preview completed.');
+        }
+        case 'check_import_names': {
+          if (!Value.Check(CheckImportNamesBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.checkImportNames(args);
+          if (!Value.Check(ImportNameChecksSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Check import names completed.');
+        }
+        case 'publish_import': {
+          if (!Value.Check(PublishImportBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.publishImport(args);
+          if (!Value.Check(ImportPublishedSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Publish import completed.');
+        }
+        case 'discard_import': {
+          if (!Value.Check(DiscardImportBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.discardImport(args);
+          if (!Value.Check(DiscardImportResultSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Discard import preview completed.');
+        }
         case 'get_system_status': {
           const dto = systemStatusDto(await hostClient.getSystemStatus());
           return toolResult(dto, statusSummary(dto));
@@ -1167,6 +1283,9 @@ export function createMcpServer({
               scope: args.scope,
               baseRevisionId: args.baseRevisionId,
               anchorId: args.anchorId,
+              ...(args.lineAnchorId === undefined
+                ? {}
+                : { lineAnchorId: args.lineAnchorId }),
               mode: args.mode,
               expectedScratchId: args.expectedScratchId,
               expectedScratchRevision: args.expectedScratchRevision,
@@ -1205,6 +1324,7 @@ export function createMcpServer({
             return toolProblem(localProblem('request.invalid'));
           const dto = startInventoryRevisionResultDto(
             await hostClient.promoteAnalysisToInventoryRevision(args.itemId, {
+              ...(args.mode === undefined ? {} : { mode: args.mode }),
               scope: args.scope,
               baseRevisionId: args.baseRevisionId,
               anchorId: args.anchorId,
@@ -1636,6 +1756,16 @@ function resumeRequest(args: typeof SetWorkScopeResumeArgumentsSchema.static) {
 
 function inputSchema(name: string) {
   switch (name) {
+    case 'register_import_input':
+      return RegisterImportInputBodySchema;
+    case 'prepare_import':
+      return PrepareImportBodySchema;
+    case 'check_import_names':
+      return CheckImportNamesBodySchema;
+    case 'publish_import':
+      return PublishImportBodySchema;
+    case 'discard_import':
+      return DiscardImportBodySchema;
     case 'get_work_scope_workspace':
       return GetWorkScopeWorkspaceArgumentsSchema;
     case 'get_startup_resume':

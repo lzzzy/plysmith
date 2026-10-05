@@ -37,7 +37,7 @@ test('analysis scratch navigates without changing its stored line', () => {
   assert.equal(scratch.scratchRevision, 4);
 });
 
-test('a move behind the cursor replaces the transient tail', () => {
+test('a move behind the cursor cannot replace the transient tail or note', () => {
   const root = state('root');
   const first = transition(root, 'e2', 'e4', 'e4', state('after-e4'));
   const oldTail = transition(first.after, 'e7', 'e5', 'e5', state('after-e5'));
@@ -46,14 +46,20 @@ test('a move behind the cursor replaces the transient tail', () => {
     appendAnalysisMove(startAnalysisScratch('scratch-1', root), first),
     oldTail,
   );
-  scratch = appendAnalysisMove(moveAnalysisCursor(scratch, 1), newTail);
+  scratch = prepareAnalysisNote(
+    moveAnalysisCursor(scratch, 1),
+    'Keep this idea',
+  );
+  assert.throws(() => appendAnalysisMove(scratch, newTail));
 
   assert.equal(scratch.steps.length, 2);
   assert.deepEqual(
     scratch.steps.map(({ move }) => move.san),
-    ['e4', 'c5'],
+    ['e4', 'e5'],
   );
-  assert.equal(currentAnalysisState(scratch).fen, 'after-c5');
+  assert.equal(currentAnalysisState(scratch).fen, 'after-e4');
+  assert.equal(scratch.noteDraft?.body, 'Keep this idea');
+  assert.equal(scratch.scratchRevision, 5);
 });
 
 test('removing the last move selects the new line end and clears a note draft', () => {

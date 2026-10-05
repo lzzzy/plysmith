@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Save, X } from 'lucide-react';
 import { FormattedMessage } from 'react-intl';
 import type { PlysmithApplicationStore } from './plysmith-application-store.ts';
@@ -25,13 +25,39 @@ export function InventoryMetadataForm({
   readonly store: PlysmithApplicationStore;
   readonly itemId: string;
 }) {
-  const [nextDisplayName, setNextDisplayName] = useState(displayName);
-  const [nextSummary, setNextSummary] = useState(summary ?? '');
-
-  useEffect(() => {
-    setNextDisplayName(displayName);
-    setNextSummary(summary ?? '');
-  }, [displayName, summary]);
+  const [draft, setDraft] = useState({
+    itemId,
+    displayName,
+    summary,
+    nextDisplayName: displayName,
+    nextSummary: summary ?? '',
+  });
+  let current = draft;
+  if (
+    draft.itemId !== itemId ||
+    draft.displayName !== displayName ||
+    draft.summary !== summary
+  ) {
+    current = {
+      itemId,
+      displayName,
+      summary,
+      nextDisplayName:
+        draft.itemId !== itemId || draft.nextDisplayName === draft.displayName
+          ? displayName
+          : draft.nextDisplayName,
+      nextSummary:
+        draft.itemId !== itemId || draft.nextSummary === (draft.summary ?? '')
+          ? (summary ?? '')
+          : draft.nextSummary,
+    };
+    setDraft(current);
+  }
+  const { nextDisplayName, nextSummary } = current;
+  const setNextDisplayName = (value: string) =>
+    setDraft((previous) => ({ ...previous, nextDisplayName: value }));
+  const setNextSummary = (value: string) =>
+    setDraft((previous) => ({ ...previous, nextSummary: value }));
 
   function submit(event: FormEvent) {
     event.preventDefault();

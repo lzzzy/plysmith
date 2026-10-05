@@ -1,5 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import type { AnalysisRecordDto } from '../../../app/infrastructure/channels/host_client/index.ts';
+import {
+  chessTreeLines,
+  chessTreeLayout,
+  chessTreePath,
+} from '../../../app/infrastructure/channels/ui/renderer/chess-tree-presentation.ts';
+import { formatMoveSequence } from '../../../app/infrastructure/channels/ui/renderer/chess-display.ts';
 
 import {
   analysisMoveRows,
@@ -51,6 +58,135 @@ const step = (
     sideToMove === 'white' ? 'black' : 'white',
     sideToMove === 'black' ? fullmoveNumber + 1 : fullmoveNumber,
   ),
+});
+
+test('whole-tree projection visits nested alternatives once without merging equal positions', () => {
+  const node = (
+    nodeIndex: number,
+    parentNodeIndex: number | null,
+    siblingOrder: number,
+    san: string,
+  ) => ({
+    nodeIndex,
+    parentNodeIndex,
+    siblingOrder,
+    anchorId: String(100 + nodeIndex),
+    move: move(san),
+    after: state('black', 42),
+  });
+  const record: AnalysisRecordDto = {
+    itemType: 'analysis',
+    itemId: '1',
+    revisionId: '2',
+    currentRevisionId: '2',
+    revisionNumber: 1,
+    historical: false,
+    rootAnchorId: '99',
+    currentAnchorId: '99',
+    displayName: 'Library',
+    languageTag: 'en-GB',
+    origin: { kind: 'initial_position' },
+    root: state('black', 42),
+    steps: [],
+    cursor: 0,
+    contributions: [],
+    contextMember: false,
+    tree: {
+      nodes: [
+        node(6, null, 1, 'd4'),
+        node(5, 3, 1, 'Nc3'),
+        node(4, 3, 0, 'Nf3'),
+        node(3, 0, 1, 'c5'),
+        node(2, 1, 0, 'Nf3'),
+        node(1, 0, 0, 'e5'),
+        node(0, null, 0, 'e4'),
+      ],
+    },
+  };
+  const lines = chessTreeLines(record);
+  assert.deepEqual(
+    lines.map((line) => line.steps.map((entry) => entry.anchorId)),
+    [['100', '101', '102'], ['103', '104'], ['105'], ['106']],
+  );
+  assert.deepEqual(
+    lines.map((line) => [line.depth, line.parentKey, line.parentAnchorId]),
+    [
+      [0, undefined, '99'],
+      [1, '100', '100'],
+      [2, '103', '103'],
+      [1, undefined, '99'],
+    ],
+  );
+  assert.equal(
+    new Set(lines.flatMap((line) => line.steps.map((entry) => entry.anchorId)))
+      .size,
+    7,
+  );
+  const layout = chessTreeLayout(record, '103');
+  assert.deepEqual(
+    layout.map((line) => [
+      line.key,
+      line.sections.map((section) => ({
+        anchors: section.steps.map((entry) => entry.anchorId),
+        branches: section.branches,
+        draft: section.draft,
+      })),
+    ]),
+    [
+      [
+        '100',
+        [
+          { anchors: ['100'], branches: ['106'], draft: false },
+          { anchors: ['101'], branches: ['103'], draft: false },
+          { anchors: ['102'], branches: [], draft: false },
+        ],
+      ],
+      ['103', [{ anchors: ['103', '104'], branches: ['105'], draft: true }]],
+      ['105', [{ anchors: ['105'], branches: [], draft: false }]],
+      ['106', [{ anchors: ['106'], branches: [], draft: false }]],
+    ],
+  );
+  assert.deepEqual(
+    chessTreePath(record, '105').steps.map((entry) => entry.anchorId),
+    ['100', '103', '105'],
+  );
+  assert.equal(
+    formatMoveSequence(lines[0]!.steps.slice(0, 1), 'de-DE'),
+    '42... e4',
+  );
+  const { tree: _tree, ...withoutTree } = record;
+  assert.ok(_tree);
+  const linear = {
+    ...withoutTree,
+    steps: [{ ...step('Nf6', 'black', 42), anchorId: '110' }],
+  };
+  assert.deepEqual(
+    chessTreeLines(linear).map((line) =>
+      line.steps.map((entry) => entry.anchorId),
+    ),
+    [['110']],
+  );
+  assert.equal(formatMoveSequence(linear.steps, 'de-DE'), '42... Sf6');
+  assert.equal(chessTreePath(linear, '110').cursor, 1);
+  assert.deepEqual(chessTreePath(linear, '110').steps, linear.steps);
+  assert.deepEqual(chessTreeLines({ ...linear, steps: [] }), []);
+  const deep = chessTreeLayout({
+    ...record,
+    tree: {
+      nodes: Array.from({ length: 2048 }, (_, index) =>
+        node(index, index === 0 ? null : index - 1, 1, 'Nf3'),
+      ),
+    },
+  });
+  assert.equal(deep.length, 2048);
+  for (const [index, line] of deep.entries()) {
+    assert.equal(line.depth, index + 1);
+    assert.equal(line.sections[0]!.steps.length, 1);
+    assert.deepEqual(
+      line.sections[0]!.branches,
+      index === 2047 ? [] : [String(101 + index)],
+    );
+  }
 });
 
 test('persisted bridge moves have no invented navigation or note targets and are not duplicated', () => {

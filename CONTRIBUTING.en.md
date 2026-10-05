@@ -23,7 +23,12 @@ need Git and the Node.js and pnpm versions listed under `engines.node` and
 
 ```powershell
 pnpm install --frozen-lockfile
+pnpm exec install-electron
 ```
+
+Electron downloads its desktop runtime only when `install-electron` is run.
+SQLite uses the bundled native modules, so Windows x64 development does not
+require a separate compiler.
 
 Script commands check dependencies but never install them automatically. After
 changes to the package files, run `pnpm install --frozen-lockfile` again if needed.

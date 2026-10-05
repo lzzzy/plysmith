@@ -37,6 +37,11 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/events',
     '/inventory',
     '/inventory/analysis-records',
+    '/inventory/import-inputs',
+    '/inventory/imports/discard',
+    '/inventory/imports/names',
+    '/inventory/imports/preview',
+    '/inventory/imports/publish',
     '/inventory/items/{itemId}',
     '/inventory/items/{itemId}/deletion-preview',
     '/inventory/items/{itemId}/revision-edits',
@@ -75,6 +80,11 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/workspace/startup',
   ]);
   const expected = [
+    ['/inventory/import-inputs', 'post', 'RegisterImportInput'],
+    ['/inventory/imports/preview', 'post', 'PrepareImport'],
+    ['/inventory/imports/names', 'post', 'CheckImportNames'],
+    ['/inventory/imports/publish', 'post', 'PublishImport'],
+    ['/inventory/imports/discard', 'post', 'DiscardImport'],
     ['/inventory/organization', 'get', 'GetInventoryOrganization'],
     ['/inventory/organization', 'post', 'ChangeInventoryOrganization'],
     [
@@ -222,6 +232,18 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
   const api = host.swagger();
   assert.ok('openapi' in api);
   for (const name of [
+    'ImportInputDescriptor',
+    'RegisterImportInputBody',
+    'ImportFidelityFinding',
+    'ImportCandidatePreview',
+    'ImportPreview',
+    'ImportNameChecks',
+    'PrepareImportBody',
+    'CheckImportNamesBody',
+    'PublishImportBody',
+    'DiscardImportBody',
+    'DiscardImportResult',
+    'ImportPublished',
     'SystemStatus',
     'UserPreferences',
     'SetUiLanguageBody',

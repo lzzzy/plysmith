@@ -8,7 +8,7 @@ import {
   RefreshCw,
   Settings,
 } from 'lucide-react';
-import { Button } from 'react-aria-components';
+import { Button, I18nProvider } from 'react-aria-components';
 import { FormattedMessage, IntlProvider, useIntl } from 'react-intl';
 
 import { AnalysisView } from './analysis-view.tsx';
@@ -47,7 +47,9 @@ export function PlysmithApplication({
 
   return (
     <IntlProvider locale={locale} messages={messages[locale]}>
-      <ApplicationFrame state={state} store={store} />
+      <I18nProvider locale={locale}>
+        <ApplicationFrame state={state} store={store} />
+      </I18nProvider>
     </IntlProvider>
   );
 }

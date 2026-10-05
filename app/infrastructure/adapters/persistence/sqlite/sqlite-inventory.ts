@@ -33,7 +33,7 @@ interface InventoryCursor {
   readonly dataRevision: number;
   readonly query: string | null;
   readonly contextId: number | null;
-  readonly updatedAt: string;
+  readonly createdAt: string;
   readonly itemId: number;
 }
 
@@ -65,9 +65,9 @@ export function searchInventory(
       ...(request.query === undefined ? [] : [literalFtsQuery(request.query)]),
       expectedContextId,
       expectedContextId,
-      cursor?.updatedAt ?? null,
-      cursor?.updatedAt ?? '',
-      cursor?.updatedAt ?? '',
+      cursor?.createdAt ?? null,
+      cursor?.createdAt ?? '',
+      cursor?.createdAt ?? '',
       cursor?.itemId ?? 0,
       request.pageSize + 1,
     ) as InventoryRow[];
@@ -92,7 +92,7 @@ export function searchInventory(
             dataRevision,
             query: expectedQuery,
             contextId: expectedContextId,
-            updatedAt: last.updatedAt,
+            createdAt: last.createdAt,
             itemId: last.itemId,
           } satisfies InventoryCursor),
         }
@@ -119,19 +119,13 @@ function inventorySql(withTextQuery: boolean, byId = false): string {
       JOIN item_revision AS revision
         ON revision.item_id = i.item_id
        AND revision.revision_id = i.current_revision_id
-      LEFT JOIN inventory_analysis_revision AS analysis
+      LEFT JOIN inventory_chess_revision AS analysis
         ON analysis.item_id = i.item_id
        AND analysis.revision_id = i.current_revision_id
-      LEFT JOIN inventory_game_revision AS game
-        ON game.item_id = i.item_id
-       AND game.revision_id = i.current_revision_id
       LEFT JOIN chess_anchor AS root_anchor
         ON root_anchor.anchor_kind = 'occurrence'
        AND root_anchor.owner_item_id = i.item_id
-       AND root_anchor.occurrence_id = COALESCE(
-             analysis.root_occurrence_id,
-             game.root_occurrence_id
-           )
+       AND root_anchor.occurrence_id = analysis.root_occurrence_id
       LEFT JOIN chess_anchor AS item_anchor
         ON item_anchor.anchor_kind = 'item'
        AND item_anchor.item_id = i.item_id
@@ -153,10 +147,10 @@ function inventorySql(withTextQuery: boolean, byId = false): string {
           WHERE membership.item_id = i.item_id
             AND membership.context_id = ?
        ))
-       AND (? IS NULL OR i.updated_at_utc < ?
-            OR (i.updated_at_utc = ? AND i.item_id < ?))
+       AND (? IS NULL OR i.created_at_utc > ?
+            OR (i.created_at_utc = ? AND i.item_id > ?))
        ${byId ? 'AND i.item_id = ?' : ''}
-     ORDER BY i.updated_at_utc DESC, i.item_id DESC
+     ORDER BY i.created_at_utc ASC, i.item_id ASC
      LIMIT ?`;
 }
 
@@ -294,7 +288,7 @@ function decodeInventoryCursor(cursor: string): InventoryCursor | undefined {
     Number.isSafeInteger(value.dataRevision) &&
     (typeof value.query === 'string' || value.query === null) &&
     (Number.isSafeInteger(value.contextId) || value.contextId === null) &&
-    typeof value.updatedAt === 'string' &&
+    typeof value.createdAt === 'string' &&
     Number.isSafeInteger(value.itemId) &&
     (value.itemId ?? 0) > 0
     ? (value as InventoryCursor)

@@ -26,6 +26,7 @@ import {
   PlysmithApplicationStore,
   type PlysmithApplicationClient,
 } from '../../../app/infrastructure/channels/ui/renderer/plysmith-application-store.ts';
+import { chessTreePath } from '../../../app/infrastructure/channels/ui/renderer/chess-tree-presentation.ts';
 
 const connection: HostConnection = {
   endpoint: 'http://127.0.0.1:43121/',
@@ -338,6 +339,12 @@ function createClient(
   const scopeKey = (scope: WorkScopeWorkspaceDto['scope']) =>
     scope.kind === 'free' ? 'free' : scope.contextId;
   const client: PlysmithApplicationClient = {
+    registerImportInput: async () =>
+      assert.fail('no import operation expected'),
+    prepareImport: async () => assert.fail('no import operation expected'),
+    publishImport: async () => assert.fail('no import operation expected'),
+    discardImport: async () => assert.fail('no import operation expected'),
+    checkImportNames: async () => assert.fail('no import operation expected'),
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],
@@ -592,6 +599,85 @@ function createClient(
   return client;
 }
 
+test('explicit line selection replaces old branch intent while sequential navigation keeps it', async () => {
+  const source = savedLineAnalysis('14');
+  const first = source.record!.steps[0]!;
+  const record = {
+    ...source.record!,
+    tree: {
+      nodes: [
+        { ...first, nodeIndex: 0, parentNodeIndex: null, siblingOrder: 0 },
+        {
+          ...first,
+          anchorId: '15',
+          nodeIndex: 1,
+          parentNodeIndex: 0,
+          siblingOrder: 0,
+        },
+        {
+          ...first,
+          anchorId: '16',
+          nodeIndex: 2,
+          parentNodeIndex: 0,
+          siblingOrder: 1,
+        },
+        {
+          ...first,
+          anchorId: '17',
+          nodeIndex: 3,
+          parentNodeIndex: 2,
+          siblingOrder: 0,
+        },
+        {
+          ...first,
+          anchorId: '18',
+          nodeIndex: 4,
+          parentNodeIndex: 2,
+          siblingOrder: 1,
+        },
+      ],
+    },
+  };
+  const client = createClient({
+    getAnalysisWorkspace: async (request) => {
+      const currentAnchorId = request.anchorId ?? record.rootAnchorId;
+      return {
+        ...source,
+        record: {
+          ...record,
+          currentAnchorId,
+          ...chessTreePath(record, currentAnchorId),
+        },
+      };
+    },
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  const anchors = () => {
+    const state = store.getSnapshot();
+    assert.equal(state.phase, 'ready');
+    return state.phase === 'ready'
+      ? state.analysis.record!.steps.map((step) => step.anchorId)
+      : [];
+  };
+  await store.openRecordAnchor('16');
+  assert.deepEqual(anchors(), ['14', '16', '17']);
+  await store.openRecordAnchor('14', 'sequential');
+  assert.deepEqual(anchors(), ['14', '16', '17']);
+  await store.openRecordAnchor('14');
+  assert.deepEqual(anchors(), ['14', '15']);
+  await store.openRecordAnchor('15', 'sequential');
+  assert.deepEqual(anchors(), ['14', '15']);
+  await store.openRecordAnchor('18');
+  await store.openRecordAnchor('16', 'sequential');
+  assert.deepEqual(anchors(), ['14', '16', '18']);
+  await store.openRecordAnchor('13', 'sequential');
+  assert.deepEqual(anchors(), ['14', '16', '18']);
+  await store.openRecordAnchor('13');
+  assert.deepEqual(anchors(), ['14', '15']);
+  store.close();
+});
+
 test('renderer subscribes to events before loading all authoritative snapshots', async () => {
   const order: string[] = [];
   let markSubscriptionReady: (() => void) | undefined;
@@ -658,6 +744,201 @@ test('renderer subscribes to events before loading all authoritative snapshots',
   );
   assert.equal(store.getSnapshot().phase, 'ready');
   store.close();
+});
+
+test('startup events cannot expose a ready workspace before restoring the saved startup scope', async () => {
+  const startup = Promise.withResolvers<StartupResumeDto>();
+  const started = Promise.withResolvers<void>();
+  let onChange: (event: HostEvent) => void = () => undefined;
+  let onReconnect: () => void = () => undefined;
+  let statusReads = 0;
+  const client = createClient({
+    getStartupResume: async () => {
+      started.resolve();
+      return startup.promise;
+    },
+    getSystemStatus: async () => {
+      statusReads += 1;
+      return status();
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: (_connection, change, reconnect) => {
+      onChange = change;
+      onReconnect = reconnect;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  try {
+    const starting = store.start();
+    await started.promise;
+    onChange(changedEvent(1));
+    onReconnect();
+    await store.refresh();
+    assert.equal(store.getSnapshot().phase, 'loading');
+    assert.equal(statusReads, 0);
+    startup.resolve({
+      scope: { kind: 'free' },
+      area: 'manage',
+      startupVersion: 1,
+      dataRevision: 0,
+    });
+    await starting;
+    const state = store.getSnapshot();
+    assert.equal(state.phase, 'ready');
+    assert.equal(
+      state.phase === 'ready' ? state.activity : undefined,
+      'manage',
+    );
+  } finally {
+    startup.resolve({
+      scope: { kind: 'free' },
+      area: 'manage',
+      startupVersion: null,
+      dataRevision: 0,
+    });
+    store.close();
+  }
+});
+
+test('an obsolete subscription failure cannot clear a newer ready client', async () => {
+  const subscription = Promise.withResolvers<void>();
+  const subscribed = Promise.withResolvers<void>();
+  let subscriptions = 0;
+  let bootstrapReads = 0;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => {
+      bootstrapReads += 1;
+      return { kind: 'ready', generation: bootstrapReads, connection };
+    },
+    createClient: () => createClient(),
+    createEventSubscription: () => {
+      subscriptions += 1;
+      subscribed.resolve();
+      return {
+        ready: subscriptions === 1 ? subscription.promise : Promise.resolve(),
+        close: () => undefined,
+      };
+    },
+  });
+  try {
+    const obsolete = store.start();
+    await subscribed.promise;
+    await store.start();
+    assert.equal(store.getSnapshot().phase, 'ready');
+    subscription.reject(new Error('Obsolete connection failed'));
+    await obsolete;
+    await store.refresh();
+    assert.equal(bootstrapReads, 2);
+    assert.equal(store.getSnapshot().phase, 'ready');
+  } finally {
+    subscription.resolve();
+    store.close();
+  }
+});
+
+test('a newer startup owns its refresh independently of an obsolete pending snapshot', async () => {
+  const oldStatus = Promise.withResolvers<ReturnType<typeof status>>();
+  const newStatus = Promise.withResolvers<ReturnType<typeof status>>();
+  const oldReadStarted = Promise.withResolvers<void>();
+  let clients = 0;
+  let newReads = 0;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => {
+      clients += 1;
+      return createClient({
+        getSystemStatus:
+          clients === 1
+            ? async () => {
+                oldReadStarted.resolve();
+                return oldStatus.promise;
+              }
+            : async () => {
+                newReads += 1;
+                return newStatus.promise;
+              },
+      });
+    },
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+  });
+  const obsolete = store.start();
+  let current: Promise<void> | undefined;
+  try {
+    await oldReadStarted.promise;
+    current = store.start();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(newReads, 1);
+    oldStatus.resolve(status());
+    await obsolete;
+    const refresh = store.refresh();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(newReads, 1);
+    newStatus.resolve(status());
+    await current;
+    await refresh;
+    assert.equal(store.getSnapshot().phase, 'ready');
+  } finally {
+    oldStatus.resolve(status());
+    newStatus.resolve(status());
+    await obsolete;
+    await current;
+    store.close();
+  }
+});
+
+test('a newer startup releases only the obsolete command lock', async () => {
+  type Result = Awaited<ReturnType<PlysmithApplicationClient['setUiLanguage']>>;
+  const oldCommand = Promise.withResolvers<Result>();
+  const newCommand = Promise.withResolvers<Result>();
+  let clients = 0;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => {
+      const obsolete = ++clients === 1;
+      return createClient({
+        setUiLanguage: async () =>
+          obsolete ? oldCommand.promise : newCommand.promise,
+      });
+    },
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+  });
+  const busy = () => {
+    const state = store.getSnapshot();
+    return state.phase === 'ready' ? state.busyCommand : undefined;
+  };
+  let obsolete: Promise<void> | undefined;
+  let current: Promise<void> | undefined;
+  const result: Result = { changed: true, preferences: preferences() };
+  try {
+    await store.start();
+    obsolete = store.setUiLanguage('en-GB');
+    assert.equal(busy(), 'set_language');
+    await store.start();
+    assert.equal(busy(), undefined);
+    current = store.setUiLanguage('en-GB');
+    assert.equal(busy(), 'set_language');
+    oldCommand.resolve(result);
+    await obsolete;
+    assert.equal(busy(), 'set_language');
+    newCommand.resolve(result);
+    await current;
+    assert.equal(busy(), undefined);
+  } finally {
+    oldCommand.resolve(result);
+    newCommand.resolve(result);
+    await obsolete;
+    await current;
+    store.close();
+  }
 });
 
 test('position analysis uses a stable desktop consumer without taking the global command lock', async () => {
@@ -1857,6 +2138,323 @@ function emptyUsage() {
   };
 }
 
+function inventorySelectionFixture() {
+  const fixture = lifecycleFixture();
+  const items = [
+    fixture.item,
+    {
+      ...fixture.item,
+      itemId: '31',
+      currentRevisionId: '32',
+      rootAnchorId: '33',
+      displayName: 'Second',
+    },
+  ];
+  const removed = new Set<string>();
+  fixture.client.searchInventory = async () => ({
+    items: items.filter((item) => !removed.has(item.itemId)),
+    ancestors: [],
+    provenanceEdges: [],
+    dataRevision: fixture.backend.revision,
+  });
+  fixture.client.previewInventoryItemDeletion = async (itemId) => {
+    const item = items.find((entry) => entry.itemId === itemId)!;
+    return {
+      itemId,
+      currentRevisionId: item.currentRevisionId,
+      displayName: item.displayName,
+      itemType: item.itemType,
+      contexts: [],
+      global: emptyUsage(),
+      retainedDerivedItemCount: 0,
+      retainedPlayoutCount: 0,
+      dataRevision: fixture.backend.revision,
+    };
+  };
+  fixture.client.deleteInventoryItem = async (itemId, request) => {
+    assert.equal(request.expectedDataRevision, fixture.backend.revision);
+    assert.equal(
+      request.expectedCurrentRevisionId,
+      items.find((item) => item.itemId === itemId)!.currentRevisionId,
+    );
+    removed.add(itemId);
+    return { itemId, dataRevision: ++fixture.backend.revision };
+  };
+  return { ...fixture, items, removed };
+}
+
+test('inventory selection stops on a partial failure and preserves completed identities', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const firstDelete = fixture.client.deleteInventoryItem;
+  fixture.client.deleteInventoryItem = async (itemId, request) => {
+    if (itemId === '31')
+      throw workAccessProblem('inventory.item_delete_conflict');
+    return firstDelete(itemId, request);
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  const preview = await store.previewInventorySelection(
+    'delete',
+    fixture.items,
+  );
+  assert.ok(preview);
+  const result = await store.applyInventorySelection(preview);
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.completedItemIds, ['11']);
+  assert.deepEqual([...fixture.removed], ['11']);
+  assert.equal(readyStore(store).busyCommand, undefined);
+});
+
+test('inventory selection rejects a stale preview without deleting anything', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  const preview = await store.previewInventorySelection(
+    'delete',
+    fixture.items,
+  );
+  assert.ok(preview);
+  fixture.backend.revision++;
+  await store.refresh();
+  const result = await store.applyInventorySelection(preview);
+  assert.equal(result.status, 'failed');
+  assert.deepEqual(result.completedItemIds, []);
+  assert.equal(fixture.removed.size, 0);
+});
+
+test('inventory selection removes context members with current CAS after each own write', async (t) => {
+  const fixture = inventorySelectionFixture();
+  let contextVersion = 4;
+  const removed: string[] = [];
+  fixture.client.previewContextItemRemoval = async (_contextId, itemId) => ({
+    ...removalPreview(fixture.backend.revision),
+    contextVersion,
+    items: [
+      {
+        itemId,
+        displayName: itemId,
+        itemType: 'analysis',
+        revisionId: itemId === '11' ? '12' : '32',
+      },
+    ],
+  });
+  fixture.client.removeContextItem = async (contextId, itemId, request) => {
+    assert.equal(request.expectedDataRevision, fixture.backend.revision);
+    assert.equal(request.expectedContextVersion, contextVersion);
+    contextVersion++;
+    removed.push(itemId);
+    return { contextId, itemId, dataRevision: ++fixture.backend.revision };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const preview = await store.previewInventorySelection(
+    'remove',
+    fixture.items,
+  );
+  assert.ok(preview);
+  const result = await store.applyInventorySelection(preview);
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(removed, ['11', '31']);
+  assert.equal(fixture.removed.size, 0);
+});
+
+test('inventory selection includes roots only in the active context', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const additions: unknown[] = [];
+  fixture.client.addContextReference = async (contextId, request) => {
+    additions.push({ contextId, request });
+    return {
+      dataRevision: ++fixture.backend.revision,
+      reference: {
+        ...fixture.items.find((item) => item.itemId === request.itemId)!,
+        referenceId: String(additions.length),
+        anchorId: request.anchorId,
+        anchorKind: 'occurrence',
+      },
+    };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(
+    (await store.includeInventorySelection(fixture.items)).status,
+    'failed',
+  );
+  assert.deepEqual(additions, []);
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.deepEqual(await store.includeInventorySelection(fixture.items), {
+    status: 'completed',
+    completedItemIds: ['11', '31'],
+  });
+  assert.deepEqual(
+    additions,
+    fixture.items.map((item) => ({
+      contextId: '7',
+      request: { itemId: item.itemId, anchorId: item.rootAnchorId },
+    })),
+  );
+  assert.equal(fixture.removed.size, 0);
+});
+
+test('inventory selection refuses duplicate, changed and wrong-scope selections', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  for (const items of [
+    [],
+    [fixture.items[0]!, fixture.items[0]!],
+    [{ ...fixture.items[0]!, currentRevisionId: '999' }],
+  ])
+    assert.equal(
+      await store.previewInventorySelection('delete', items),
+      undefined,
+    );
+  const preview = await store.previewInventorySelection(
+    'delete',
+    fixture.items,
+  );
+  assert.ok(preview);
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal((await store.applyInventorySelection(preview)).status, 'failed');
+  assert.equal(fixture.removed.size, 0);
+});
+
+test('inventory selection stops when external work invalidates remaining context losses', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const removed: string[] = [];
+  fixture.client.previewContextItemRemoval = async () =>
+    removalPreview(fixture.backend.revision);
+  fixture.client.removeContextItem = async (contextId, itemId) => {
+    removed.push(itemId);
+    const dataRevision = ++fixture.backend.revision;
+    fixture.backend.revision++;
+    return { contextId, itemId, dataRevision };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const preview = await store.previewInventorySelection(
+    'remove',
+    fixture.items,
+  );
+  assert.ok(preview);
+  assert.deepEqual(await store.applyInventorySelection(preview), {
+    status: 'failed',
+    completedItemIds: ['11'],
+  });
+  assert.deepEqual(removed, ['11']);
+  assert.equal(
+    readyStore(store).errorCode,
+    'workspace.removal_preview_conflict',
+  );
+});
+
+test('inventory selection preserves loaded pages and remaining items after a partial failure', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const items = Array.from({ length: 54 }, (_, index) => ({
+    ...fixture.item,
+    itemId: String(100 + index),
+    displayName: 'Page item ' + index,
+  }));
+  fixture.client.searchInventory = async (request) => {
+    const available = items.filter((item) => !fixture.removed.has(item.itemId));
+    const start = Number(request.cursor ?? 0);
+    const size = Number(request.pageSize);
+    return {
+      items: available.slice(start, start + size),
+      ancestors: [],
+      provenanceEdges: [],
+      dataRevision: fixture.backend.revision,
+      ...(start + size < available.length
+        ? { nextCursor: String(start + size) }
+        : {}),
+    };
+  };
+  fixture.client.previewInventoryItemDeletion = async (itemId) => ({
+    itemId,
+    currentRevisionId: fixture.item.currentRevisionId,
+    displayName: itemId,
+    itemType: 'analysis',
+    contexts: [],
+    global: emptyUsage(),
+    retainedDerivedItemCount: 0,
+    retainedPlayoutCount: 0,
+    dataRevision: fixture.backend.revision,
+  });
+  fixture.client.deleteInventoryItem = async (itemId, request) => {
+    if (itemId === '151')
+      throw workAccessProblem('inventory.item_delete_conflict');
+    assert.equal(request.expectedDataRevision, fixture.backend.revision);
+    fixture.removed.add(itemId);
+    return { itemId, dataRevision: ++fixture.backend.revision };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  await store.loadMoreInventory();
+  const selected = items.slice(50, 53);
+  const preview = await store.previewInventorySelection('delete', selected);
+  assert.ok(preview);
+  assert.deepEqual(await store.applyInventorySelection(preview), {
+    status: 'failed',
+    completedItemIds: ['150'],
+  });
+  assert.deepEqual(
+    readyStore(store)
+      .inventory.items.slice(50)
+      .map((item) => item.itemId),
+    ['151', '152', '153'],
+  );
+  await store.refresh();
+  assert.ok(await store.previewInventorySelection('delete', selected.slice(1)));
+});
+
+test('inventory selection never starts removal after closing during the refreshed preview', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let reads = 0;
+  const removed: string[] = [];
+  fixture.client.previewContextItemRemoval = async () => {
+    if (++reads === 3) {
+      entered.resolve();
+      await release.promise;
+    }
+    return removalPreview(fixture.backend.revision);
+  };
+  fixture.client.removeContextItem = async (contextId, itemId) => {
+    removed.push(itemId);
+    return { contextId, itemId, dataRevision: ++fixture.backend.revision };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const preview = await store.previewInventorySelection(
+    'remove',
+    fixture.items,
+  );
+  assert.ok(preview);
+  const operation = store.applyInventorySelection(preview);
+  await entered.promise;
+  store.close();
+  release.resolve();
+  assert.deepEqual(await operation, {
+    status: 'cancelled',
+    completedItemIds: [],
+  });
+  assert.deepEqual(removed, []);
+});
+
 test('context removal with only assignment and resume changes runs without a modal', async (t) => {
   const fixture = lifecycleFixture();
   const removals: unknown[] = [];
@@ -2429,7 +3027,8 @@ test('engine settings are saved and removed once with a visible restart boundary
     arguments: [] as readonly string[],
     threads: 2,
     hashMb: 128,
-    moveTimeMs: 500,
+    detailLevels: { fast: 500, thorough: 1_500, very_deep: 5_000 },
+    playoutBudget: 'thorough' as const,
     startupTimeoutMs: 5_000,
     moveTimeoutMs: 10_000,
     stopTimeoutMs: 1_000,
@@ -3298,6 +3897,69 @@ test('saving an analysis note sends its explicit context visibility once', async
     languageTag: 'de-DE',
     noteScope: { kind: 'context', contextId: '7' },
   });
+  store.close();
+});
+
+test('path note forms retain edits per scope and reject stale scratch or prepared bodies', async () => {
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'path-form',
+    scratchRevision: 2,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [],
+    cursor: 1,
+    noteDraft: { body: '1. e4', moves: [{ from: 'e2', to: 'e4', san: 'e4' }] },
+  };
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({ ...analysis(), scratch }),
+      updateAnalysisScratch: async () => {
+        const { noteDraft, ...rest } = scratch;
+        assert.ok(noteDraft);
+        scratch = { ...rest, scratchRevision: scratch.scratchRevision + 1 };
+        return { scratch, discarded: false, dataRevision: 1 };
+      },
+    }),
+  );
+  await store.start();
+  store.setPathNoteFormDraft('path-form', 'Edited free path', 'global');
+  store.setActivity('manage');
+  store.setActivity('analyze');
+  assert.equal(
+    store.getPathNoteFormDraft('path-form', '1. e4')?.body,
+    'Edited free path',
+  );
+  assert.equal(
+    store.getPathNoteFormDraft('path-form', 'different preparation'),
+    undefined,
+  );
+  assert.equal(store.getPathNoteFormDraft('new-path', '1. e4'), undefined);
+  store.setPathNoteFormDraft(
+    'stale-path',
+    'Must not replace current text',
+    'global',
+  );
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(store.getPathNoteFormDraft('path-form', '1. e4'), undefined);
+  store.setPathNoteFormDraft('path-form', 'Edited context path', 'context');
+  await store.setScope({ kind: 'free' });
+  assert.equal(
+    store.getPathNoteFormDraft('path-form', '1. e4')?.body,
+    'Edited free path',
+  );
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(
+    store.getPathNoteFormDraft('path-form', '1. e4')?.noteScope,
+    'context',
+  );
+  await store.clearAnalysisNote();
+  assert.equal(store.getPathNoteFormDraft('path-form', '1. e4'), undefined);
   store.close();
 });
 
@@ -4387,7 +5049,7 @@ test('failed saves report failure without consuming visible drafts', async () =>
   store.close();
 });
 
-test('one-step rename retains a failed draft and retries the same bound metadata revision', async () => {
+test('one-step rename retains its draft and requires a fresh visible preview only for real losses', async () => {
   const item: SearchInventoryResultDto['items'][number] = {
     lifecycle: 'active' as const,
     itemId: '11',
@@ -4415,6 +5077,7 @@ test('one-step rename retains a failed draft and retries the same bound metadata
   let starts = 0;
   let managedScratch: AnalysisWorkspaceDto['scratch'];
   let previewCount = 0;
+  let lossVersion = 0;
   const preview = {
     itemId: '11',
     baseRevisionId: '12',
@@ -4474,8 +5137,27 @@ test('one-step rename retains a failed draft and retries the same bound metadata
     },
     previewInventoryRevision: async () => ({
       ...preview,
+      followingContexts:
+        lossVersion === 0
+          ? []
+          : [
+              {
+                contextId: '7',
+                contextName: 'Training',
+                updatedAutomatically: true,
+                referenceCount: 0,
+                contributionCount: 0,
+                changedScratchCount: 1,
+                managementResumeCount: 0,
+                analysisResumeCount: 1,
+              },
+            ],
       previewFingerprint:
-        ++previewCount === 1 ? 'sha256:old-preview' : 'sha256:rename-preview',
+        ++previewCount === 1
+          ? 'sha256:old-preview'
+          : lossVersion === 0
+            ? 'sha256:rename-preview'
+            : `sha256:loss-${lossVersion}`,
     }),
     saveInventoryRevision: async (request) => {
       saveRequest = request;
@@ -4551,6 +5233,34 @@ test('one-step rename retains a failed draft and retries the same bound metadata
     savedSnapshot.phase === 'ready' ? savedSnapshot.activity : undefined,
     'manage',
   );
+
+  lossVersion = 1;
+  assert.equal(
+    await store.renameInventoryItem(item, 'Französische Verteidigung', null),
+    false,
+  );
+  assert.equal(saveAttempts, 2);
+  const warned = store.getSnapshot();
+  assert.equal(
+    warned.phase === 'ready'
+      ? warned.manageInventoryRevisionDraft?.preview.followingContexts[0]
+          ?.changedScratchCount
+      : undefined,
+    1,
+  );
+  lossVersion = 2;
+  assert.equal(
+    await store.renameInventoryItem(item, 'Französische Verteidigung', null),
+    false,
+  );
+  assert.equal(saveAttempts, 2);
+  assert.equal(
+    await store.renameInventoryItem(item, 'Französische Verteidigung', null),
+    true,
+  );
+  assert.equal(saveAttempts, 3);
+  assert.equal(saveRequest?.previewFingerprint, 'sha256:loss-2');
+  lossVersion = 0;
 
   await store.prepareInventoryItemRename(item, 'Französisch kompakt', null);
   assert.equal(await store.discardManagedInventoryRevision(), true);
@@ -4826,7 +5536,7 @@ test('a saved game move cannot be taken back as an analysis revision', async () 
   store.close();
 });
 
-test('a resumed inventory revision reloads its preview after cursor navigation', async () => {
+test('a partial inventory revision remains viewable without requesting a save preview until its end', async () => {
   const step = savedLineAnalysis('14').record!.steps[0]!;
   let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'resumed-revision-scratch',
@@ -4892,13 +5602,24 @@ test('a resumed inventory revision reloads its preview after cursor navigation',
 
   await store.moveAnalysisCursor(0);
 
-  assert.deepEqual(previewedScratchRevisions, [1, 2]);
+  assert.deepEqual(previewedScratchRevisions, [1]);
   const snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready'
-      ? snapshot.inventoryRevisionPreview?.preservedMoveCount
+    snapshot.phase === 'ready' ? snapshot.analysis.scratch?.cursor : undefined,
+    0,
+  );
+  assert.equal(
+    snapshot.phase === 'ready' ? snapshot.inventoryRevisionPreview : undefined,
+    undefined,
+  );
+  await store.moveAnalysisCursor(1);
+  assert.deepEqual(previewedScratchRevisions, [1, 3]);
+  const end = store.getSnapshot();
+  assert.equal(
+    end.phase === 'ready'
+      ? end.inventoryRevisionPreview?.preservedMoveCount
       : undefined,
-    2,
+    3,
   );
   store.close();
 });
@@ -5171,6 +5892,7 @@ test('taking back a stored last move creates and previews a truncation draft', a
     scope: { kind: 'free' },
     baseRevisionId: '12',
     anchorId: '13',
+    lineAnchorId: '14',
     mode: 'truncate_after',
     expectedScratchId: null,
     expectedScratchRevision: null,
@@ -5183,6 +5905,81 @@ test('taking back a stored last move creates and previews a truncation draft', a
       : undefined,
     1,
   );
+  store.close();
+});
+
+test('deleting a variation selects its exact continuation and ignores main or missing anchors', async () => {
+  const source = savedLineAnalysis('14');
+  const first = source.record!.steps[0]!;
+  let current: AnalysisWorkspaceDto = {
+    ...source,
+    record: {
+      ...source.record!,
+      tree: {
+        nodes: [
+          { ...first, nodeIndex: 0, parentNodeIndex: null, siblingOrder: 0 },
+          {
+            ...first,
+            anchorId: '15',
+            nodeIndex: 1,
+            parentNodeIndex: 0,
+            siblingOrder: 1,
+          },
+        ],
+      },
+    },
+  };
+  const requests: StartInventoryRevisionRequestDto[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async () => current,
+    startInventoryRevision: async (_itemId, request) => {
+      requests.push(request);
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'delete-variation',
+        scratchRevision: 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: 'truncate_after',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '14',
+          returnAnchorId: '15',
+          displayName: 'Französisch',
+        },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '14',
+        },
+        root: initialState,
+        steps: [],
+        cursor: 0,
+      };
+      current = { ...current, scratch };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () => revisionPreview(),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  await store.removeAnalysisVariation('14');
+  await store.removeAnalysisVariation('missing');
+  assert.equal(requests.length, 0);
+  await store.removeAnalysisVariation('15');
+  assert.deepEqual(requests, [
+    {
+      scope: { kind: 'free' },
+      baseRevisionId: '12',
+      anchorId: '14',
+      lineAnchorId: '15',
+      mode: 'truncate_after',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    },
+  ]);
+  await store.removeAnalysisVariation('15');
+  assert.equal(requests.length, 1);
   store.close();
 });
 
@@ -5371,89 +6168,597 @@ for (const succeeds of [true, false]) {
   });
 }
 
-test('promoting an exploration keeps its moves and opens an automatic revision preview', async () => {
-  const exploration: NonNullable<AnalysisWorkspaceDto['scratch']> = {
-    scratchId: 'exploration-scratch',
-    scratchRevision: 2,
-    intent: { kind: 'exploration' },
+for (const mode of [undefined, 'add_variation'] as const) {
+  test(`promoting an exploration as ${mode ?? 'inferred revision'} preserves moves and previews it`, async () => {
+    const exploration: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+      scratchId: 'exploration-scratch',
+      scratchRevision: 2,
+      intent: { kind: 'exploration' },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      root: initialState,
+      steps: [
+        {
+          before: initialState,
+          move: { from: 'd2', to: 'd4', san: 'd4' },
+          after: initialState,
+        },
+      ],
+      cursor: 1,
+    };
+    let current: AnalysisWorkspaceDto = {
+      ...savedLineAnalysis('13'),
+      scratch: exploration,
+    };
+    let promoteRequest:
+      | Parameters<
+          PlysmithApplicationClient['promoteAnalysisToInventoryRevision']
+        >[1]
+      | undefined;
+    const client = createClient({
+      getAnalysisWorkspace: async () => current,
+      promoteAnalysisToInventoryRevision: async (_itemId, request) => {
+        promoteRequest = request;
+        const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+          ...exploration,
+          scratchRevision: 3,
+          intent: {
+            kind: 'inventory_revision',
+            mode: mode ?? 'truncate_after',
+            itemId: '11',
+            baseRevisionId: '12',
+            cutAnchorId: '13',
+            returnAnchorId: '13',
+            displayName: 'Französisch',
+          },
+        };
+        current = { ...current, scratch };
+        return { scratch, dataRevision: 0 };
+      },
+      previewInventoryRevision: async () =>
+        revisionPreview({
+          addedSteps: exploration.steps,
+          removedSteps: savedLineAnalysis('14').record!.steps,
+        }),
+    });
+    const store = createReadyStore(client);
+    await store.start();
+
+    await store.promoteAnalysisToInventoryRevision(mode);
+
+    assert.deepEqual(promoteRequest, {
+      scope: { kind: 'free' },
+      baseRevisionId: '12',
+      anchorId: '13',
+      expectedScratchId: 'exploration-scratch',
+      expectedScratchRevision: 2,
+      ...(mode === undefined ? {} : { mode }),
+    });
+    const snapshot = store.getSnapshot();
+    assert.equal(
+      snapshot.phase === 'ready'
+        ? snapshot.analysis.scratch?.intent.kind
+        : undefined,
+      'inventory_revision',
+    );
+    assert.equal(
+      snapshot.phase === 'ready'
+        ? snapshot.inventoryRevisionPreview?.addedSteps[0]?.move.san
+        : undefined,
+      'd4',
+    );
+    store.close();
+  });
+}
+
+test('an empty variation never takes back the saved prefix and a played game cannot remove one', async () => {
+  const base = savedLineAnalysis('14');
+  const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'variation',
+    scratchRevision: 1,
+    intent: {
+      kind: 'inventory_revision',
+      mode: 'add_variation',
+      itemId: '11',
+      baseRevisionId: '12',
+      cutAnchorId: '14',
+      returnAnchorId: '14',
+      displayName: 'Französisch',
+    },
     origin: {
       kind: 'inventory_anchor',
       itemId: '11',
       revisionId: '12',
-      anchorId: '13',
+      anchorId: '14',
     },
     root: initialState,
-    steps: [
-      {
-        before: initialState,
-        move: { from: 'd2', to: 'd4', san: 'd4' },
-        after: initialState,
-      },
-    ],
-    cursor: 1,
+    steps: [],
+    cursor: 0,
   };
-  let current: AnalysisWorkspaceDto = {
-    ...savedLineAnalysis('13'),
-    scratch: exploration,
-  };
-  let promoteRequest:
-    | Parameters<
-        PlysmithApplicationClient['promoteAnalysisToInventoryRevision']
-      >[1]
-    | undefined;
+  let current: AnalysisWorkspaceDto = { ...base, scratch };
   const client = createClient({
     getAnalysisWorkspace: async () => current,
-    promoteAnalysisToInventoryRevision: async (_itemId, request) => {
-      promoteRequest = request;
-      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
-        ...exploration,
-        scratchRevision: 3,
-        intent: {
-          kind: 'inventory_revision',
-          mode: 'truncate_after',
-          itemId: '11',
-          baseRevisionId: '12',
-          cutAnchorId: '13',
-          returnAnchorId: '13',
-          displayName: 'Französisch',
-        },
-      };
-      current = { ...current, scratch };
-      return { scratch, dataRevision: 0 };
-    },
     previewInventoryRevision: async () =>
       revisionPreview({
-        addedSteps: exploration.steps,
-        removedSteps: savedLineAnalysis('14').record!.steps,
+        mode: 'add_variation',
+        preservedMoveCount: 1,
+        noOp: true,
       }),
   });
   const store = createReadyStore(client);
   await store.start();
-
-  await store.promoteAnalysisToInventoryRevision();
-
-  assert.deepEqual(promoteRequest, {
-    scope: { kind: 'free' },
-    baseRevisionId: '12',
-    anchorId: '13',
-    expectedScratchId: 'exploration-scratch',
-    expectedScratchRevision: 2,
-  });
-  const snapshot = store.getSnapshot();
+  await store.takeBackLastMove();
+  let snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
       ? snapshot.analysis.scratch?.intent.kind
       : undefined,
     'inventory_revision',
   );
+  current = savedGameLineAnalysis();
+  await store.refresh();
+  await store.removeAnalysisVariation('14');
+  snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready'
-      ? snapshot.inventoryRevisionPreview?.addedSteps[0]?.move.san
-      : undefined,
-    'd4',
+    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    undefined,
   );
   store.close();
 });
+
+for (const impact of [
+  'scratch',
+  'context_note',
+  'global_note',
+  'affected_context',
+  'affected_note',
+  'affected_reference',
+  'affected_management',
+  'affected_analysis',
+  'following_identity',
+  'scratch_replaced',
+  'context_note_replaced',
+  'global_note_replaced',
+  'decreased_loss',
+  'unchanged_loss',
+  'harmless_revision',
+  'harmless',
+] as const) {
+  test(`comment save reviews new ${impact} consequences before publication`, async () => {
+    const base = savedLineAnalysis('14');
+    const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+      scratchId: 'review-comment',
+      scratchRevision: 2,
+      intent: {
+        kind: 'inventory_revision',
+        mode: 'add_variation',
+        itemId: '11',
+        baseRevisionId: '12',
+        cutAnchorId: '14',
+        returnAnchorId: '14',
+        displayName: 'French',
+      },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '14',
+      },
+      root: initialState,
+      steps: base.record!.steps,
+      cursor: 1,
+    };
+    const following = {
+      contextId: '9',
+      contextName: 'Other work',
+      updatedAutomatically: true,
+      referenceCount: 1,
+      contributionCount: impact === 'context_note_replaced' ? 1 : 0,
+      changedScratchCount:
+        impact === 'following_identity' ||
+        impact === 'decreased_loss' ||
+        impact === 'scratch_replaced' ||
+        impact === 'unchanged_loss'
+          ? 1
+          : 0,
+      managementResumeCount: 0,
+      analysisResumeCount: 1,
+    };
+    const affected = {
+      contextId: '10',
+      contextName: 'Decision required',
+      referenceCount: 1,
+      contributionCount: 0,
+      managementResumeCount: 0,
+      analysisResumeCount: 0,
+    };
+    const initial = revisionPreview({
+      mode: 'add_variation',
+      historicalGlobalContributionCount:
+        impact === 'global_note_replaced' ? 1 : 0,
+      followingContexts: [following],
+      affectedContexts: [affected],
+    });
+    const changed = revisionPreview({
+      ...initial,
+      previewFingerprint: 'sha256:changed-comment',
+      historicalGlobalContributionCount:
+        impact === 'global_note' || impact === 'global_note_replaced' ? 1 : 0,
+      dataRevision:
+        impact.endsWith('_replaced') || impact === 'harmless_revision' ? 1 : 0,
+      followingContexts: [
+        {
+          ...following,
+          contextId:
+            impact === 'following_identity' ? '11' : following.contextId,
+          contextName: 'Renamed work',
+          contributionCount:
+            impact === 'context_note' || impact === 'context_note_replaced'
+              ? 1
+              : 0,
+          changedScratchCount:
+            impact === 'scratch' ||
+            impact === 'following_identity' ||
+            impact === 'scratch_replaced' ||
+            impact === 'unchanged_loss'
+              ? 1
+              : 0,
+        },
+      ],
+      affectedContexts: [
+        {
+          ...affected,
+          contextId: impact === 'affected_context' ? '12' : affected.contextId,
+          contextName: 'Renamed decision',
+          referenceCount: impact === 'affected_reference' ? 2 : 1,
+          contributionCount: impact === 'affected_note' ? 1 : 0,
+          managementResumeCount: impact === 'affected_management' ? 1 : 0,
+          analysisResumeCount: impact === 'affected_analysis' ? 1 : 0,
+        },
+      ],
+    });
+    const needsReview = ![
+      'harmless',
+      'decreased_loss',
+      'unchanged_loss',
+      'harmless_revision',
+    ].includes(impact);
+    let advanced = false;
+    let saves = 0;
+    const observed: InventoryRevisionPreviewDto[] = [];
+    const store = createReadyStore(
+      createClient({
+        getAnalysisWorkspace: async () =>
+          saves > 0 ? base : { ...base, scratch },
+        previewInventoryRevision: async (request) => {
+          if (request.comment) {
+            advanced = true;
+            return changed;
+          }
+          return advanced
+            ? {
+                ...changed,
+                previewFingerprint: 'sha256:changed-without-comment',
+              }
+            : initial;
+        },
+        saveInventoryRevision: async (request) => {
+          saves++;
+          assert.equal(
+            request.previewFingerprint,
+            request.comment
+              ? changed.previewFingerprint
+              : 'sha256:changed-without-comment',
+          );
+          return {
+            itemId: '11',
+            revisionId: '12',
+            revisionNumber: 1,
+            currentAnchorId: '14',
+            impacts: [],
+            noOp: false,
+            dataRevision: 0,
+          };
+        },
+      }),
+    );
+    const unsubscribe = store.subscribe(() => {
+      const state = store.getSnapshot();
+      if (state.phase === 'ready' && state.inventoryRevisionPreview)
+        observed.push(state.inventoryRevisionPreview);
+    });
+    try {
+      await store.start();
+      const comment = {
+        body: 'Counterplay',
+        languageTag: 'en-GB',
+        noteScope: { kind: 'global' as const },
+      };
+      assert.equal(await store.saveInventoryRevision(comment), !needsReview);
+      assert.equal(saves, needsReview ? 0 : 1);
+      if (needsReview) {
+        assert.ok(
+          observed.includes(changed),
+          'new consequences must be published to the renderer',
+        );
+        assert.equal(
+          await store.saveInventoryRevision(
+            impact === 'scratch' ? undefined : comment,
+          ),
+          true,
+        );
+        assert.equal(saves, 1);
+      }
+    } finally {
+      unsubscribe();
+      store.close();
+    }
+  });
+}
+
+test('playout completion forms retain scope and identity, and clear only authoritatively missing drafts', async () => {
+  let current: PlayoutDto | null = playout(3, 0, [], 'stopped');
+  const draftId = current.draft.draftId;
+  const free = { kind: 'free' } as const;
+  const other = { kind: 'context', contextId: 'other' } as const;
+  const form = {
+    title: 'My game',
+    addToContext: false,
+    folderId: null,
+    manualResult: 'white_win' as const,
+  };
+  const store = createReadyStore(
+    createClient({ getPlayout: async () => current }),
+  );
+  try {
+    await store.start();
+    store.setPlayoutCompletionForm(free, draftId, form);
+    store.setPlayoutCompletionForm(other, 'other-game', {
+      ...form,
+      title: 'Other game',
+    });
+    store.setActivity('manage');
+    await store.refresh();
+    assert.deepEqual(store.getPlayoutCompletionForm(free, draftId), form);
+    assert.equal(store.getPlayoutCompletionForm(free, 'new-game'), undefined);
+    assert.equal(
+      store.getPlayoutCompletionForm(other, 'other-game')?.title,
+      'Other game',
+    );
+    current = null;
+    await store.refresh();
+    assert.equal(store.getPlayoutCompletionForm(free, draftId), undefined);
+    assert.equal(
+      store.getPlayoutCompletionForm(other, 'other-game')?.title,
+      'Other game',
+    );
+    store.close();
+    assert.equal(
+      store.getPlayoutCompletionForm(other, 'other-game'),
+      undefined,
+    );
+  } finally {
+    store.close();
+  }
+});
+
+for (const outcome of ['saved', 'no_op', 'failure'] as const) {
+  test(`combined variation save binds the comment fingerprint and ${outcome} preserves the right draft`, async () => {
+    const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+      scratchId: 'variation',
+      scratchRevision: 2,
+      intent: {
+        kind: 'inventory_revision',
+        mode: 'add_variation',
+        itemId: '11',
+        baseRevisionId: '12',
+        cutAnchorId: '14',
+        returnAnchorId: '14',
+        displayName: 'Französisch',
+      },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '14',
+      },
+      root: initialState,
+      steps: [
+        {
+          before: initialState,
+          move: { from: 'c7', to: 'c5', san: 'c5' },
+          after: initialState,
+        },
+      ],
+      cursor: 1,
+    };
+    let current: AnalysisWorkspaceDto = { ...savedLineAnalysis('14'), scratch };
+    const comment = {
+      body: '1... c5\nCounterplay',
+      languageTag: 'en-GB',
+      noteScope: { kind: 'global' as const },
+    };
+    const previews: Parameters<
+      PlysmithApplicationClient['previewInventoryRevision']
+    >[0][] = [];
+    const saves: Parameters<
+      PlysmithApplicationClient['saveInventoryRevision']
+    >[0][] = [];
+    const client = createClient({
+      getAnalysisWorkspace: async () => current,
+      previewInventoryRevision: async (request) => {
+        previews.push(request);
+        return revisionPreview({
+          mode: 'add_variation',
+          addedSteps: scratch.steps,
+          previewFingerprint: request.comment
+            ? 'sha256:with-comment'
+            : 'sha256:without-comment',
+        });
+      },
+      saveInventoryRevision: async (request) => {
+        saves.push(request);
+        if (outcome === 'failure')
+          throw workAccessProblem('inventory.preview_conflict');
+        if (outcome === 'saved') current = savedLineAnalysis('14');
+        return {
+          itemId: '11',
+          revisionId: '12',
+          revisionNumber: 1,
+          currentAnchorId: '14',
+          impacts: [],
+          noOp: outcome === 'no_op',
+          dataRevision: 0,
+        };
+      },
+    });
+    const store = createReadyStore(client);
+    await store.start();
+    store.setVariationCommentDraft('variation', {
+      enabled: true,
+      body: comment.body,
+      noteScope: 'global',
+    });
+    assert.equal(
+      await store.saveInventoryRevision(comment),
+      outcome === 'saved',
+    );
+    assert.equal(saves.length, 1);
+    assert.deepEqual(saves[0], {
+      scope: { kind: 'free' },
+      expectedScratchId: 'variation',
+      expectedScratchRevision: 2,
+      comment,
+      previewFingerprint: 'sha256:with-comment',
+    });
+    assert.deepEqual(
+      previews.find((request) => request.comment)?.comment,
+      comment,
+    );
+    assert.equal(
+      store.getVariationCommentDraft('variation')?.body,
+      outcome === 'saved' ? undefined : comment.body,
+    );
+    const snapshot = store.getSnapshot();
+    assert.equal(
+      snapshot.phase === 'ready'
+        ? snapshot.analysis.scratch?.scratchId
+        : undefined,
+      outcome === 'saved' ? undefined : 'variation',
+    );
+    store.close();
+  });
+}
+
+for (const operation of [
+  'variation',
+  'record-note',
+  'record-clear',
+  'note',
+] as const) {
+  for (const restart of [false, true]) {
+    test(`post-preparation ${operation} never writes after ${restart ? 'restart' : 'close'}`, async (t) => {
+      const entered = Promise.withResolvers<void>();
+      const pending = Promise.withResolvers<void>();
+      const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+        scratchId: 'pending-publication',
+        scratchRevision: 2,
+        intent:
+          operation === 'variation'
+            ? {
+                kind: 'inventory_revision',
+                mode: 'add_variation',
+                itemId: '11',
+                baseRevisionId: '12',
+                cutAnchorId: '14',
+                returnAnchorId: '14',
+                displayName: 'French',
+              }
+            : { kind: 'exploration' },
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '14',
+        },
+        root: initialState,
+        steps: [
+          {
+            before: initialState,
+            move: { from: 'c7', to: 'c5', san: 'c5' },
+            after: initialState,
+          },
+        ],
+        cursor: 1,
+        noteDraft: { body: 'Previous comment', moves: [] },
+      };
+      let writes = 0;
+      const obsoleteWrite = async () => {
+        writes++;
+        assert.fail('obsolete publication must not reach the Host');
+      };
+      const store = createReadyStore(
+        createClient({
+          getAnalysisWorkspace: async () => ({
+            ...savedLineAnalysis('14'),
+            scratch,
+          }),
+          previewInventoryRevision: async (request) => {
+            if (request.comment) {
+              entered.resolve();
+              await pending.promise;
+            }
+            return revisionPreview({
+              mode: 'add_variation',
+              addedSteps: scratch.steps,
+            });
+          },
+          updateAnalysisScratch: async () => {
+            entered.resolve();
+            await pending.promise;
+            return {
+              scope: { kind: 'free' },
+              scratch: { ...scratch, scratchRevision: 3 },
+              discarded: false,
+              dataRevision: 0,
+            };
+          },
+          saveInventoryRevision: obsoleteWrite,
+          createAnalysisRecord: obsoleteWrite,
+          createAnalysisNote: obsoleteWrite,
+        }),
+      );
+      t.after(() => store.close());
+      await store.start();
+      const saving =
+        operation === 'variation'
+          ? store.saveInventoryRevision({
+              body: 'New comment',
+              languageTag: 'en-GB',
+              noteScope: { kind: 'global' },
+            })
+          : operation === 'note'
+            ? store.createAnalysisNote('global', 'New comment')
+            : store.createAnalysisRecord(
+                'New analysis',
+                'inventory',
+                'global',
+                operation === 'record-clear' ? '' : 'New comment',
+              );
+      await entered.promise;
+      store.close();
+      if (restart) await store.start();
+      pending.resolve();
+      assert.equal(await saving, false);
+      assert.equal(writes, 0);
+      if (restart) assert.equal(readyStore(store).busyCommand, undefined);
+    });
+  }
+}
 
 test('an open context impact is discoverable, loaded with both revisions and resolved once', async () => {
   const context = {
@@ -6207,6 +7512,87 @@ function createReadyStore(client: PlysmithApplicationClient) {
     }),
   });
 }
+
+test('inline note forms retain independent scopes, contributions and base versions without host writes', async () => {
+  const store = createReadyStore(createClient());
+  const free = { kind: 'free' } as const;
+  const context = { kind: 'context', contextId: 'context-a' } as const;
+  const first = {
+    kind: 'edit',
+    targetKey: 'item:revision:anchor',
+    contributionId: 'note-a',
+    contributionVersion: 1,
+    body: 'Unsaved A',
+  } as const;
+  const second = { ...first, contributionId: 'note-b', body: 'Unsaved B' };
+  store.setAnalysisNoteForm(free, 'item', first);
+  store.setAnalysisNoteForm(free, 'item', second);
+  store.setAnalysisNoteForm(context, 'item', { ...first, body: 'Context A' });
+  assert.equal(
+    store.getAnalysisNoteForm(free, 'item', first)?.body,
+    'Unsaved A',
+  );
+  assert.equal(
+    store.getActiveAnalysisNoteForm(free, 'item')?.body,
+    'Unsaved B',
+  );
+  assert.equal(
+    store.getActiveAnalysisNoteForm(context, 'item')?.body,
+    'Context A',
+  );
+  assert.equal(store.getActiveAnalysisNoteForm(free, 'other-item'), undefined);
+  assert.equal(
+    store.getAnalysisNoteForm(free, 'item', {
+      ...first,
+      contributionVersion: 2,
+    }),
+    undefined,
+  );
+  const newer = { ...first, contributionVersion: 2, body: 'New base' };
+  store.setAnalysisNoteForm(free, 'item', newer);
+  store.discardAnalysisNoteForm(free, 'item', first);
+  assert.deepEqual(store.getActiveAnalysisNoteForm(free, 'item'), newer);
+  store.setAnalysisNoteForm(free, 'item', undefined);
+  assert.equal(
+    store.getAnalysisNoteForm(free, 'item', second)?.body,
+    'Unsaved B',
+  );
+  store.close();
+  assert.deepEqual(store.getAnalysisNoteFormDrafts(free, 'item'), []);
+  assert.equal(store.getActiveAnalysisNoteForm(context, 'item'), undefined);
+});
+
+test('analysis record forms bind their full values to scope and scratch for the current store lifetime', () => {
+  const store = createReadyStore(createClient());
+  const free = { kind: 'free' } as const;
+  const context = { kind: 'context', contextId: 'context-a' } as const;
+  const draft = {
+    title: 'Title A',
+    noteBody: 'Note A',
+    folderId: 'folder-a',
+    destination: 'inventory',
+    noteScope: 'global',
+    open: true,
+  } as const;
+  store.setAnalysisRecordForm(free, 'scratch-a', draft);
+  store.setAnalysisRecordForm(context, 'scratch-a', {
+    ...draft,
+    title: 'Context title',
+    destination: 'context',
+    noteScope: 'context',
+  });
+  assert.deepEqual(store.getAnalysisRecordForm(free, 'scratch-a'), draft);
+  assert.equal(store.getAnalysisRecordForm(free, 'scratch-b'), undefined);
+  assert.equal(
+    store.getAnalysisRecordForm(context, 'scratch-a')?.title,
+    'Context title',
+  );
+  store.setAnalysisRecordForm(context, 'scratch-a', undefined);
+  assert.equal(store.getAnalysisRecordForm(context, 'scratch-a'), undefined);
+  assert.deepEqual(store.getAnalysisRecordForm(free, 'scratch-a'), draft);
+  store.close();
+  assert.equal(store.getAnalysisRecordForm(free, 'scratch-a'), undefined);
+});
 
 test('management content reads a requested historical revision without opening analysis or writing', async () => {
   const record = savedAnalysis().record!;

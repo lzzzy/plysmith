@@ -8,6 +8,7 @@ import type {
   MoveInput,
 } from '../../../../application/chess_graph/index.ts';
 import {
+  analysisSetupFromState,
   normalizeAnalysisSetup,
   createChessState,
   createPosition,
@@ -51,7 +52,11 @@ export class ChessJsRulesAdapter implements ChessRulesPort {
       return failure('invalid_fen');
     }
     try {
-      return success(stateFromChess(new Chess(fen), 'unknown'));
+      const state = stateFromChess(new Chess(fen), 'unknown');
+      if (validateAnalysisSetup(analysisSetupFromState(state)).length > 0) {
+        return failure('invalid_fen');
+      }
+      return success(state);
     } catch {
       return failure('invalid_fen');
     }
@@ -255,6 +260,25 @@ function validateAnalysisSetup(
         field: 'fullmoveNumber',
       }),
     );
+  }
+  if (issues.length === 0) {
+    try {
+      const chess = new Chess(fenFromSetup(setup));
+      const inactiveKing =
+        setup.sideToMove === 'white' ? blackKings[0]! : whiteKings[0]!;
+      if (
+        chess.isAttacked(
+          inactiveKing.square as Parameters<Chess['isAttacked']>[0],
+          setup.sideToMove === 'white' ? 'w' : 'b',
+        )
+      ) {
+        issues.push(
+          Object.freeze({ code: 'invalid_position', field: 'pieces' }),
+        );
+      }
+    } catch {
+      issues.push(Object.freeze({ code: 'invalid_position', field: 'pieces' }));
+    }
   }
   return issues;
 }

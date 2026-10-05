@@ -1,5 +1,4 @@
 import type {
-  ObjectiveAnalysisBudget,
   ObjectiveAnalysisCandidate,
   ObjectiveAnalysisSnapshot,
   ObjectiveEvaluation,
@@ -27,7 +26,10 @@ import {
   analysisWdl,
   mapPositionAnalysisRuntimeError,
 } from '../position-analysis-runtime.ts';
-import { type StockfishUciConfiguration } from './stockfish-uci-move-policy-adapter.ts';
+import {
+  stockfishQueueTimeoutMilliseconds,
+  type StockfishUciConfiguration,
+} from './stockfish-uci-move-policy-adapter.ts';
 
 interface ParsedStockfishLine {
   readonly rank: number;
@@ -43,12 +45,6 @@ interface ParsedStockfishLine {
   readonly tablebaseHits?: number;
 }
 
-const budgetMilliseconds: Record<ObjectiveAnalysisBudget, number> = {
-  fast: 300,
-  thorough: 1_500,
-  very_deep: 4_000,
-};
-
 export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProvider {
   readonly #configuration: StockfishUciConfiguration;
   readonly #runtime: UciEngineRuntime;
@@ -60,7 +56,10 @@ export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProv
     runtime: UciEngineRuntime,
     rules: ChessRulesPort,
   ) {
-    this.#configuration = Object.freeze({ ...configuration });
+    this.#configuration = Object.freeze({
+      ...configuration,
+      detailLevels: Object.freeze({ ...configuration.detailLevels }),
+    });
     this.#runtime = runtime;
     this.#rules = rules;
     this.#descriptor = Object.freeze({
@@ -106,7 +105,7 @@ export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProv
           search: Object.freeze({
             limiter: Object.freeze({
               kind: 'movetime',
-              value: budgetMilliseconds[request.mode.budget],
+              value: this.#configuration.detailLevels[request.mode.budget],
             }),
           }),
         });
@@ -127,7 +126,7 @@ export class StockfishUciPositionAnalysisAdapter implements PositionAnalysisProv
             candidateCount,
           ),
         {
-          waitTimeoutMs: this.#configuration.moveTimeoutMs,
+          waitTimeoutMs: stockfishQueueTimeoutMilliseconds(this.#configuration),
           ...(signal === undefined ? {} : { signal }),
         },
       );
@@ -148,8 +147,8 @@ async function analyzeWithStockfish(
 ): Promise<ObjectiveAnalysisSnapshot> {
   if (request.mode.kind !== 'objective') throw new Error('invalid mode');
   requireUciOptions(handshake, ['MultiPV', 'UCI_ShowWDL', 'UCI_LimitStrength']);
-  const movetime = budgetMilliseconds[request.mode.budget];
-  const deadline = performance.now() + configuration.moveTimeoutMs;
+  const movetime = configuration.detailLevels[request.mode.budget];
+  const deadline = performance.now() + movetime + configuration.moveTimeoutMs;
   const rootMoves = request.mode.rootMoves;
   setUciOption(session, 'MultiPV', candidateCount);
   setUciOption(session, 'UCI_ShowWDL', true);
@@ -326,5 +325,3 @@ function optionalMetric<K extends string>(
     ? {}
     : ({ [target]: value } as Partial<Record<K, number>>);
 }
-
-export { budgetMilliseconds as stockfishAnalysisBudgetMilliseconds };

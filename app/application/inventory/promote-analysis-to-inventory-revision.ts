@@ -85,10 +85,11 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
           ...(record.summary === undefined ? {} : { summary: record.summary }),
         },
         mode:
-          request.anchorId.value ===
+          request.mode ??
+          (request.anchorId.value ===
           (record.steps.at(-1)?.anchorId ?? record.rootAnchorId).value
             ? 'extend'
-            : 'truncate_after',
+            : 'truncate_after'),
         anchorId: request.anchorId,
       });
     } catch {

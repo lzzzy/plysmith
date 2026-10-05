@@ -57,6 +57,13 @@ import type {
 } from '../../../application/workspace/index.ts';
 import type { DiagnosticSink } from '../../../../contracts/diagnostics/index.ts';
 import type {
+  RegisterImportInput,
+  PrepareImport,
+  CheckImportNames,
+  PublishImport,
+  DiscardImport,
+} from '../../../application/inventory/import-use-cases.ts';
+import type {
   CompletePlayoutUseCase,
   DiscardPlayoutUseCase,
   ExpectedPlayoutUseCase,
@@ -71,6 +78,11 @@ import type {
 } from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
+  readonly registerImportInput: Pick<RegisterImportInput, 'execute'>;
+  readonly prepareImport: Pick<PrepareImport, 'execute'>;
+  readonly checkImportNames: Pick<CheckImportNames, 'execute'>;
+  readonly publishImport: Pick<PublishImport, 'execute'>;
+  readonly discardImport: Pick<DiscardImport, 'execute'>;
   readonly getInventoryOrganization: GetInventoryOrganizationUseCase;
   readonly changeInventoryOrganization: ChangeInventoryOrganizationUseCase;
   readonly previewContextFolderRemoval: PreviewContextFolderRemovalUseCase;

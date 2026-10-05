@@ -25,6 +25,7 @@ import {
   type InventoryFolderGroup,
 } from './inventory-folder-presentation.ts';
 import { InventoryTypeIcon } from './inventory-type-icon.tsx';
+import { InventorySelectionActions } from './inventory-selection-actions.tsx';
 import {
   InventoryActions,
   type InventoryAction,
@@ -451,17 +452,17 @@ export function InventoryFolderView({
                 values={{ count: checked.size }}
               />
             </span>
-            <InventoryActions
-              disabled={busy}
-              label={intl.formatMessage({ id: 'manage.selectionActions' })}
-              actions={[
-                {
-                  id: 'clear',
-                  label: intl.formatMessage({ id: 'manage.clearSelection' }),
-                  icon: <X size={16} />,
-                  onPress: () => setChecked(new Set()),
-                },
-              ]}
+            <InventorySelectionActions
+              state={state}
+              store={store}
+              items={items.filter((item) => checked.has(item.itemId))}
+              onClear={() => setChecked(new Set())}
+              onCompleted={(ids) =>
+                setChecked(
+                  (previous) =>
+                    new Set([...previous].filter((id) => !ids.includes(id))),
+                )
+              }
             />
           </div>
         )}

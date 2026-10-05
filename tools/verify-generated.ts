@@ -20,7 +20,12 @@ try {
   await compareFiles(
     generatedDirectory,
     path.resolve('configuration', 'schemas'),
-    ['plysmith.schema.json', 'sqlite-provider.schema.json'],
+    [
+      'plysmith.schema.json',
+      'sqlite-provider.schema.json',
+      'stockfish-uci-provider.schema.json',
+      'maia-chess-provider.schema.json',
+    ],
   );
   const hostContractRoot = path.join(temporaryRoot, 'host-contract');
   await generateHostContract(hostContractRoot);

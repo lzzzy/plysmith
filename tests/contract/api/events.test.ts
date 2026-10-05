@@ -90,11 +90,22 @@ test(
   },
 );
 
-test('SSE frames preserve ordered replay, ids and the constant wire event name', async (t) => {
+test('SSE preserves ordered replay, projects private fields and signals authoritative snapshot recovery', async (t) => {
   const cursors: (string | undefined)[] = [];
-  const events = [languageEvent(2), languageEvent(3)];
+  const first = languageEvent(2);
+  const original = languageEvent(3);
+  const events = [first, original];
+  assert.equal(original.kind, 'preference.ui-language-changed');
+  const sourceEvents: HostEvent[] = [
+    first,
+    {
+      ...original,
+      ...{ secret: 'CANARY' },
+      payload: { ...original.payload, ...{ secret: 'CANARY' } },
+    },
+  ];
   const { host } = await buildFixture(t, {
-    events: finiteSource(events, cursors),
+    events: finiteSource(sourceEvents, cursors),
   });
   const response = await host.inject({
     url: '/events',
@@ -113,6 +124,7 @@ test('SSE frames preserve ordered replay, ids and the constant wire event name',
     'app://plysmith',
   );
   assert.deepEqual(cursors, ['generation:1']);
+  assert.ok(!response.body.includes('CANARY'));
   const frames = response.body.trim().split('\n\n');
   assert.equal(frames.length, 2);
   const validator = TypeCompiler.Compile(HostEventSchema, [...apiSchemas]);
@@ -126,19 +138,15 @@ test('SSE frames preserve ordered replay, ids and the constant wire event name',
     assert.ok(validator.Check(dto));
     assert.deepEqual(dto, event);
   });
-});
-
-test('an explicit replay gap tells the client to read authoritative query snapshots', async (t) => {
-  const { host } = await buildFixture(t, {
-    events: finiteSource([gapEvent()]),
-  });
-  const response = await host.inject({
+  sourceEvents.splice(0, sourceEvents.length, gapEvent());
+  const gapResponse = await host.inject({
     url: '/events',
     headers: { ...headers, 'last-event-id': 'old-generation:99' },
   });
-  assert.equal(response.statusCode, 200);
-  assert.ok(response.body.includes('event: host-event\n'));
-  assert.ok(response.body.includes('"kind":"host.replay-gap"'));
+  assert.equal(gapResponse.statusCode, 200);
+  assert.ok(gapResponse.body.includes('event: host-event\n'));
+  assert.ok(gapResponse.body.includes('"kind":"host.replay-gap"'));
+  assert.deepEqual(cursors, ['generation:1', 'old-generation:99']);
   const snapshot = await host.inject({ url: '/preferences', headers });
   assert.equal(snapshot.json().dataRevision, 0);
   assert.equal(snapshot.json().uiLocale, 'de-DE');
@@ -187,21 +195,6 @@ test('subscription failure before the first frame remains a correlated HTTP prob
   assert.equal(response.json().code, 'host.failure');
   assert.equal(response.json().correlationId, 'test-correlation');
   assert.ok(!response.body.includes('CANARY'));
-});
-
-test('SSE explicitly projects payload and metadata without internal fields', async (t) => {
-  const original = languageEvent();
-  assert.equal(original.kind, 'preference.ui-language-changed');
-  const extra = {
-    ...original,
-    secret: 'CANARY',
-    payload: { ...original.payload, secret: 'CANARY' },
-  };
-  const { host } = await buildFixture(t, { events: finiteSource([extra]) });
-  const response = await host.inject({ url: '/events', headers });
-  assert.equal(response.statusCode, 200);
-  assert.ok(!response.body.includes('CANARY'));
-  assert.ok(response.body.includes('preference.ui-language-changed'));
 });
 
 test('invalid event ids cannot inject extra SSE frames and always close the subscription', async (t) => {

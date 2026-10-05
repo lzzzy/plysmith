@@ -9,7 +9,7 @@ import {
   productRelease,
 } from '../../../contracts/host/index.ts';
 import { connectMcp, assertToolData } from '../mcp/helpers.ts';
-import { buildFixture, headers, occurredAt, token } from './fixtures.ts';
+import { buildRouteFixture, headers, occurredAt, token } from './fixtures.ts';
 
 const contextId = localId('working-context', 2);
 const itemId = localId('inventory-item', 7);
@@ -84,7 +84,7 @@ test('folder organization preserves HTTP and MCP parity for reads, all changes, 
   const folderId = localId('inventory-folder', 3);
   const received: unknown[] = [];
   const published: unknown[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     searchInventory: {
       execute: async () => ({
         items: [
@@ -436,7 +436,7 @@ test('folder organization preserves HTTP and MCP parity for reads, all changes, 
 
 test('workspace lifecycle has identical API, host-client and MCP requests and concrete DTOs', async (t) => {
   const requests: { method: string; request?: unknown }[] = [];
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     getWorkScopeWorkspace: {
       execute: async (request) => {
         requests.push({ method: 'scope', request });
@@ -664,7 +664,7 @@ test('workspace lifecycle has identical API, host-client and MCP requests and co
 });
 
 test('lifecycle rejects missing confirmations and returns concrete stale-preview problems', async (t) => {
-  const { host } = await buildFixture(t, {
+  const { host } = await buildRouteFixture(t, {
     deleteInventoryItem: {
       execute: async () => {
         throw new ApplicationProblem(

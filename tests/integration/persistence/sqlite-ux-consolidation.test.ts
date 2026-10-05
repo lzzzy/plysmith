@@ -226,10 +226,10 @@ test('inventory families include real ancestors beyond query, scope and page wit
   const first = await search.execute({ query: 'Needle', pageSize: 1 });
   assert.deepEqual(
     first.items.map((item) => item.itemId),
-    [independent.itemId],
+    [leaf.itemId],
   );
-  assert.deepEqual(first.ancestors, []);
-  assert.deepEqual(first.provenanceEdges, []);
+  assert.deepEqual(first.ancestors, scoped.ancestors);
+  assert.deepEqual(first.provenanceEdges, scoped.provenanceEdges);
   assert.ok(first.nextCursor);
   const second = await search.execute({
     query: 'Needle',
@@ -238,9 +238,10 @@ test('inventory families include real ancestors beyond query, scope and page wit
   });
   assert.deepEqual(
     second.items.map((item) => item.itemId),
-    [leaf.itemId],
+    [independent.itemId],
   );
-  assert.deepEqual(second.provenanceEdges, scoped.provenanceEdges);
+  assert.deepEqual(second.ancestors, []);
+  assert.deepEqual(second.provenanceEdges, []);
   await assert.rejects(
     search.execute({ query: 'Middle', cursor: first.nextCursor }),
     { problemCode: 'inventory.invalid_search' },

@@ -137,6 +137,7 @@ export function registerAnalysisRoutes(
   api.put(
     '/analysis/scratch',
     {
+      bodyLimit: 1048576,
       schema: {
         operationId: 'UpdateAnalysisScratch',
         querystring: EmptyQuerySchema,
@@ -250,6 +251,7 @@ export function registerAnalysisRoutes(
   api.post(
     '/analysis/position-notes',
     {
+      bodyLimit: 1048576,
       schema: {
         operationId: 'CreatePositionNote',
         querystring: EmptyQuerySchema,
@@ -286,6 +288,7 @@ export function registerAnalysisRoutes(
   api.patch(
     '/analysis/notes/:contributionId',
     {
+      bodyLimit: 1048576,
       schema: {
         operationId: 'UpdateAnalysisNote',
         params: ContributionIdParamsSchema,

@@ -261,9 +261,10 @@ export class UpdateAnalysisScratch implements UpdateAnalysisScratchUseCase {
       throw invalidAnalysisUpdate();
     }
     if (
-      current.intent.kind === 'inventory_revision' &&
-      current.intent.mode === 'metadata' &&
-      action.kind === 'apply_move'
+      action.kind === 'apply_move' &&
+      (current.cursor !== current.steps.length ||
+        (current.intent.kind === 'inventory_revision' &&
+          current.intent.mode === 'metadata'))
     ) {
       throw invalidAnalysisUpdate();
     }

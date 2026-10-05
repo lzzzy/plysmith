@@ -4,6 +4,7 @@ import {
   open,
   readFile,
   rename,
+  stat,
   unlink,
   writeFile,
   type FileHandle,
@@ -70,7 +71,8 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
     if (!validInput(input)) issues.push('configuration_invalid');
     if (path.isAbsolute(input.executablePath)) {
       try {
-        await access(input.executablePath);
+        if (!(await stat(input.executablePath)).isFile())
+          issues.push('executable_not_found');
       } catch {
         issues.push('executable_not_found');
       }
@@ -80,7 +82,8 @@ export class FileEngineProviderConfigurationRepository implements EngineProvider
       path.isAbsolute(input.weightsPath)
     ) {
       try {
-        await access(input.weightsPath);
+        if (!(await stat(input.weightsPath)).isFile())
+          issues.push('weights_not_found');
       } catch {
         issues.push('weights_not_found');
       }
@@ -331,7 +334,7 @@ function documentFromInput(
     };
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     provider: 'stockfish-uci',
     displayName: input.displayName,
     stockfish: {
@@ -339,7 +342,8 @@ function documentFromInput(
       arguments: [...input.arguments],
       threads: input.threads,
       hashMb: input.hashMb,
-      moveTimeMs: input.moveTimeMs,
+      detailLevels: { ...input.detailLevels },
+      playoutBudget: input.playoutBudget,
       startupTimeoutMs: input.startupTimeoutMs,
       moveTimeoutMs: input.moveTimeoutMs,
       stopTimeoutMs: input.stopTimeoutMs,
@@ -373,7 +377,8 @@ function inputFromDocument(
     arguments: Object.freeze([...document.stockfish.arguments]),
     threads: document.stockfish.threads,
     hashMb: document.stockfish.hashMb,
-    moveTimeMs: document.stockfish.moveTimeMs,
+    detailLevels: Object.freeze({ ...document.stockfish.detailLevels }),
+    playoutBudget: document.stockfish.playoutBudget,
     startupTimeoutMs: document.stockfish.startupTimeoutMs,
     moveTimeoutMs: document.stockfish.moveTimeoutMs,
     stopTimeoutMs: document.stockfish.stopTimeoutMs,

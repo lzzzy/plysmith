@@ -5,7 +5,7 @@ import { chromium, expect } from '@playwright/test';
 import { build } from 'esbuild';
 import { ChessJsRulesAdapter } from '../../../app/infrastructure/adapters/chess_rules/chess_js/index.ts';
 
-test('analysis choices survive leaving the area and a position change', async () => {
+test('analysis choices survive area changes and a fresh desktop store after reload', async () => {
   const rootState = new ChessJsRulesAdapter().initialState();
   const bundle = await build({
     stdin: {
@@ -20,25 +20,24 @@ test('analysis choices survive leaving the area and a position change', async ()
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'react-intl';
 import { PositionAnalysisPanel } from './position-analysis-panel.tsx';
+import { PlysmithApplicationStore } from './plysmith-application-store.ts';
 import { messages } from './messages.ts';
 import './tokens.css';
 const root = createRoot(document.getElementById('root'));
 const providers = { providers: [
   { instanceId: 'stockfish', displayName: 'Stockfish', capability: 'objective_position_analysis', status: 'available' },
+  { instanceId: 'stockfish-two', displayName: 'Stockfish two', capability: 'objective_position_analysis', status: 'available' },
   { instanceId: 'maia-1600', displayName: 'Maia 1600', capability: 'human_policy_analysis', status: 'available' },
 ] };
-const store = {
-  selection: undefined,
-  budget: 'fast',
-  calls: [],
-  getPositionAnalysisHumanSelection() { return this.selection; },
-  setPositionAnalysisHumanSelection(ids) { this.selection = new Set(ids); },
-  getPositionAnalysisBudget() { return this.budget; },
-  setPositionAnalysisBudget(budget) { this.budget = budget; },
-  analyzePosition(request) {
-    this.calls.push(request.mode.kind === 'objective' ? request.mode.budget : request.mode.kind);
-    return Promise.resolve({ kind: 'failed' });
-  },
+const store = new PlysmithApplicationStore({
+  getBootstrap: async () => { throw new Error('No host in panel fixture'); },
+});
+const calls = [];
+const objectiveCalls = [];
+store.analyzePosition = (request) => {
+  calls.push(request.mode.kind === 'objective' ? request.mode.budget : request.mode.kind);
+  if (request.mode.kind === 'objective') objectiveCalls.push(request.providerInstanceId);
+  return Promise.resolve({ kind: 'failed' });
 };
 let generation = 0;
 let focus = { focusKey: 'initial', root: ${JSON.stringify(rootState)}, current: ${JSON.stringify(rootState)}, moves: [] };
@@ -50,7 +49,14 @@ function render() {
 window.selectionTest = {
   leaveAndReturn() { generation++; render(); },
   move() { generation++; focus = { ...focus, focusKey: 'next' }; render(); },
-  calls() { return store.calls; },
+  calls() { return calls; },
+  dropProvider() {
+    const offset = objectiveCalls.length;
+    providers.providers = providers.providers.filter((provider) => provider.instanceId !== 'stockfish-two');
+    generation++; render();
+    return offset;
+  },
+  objectiveCalls() { return objectiveCalls; },
 };
 render();`,
     },
@@ -69,10 +75,20 @@ render();`,
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
     const page = await browser.newPage();
-    await page.route('**/*', (route) => route.abort());
-    await page.setContent('<!doctype html><div id="root"></div>');
-    await page.addStyleTag({ content: css.text });
-    await page.addScriptTag({ content: script.text });
+    await page.route('**/*', (route) =>
+      route.request().url() === 'http://localhost/'
+        ? route.fulfill({
+            contentType: 'text/html',
+            body:
+              '<!doctype html><style>' +
+              css.text +
+              '</style><div id="root"></div><script>' +
+              script.text +
+              '</script>',
+          })
+        : route.abort(),
+    );
+    await page.goto('http://localhost/');
     const maia = page.getByRole('checkbox', { name: 'Maia 1600' });
     await expect(maia).toBeChecked();
     await maia.uncheck();
@@ -107,6 +123,46 @@ render();`,
     );
     assert.equal(callsAfterMove.length, callsBeforeMove + 1);
     assert.equal(callsAfterMove.at(-1), 'very_deep');
+    await maia.check();
+    const sort = page.getByRole('combobox', { name: 'Sort by' });
+    await sort.selectOption('maia-1600');
+    const objective = page.getByRole('combobox', {
+      name: 'Stockfish',
+      exact: true,
+    });
+    await objective.selectOption('stockfish-two');
+    await page.reload();
+    await expect(budget).toHaveValue('very_deep');
+    await expect(maia).toBeChecked();
+    await expect(sort).toHaveValue('maia-1600');
+    await expect(objective).toHaveValue('stockfish-two');
+    await maia.uncheck();
+    await page.reload();
+    await expect(maia).not.toBeChecked();
+    await expect(page.getByRole('combobox', { name: 'Sort by' })).toHaveCount(
+      0,
+    );
+    const offset = await page.evaluate(() =>
+      (
+        globalThis as unknown as { selectionTest: { dropProvider(): number } }
+      ).selectionTest.dropProvider(),
+    );
+    await expect(objective).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (offset) =>
+            (
+              globalThis as unknown as {
+                selectionTest: { objectiveCalls(): string[] };
+              }
+            ).selectionTest
+              .objectiveCalls()
+              .slice(offset),
+          offset,
+        ),
+      )
+      .toEqual(['stockfish']);
   } finally {
     await browser.close();
   }

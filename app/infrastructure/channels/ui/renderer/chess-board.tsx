@@ -72,20 +72,30 @@ export function ChessBoard({
   useEffect(() => {
     setSelectedSquare(undefined);
     setPromotionMoves([]);
-  }, [workspace.currentState.fen]);
+  }, [
+    interactive,
+    workspace.currentState.fen,
+    workspace.scope.kind,
+    workspace.scope.kind === 'context' ? workspace.scope.contextId : undefined,
+    workspace.scratch?.scratchId,
+    workspace.scratch?.cursor,
+    workspace.record?.itemId,
+    workspace.record?.revisionId,
+    workspace.record?.currentAnchorId,
+  ]);
 
   useEffect(() => setOrientation(initialOrientation), [initialOrientation]);
 
   const legalSources = new Set(workspace.legalMoves.map((move) => move.from));
   if (undoMove !== undefined) legalSources.add(undoMove.to);
   const legalTargets = new Set(
-    selectedSquare === undefined
+    !interactive || selectedSquare === undefined
       ? []
       : workspace.legalMoves
           .filter((move) => move.from === selectedSquare)
           .map((move) => move.to),
   );
-  if (undoMove !== undefined && selectedSquare === undoMove.to)
+  if (interactive && undoMove !== undefined && selectedSquare === undoMove.to)
     legalTargets.add(undoMove.from);
 
   function activateSquare(square: string) {
@@ -163,13 +173,15 @@ export function ChessBoard({
         ariaReadOnly={!interactive}
         isInteractive={interactive}
         orientation={orientation}
-        {...(selectedSquare === undefined ? {} : { selectedSquare })}
+        {...(!interactive || selectedSquare === undefined
+          ? {}
+          : { selectedSquare })}
         getSquareClassName={(square) => {
-          const selected = selectedSquare === square;
+          const selected = interactive && selectedSquare === square;
           const target = legalTargets.has(square);
           const movable = interactive && legalSources.has(square);
           const lastMove =
-            selectedSquare === undefined &&
+            (!interactive || selectedSquare === undefined) &&
             undoMove !== undefined &&
             (square === undoMove.from || square === undoMove.to);
           return `${lastMove ? styles.lastMove : ''} ${selected ? styles.selected : ''} ${target ? styles.target : ''} ${movable ? styles.movable : ''}`;
@@ -185,7 +197,7 @@ export function ChessBoard({
 
       <ModalOverlay
         className={styles.promotionOverlay!}
-        isOpen={promotionMoves.length > 0}
+        isOpen={interactive && promotionMoves.length > 0}
         isDismissable
         onOpenChange={(open) => {
           if (!open) {
@@ -208,8 +220,19 @@ export function ChessBoard({
                   key={move.promotion}
                   className={styles.promotionButton!}
                   autoFocus={index === 0}
+                  isDisabled={!interactive}
                   onPress={() => {
-                    onMove(move.from, move.to, move.promotion ?? undefined);
+                    if (
+                      interactive &&
+                      workspace.legalMoves.some(
+                        (legal) =>
+                          legal.from === move.from &&
+                          legal.to === move.to &&
+                          legal.promotion === move.promotion,
+                      )
+                    ) {
+                      onMove(move.from, move.to, move.promotion ?? undefined);
+                    }
                     setPromotionMoves([]);
                     setSelectedSquare(undefined);
                   }}

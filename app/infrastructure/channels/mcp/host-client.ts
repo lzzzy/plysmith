@@ -1,5 +1,19 @@
 import type { components } from '../../../../contracts/host/index.ts';
 
+export type RegisterImportInputRequest =
+  components['schemas']['RegisterImportInputBody'];
+export type ImportInputDescriptor =
+  components['schemas']['ImportInputDescriptor'];
+export type PrepareImportRequest = components['schemas']['PrepareImportBody'];
+export type ImportPreview = components['schemas']['ImportPreview'];
+export type CheckImportNamesRequest =
+  components['schemas']['CheckImportNamesBody'];
+export type ImportNameChecks = components['schemas']['ImportNameChecks'];
+export type PublishImportRequest = components['schemas']['PublishImportBody'];
+export type ImportPublished = components['schemas']['ImportPublished'];
+export type DiscardImportRequest = components['schemas']['DiscardImportBody'];
+export type DiscardImportResult = components['schemas']['DiscardImportResult'];
+
 export type GetInventoryOrganizationRequest =
   components['schemas']['InventoryOrganizationQuery'];
 export type InventoryOrganization =
@@ -166,6 +180,13 @@ export interface HostClientFailure {
  * setUiLanguage must send at most once, including after a connection failure.
  */
 export interface HostClient {
+  registerImportInput(
+    request: RegisterImportInputRequest,
+  ): Promise<ImportInputDescriptor>;
+  prepareImport(request: PrepareImportRequest): Promise<ImportPreview>;
+  checkImportNames(request: CheckImportNamesRequest): Promise<ImportNameChecks>;
+  publishImport(request: PublishImportRequest): Promise<ImportPublished>;
+  discardImport(request: DiscardImportRequest): Promise<DiscardImportResult>;
   getInventoryOrganization(
     request: GetInventoryOrganizationRequest,
   ): Promise<InventoryOrganization>;

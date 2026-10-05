@@ -12,7 +12,7 @@ import type {
 } from '../identity/index.ts';
 
 export type InventoryRevisionMode =
-  'extend' | 'truncate_after' | 'replace_move' | 'metadata';
+  'extend' | 'truncate_after' | 'replace_move' | 'metadata' | 'add_variation';
 
 export interface InventoryRevisionLineStep extends AnalysisScratchStep {
   readonly anchorId: AnchorId;
@@ -45,12 +45,20 @@ export function planInventoryRevision(input: {
   readonly line: InventoryRevisionLine;
   readonly mode: InventoryRevisionMode;
   readonly anchorId: AnchorId;
+  readonly lineAnchorId?: AnchorId;
   readonly displayName?: string;
   readonly summary?: string | null;
 }): InventoryRevisionPlan {
   const anchorIndex = lineAnchorIndex(input.line, input.anchorId);
   if (anchorIndex === undefined) {
     throw new Error('An inventory revision anchor must belong to its line.');
+  }
+  if (
+    input.lineAnchorId !== undefined &&
+    (input.mode !== 'truncate_after' ||
+      (lineAnchorIndex(input.line, input.lineAnchorId) ?? -1) <= anchorIndex)
+  ) {
+    throw new Error('A truncation must select a continuation after its cut.');
   }
 
   let preservedCount: number;
@@ -61,7 +69,10 @@ export function planInventoryRevision(input: {
       throw new Error('An inventory extension must start at the line end.');
     }
     preservedCount = anchorIndex;
-  } else if (input.mode === 'truncate_after') {
+  } else if (
+    input.mode === 'truncate_after' ||
+    input.mode === 'add_variation'
+  ) {
     preservedCount = anchorIndex;
   } else {
     if (anchorIndex === 0) {
@@ -75,7 +86,11 @@ export function planInventoryRevision(input: {
   const preservedSteps = Object.freeze(
     input.line.steps.slice(0, preservedCount),
   );
-  const removedSteps = Object.freeze(input.line.steps.slice(preservedCount));
+  const removedSteps = Object.freeze(
+    input.mode === 'add_variation'
+      ? []
+      : input.line.steps.slice(preservedCount),
+  );
   const displayName = input.displayName ?? input.line.displayName;
   const summary =
     input.summary === undefined
@@ -90,7 +105,7 @@ export function planInventoryRevision(input: {
     itemId: input.line.itemId,
     baseRevisionId: input.line.revisionId,
     cutAnchorId,
-    returnAnchorId: input.anchorId,
+    returnAnchorId: input.lineAnchorId ?? input.anchorId,
     displayName: displayName.trim(),
     ...(summary === undefined ? {} : { summary: summary.trim() }),
   });
@@ -98,7 +113,7 @@ export function planInventoryRevision(input: {
   return Object.freeze({
     mode: input.mode,
     cutAnchorId,
-    returnAnchorId: input.anchorId,
+    returnAnchorId: input.lineAnchorId ?? input.anchorId,
     preservedSteps,
     removedSteps,
     scratchRoot,
@@ -155,7 +170,9 @@ export function promoteAnalysisExplorationToRevision(input: {
   const { scratch, plan } = input;
   if (
     scratch.intent.kind !== 'exploration' ||
-    (plan.mode !== 'truncate_after' && plan.mode !== 'extend') ||
+    (plan.mode !== 'truncate_after' &&
+      plan.mode !== 'extend' &&
+      plan.mode !== 'add_variation') ||
     scratch.origin.kind !== 'inventory_anchor' ||
     scratch.origin.itemId.value !== plan.intent.itemId.value ||
     scratch.origin.revisionId.value !== plan.intent.baseRevisionId.value ||

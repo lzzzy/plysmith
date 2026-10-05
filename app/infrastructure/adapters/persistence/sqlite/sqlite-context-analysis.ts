@@ -28,9 +28,11 @@ export function readFreeAnalysisWorkspace(
       ? scratch.origin.revisionId
       : resume?.revisionId;
   const anchorId =
-    scratch?.origin.kind === 'inventory_anchor'
-      ? scratch.origin.anchorId
-      : resume?.anchorId;
+    scratch?.intent.kind === 'inventory_revision'
+      ? scratch.intent.returnAnchorId
+      : scratch?.origin.kind === 'inventory_anchor'
+        ? scratch.origin.anchorId
+        : resume?.anchorId;
   const record =
     itemId === undefined || revisionId === undefined || anchorId === undefined
       ? undefined
@@ -74,7 +76,10 @@ export function readContextAnalysisWorkspace(
       : readAnalysisRecordView(database, {
           itemId: localId('inventory-item', resume.itemId),
           revisionId: localId('item-revision', resume.revisionId),
-          anchorId: localId('anchor', resume.anchorId),
+          anchorId:
+            scratch?.intent.kind === 'inventory_revision'
+              ? scratch.intent.returnAnchorId
+              : localId('anchor', resume.anchorId),
           contextId,
         });
   return Object.freeze({

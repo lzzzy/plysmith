@@ -1,5 +1,15 @@
 import {
   connectHost,
+  type RegisterImportInputRequestDto,
+  type ImportInputDescriptorDto,
+  type PrepareImportRequestDto,
+  type ImportPreviewDto,
+  type CheckImportNamesRequestDto,
+  type ImportNameChecksDto,
+  type DiscardImportRequestDto,
+  type DiscardImportResultDto,
+  type PublishImportRequestDto,
+  type ImportPublishedDto,
   type ContextRemovalPreviewDto,
   type InventoryItemDeletionPreviewDto,
   type WorkScopeWorkspaceDto,
@@ -112,6 +122,33 @@ export class RediscoveringHostClient {
 
   async attach(): Promise<void> {
     await this.#currentClient();
+  }
+
+  async registerImportInput(
+    request: RegisterImportInputRequestDto,
+  ): Promise<ImportInputDescriptorDto> {
+    return (await this.#currentClient()).registerImportInput(request);
+  }
+
+  async prepareImport(
+    request: PrepareImportRequestDto,
+  ): Promise<ImportPreviewDto> {
+    return (await this.#currentClient()).prepareImport(request);
+  }
+  async checkImportNames(
+    request: CheckImportNamesRequestDto,
+  ): Promise<ImportNameChecksDto> {
+    return (await this.#currentClient()).checkImportNames(request);
+  }
+  async publishImport(
+    request: PublishImportRequestDto,
+  ): Promise<ImportPublishedDto> {
+    return (await this.#currentClient()).publishImport(request);
+  }
+  async discardImport(
+    request: DiscardImportRequestDto,
+  ): Promise<DiscardImportResultDto> {
+    return (await this.#currentClient()).discardImport(request);
   }
 
   async getWorkScopeWorkspace(

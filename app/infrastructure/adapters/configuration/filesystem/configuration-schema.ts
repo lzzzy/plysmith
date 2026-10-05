@@ -1,7 +1,10 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 
-import { ENGINE_PROVIDER_TIMEOUT_LIMITS } from '../../../../../contracts/host/engine-provider-configuration.ts';
+import {
+  ENGINE_PROVIDER_TIMEOUT_LIMITS,
+  STOCKFISH_DETAIL_LEVEL_LIMITS,
+} from '../../../../../contracts/host/engine-provider-configuration.ts';
 
 const ProviderInstanceIdSchema = Type.String({
   minLength: 1,
@@ -69,7 +72,7 @@ export const SqliteProviderConfigurationSchema = Type.Object(
 
 export const StockfishUciProviderConfigurationSchema = Type.Object(
   {
-    schemaVersion: Type.Literal(1),
+    schemaVersion: Type.Literal(2),
     provider: Type.Literal('stockfish-uci'),
     displayName: Type.String({ minLength: 1, maxLength: 160 }),
     stockfish: Type.Object(
@@ -80,7 +83,19 @@ export const StockfishUciProviderConfigurationSchema = Type.Object(
         }),
         threads: Type.Integer({ minimum: 1, maximum: 256 }),
         hashMb: Type.Integer({ minimum: 1, maximum: 65_536 }),
-        moveTimeMs: Type.Integer({ minimum: 10, maximum: 600_000 }),
+        detailLevels: Type.Object(
+          {
+            fast: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+            thorough: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+            very_deep: Type.Integer(STOCKFISH_DETAIL_LEVEL_LIMITS),
+          },
+          { additionalProperties: false },
+        ),
+        playoutBudget: Type.Union([
+          Type.Literal('fast'),
+          Type.Literal('thorough'),
+          Type.Literal('very_deep'),
+        ]),
         startupTimeoutMs: Type.Integer(ENGINE_PROVIDER_TIMEOUT_LIMITS.startup),
         moveTimeoutMs: Type.Integer(
           ENGINE_PROVIDER_TIMEOUT_LIMITS.stockfishMove,

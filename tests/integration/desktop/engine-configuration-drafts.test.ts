@@ -15,7 +15,8 @@ const stockfish: EngineProviderConfigurationDto = {
   arguments: [],
   threads: 1,
   hashMb: 64,
-  moveTimeMs: 500,
+  detailLevels: { fast: 500, thorough: 1_500, very_deep: 5_000 },
+  playoutBudget: 'thorough',
   startupTimeoutMs: 5_000,
   moveTimeoutMs: 10_000,
   stopTimeoutMs: 1_000,
@@ -50,6 +51,51 @@ function entry(drafts: EngineConfigurationDrafts, key: string) {
   assert.ok(value);
   return value;
 }
+
+test('new Stockfish defaults and custom shared levels survive draft save and reload', () => {
+  const drafts = createDrafts();
+  const key = drafts.create('stockfish-uci');
+  drafts.update(key, { executablePath: 'C:/engines/new-stockfish.exe' });
+  const initial = drafts.prepareSave(key)?.input;
+  assert.ok(initial?.providerType === 'stockfish-uci');
+  assert.equal(initial.threads, 2);
+  assert.equal(initial.hashMb, 64);
+  assert.deepEqual(initial.detailLevels, {
+    fast: 500,
+    thorough: 1_500,
+    very_deep: 5_000,
+  });
+  assert.equal(initial.playoutBudget, 'thorough');
+  assert.equal('moveTimeMs' in initial, false);
+  drafts.update(key, {
+    fast: '750',
+    thorough: '2500',
+    very_deep: '600000',
+    playoutBudget: 'very_deep',
+  });
+  const updated = drafts.prepareSave(key)?.input;
+  assert.ok(updated?.providerType === 'stockfish-uci');
+  const saved = {
+    ...updated,
+    configurationRevision: 'saved',
+    effectiveFingerprint: 'updated',
+    restartRequired: true,
+  };
+  drafts.saved(key, saved);
+  const reloaded = new EngineConfigurationDrafts();
+  reloaded.synchronize([saved]);
+  const form = entry(reloaded, saved.instanceId).form;
+  assert.ok(form.providerType === 'stockfish-uci');
+  assert.deepEqual(form.detailLevels, {
+    fast: '750',
+    thorough: '2500',
+    very_deep: '600000',
+  });
+  assert.equal(form.playoutBudget, 'very_deep');
+  const existing = entry(drafts, 'stockfish').form;
+  assert.ok(existing.providerType === 'stockfish-uci');
+  assert.equal(existing.threads, '1');
+});
 
 test('configuration drafts survive selection and refresh independently with real dirty comparison', () => {
   const drafts = createDrafts();
@@ -152,7 +198,9 @@ test('numeric bounds match the host contract and valid endpoints produce numbers
   for (const [field, min, max] of [
     ['threads', 1, 256],
     ['hashMb', 1, 65_536],
-    ['moveTimeMs', 10, 600_000],
+    ['fast', 10, 600_000],
+    ['thorough', 10, 600_000],
+    ['very_deep', 10, 600_000],
   ] as const) {
     for (const value of [min - 1, max + 1]) {
       const drafts = createDrafts();
@@ -168,7 +216,12 @@ test('numeric bounds match the host contract and valid endpoints produce numbers
       });
       const input = drafts.prepareSave('stockfish')?.input;
       assert.ok(input?.providerType === 'stockfish-uci');
-      assert.equal(input[field], value);
+      assert.equal(
+        field === 'threads' || field === 'hashMb'
+          ? input[field]
+          : input.detailLevels[field],
+        value,
+      );
     }
   }
 });

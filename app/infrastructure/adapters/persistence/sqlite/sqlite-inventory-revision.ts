@@ -7,6 +7,8 @@ import {
   inventoryDisplayNameConflict,
   inventoryPreviewConflict,
   inventoryRevisionConflict,
+  normalizeInventoryRevisionComment,
+  type InventoryRevisionComment,
   type InventoryRevisionPreview,
   type InventoryRevisionReader,
   type InventoryRevisionWriter,
@@ -34,6 +36,10 @@ import {
 } from '../../../../domain/inventory/index.ts';
 import type { WorkScope } from '../../../../domain/workspace/index.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
+import {
+  insertAnalysisNoteContribution,
+  validatePositionNoteTarget,
+} from './sqlite-analysis-note.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
 import { ensurePosition } from './sqlite-chess-state.ts';
@@ -52,6 +58,7 @@ import {
   readDataRevision,
 } from './sqlite-store-helpers.ts';
 import { resolveAnchorPosition } from './sqlite-workspace.ts';
+import { readMainLine } from './sqlite-analysis-line.ts';
 
 interface GraphRow {
   readonly depth: number;
@@ -62,9 +69,27 @@ interface GraphRow {
   readonly moveAnchorId: number | null;
 }
 
+interface TreeRow {
+  readonly occurrenceId: number;
+  readonly occurrenceAnchorId: number;
+  readonly positionId: number;
+  readonly parentOccurrenceId: number | null;
+  readonly moveNodeId: number | null;
+  readonly moveAnchorId: number | null;
+  readonly siblingOrder: number | null;
+  readonly isMainLine: number | null;
+}
+
 interface RevisionCandidate {
+  readonly mode: InventoryRevisionPreview['mode'];
+  readonly variation: boolean;
   readonly base: AnalysisRecordView;
   readonly graph: readonly GraphRow[];
+  readonly retainedTree: readonly TreeRow[];
+  readonly reusedRows: readonly TreeRow[];
+  readonly addedSteps: readonly AnalysisScratchStep[];
+  readonly comment: InventoryRevisionComment | undefined;
+  readonly replacedMove: TreeRow | undefined;
   readonly candidateSteps: readonly AnalysisScratchStep[];
   readonly preservedMoveCount: number;
   readonly removedSteps: AnalysisRecordView['steps'];
@@ -105,7 +130,12 @@ export function previewInventoryRevision(
   database: Database.Database,
   request: Parameters<InventoryRevisionReader['previewInventoryRevision']>[0],
 ): InventoryRevisionPreview {
-  const candidate = buildCandidate(database, request.scope, request.scratch);
+  const candidate = buildCandidate(
+    database,
+    request.scope,
+    request.scratch,
+    request.comment,
+  );
   return previewFromCandidate(request.scratch, candidate);
 }
 
@@ -141,6 +171,7 @@ export function listInventoryRevisions(
          FROM item_revision AS revision
          JOIN inventory_item AS item ON item.item_id = revision.item_id
         WHERE revision.item_id = ?
+          AND item.current_revision_id IS NOT NULL
           AND (? IS NULL
                OR revision.revision_number < ?
                OR (revision.revision_number = ? AND revision.revision_id < ?))
@@ -161,7 +192,12 @@ export function listInventoryRevisions(
     displayName: string;
     summary: string | null;
     changeKind:
-      'created' | 'extend' | 'truncate_after' | 'replace_move' | 'metadata';
+      | 'created'
+      | 'extend'
+      | 'truncate_after'
+      | 'replace_move'
+      | 'metadata'
+      | 'add_variation';
     createdAt: string;
     currentRevisionId: number;
   }[];
@@ -206,11 +242,20 @@ export function saveInventoryRevision(
   request: Parameters<InventoryRevisionWriter['saveInventoryRevision']>[0],
 ): SaveInventoryRevisionResult {
   const intent = request.scratch.intent;
-  if (intent.kind !== 'inventory_revision') {
+  if (
+    intent.kind !== 'inventory_revision' ||
+    request.expectedScratchId !== request.scratch.scratchId ||
+    request.expectedScratchRevision !== request.scratch.scratchRevision
+  ) {
     throw invalidInventoryRevision();
   }
   validateStoredScratch(database, request.scope, request.scratch);
-  const candidate = buildCandidate(database, request.scope, request.scratch);
+  const candidate = buildCandidate(
+    database,
+    request.scope,
+    request.scratch,
+    request.comment,
+  );
   if (candidate.previewFingerprint !== request.previewFingerprint) {
     throw inventoryPreviewConflict();
   }
@@ -220,7 +265,14 @@ export function saveInventoryRevision(
       revisionId: candidate.base.revisionId,
       revisionNumber: candidate.base.revisionNumber,
       currentAnchorId:
-        candidate.base.steps.at(-1)?.anchorId ?? candidate.base.rootAnchorId,
+        intent.mode === 'add_variation'
+          ? localId(
+              'anchor',
+              candidate.reusedRows.at(-1)?.occurrenceAnchorId ??
+                intent.cutAnchorId.value,
+            )
+          : (candidate.base.steps.at(-1)?.anchorId ??
+            candidate.base.rootAnchorId),
       impacts: Object.freeze([]),
       noOp: true,
       dataRevision: candidate.dataRevision,
@@ -236,7 +288,6 @@ export function saveInventoryRevision(
   const revisionEndAnchorId = writeRevisionGraph(
     database,
     revisionId,
-    request.scratch,
     candidate,
   );
   const currentAnchorId =
@@ -319,6 +370,17 @@ export function saveInventoryRevision(
       impactedContexts.has(request.scope.contextId.value),
     occurredAt: request.occurredAt,
   });
+  const commentContributionId =
+    candidate.comment === undefined
+      ? undefined
+      : insertAnalysisNoteContribution(database, {
+          itemId: candidate.base.itemId,
+          anchorId: intent.cutAnchorId,
+          note: { body: candidate.comment.body, moves: Object.freeze([]) },
+          noteScope: candidate.comment.noteScope,
+          languageTag: candidate.comment.languageTag,
+          occurredAt: request.occurredAt,
+        });
   const dataRevision = incrementDataRevision(database, request.occurredAt);
   return Object.freeze({
     itemId: candidate.base.itemId,
@@ -327,6 +389,9 @@ export function saveInventoryRevision(
     currentAnchorId,
     impacts,
     noOp: false,
+    ...(commentContributionId === undefined
+      ? {}
+      : { commentContributionId: String(commentContributionId.value) }),
     dataRevision,
   });
 }
@@ -335,11 +400,16 @@ function buildCandidate(
   database: Database.Database,
   scope: WorkScope,
   scratch: AnalysisScratch,
+  requestedComment?: InventoryRevisionComment,
 ): RevisionCandidate {
   if (scratch.intent.kind !== 'inventory_revision') {
     throw invalidInventoryRevision();
   }
   const intent = scratch.intent;
+  const comment = normalizeInventoryRevisionComment(scope, requestedComment);
+  if (comment !== undefined && intent.mode !== 'add_variation') {
+    throw invalidInventoryRevision();
+  }
   const current = database
     .prepare(
       `SELECT current_revision_id AS currentRevisionId,
@@ -361,7 +431,10 @@ function buildCandidate(
     scope,
     itemId: intent.itemId,
     revisionId: intent.baseRevisionId,
-    anchorId: intent.cutAnchorId,
+    anchorId:
+      intent.mode === 'replace_move' || intent.mode === 'truncate_after'
+        ? intent.returnAnchorId
+        : intent.cutAnchorId,
   });
   if (
     base === undefined ||
@@ -381,6 +454,15 @@ function buildCandidate(
   ) {
     throw inventoryDisplayNameConflict();
   }
+  if (comment !== undefined) {
+    validatePositionNoteTarget(database, {
+      scope,
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+      anchorId: intent.cutAnchorId,
+      noteScope: comment.noteScope,
+    });
+  }
   const line: InventoryRevisionLine = {
     itemId: base.itemId,
     revisionId: base.revisionId,
@@ -396,17 +478,74 @@ function buildCandidate(
   } catch {
     throw invalidInventoryRevision();
   }
-  const graph = readGraph(database, base.itemId.value, base.revisionId.value);
-  const preservedMoveCount = graph.findIndex(
+  const graph = readGraph(
+    database,
+    base.itemId.value,
+    base.revisionId.value,
+    intent.mode === 'replace_move' || intent.mode === 'truncate_after'
+      ? intent.returnAnchorId.value
+      : intent.cutAnchorId.value,
+  );
+  const cutMoveCount = graph.findIndex(
     (row) => row.occurrenceAnchorId === intent.cutAnchorId.value,
   );
-  if (preservedMoveCount < 0) throw invalidInventoryRevision();
-  const removedSteps = Object.freeze(base.steps.slice(preservedMoveCount));
+  if (cutMoveCount < 0) throw invalidInventoryRevision();
+  const tree = readRevisionTree(database, base.revisionId.value);
+  const reusedRows =
+    intent.mode === 'add_variation'
+      ? reuseVariationPrefix(base, tree, intent.cutAnchorId, scratch.steps)
+      : reuseLinePrefix(base, tree, cutMoveCount, scratch.steps);
+  const preservedMoveCount =
+    cutMoveCount + (intent.mode === 'add_variation' ? 0 : reusedRows.length);
+  const removedSteps = Object.freeze(
+    intent.mode === 'add_variation' ? [] : base.steps.slice(preservedMoveCount),
+  );
+  const addedSteps = Object.freeze(scratch.steps.slice(reusedRows.length));
+  const mode =
+    intent.mode === 'add_variation' || intent.mode === 'metadata'
+      ? intent.mode
+      : removedSteps.length === 0
+        ? addedSteps.length === 0
+          ? 'metadata'
+          : 'extend'
+        : addedSteps.length === 0
+          ? 'truncate_after'
+          : 'replace_move';
+  const replacedMove =
+    intent.mode === 'metadata' ||
+    intent.mode === 'extend' ||
+    intent.mode === 'add_variation'
+      ? undefined
+      : tree.find(
+          (row) =>
+            row.moveNodeId !== null &&
+            row.moveNodeId === graph[preservedMoveCount]!.moveNodeId,
+        );
+  const removedOccurrences = new Set<number>();
+  if (replacedMove !== undefined) {
+    const children = new Map<number, number[]>();
+    for (const row of tree) {
+      if (row.parentOccurrenceId === null) continue;
+      const siblings = children.get(row.parentOccurrenceId) ?? [];
+      siblings.push(row.occurrenceId);
+      children.set(row.parentOccurrenceId, siblings);
+    }
+    const pending = [replacedMove.occurrenceId];
+    while (pending.length > 0) {
+      const occurrenceId = pending.pop()!;
+      if (removedOccurrences.has(occurrenceId)) continue;
+      removedOccurrences.add(occurrenceId);
+      pending.push(...(children.get(occurrenceId) ?? []));
+    }
+  }
+  const retainedTree = tree.filter(
+    (row) => !removedOccurrences.has(row.occurrenceId),
+  );
   const anchorChange = buildAnchorChange(
     database,
-    graph,
-    candidateSteps,
-    preservedMoveCount,
+    tree,
+    retainedTree,
+    addedSteps,
     base.revisionId.value,
   );
   const impact = inspectRevisionImpact(database, {
@@ -421,11 +560,22 @@ function buildCandidate(
         }
       : {}),
   });
-  const noOp = !inventoryRevisionHasChanges({ base: line, scratch });
+  const noOp =
+    intent.mode === 'add_variation'
+      ? addedSteps.length === 0
+      : !inventoryRevisionHasChanges({ base: line, scratch }) &&
+        removedOccurrences.size <= removedSteps.length;
   const dataRevision = readDataRevision(database);
   return Object.freeze({
+    mode,
     base,
+    variation: intent.mode === 'add_variation',
     graph,
+    retainedTree,
+    reusedRows,
+    addedSteps,
+    comment,
+    replacedMove,
     candidateSteps,
     preservedMoveCount,
     removedSteps,
@@ -439,6 +589,8 @@ function buildCandidate(
       preservedMoveCount,
       removedAnchors: [...anchorChange.removedAnchorIds],
       dependencies: impact.fingerprintValue,
+      tree: base.tree,
+      comment: comment ?? null,
     }),
     dataRevision,
   });
@@ -454,13 +606,13 @@ function previewFromCandidate(
   return Object.freeze({
     itemId: candidate.base.itemId,
     baseRevisionId: candidate.base.revisionId,
-    mode: scratch.intent.mode,
+    mode: candidate.mode,
     displayName: scratch.intent.displayName,
     ...(scratch.intent.summary === undefined
       ? {}
       : { summary: scratch.intent.summary }),
     preservedMoveCount: candidate.preservedMoveCount,
-    addedSteps: scratch.steps,
+    addedSteps: candidate.addedSteps,
     removedSteps: candidate.removedSteps,
     historicalGlobalContributionCount:
       candidate.impact.historicalGlobalContributionCount,
@@ -472,54 +624,106 @@ function previewFromCandidate(
   });
 }
 
+function reuseLinePrefix(
+  base: AnalysisRecordView,
+  tree: readonly TreeRow[],
+  cutMoveCount: number,
+  steps: readonly AnalysisScratchStep[],
+): readonly TreeRow[] {
+  const byAnchor = new Map(tree.map((row) => [row.occurrenceAnchorId, row]));
+  const reused: TreeRow[] = [];
+  // Only the selected line can retain identity; equal positions in other branches cannot.
+  for (const [index, step] of steps.entries()) {
+    const existing = base.steps[cutMoveCount + index];
+    if (
+      existing === undefined ||
+      existing.move.from !== step.move.from ||
+      existing.move.to !== step.move.to ||
+      existing.move.promotion !== step.move.promotion ||
+      existing.after.fen !== step.after.fen
+    )
+      break;
+    const row = byAnchor.get(existing.anchorId.value);
+    if (row === undefined) throw invalidInventoryRevision();
+    reused.push(row);
+  }
+  return Object.freeze(reused);
+}
+
+function reuseVariationPrefix(
+  base: AnalysisRecordView,
+  tree: readonly TreeRow[],
+  anchorId: AnchorId,
+  steps: readonly AnalysisScratchStep[],
+): readonly TreeRow[] {
+  const nodes =
+    base.tree?.nodes ??
+    base.steps.map((step, nodeIndex) => ({
+      nodeIndex,
+      parentNodeIndex: nodeIndex === 0 ? null : nodeIndex - 1,
+      siblingOrder: 0,
+      anchorId: step.anchorId,
+      move: step.move,
+      after: step.after,
+    }));
+  const children = new Map<number | null, (typeof nodes)[number][]>();
+  for (const node of nodes) {
+    const siblings = children.get(node.parentNodeIndex) ?? [];
+    siblings.push(node);
+    children.set(node.parentNodeIndex, siblings);
+  }
+  const rootNodeIndex =
+    anchorId.value === base.rootAnchorId.value
+      ? null
+      : nodes.find((node) => node.anchorId.value === anchorId.value)?.nodeIndex;
+  if (rootNodeIndex === undefined) throw invalidInventoryRevision();
+  let parentNodeIndex: number | null = rootNodeIndex;
+  const byAnchor = new Map(tree.map((row) => [row.occurrenceAnchorId, row]));
+  const reused: TreeRow[] = [];
+  for (const step of steps) {
+    const existing: (typeof nodes)[number] | undefined = children
+      .get(parentNodeIndex)
+      ?.find(
+        (node) =>
+          node.move.from === step.move.from &&
+          node.move.to === step.move.to &&
+          node.move.promotion === step.move.promotion &&
+          node.after.fen === step.after.fen,
+      );
+    if (existing === undefined) break;
+    const row = byAnchor.get(existing.anchorId.value);
+    if (row === undefined) throw invalidInventoryRevision();
+    reused.push(row);
+    parentNodeIndex = existing.nodeIndex;
+  }
+  return Object.freeze(reused);
+}
+
 function buildAnchorChange(
   database: Database.Database,
-  graph: readonly GraphRow[],
-  candidateSteps: readonly AnalysisScratchStep[],
-  preservedMoveCount: number,
+  tree: readonly TreeRow[],
+  retainedTree: readonly TreeRow[],
+  addedSteps: readonly AnalysisScratchStep[],
   revisionId: number,
 ): {
   readonly removedAnchorIds: ReadonlySet<number>;
 } {
-  const root = graph[0];
-  if (root === undefined) throw invalidInventoryRevision();
   const retained = new Set<number>();
-  const itemAnchor = database
-    .prepare(
-      `SELECT anchor_id AS anchorId FROM chess_anchor
-        WHERE anchor_kind = 'item' AND item_id = (
-          SELECT owner_item_id FROM chess_anchor WHERE anchor_id = ?
-        )`,
-    )
-    .get(root.occurrenceAnchorId) as { anchorId: number } | undefined;
-  if (itemAnchor !== undefined) retained.add(itemAnchor.anchorId);
-  for (const row of graph.slice(0, preservedMoveCount + 1)) {
+  for (const row of retainedTree) {
     retained.add(row.occurrenceAnchorId);
-    if (row.depth < preservedMoveCount && row.moveAnchorId !== null) {
+    if (row.moveAnchorId !== null) {
       retained.add(row.moveAnchorId);
     }
   }
   const candidatePositionIds = new Set<number>(
-    graph.slice(0, preservedMoveCount + 1).map((row) => row.positionId),
+    retainedTree.map((row) => row.positionId),
   );
-  for (const step of candidateSteps.slice(preservedMoveCount)) {
+  for (const step of addedSteps) {
     const positionId = findPosition(database, step.after.position);
     if (positionId !== undefined) candidatePositionIds.add(positionId);
   }
-  if (candidatePositionIds.size > 0) {
-    const placeholders = [...candidatePositionIds].map(() => '?').join(', ');
-    const positionAnchors = database
-      .prepare(
-        `SELECT anchor_id AS anchorId FROM chess_anchor
-          WHERE anchor_kind = 'position'
-            AND position_id IN (${placeholders})`,
-      )
-      .all(...candidatePositionIds) as { anchorId: number }[];
-    for (const anchor of positionAnchors) retained.add(anchor.anchorId);
-  }
-
   const removed = new Set<number>();
-  for (const row of graph) {
+  for (const row of tree) {
     if (!retained.has(row.occurrenceAnchorId)) {
       removed.add(row.occurrenceAnchorId);
     }
@@ -542,7 +746,7 @@ function buildAnchorChange(
     positionId: number;
   }[];
   for (const position of positions) {
-    if (retained.has(position.anchorId)) continue;
+    if (candidatePositionIds.has(position.positionId)) continue;
     removed.add(position.anchorId);
   }
   return Object.freeze({
@@ -559,6 +763,9 @@ function insertRevision(
   if (scratch.intent.kind !== 'inventory_revision') {
     throw invalidInventoryRevision();
   }
+  const retainedAnchors = new Set(
+    candidate.retainedTree.map((row) => row.occurrenceAnchorId),
+  );
   const inserted = database
     .prepare(
       `INSERT INTO item_revision
@@ -581,18 +788,27 @@ function insertRevision(
             scratch.intent.displayName,
             scratch.intent.summary,
           )
-        : analysisContentFingerprint({
-            displayName: scratch.intent.displayName,
-            ...(scratch.intent.summary === undefined
-              ? {}
-              : { summary: scratch.intent.summary }),
-            languageTag: candidate.base.languageTag,
-            originMode: candidate.base.origin.kind,
-            root: candidate.base.root,
-            steps: candidate.candidateSteps,
+        : sha256({
+            line: analysisContentFingerprint({
+              displayName: scratch.intent.displayName,
+              ...(scratch.intent.summary === undefined
+                ? {}
+                : { summary: scratch.intent.summary }),
+              languageTag: candidate.base.languageTag,
+              originMode: candidate.base.origin.kind,
+              root: candidate.base.root,
+              steps: candidate.candidateSteps,
+            }).toString('hex'),
+            retainedTree: candidate.base.tree?.nodes.filter((node) =>
+              retainedAnchors.has(node.anchorId.value),
+            ),
+            appendedAt:
+              candidate.reusedRows.at(-1)?.occurrenceAnchorId ??
+              scratch.intent.cutAnchorId.value,
+            addedSteps: candidate.addedSteps,
           }),
       occurredAt,
-      scratch.intent.mode,
+      candidate.mode,
     );
   return localId('item-revision', Number(inserted.lastInsertRowid));
 }
@@ -624,13 +840,12 @@ function gameMetadataFingerprint(
 function writeRevisionGraph(
   database: Database.Database,
   revisionId: ItemRevisionId,
-  scratch: AnalysisScratch,
   candidate: RevisionCandidate,
 ): AnchorId {
   const itemId = candidate.base.itemId.value;
   const baseRevisionId = candidate.base.revisionId.value;
   const prefixRows = candidate.graph.slice(0, candidate.preservedMoveCount + 1);
-  for (const row of prefixRows) {
+  for (const row of candidate.retainedTree) {
     database
       .prepare(
         `INSERT INTO chess_occurrence_snapshot
@@ -654,8 +869,8 @@ function writeRevisionGraph(
       )
       .run(revisionId.value, baseRevisionId, row.occurrenceId);
   }
-  for (const row of prefixRows) {
-    if (row.depth < candidate.preservedMoveCount && row.moveNodeId !== null) {
+  for (const row of candidate.retainedTree) {
+    if (row.moveNodeId !== null) {
       database
         .prepare(
           `INSERT INTO chess_move_node_snapshot
@@ -672,12 +887,24 @@ function writeRevisionGraph(
     }
   }
 
-  let parentOccurrenceId = prefixRows.at(-1)?.occurrenceId;
-  let endAnchorId = prefixRows.at(-1)?.occurrenceAnchorId;
+  const continuationRoot = candidate.reusedRows.at(-1) ?? prefixRows.at(-1);
+  let parentOccurrenceId = continuationRoot?.occurrenceId;
+  let endAnchorId = continuationRoot?.occurrenceAnchorId;
   if (parentOccurrenceId === undefined || endAnchorId === undefined) {
     throw invalidInventoryRevision();
   }
-  for (const step of scratch.steps) {
+  // Replacing a variation keeps its sibling slot and main-line status.
+  let siblingOrder =
+    candidate.replacedMove?.siblingOrder ??
+    Math.max(
+      candidate.variation ? 0 : -1,
+      ...candidate.retainedTree
+        .filter((row) => row.parentOccurrenceId === parentOccurrenceId)
+        .map((row) => row.siblingOrder!),
+    ) + 1;
+  let isMainLine =
+    candidate.replacedMove?.isMainLine ?? (candidate.variation ? 0 : 1);
+  for (const step of candidate.addedSteps) {
     const occurrenceInsert = database
       .prepare(
         `INSERT INTO chess_occurrence_identity (item_id, created_revision_id)
@@ -737,7 +964,7 @@ function writeRevisionGraph(
            (revision_id, move_node_id, item_id, parent_occurrence_id,
             child_occurrence_id, sibling_order, is_main_line,
             from_square, to_square, promotion, san, content_fingerprint)
-         VALUES (?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         revisionId.value,
@@ -745,6 +972,8 @@ function writeRevisionGraph(
         itemId,
         parentOccurrenceId,
         childOccurrenceId,
+        siblingOrder,
+        isMainLine,
         step.move.from,
         step.move.to,
         step.move.promotion ?? null,
@@ -760,6 +989,8 @@ function writeRevisionGraph(
       )
       .run(itemId, moveNodeId);
     parentOccurrenceId = childOccurrenceId;
+    siblingOrder = 0;
+    isMainLine = 1;
   }
   const counts = database
     .prepare(
@@ -774,8 +1005,9 @@ function writeRevisionGraph(
     moveCount: number;
   };
   if (
-    counts.occurrenceCount !== candidate.candidateSteps.length + 1 ||
-    counts.moveCount !== candidate.candidateSteps.length
+    counts.occurrenceCount !==
+      candidate.retainedTree.length + candidate.addedSteps.length ||
+    counts.moveCount !== counts.occurrenceCount - 1
   ) {
     throw invalidInventoryRevision();
   }
@@ -860,13 +1092,14 @@ function insertRevisionSearchDocument(
           evidence_class, scope_kind, stable_sort_value, title,
           aliases_concepts, metadata, body)
        VALUES (1, 'item_revision', ?, ?, NULL, ?, NULL, ?,
-               'personal', 'global', ?, ?, '', ?, ?)`,
+               ?, 'global', ?, ?, '', ?, ?)`,
     )
     .run(
       itemId.value,
       revisionId.value,
       rootAnchorId.value,
       languageTag,
+      'personal',
       occurredAt,
       scratch.intent.displayName,
       itemType === 'game' ? 'game playout' : 'analysis manual',
@@ -893,13 +1126,14 @@ function advanceCompatibleContextState(
         WHERE item_id = ? AND revision_id = ?`,
     )
     .all(request.itemId.value, request.baseRevisionId.value) as {
-    contextId: number;
+    contextId: number | null;
     anchorId: number | null;
     scratchId: number | null;
   }[];
   for (const resume of resumes) {
     if (
-      request.impactedContexts.has(resume.contextId) ||
+      (resume.contextId !== null &&
+        request.impactedContexts.has(resume.contextId)) ||
       resume.anchorId === null ||
       !request.targetAnchorIds.has(resume.anchorId) ||
       (resume.scratchId === null
@@ -918,7 +1152,7 @@ function advanceCompatibleContextState(
         `UPDATE workspace_analysis_resume
             SET revision_id = ?, resume_version = resume_version + 1,
                 updated_at_utc = ?
-          WHERE context_id = ? AND revision_id = ?`,
+          WHERE context_id IS ? AND revision_id = ?`,
       )
       .run(
         request.targetRevisionId.value,
@@ -936,7 +1170,7 @@ function rebaseExplorationScratch(
     readonly baseRevisionId: ItemRevisionId;
     readonly targetRevisionId: ItemRevisionId;
     readonly targetAnchorIds: ReadonlySet<number>;
-    readonly contextId: number;
+    readonly contextId: number | null;
     readonly anchorId: number;
     readonly scratchId: number;
     readonly occurredAt: string;
@@ -1066,61 +1300,66 @@ function validateStoredScratch(
   }
 }
 
+function readRevisionTree(
+  database: Database.Database,
+  revisionId: number,
+): readonly TreeRow[] {
+  return database
+    .prepare(
+      `SELECT occurrence.occurrence_id AS occurrenceId,
+              occurrence.position_id AS positionId,
+              occurrence_anchor.anchor_id AS occurrenceAnchorId,
+              move.parent_occurrence_id AS parentOccurrenceId,
+              move.move_node_id AS moveNodeId,
+              move_anchor.anchor_id AS moveAnchorId,
+              move.sibling_order AS siblingOrder,
+              move.is_main_line AS isMainLine
+         FROM chess_occurrence_snapshot AS occurrence
+         JOIN chess_anchor AS occurrence_anchor
+           ON occurrence_anchor.anchor_kind = 'occurrence'
+          AND occurrence_anchor.occurrence_id = occurrence.occurrence_id
+         LEFT JOIN chess_move_node_snapshot AS move
+           ON move.revision_id = occurrence.revision_id
+          AND move.child_occurrence_id = occurrence.occurrence_id
+         LEFT JOIN chess_anchor AS move_anchor
+           ON move_anchor.anchor_kind = 'move_node'
+          AND move_anchor.move_node_id = move.move_node_id
+        WHERE occurrence.revision_id = ?
+        ORDER BY occurrence.occurrence_id`,
+    )
+    .all(revisionId) as TreeRow[];
+}
+
 function readGraph(
   database: Database.Database,
   itemId: number,
   revisionId: number,
+  anchorId?: number,
 ): readonly GraphRow[] {
   const root = database
     .prepare(
       `SELECT root_occurrence_id AS rootOccurrenceId
-         FROM inventory_analysis_revision
-        WHERE item_id = ? AND revision_id = ?
-       UNION ALL
-       SELECT root_occurrence_id AS rootOccurrenceId
-         FROM inventory_game_revision
+         FROM inventory_chess_revision
         WHERE item_id = ? AND revision_id = ?`,
     )
-    .get(itemId, revisionId, itemId, revisionId) as
-    { rootOccurrenceId: number } | undefined;
+    .get(itemId, revisionId) as { rootOccurrenceId: number } | undefined;
   if (root === undefined) throw invalidInventoryRevision();
-  return database
+  const anchors = database
     .prepare(
-      `WITH RECURSIVE line(depth, occurrence_id) AS (
-         VALUES (0, ?)
-         UNION ALL
-         SELECT line.depth + 1, move.child_occurrence_id
-           FROM line
-           JOIN chess_move_node_snapshot AS move
-             ON move.revision_id = ?
-            AND move.parent_occurrence_id = line.occurrence_id
-            AND move.is_main_line = 1
-       )
-       SELECT line.depth, occurrence.occurrence_id AS occurrenceId,
-              occurrence_anchor.anchor_id AS occurrenceAnchorId,
-              occurrence.position_id AS positionId,
-              move.move_node_id AS moveNodeId,
-              move_anchor.anchor_id AS moveAnchorId
-         FROM line
-         JOIN chess_occurrence_snapshot AS occurrence
-           ON occurrence.revision_id = ?
-          AND occurrence.occurrence_id = line.occurrence_id
-          AND occurrence.item_id = ?
-         JOIN chess_anchor AS occurrence_anchor
-           ON occurrence_anchor.anchor_kind = 'occurrence'
-          AND occurrence_anchor.owner_item_id = occurrence.item_id
-          AND occurrence_anchor.occurrence_id = occurrence.occurrence_id
-         LEFT JOIN chess_move_node_snapshot AS move
-           ON move.revision_id = occurrence.revision_id
-          AND move.parent_occurrence_id = occurrence.occurrence_id
-          AND move.is_main_line = 1
-         LEFT JOIN chess_anchor AS move_anchor
-           ON move_anchor.anchor_kind = 'move_node'
-          AND move_anchor.owner_item_id = move.item_id
-          AND move_anchor.move_node_id = move.move_node_id
-        ORDER BY line.depth`,
+      "SELECT move_node_id AS move, anchor_id AS anchor FROM chess_anchor WHERE anchor_kind = 'move_node' AND owner_item_id = ?",
     )
-    .all(root.rootOccurrenceId, revisionId, revisionId, itemId) as GraphRow[];
+    .all(itemId) as { move: number; anchor: number }[];
+  const byMove = new Map(anchors.map((a) => [a.move, a.anchor]));
+  return readMainLine(
+    database,
+    revisionId,
+    root.rootOccurrenceId,
+    anchorId,
+  ).map((row) => ({
+    ...row,
+    moveAnchorId:
+      row.moveNodeId === null ? null : (byMove.get(row.moveNodeId) ?? null),
+  }));
 }
 
 function revisionAnchorIds(
@@ -1174,17 +1413,14 @@ function rootAnchor(
          FROM inventory_item AS item
          JOIN item_revision AS revision
            ON revision.item_id = item.item_id
-         LEFT JOIN inventory_analysis_revision AS analysis
+         LEFT JOIN inventory_chess_revision AS analysis
            ON analysis.revision_id = revision.revision_id
-         LEFT JOIN inventory_game_revision AS game
-           ON game.revision_id = revision.revision_id
          JOIN chess_anchor AS anchor
            ON anchor.anchor_kind = 'occurrence'
           AND anchor.owner_item_id = item.item_id
-          AND anchor.occurrence_id = COALESCE(
-            analysis.root_occurrence_id, game.root_occurrence_id
-          )
-        WHERE item.item_id = ? AND revision.revision_id = ?`,
+          AND anchor.occurrence_id = analysis.root_occurrence_id
+        WHERE item.item_id = ? AND revision.revision_id = ?
+          AND item.current_revision_id IS NOT NULL`,
     )
     .get(itemId, revisionId) as { anchorId: number } | undefined;
   return row === undefined ? undefined : localId('anchor', row.anchorId);

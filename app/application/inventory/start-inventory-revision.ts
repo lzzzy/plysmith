@@ -71,14 +71,17 @@ export class StartInventoryRevision implements StartInventoryRevisionUseCase {
       request.expectedScratchId,
       request.expectedScratchRevision,
     );
-    if (request.mode === 'metadata' && request.firstMove !== undefined) {
+    if (
+      (request.mode === 'metadata' && request.firstMove !== undefined) ||
+      (request.lineAnchorId !== undefined && request.mode !== 'truncate_after')
+    ) {
       throw invalidInventoryRevision();
     }
     const record = await this.#inventory.readAnalysisRevision({
       itemId: request.itemId,
       revisionId: request.baseRevisionId,
       scope: request.scope,
-      anchorId: request.anchorId,
+      anchorId: request.lineAnchorId ?? request.anchorId,
     });
     if (
       record === undefined ||
@@ -105,6 +108,9 @@ export class StartInventoryRevision implements StartInventoryRevisionUseCase {
         },
         mode: request.mode,
         anchorId: request.anchorId,
+        ...(request.lineAnchorId === undefined
+          ? {}
+          : { lineAnchorId: request.lineAnchorId }),
         ...(request.displayName === undefined
           ? {}
           : { displayName: request.displayName }),
@@ -113,17 +119,20 @@ export class StartInventoryRevision implements StartInventoryRevisionUseCase {
     } catch {
       throw invalidInventoryRevision();
     }
-    let scratch = startAnalysisScratch(
-      this.#scratchId(),
-      plan.scratchRoot,
-      {
-        kind: 'inventory_anchor',
-        itemId: record.itemId,
-        revisionId: record.revisionId,
-        anchorId: plan.cutAnchorId,
-      },
-      plan.intent,
-    );
+    let scratch: AnalysisScratch = {
+      ...startAnalysisScratch(
+        request.expectedScratchId ?? this.#scratchId(),
+        plan.scratchRoot,
+        {
+          kind: 'inventory_anchor',
+          itemId: record.itemId,
+          revisionId: record.revisionId,
+          anchorId: plan.cutAnchorId,
+        },
+        plan.intent,
+      ),
+      scratchRevision: (request.expectedScratchRevision ?? 0) + 1,
+    };
     if (request.firstMove !== undefined) {
       const applied = this.#rules.applyMove(
         scratch.root,

@@ -16,6 +16,7 @@ import {
   desktopDiagnosticsChannel,
   desktopEngineExecutableChannel,
   desktopEngineWeightsChannel,
+  desktopPgnImportFileChannel,
   parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
@@ -149,6 +150,19 @@ export async function createDesktopWindow(
     return result.canceled ? undefined : result.filePaths[0];
   };
   ipcMain.handle(desktopEngineWeightsChannel, engineWeightsHandler);
+  ipcMain.handle(
+    desktopPgnImportFileChannel,
+    async (event: IpcMainInvokeEvent) => {
+      if (!isTrustedRendererSender(event, window)) return undefined;
+      const result = await dialog.showOpenDialog(window, {
+        title: 'PGN import',
+        properties: ['openFile'],
+        filters: [{ name: 'PGN', extensions: ['pgn'] }],
+      });
+      if (!isTrustedRendererSender(event, window)) return undefined;
+      return result.canceled ? undefined : result.filePaths[0];
+    },
+  );
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.on('will-attach-webview', (event) =>
@@ -197,6 +211,7 @@ export async function createDesktopWindow(
     ipcMain.removeHandler(desktopDiagnosticReportDestinationChannel);
     ipcMain.removeHandler(desktopEngineExecutableChannel);
     ipcMain.removeHandler(desktopEngineWeightsChannel);
+    ipcMain.removeHandler(desktopPgnImportFileChannel);
     ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });

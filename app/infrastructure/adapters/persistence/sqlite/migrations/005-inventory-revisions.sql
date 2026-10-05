@@ -2,7 +2,7 @@ ALTER TABLE analysis_scratch_draft
     ADD COLUMN scratch_mode TEXT NOT NULL DEFAULT 'exploration'
     CHECK (scratch_mode IN ('exploration', 'inventory_revision'));
 ALTER TABLE analysis_scratch_draft ADD COLUMN edit_mode TEXT
-    CHECK (edit_mode IN ('extend', 'truncate_after', 'replace_move', 'metadata'));
+    CHECK (edit_mode IN ('extend', 'truncate_after', 'replace_move', 'metadata', 'add_variation'));
 ALTER TABLE analysis_scratch_draft ADD COLUMN edit_item_id INTEGER
     REFERENCES inventory_item (item_id) ON DELETE RESTRICT;
 ALTER TABLE analysis_scratch_draft ADD COLUMN base_revision_id INTEGER
@@ -20,7 +20,7 @@ ALTER TABLE workspace_context_item ADD COLUMN pin_reason TEXT
     CHECK (pin_reason IS NULL OR pin_reason = 'pending_revision_impact');
 
 ALTER TABLE item_revision ADD COLUMN revision_change_kind TEXT NOT NULL DEFAULT 'created'
-    CHECK (revision_change_kind IN ('created', 'extend', 'truncate_after', 'replace_move', 'metadata'));
+    CHECK (revision_change_kind IN ('created', 'extend', 'truncate_after', 'replace_move', 'metadata', 'add_variation'));
 
 CREATE TABLE workspace_pending_revision_impact (
     impact_id INTEGER PRIMARY KEY CHECK (impact_id > 0),

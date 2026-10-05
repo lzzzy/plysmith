@@ -25,14 +25,52 @@ export interface MainLineRow {
   readonly to: string | null;
   readonly promotion: PromotionPiece | null;
   readonly san: string | null;
+  readonly isMainLine?: number;
 }
 
 export function readMainLine(
   database: Database.Database,
   revisionId: number,
   rootOccurrenceId: number,
+  selectedAnchorId?: number,
 ): MainLineRow[] {
-  return database
+  const visible = database
+    .prepare(
+      `SELECT 1 FROM item_revision r JOIN inventory_item i ON i.item_id = r.item_id
+    WHERE r.revision_id = ? AND i.current_revision_id IS NOT NULL`,
+    )
+    .get(revisionId);
+  if (visible === undefined) return [];
+  // Walk backwards from the selected anchor, then follow that branch's main continuation.
+  const selected =
+    selectedAnchorId === undefined
+      ? undefined
+      : (database
+          .prepare(
+            `
+    SELECT COALESCE(a.occurrence_id, m.child_occurrence_id,
+      (SELECT occurrence_id FROM chess_occurrence_snapshot WHERE revision_id = ? AND position_id = a.position_id ORDER BY occurrence_id LIMIT 1)) AS occurrenceId
+    FROM chess_anchor a LEFT JOIN chess_move_node_snapshot m ON m.move_node_id = a.move_node_id AND m.revision_id = ?
+    WHERE a.anchor_id = ?`,
+          )
+          .get(revisionId, revisionId, selectedAnchorId) as
+          { occurrenceId: number | null } | undefined);
+  const overrides =
+    selected?.occurrenceId == null
+      ? []
+      : (database
+          .prepare(
+            `
+    WITH RECURSIVE path(occurrence_id) AS (VALUES (?) UNION ALL
+      SELECT m.parent_occurrence_id FROM chess_move_node_snapshot m JOIN path ON path.occurrence_id = m.child_occurrence_id WHERE m.revision_id = ?)
+    SELECT m.parent_occurrence_id AS parent, m.move_node_id AS move FROM chess_move_node_snapshot m JOIN path ON path.occurrence_id = m.child_occurrence_id WHERE m.revision_id = ?`,
+          )
+          .all(selected.occurrenceId, revisionId, revisionId) as {
+          parent: number;
+          move: number;
+        }[]);
+  const branch = new Map(overrides.map((row) => [row.parent, row.move]));
+  const rows = database
     .prepare(
       `WITH RECURSIVE line(depth, occurrence_id) AS (
          VALUES (0, ?)
@@ -42,7 +80,6 @@ export function readMainLine(
            JOIN chess_move_node_snapshot AS move
              ON move.revision_id = ?
             AND move.parent_occurrence_id = line.occurrence_id
-            AND move.is_main_line = 1
        )
        SELECT line.depth,
               occurrence.occurrence_id AS occurrenceId,
@@ -52,6 +89,7 @@ export function readMainLine(
               play.fullmove_number AS fullmoveNumber,
               play.history_knowledge AS historyKnowledge,
               move.move_node_id AS moveNodeId,
+              move.is_main_line AS isMainLine,
               move.from_square AS 'from', move.to_square AS 'to',
               move.promotion, move.san
          FROM line
@@ -68,10 +106,51 @@ export function readMainLine(
          LEFT JOIN chess_move_node_snapshot AS move
            ON move.revision_id = occurrence.revision_id
           AND move.parent_occurrence_id = occurrence.occurrence_id
-          AND move.is_main_line = 1
-        ORDER BY line.depth`,
+        ORDER BY line.depth, move.sibling_order`,
     )
     .all(rootOccurrenceId, revisionId, revisionId) as MainLineRow[];
+  // The SQL materializes all occurrences once; each row describes its outgoing edge.
+  const byOccurrence = new Map<number, MainLineRow[]>();
+  for (const row of rows) {
+    const edges = byOccurrence.get(row.occurrenceId) ?? [];
+    edges.push(row);
+    byOccurrence.set(row.occurrenceId, edges);
+  }
+  const childRows = database
+    .prepare(
+      'SELECT move_node_id AS move, child_occurrence_id AS child FROM chess_move_node_snapshot WHERE revision_id = ?',
+    )
+    .all(revisionId) as { move: number; child: number }[];
+  const childByMove = new Map(childRows.map((row) => [row.move, row.child]));
+  const line: MainLineRow[] = [];
+  let current: number | undefined = rootOccurrenceId;
+  const visited = new Set<number>();
+  while (current !== undefined) {
+    if (visited.has(current)) throw invalidAnalysisRecord();
+    visited.add(current);
+    const edges: MainLineRow[] | undefined = byOccurrence.get(current);
+    const selectedMove = branch.get(current);
+    const row: MainLineRow | undefined =
+      edges?.find((edge) => edge.moveNodeId === selectedMove) ??
+      edges?.find((edge) => edge.isMainLine === 1 || edge.moveNodeId === null);
+    if (!row && edges?.[0]) {
+      line.push({
+        ...edges[0],
+        depth: line.length,
+        moveNodeId: null,
+        from: null,
+        to: null,
+        promotion: null,
+        san: null,
+      });
+      break;
+    }
+    if (!row) throw invalidAnalysisRecord();
+    line.push({ ...row, depth: line.length });
+    current =
+      row.moveNodeId === null ? undefined : childByMove.get(row.moveNodeId);
+  }
+  return line;
 }
 
 export function readInventoryRevisionLine(
@@ -82,10 +161,10 @@ export function readInventoryRevisionLine(
   const header = database
     .prepare(
       `SELECT revision.display_name AS displayName, revision.summary_text AS summary,
-    COALESCE(analysis.root_occurrence_id, game.root_occurrence_id) AS rootOccurrenceId
+    graph.root_occurrence_id AS rootOccurrenceId
     FROM item_revision AS revision
-    LEFT JOIN inventory_analysis_revision AS analysis ON analysis.revision_id = revision.revision_id
-    LEFT JOIN inventory_game_revision AS game ON game.revision_id = revision.revision_id
+    JOIN inventory_item item ON item.item_id = revision.item_id AND item.current_revision_id IS NOT NULL
+    JOIN inventory_chess_revision graph ON graph.revision_id = revision.revision_id
     WHERE revision.item_id = ? AND revision.revision_id = ?`,
     )
     .get(itemId.value, revisionId.value) as

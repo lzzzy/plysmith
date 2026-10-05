@@ -21,6 +21,10 @@ import {
 } from '../../../../domain/identity/index.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
 import { readAnalysisRecordView } from './sqlite-analysis-record.ts';
+import {
+  readContextScratch,
+  readScratchHasChanges,
+} from './sqlite-analysis-scratch-state.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { inventoryDisplayNameIsAvailable } from './sqlite-inventory-display-name.ts';
 import { creationFolder } from './sqlite-inventory-organization.ts';
@@ -236,6 +240,11 @@ export function inspectRevisionImpact(
   const existingImpacts = database
     .prepare(
       `SELECT impact.context_id AS contextId,
+              impact.impact_id AS impactId,
+              impact.impact_version AS impactVersion,
+              impact.pinned_revision_id AS pinnedRevisionId,
+              impact.target_revision_id AS targetRevisionId,
+              impact.target_anchor_id AS targetAnchorId,
               context.display_name AS contextName,
               sum(CASE entry.entry_kind WHEN 'reference' THEN 1 ELSE 0 END) AS referenceCount,
               sum(CASE entry.entry_kind WHEN 'contribution' THEN 1 ELSE 0 END) AS contributionCount,
@@ -247,11 +256,16 @@ export function inspectRevisionImpact(
          JOIN workspace_revision_impact_entry AS entry
            ON entry.impact_id = impact.impact_id
         WHERE impact.item_id = ?
-        GROUP BY impact.context_id, context.display_name
+        GROUP BY impact.impact_id, context.display_name
         ORDER BY impact.context_id`,
     )
     .all(request.itemId.value) as {
     contextId: number;
+    impactId: number;
+    impactVersion: number;
+    pinnedRevisionId: number;
+    targetRevisionId: number;
+    targetAnchorId: number;
     contextName: string;
     referenceCount: number;
     contributionCount: number;
@@ -262,19 +276,35 @@ export function inspectRevisionImpact(
     number,
     InventoryRevisionContextImpactSummary
   >();
-  const activeContexts = database
+  const contextMemberships = database
     .prepare(
-      `SELECT item.context_id AS contextId, context.display_name AS contextName
+      `SELECT item.context_id AS contextId, context.display_name AS contextName,
+              context.lifecycle AS lifecycle,
+              item.pinned_revision_id AS pinnedRevisionId,
+              item.pin_reason AS pinReason
          FROM workspace_context_item AS item
          JOIN workspace_working_context AS context
            ON context.context_id = item.context_id
-        WHERE item.item_id = ? AND context.lifecycle = 'active'
+        WHERE item.item_id = ?
         ORDER BY item.context_id`,
     )
     .all(request.itemId.value) as {
     contextId: number;
     contextName: string;
+    lifecycle: string;
+    pinnedRevisionId: number | null;
+    pinReason: string | null;
   }[];
+  const activeContexts = contextMemberships.filter(
+    (context) => context.lifecycle === 'active',
+  );
+  // Unassigned metadata drafts remain stale drafts, never membership pins.
+  const memberContextIds = new Set(
+    contextMemberships.map((context) => context.contextId),
+  );
+  const memberDependencies = dependencyContexts.filter((context) =>
+    memberContextIds.has(context.contextId.value),
+  );
   const automaticContextIds = new Set<number>();
   if (request.publishingScratch !== undefined) {
     automaticContextIds.add(request.publishingScratch.contextId.value);
@@ -286,7 +316,7 @@ export function inspectRevisionImpact(
     automaticContextIds.delete(existing.contextId);
   }
   const automaticContexts = Object.freeze(
-    dependencyContexts.filter((context) =>
+    memberDependencies.filter((context) =>
       automaticContextIds.has(context.contextId.value),
     ),
   );
@@ -294,7 +324,7 @@ export function inspectRevisionImpact(
     automaticContexts.map((context) => [context.contextId.value, context]),
   );
   const contexts = Object.freeze(
-    dependencyContexts.filter(
+    memberDependencies.filter(
       (context) => !automaticContextIds.has(context.contextId.value),
     ),
   );
@@ -342,6 +372,12 @@ export function inspectRevisionImpact(
         .filter((context) => !affectedContexts.has(context.contextId))
         .map((context) => {
           const automatic = automaticContextById.get(context.contextId);
+          // Publishing consumes its own draft; only automatic resume replacement loses work.
+          const losesScratch =
+            request.publishingScratch?.contextId.value !== context.contextId &&
+            automatic?.entries.some(
+              (entry) => entry.kind === 'analysis_resume',
+            );
           return Object.freeze({
             contextId: localId('working-context', context.contextId),
             contextName: context.contextName,
@@ -354,6 +390,17 @@ export function inspectRevisionImpact(
               automatic === undefined
                 ? 0
                 : countEntries(automatic.entries, 'contribution'),
+            changedScratchCount: losesScratch
+              ? Number(
+                  readScratchHasChanges(
+                    database,
+                    readContextScratch(
+                      database,
+                      localId('working-context', context.contextId),
+                    ),
+                  ),
+                )
+              : 0,
             managementResumeCount:
               automatic === undefined
                 ? 0
@@ -367,7 +414,11 @@ export function inspectRevisionImpact(
     ),
     contexts,
     automaticContexts,
-    fingerprintValue: Object.freeze(dependencies.map(Object.freeze)),
+    fingerprintValue: Object.freeze({
+      dependencies: Object.freeze(dependencies.map(Object.freeze)),
+      contextMemberships: Object.freeze(contextMemberships.map(Object.freeze)),
+      existingImpacts: Object.freeze(existingImpacts.map(Object.freeze)),
+    }),
   });
 }
 
@@ -948,10 +999,10 @@ function clonePinnedRevision(
          JOIN item_revision AS revision
            ON revision.item_id = item.item_id
           AND revision.revision_id = ?
-         JOIN inventory_analysis_revision AS analysis
+         JOIN inventory_chess_revision AS analysis
            ON analysis.item_id = item.item_id
           AND analysis.revision_id = revision.revision_id
-        WHERE item.item_id = ? AND item.item_type = 'analysis'`,
+        WHERE item.item_id = ? AND item.item_type IN ('analysis', 'game')`,
     )
     .get(impact.pinnedRevisionId.value, impact.itemId.value) as
     | {
@@ -1543,7 +1594,7 @@ function rootAnchorForRevision(
   const row = database
     .prepare(
       `SELECT anchor.anchor_id AS anchorId
-         FROM inventory_analysis_revision AS analysis
+         FROM inventory_chess_revision AS analysis
          JOIN chess_anchor AS anchor
            ON anchor.anchor_kind = 'occurrence'
           AND anchor.owner_item_id = analysis.item_id
@@ -1577,7 +1628,7 @@ function rootPosition(
   const row = database
     .prepare(
       `SELECT occurrence.position_id AS positionId
-         FROM inventory_analysis_revision AS analysis
+         FROM inventory_chess_revision AS analysis
          JOIN chess_occurrence_snapshot AS occurrence
            ON occurrence.revision_id = analysis.revision_id
           AND occurrence.occurrence_id = analysis.root_occurrence_id

@@ -12,7 +12,7 @@ export function inventoryDisplayNameIsAvailable(
          FROM inventory_item AS item
          JOIN item_revision AS revision
            ON revision.revision_id = item.current_revision_id
-        WHERE item.lifecycle = 'active' AND item.item_type = 'analysis'`,
+        WHERE item.lifecycle = 'active'`,
     )
     .all() as { itemId: number; displayName: string }[];
   return !rows.some(

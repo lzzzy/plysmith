@@ -40,7 +40,7 @@ export class ResolvePendingRevisionImpact implements ResolvePendingRevisionImpac
       request.expectedImpactVersion < 1 ||
       (request.resolution.kind === 'keep_copy' &&
         (request.resolution.displayName.trim().length < 1 ||
-          request.resolution.displayName.trim().length > 200))
+          request.resolution.displayName.trim().length > 160))
     ) {
       throw invalidRevisionImpactResolution();
     }

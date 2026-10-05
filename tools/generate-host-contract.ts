@@ -19,6 +19,15 @@ export async function generateHostContract(
     },
   };
   const host = await buildHost({
+    registerImportInput: unavailableUseCase,
+    prepareImport: unavailableUseCase,
+    checkImportNames: unavailableUseCase,
+    publishImport: unavailableUseCase,
+    discardImport: {
+      execute: (): never => {
+        throw new Error('Use case not configured.');
+      },
+    },
     getSystemStatus: {
       execute: async () => ({
         state: 'ready',

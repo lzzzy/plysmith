@@ -13,6 +13,7 @@ import type {
 import type { InventoryRevisionMode } from '../../domain/inventory/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
+import type { AnalysisNoteScope } from '../analysis/analysis-models.ts';
 
 export interface InventorySearchItem {
   readonly folderId?: InventoryFolderId;
@@ -68,6 +69,7 @@ export interface StartInventoryRevisionRequest {
   readonly itemId: InventoryItemId;
   readonly baseRevisionId: ItemRevisionId;
   readonly anchorId: AnchorId;
+  readonly lineAnchorId?: AnchorId;
   readonly mode: InventoryRevisionMode;
   readonly expectedScratchId: string | null;
   readonly expectedScratchRevision: number | null;
@@ -83,6 +85,7 @@ export interface StartInventoryRevisionResult {
 }
 
 export interface PromoteAnalysisToInventoryRevisionRequest {
+  readonly mode?: 'add_variation';
   readonly scope: WorkScope;
   readonly itemId: InventoryItemId;
   readonly baseRevisionId: ItemRevisionId;
@@ -109,6 +112,7 @@ export interface InventoryRevisionFollowingContextSummary {
   readonly updatedAutomatically: boolean;
   readonly referenceCount: number;
   readonly contributionCount: number;
+  readonly changedScratchCount: number;
   readonly managementResumeCount: number;
   readonly analysisResumeCount: number;
 }
@@ -130,7 +134,14 @@ export interface InventoryRevisionPreview {
   readonly dataRevision: number;
 }
 
+export interface InventoryRevisionComment {
+  readonly body: string;
+  readonly languageTag: string;
+  readonly noteScope: AnalysisNoteScope;
+}
+
 export interface PreviewInventoryRevisionRequest {
+  readonly comment?: InventoryRevisionComment;
   readonly scope: WorkScope;
   readonly expectedScratchId: string;
   readonly expectedScratchRevision: number;
@@ -141,6 +152,7 @@ export interface SaveInventoryRevisionRequest extends PreviewInventoryRevisionRe
 }
 
 export interface SaveInventoryRevisionResult {
+  readonly commentContributionId?: string;
   readonly itemId: InventoryItemId;
   readonly revisionId: ItemRevisionId;
   readonly revisionNumber: number;

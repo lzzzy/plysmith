@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { FormattedMessage } from 'react-intl';
 
 import styles from './revision-following-contexts.module.css';
@@ -7,48 +7,44 @@ interface FollowingContext {
   readonly contextId: string;
   readonly contextName: string;
   readonly contributionCount: number;
+  readonly changedScratchCount: number;
 }
 
 export function RevisionFollowingContexts({
   contexts,
-  metadataOnly,
 }: {
   readonly contexts: readonly FollowingContext[];
-  readonly metadataOnly: boolean;
 }) {
-  if (contexts.length === 0) return null;
+  const losses = contexts.filter(
+    (context) =>
+      context.contributionCount > 0 || context.changedScratchCount > 0,
+  );
+  if (losses.length === 0) return null;
 
   return (
     <div className={styles.notice}>
-      <RefreshCw aria-hidden="true" size={18} />
+      <TriangleAlert aria-hidden="true" size={18} />
       <div>
         <strong>
-          <FormattedMessage
-            id={
-              metadataOnly
-                ? 'inventory.contextsRenamed'
-                : 'inventory.contextsUpdated'
-            }
-          />
+          <FormattedMessage id="inventory.automaticContextLosses" />
         </strong>
-        <p>
-          <FormattedMessage
-            id={
-              metadataOnly
-                ? 'inventory.contextsRenamedDetail'
-                : 'inventory.contextsUpdatedDetail'
-            }
-          />
-        </p>
         <ul>
-          {contexts.map((context) => (
+          {losses.map((context) => (
             <li key={context.contextId}>
               {context.contextName}
-              {!metadataOnly && context.contributionCount > 0 && (
-                <span className={styles.historicalNote}>
+              {context.contributionCount > 0 && (
+                <span className={styles.lossDetail}>
                   <FormattedMessage
                     id="inventory.followingContextNotesHistorical"
                     values={{ count: context.contributionCount }}
+                  />
+                </span>
+              )}
+              {context.changedScratchCount > 0 && (
+                <span className={styles.lossDetail}>
+                  <FormattedMessage
+                    id="inventory.followingContextScratchLoss"
+                    values={{ count: context.changedScratchCount }}
                   />
                 </span>
               )}

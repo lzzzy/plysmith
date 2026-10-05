@@ -82,6 +82,11 @@ import type {
 } from '../desktop/contract.ts';
 import { localizeSan } from './chess-display.ts';
 import { analysisPathPresentation } from './analysis-path-presentation.ts';
+import { chessTreePath } from './chess-tree-presentation.ts';
+import {
+  readPositionAnalysisPreferences,
+  savePositionAnalysisPreferences,
+} from './position-analysis-preferences.ts';
 import { contextRemovalHasContentLoss } from './work-loss-presentation.ts';
 import type { UiLocale } from './messages.ts';
 import {
@@ -93,6 +98,26 @@ import {
 } from './engine-configuration-drafts.ts';
 
 export type ActivityId = 'manage' | 'analyze' | 'playout' | 'settings';
+export type ImportPreview = Awaited<
+  ReturnType<PlysmithHostClient['prepareImport']>
+>;
+export type ImportPublication = Omit<
+  Parameters<PlysmithHostClient['publishImport']>[0],
+  'previewId'
+>;
+export type ImportPreparation = Omit<
+  Parameters<PlysmithHostClient['prepareImport']>[0],
+  'inputHandle' | 'languageTag'
+>;
+export interface ImportSession {
+  readonly open: boolean;
+  readonly preview?: ImportPreview;
+  readonly input?: Awaited<
+    ReturnType<PlysmithHostClient['registerImportInput']>
+  >;
+  readonly errorCode?: string | undefined;
+  readonly completedCount?: number;
+}
 export type WorkScope = AnalysisWorkspaceDto['scope'];
 export type InventoryItem = SearchInventoryResultDto['items'][number];
 export type InventoryOrganization = Awaited<
@@ -112,6 +137,7 @@ type ObjectiveBudget = Extract<
   { kind: 'objective' }
 >['budget'];
 export type ApplicationCommand =
+  | 'import_command'
   | 'change_inventory_organization'
   | 'set_language'
   | 'set_diagnostic_log_level'
@@ -159,7 +185,14 @@ export type ApplicationCommand =
   | 'save_engine_provider'
   | 'remove_engine_provider';
 
-export interface PlysmithApplicationClient {
+export interface PlysmithApplicationClient extends Pick<
+  PlysmithHostClient,
+  | 'registerImportInput'
+  | 'prepareImport'
+  | 'checkImportNames'
+  | 'publishImport'
+  | 'discardImport'
+> {
   getInventoryOrganization: PlysmithHostClient['getInventoryOrganization'];
   changeInventoryOrganization: PlysmithHostClient['changeInventoryOrganization'];
   previewContextFolderRemoval: PlysmithHostClient['previewContextFolderRemoval'];
@@ -338,6 +371,7 @@ export interface PlysmithApplicationStoreOptions {
   ) => Promise<string | undefined>;
   readonly chooseEngineExecutable?: () => Promise<string | undefined>;
   readonly chooseEngineWeights?: () => Promise<string | undefined>;
+  readonly chooseImportFile?: () => Promise<string | undefined>;
   readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
@@ -369,6 +403,34 @@ export interface RevisionImpactDetails {
   readonly targetRevision: AnalysisRecordDto;
 }
 
+export type AnalysisNoteFormDraft = {
+  readonly targetKey: string;
+  readonly body: string;
+} & (
+  | { readonly kind: 'create'; readonly noteScope: 'global' | 'context' }
+  | {
+      readonly kind: 'edit';
+      readonly contributionId: string;
+      readonly contributionVersion: number;
+    }
+);
+
+export interface AnalysisRecordFormDraft {
+  readonly title: string;
+  readonly noteBody: string;
+  readonly folderId?: string | null | undefined;
+  readonly destination: 'inventory' | 'context';
+  readonly noteScope: 'global' | 'context';
+  readonly open: boolean;
+}
+
+export interface PlayoutCompletionFormDraft {
+  readonly title: string;
+  readonly addToContext: boolean;
+  readonly folderId?: string | null | undefined;
+  readonly manualResult: NonNullable<CompletePlayoutRequestDto['manualResult']>;
+}
+
 export interface ManageInventoryRevisionDraft {
   readonly itemId: string;
   readonly scratchId: string;
@@ -381,6 +443,31 @@ export type InventoryDetailsRead =
   | { readonly kind: 'completed'; readonly record: AnalysisRecordDto }
   | { readonly kind: 'failed'; readonly errorCode: string }
   | { readonly kind: 'cancelled' };
+
+export type InventorySelectionPreview = {
+  readonly scope: WorkScope;
+  readonly dataRevision: number;
+} & (
+  | {
+      readonly kind: 'delete';
+      readonly entries: readonly {
+        readonly item: InventoryItem;
+        readonly preview: InventoryItemDeletionPreviewDto;
+      }[];
+    }
+  | {
+      readonly kind: 'remove';
+      readonly entries: readonly {
+        readonly item: InventoryItem;
+        readonly preview: ContextRemovalPreviewDto;
+      }[];
+    }
+);
+
+export interface InventorySelectionResult {
+  readonly status: 'completed' | 'failed' | 'cancelled';
+  readonly completedItemIds: readonly string[];
+}
 
 export interface AnalysisUnavailable {
   readonly reason: 'removed_from_context' | 'deleted_from_inventory';
@@ -419,6 +506,7 @@ interface BoundInventoryRevisionPreview {
   readonly scratchId: string;
   readonly scratchRevision: number;
   readonly preview: InventoryRevisionPreviewDto;
+  readonly comment?: SaveInventoryRevisionRequestDto['comment'];
 }
 
 export type PlysmithApplicationState =
@@ -426,6 +514,7 @@ export type PlysmithApplicationState =
   | { readonly phase: 'unavailable'; readonly errorCode?: string }
   | {
       readonly phase: 'ready';
+      readonly importSession?: ImportSession;
       readonly status: SystemStatusDto;
       readonly preferences: UserPreferencesDto;
       readonly diagnostics: DiagnosticSettingsDto;
@@ -480,6 +569,7 @@ export class PlysmithApplicationStore {
   #client: PlysmithApplicationClient | undefined;
   #events: HostEventSubscription | undefined;
   #lifecycle = 0;
+  #startupRestored = false;
   #readVersion = 0;
   #committedReadVersion = 0;
   #refreshPromise: Promise<void> | undefined;
@@ -487,17 +577,54 @@ export class PlysmithApplicationStore {
   #activity: ActivityId = 'manage';
   #scope: WorkScope = Object.freeze({ kind: 'free' });
   #analysisFocus: AnalysisFocus | undefined;
-  #positionAnalysisBudget: ObjectiveBudget = 'fast';
-  #positionAnalysisHumanSelection: ReadonlySet<string> | undefined;
+  readonly #analysisTreePaths = new Map<
+    string,
+    {
+      readonly itemId: string;
+      readonly revisionId: string;
+      readonly tipAnchorId: string;
+    }
+  >();
+  #positionAnalysisPreferences = readPositionAnalysisPreferences();
   #inventoryQuery = '';
   #inventoryContextOnly = false;
+  #inventoryWindowKey = '';
+  #inventoryPageCount = 1;
   readonly #selectedInventoryFolders = new Map<string, string>();
   #inventoryPresentation: 'folders' | 'origins' = 'folders';
   // Undefined restores resume; null is an explicit empty management selection.
   #selectedInventoryItemId: string | null | undefined;
   #inspectedInventoryFolderId: string | null | undefined;
   readonly #engineConfigurationDrafts = new EngineConfigurationDrafts();
+  readonly #analysisNoteForms = new Map<
+    string,
+    Map<string, AnalysisNoteFormDraft>
+  >();
+  readonly #activeAnalysisNoteForms = new Map<string, string>();
+  readonly #analysisRecordForms = new Map<string, AnalysisRecordFormDraft>();
+  readonly #playoutCompletionForms = new Map<
+    string,
+    { readonly draftId: string; readonly form: PlayoutCompletionFormDraft }
+  >();
+  readonly #variationCommentDrafts = new Map<
+    string,
+    {
+      scratchId: string;
+      enabled: boolean;
+      body: string;
+      noteScope: 'global' | 'context';
+    }
+  >();
   #busyCommand: ApplicationCommand | undefined;
+  readonly #pathNoteFormDrafts = new Map<
+    string,
+    {
+      scratchId: string;
+      preparedBody: string;
+      body: string;
+      noteScope: 'global' | 'context';
+    }
+  >();
   #errorCode: string | undefined;
   #announcement: string | undefined;
   #pendingEventRevision: number | undefined;
@@ -525,6 +652,7 @@ export class PlysmithApplicationStore {
     | { readonly request: CompletePlayoutRequestDto; readonly view: PlayoutDto }
     | undefined;
   readonly #analysisConsumerId = `desktop-${crypto.randomUUID()}`;
+  #importSession: ImportSession = { open: false };
 
   constructor(options: PlysmithApplicationStoreOptions) {
     this.#options = options;
@@ -538,28 +666,68 @@ export class PlysmithApplicationStore {
   };
 
   getPositionAnalysisHumanSelection(): ReadonlySet<string> | undefined {
-    return this.#positionAnalysisHumanSelection;
+    const ids = this.#positionAnalysisPreferences.humanProviderIds;
+    return ids === undefined ? undefined : new Set(ids);
   }
 
   getPositionAnalysisBudget(): ObjectiveBudget {
-    return this.#positionAnalysisBudget;
+    return this.#positionAnalysisPreferences.budget;
   }
 
   setPositionAnalysisBudget(budget: ObjectiveBudget): void {
-    this.#positionAnalysisBudget = budget;
+    this.#positionAnalysisPreferences = {
+      ...this.#positionAnalysisPreferences,
+      budget,
+    };
+    savePositionAnalysisPreferences(this.#positionAnalysisPreferences);
   }
 
   setPositionAnalysisHumanSelection(ids: ReadonlySet<string>): void {
-    this.#positionAnalysisHumanSelection = new Set(ids);
+    this.#positionAnalysisPreferences = {
+      ...this.#positionAnalysisPreferences,
+      humanProviderIds: [...ids],
+    };
+    savePositionAnalysisPreferences(this.#positionAnalysisPreferences);
+  }
+
+  getPositionAnalysisObjectiveProvider(): string | undefined {
+    return this.#positionAnalysisPreferences.objectiveProviderId;
+  }
+
+  setPositionAnalysisObjectiveProvider(objectiveProviderId: string): void {
+    this.#positionAnalysisPreferences = {
+      ...this.#positionAnalysisPreferences,
+      objectiveProviderId,
+    };
+    savePositionAnalysisPreferences(this.#positionAnalysisPreferences);
+  }
+
+  getPositionAnalysisSort(): string {
+    return this.#positionAnalysisPreferences.sortBy;
+  }
+
+  setPositionAnalysisSort(sortBy: string): void {
+    this.#positionAnalysisPreferences = {
+      ...this.#positionAnalysisPreferences,
+      sortBy,
+    };
+    savePositionAnalysisPreferences(this.#positionAnalysisPreferences);
   }
 
   async start(): Promise<void> {
+    this.#importSession = {
+      open: this.#importSession.open,
+    };
     this.#diagnose({
       level: 'info',
       eventCode: 'renderer.lifecycle.starting',
       status: 'starting',
     });
     const lifecycle = ++this.#lifecycle;
+    this.#startupRestored = false;
+    this.#refreshPromise = undefined;
+    this.#refreshAgain = false;
+    this.#busyCommand = undefined;
     this.#pendingEventRevision = undefined;
     this.#pendingUnversionedEvent = false;
     this.#events?.close();
@@ -596,13 +764,17 @@ export class PlysmithApplicationStore {
     const events = this.#createEventSubscription(
       bootstrap.connection,
       (event) => this.#handleHostEvent(event),
-      () => void this.refresh(),
+      () => {
+        void this.refresh();
+      },
       () => this.#setReadyError('host.invalid_event'),
     );
     this.#events = events;
     try {
       await events.ready;
     } catch {
+      events.close();
+      if (lifecycle !== this.#lifecycle || this.#events !== events) return;
       this.#diagnose({
         level: 'error',
         eventCode: 'renderer.bootstrap.unavailable',
@@ -610,8 +782,7 @@ export class PlysmithApplicationStore {
         problemCode: 'host.unavailable',
         generation: bootstrap.generation,
       });
-      events.close();
-      if (this.#events === events) this.#events = undefined;
+      this.#events = undefined;
       this.#client = undefined;
       this.#setUnavailable(lifecycle, 'host.unavailable');
       return;
@@ -626,6 +797,7 @@ export class PlysmithApplicationStore {
       this.#analysisFocus = undefined;
       this.#selectedInventoryItemId = undefined;
       this.#inventoryContextOnly = startup.scope.kind === 'context';
+      this.#startupRestored = true;
     } catch (error) {
       this.#setUnavailable(lifecycle, hostErrorCode(error));
       return;
@@ -637,6 +809,7 @@ export class PlysmithApplicationStore {
 
   async refresh(): Promise<void> {
     if (this.#client === undefined) return this.start();
+    if (!this.#startupRestored) return;
     if (this.#refreshPromise !== undefined) {
       this.#refreshAgain = true;
       return this.#refreshPromise;
@@ -644,7 +817,7 @@ export class PlysmithApplicationStore {
 
     const lifecycle = this.#lifecycle;
     this.#setRefreshing(true);
-    this.#refreshPromise = (async () => {
+    const refreshPromise = (async () => {
       let recoveredContextFocus = false;
       do {
         const startedAt = performance.now();
@@ -678,7 +851,7 @@ export class PlysmithApplicationStore {
             client.getDiagnosticSettings(),
             client.getDiagnosticReportManifest(),
             client.listWorkingContexts({ pageSize: '100' }),
-            client.searchInventory(this.#inventoryRequest()),
+            this.#readInventoryWindow(client),
             client.getInventoryOrganization(
               contextId === undefined ? {} : { contextId },
             ),
@@ -801,6 +974,13 @@ export class PlysmithApplicationStore {
             continue;
           }
           this.#committedReadVersion = readVersion;
+          const playoutFormKey = scopeKey(this.#scope);
+          if (
+            this.#playoutCompletionForms.get(playoutFormKey)?.draftId !==
+            playout?.draft.draftId
+          ) {
+            this.#playoutCompletionForms.delete(playoutFormKey);
+          }
           this.#inventoryPresentation =
             scopeWorkspace.managementResume?.presentation ?? 'folders';
           const folderKey = scopeKey(this.#scope);
@@ -857,6 +1037,7 @@ export class PlysmithApplicationStore {
           this.#setState(
             Object.freeze({
               phase: 'ready',
+              importSession: this.#importSession,
               status,
               preferences,
               diagnostics,
@@ -877,7 +1058,7 @@ export class PlysmithApplicationStore {
                     selectedInventoryFolderId:
                       this.#selectedInventoryFolders.get(folderKey)!,
                   }),
-              analysis,
+              analysis: this.#presentAnalysisTreePath(analysis),
               scopeWorkspace,
               ...(this.#startupNotice === undefined
                 ? {}
@@ -969,10 +1150,12 @@ export class PlysmithApplicationStore {
         }
       } while (this.#refreshAgain && lifecycle === this.#lifecycle);
     })().finally(() => {
+      if (this.#refreshPromise !== refreshPromise) return;
       this.#refreshPromise = undefined;
       this.#setRefreshing(false);
     });
-    return this.#refreshPromise;
+    this.#refreshPromise = refreshPromise;
+    return refreshPromise;
   }
 
   setActivity(activity: ActivityId): void {
@@ -1470,36 +1653,11 @@ export class PlysmithApplicationStore {
       this.#finishCommand();
       return;
     }
-    const known = new Set(current.inventory.items.map((item) => item.itemId));
-    const items = [
-      ...current.inventory.items,
-      ...result.items.filter((item) => !known.has(item.itemId)),
-    ];
-    const itemIds = new Set(items.map((item) => item.itemId));
-    const ancestors = new Map(
-      [...current.inventory.ancestors, ...result.ancestors].map(
-        (item) => [item.itemId, item] as const,
-      ),
-    );
-    const edges = new Map(
-      [...current.inventory.provenanceEdges, ...result.provenanceEdges].map(
-        (edge) => [edge.itemId, edge] as const,
-      ),
-    );
+    this.#inventoryPageCount++;
     this.#setState(
       Object.freeze({
         ...current,
-        inventory: Object.freeze({
-          items: Object.freeze(items),
-          ancestors: Object.freeze(
-            [...ancestors.values()].filter((item) => !itemIds.has(item.itemId)),
-          ),
-          provenanceEdges: Object.freeze([...edges.values()]),
-          dataRevision: result.dataRevision,
-          ...(result.nextCursor === undefined
-            ? {}
-            : { nextCursor: result.nextCursor }),
-        }),
+        inventory: mergeInventoryPages(current.inventory, result),
       }),
     );
     this.#finishCommand();
@@ -1776,10 +1934,21 @@ export class PlysmithApplicationStore {
     return true;
   }
 
-  async openRecordAnchor(anchorId: string): Promise<void> {
+  async openRecordAnchor(
+    anchorId: string,
+    navigation: 'select' | 'sequential' = 'select',
+  ): Promise<void> {
     const state = this.#readyState();
     const record = state?.analysis.record;
     if (state === undefined || record === undefined) return;
+    if (navigation === 'select' && record.tree !== undefined) {
+      const path = chessTreePath(record, anchorId);
+      this.#analysisTreePaths.set(scopeKey(state.scope), {
+        itemId: record.itemId,
+        revisionId: record.revisionId,
+        tipAnchorId: path.steps.at(-1)?.anchorId ?? record.rootAnchorId,
+      });
+    }
     this.#analysisFocus = Object.freeze({
       itemId: record.itemId,
       revisionId: record.revisionId,
@@ -1867,6 +2036,223 @@ export class PlysmithApplicationStore {
         anchorId: item.rootAnchorId,
       }),
     );
+  }
+
+  async previewInventorySelection(
+    kind: 'delete' | 'remove',
+    items: readonly InventoryItem[],
+  ): Promise<InventorySelectionPreview | undefined> {
+    const state = this.#readyState();
+    const client = this.#client;
+    if (
+      state === undefined ||
+      client === undefined ||
+      this.#busyCommand !== undefined ||
+      !this.#inventorySelectionIsCurrent(items, state.scope) ||
+      (kind === 'remove' && state.scope.kind !== 'context')
+    )
+      return undefined;
+    const scope = state.scope;
+    const lifecycle = this.#lifecycle;
+    const dataRevision = state.status.persistence.dataRevision;
+    try {
+      const deletions: Extract<
+        InventorySelectionPreview,
+        { kind: 'delete' }
+      >['entries'][number][] = [];
+      const removals: Extract<
+        InventorySelectionPreview,
+        { kind: 'remove' }
+      >['entries'][number][] = [];
+      for (const item of items) {
+        if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
+          return undefined;
+        if (kind === 'delete') {
+          const preview = await client.previewInventoryItemDeletion(
+            item.itemId,
+          );
+          if (
+            preview.dataRevision !== dataRevision ||
+            preview.currentRevisionId !== item.currentRevisionId
+          )
+            throw inventorySelectionConflict();
+          deletions.push({ item, preview });
+        } else {
+          if (scope.kind !== 'context') return undefined;
+          const preview = await client.previewContextItemRemoval(
+            scope.contextId,
+            item.itemId,
+          );
+          if (preview.dataRevision !== dataRevision)
+            throw inventorySelectionConflict();
+          removals.push({ item, preview });
+        }
+      }
+      if (
+        lifecycle !== this.#lifecycle ||
+        !this.#inventorySelectionIsCurrent(items, scope) ||
+        this.#readyState()?.status.persistence.dataRevision !== dataRevision
+      )
+        return undefined;
+      return kind === 'delete'
+        ? { kind, scope, dataRevision, entries: deletions }
+        : { kind, scope, dataRevision, entries: removals };
+    } catch (error) {
+      if (lifecycle === this.#lifecycle && sameScope(scope, this.#scope))
+        this.#setReadyError(hostErrorCode(error));
+      return undefined;
+    }
+  }
+
+  async includeInventorySelection(
+    items: readonly InventoryItem[],
+  ): Promise<InventorySelectionResult> {
+    const scope = this.#scope;
+    if (
+      scope.kind !== 'context' ||
+      !this.#inventorySelectionIsCurrent(items, scope)
+    )
+      return { status: 'failed', completedItemIds: [] };
+    return this.#runInventorySelection(
+      'add_context_reference',
+      items,
+      async (client, item) => {
+        await client.addContextReference(scope.contextId, {
+          itemId: item.itemId,
+          anchorId: item.rootAnchorId,
+        });
+        return true;
+      },
+    );
+  }
+
+  async applyInventorySelection(
+    selection: InventorySelectionPreview,
+  ): Promise<InventorySelectionResult> {
+    const items = selection.entries.map((entry) => entry.item);
+    if (
+      !this.#inventorySelectionIsCurrent(items, selection.scope) ||
+      selection.dataRevision !==
+        this.#readyState()?.status.persistence.dataRevision
+    ) {
+      this.#setReadyError('workspace.removal_preview_conflict');
+      return { status: 'failed', completedItemIds: [] };
+    }
+    let dataRevision = selection.dataRevision;
+    const lifecycle = this.#lifecycle;
+    return this.#runInventorySelection(
+      selection.kind === 'delete'
+        ? 'delete_inventory_item'
+        : 'remove_context_item',
+      items,
+      async (client, item, index) => {
+        const state = this.#readyState();
+        const boundItem =
+          state?.analysis.record?.itemId ??
+          (state?.analysis.scratch?.origin.kind === 'inventory_anchor'
+            ? state.analysis.scratch.origin.itemId
+            : undefined);
+        if (selection.kind === 'delete') {
+          const entry = selection.entries[index]!;
+          const result = await client.deleteInventoryItem(item.itemId, {
+            expectedCurrentRevisionId: entry.preview.currentRevisionId,
+            expectedDataRevision: dataRevision,
+          });
+          dataRevision = result.dataRevision;
+        } else {
+          const scope = selection.scope;
+          if (scope.kind !== 'context') throw inventorySelectionConflict();
+          // Only our preceding writes may advance the approved preview.
+          const preview = await client.previewContextItemRemoval(
+            scope.contextId,
+            item.itemId,
+          );
+          if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
+            return false;
+          if (preview.dataRevision !== dataRevision)
+            throw inventorySelectionConflict();
+          const result = await client.removeContextItem(
+            scope.contextId,
+            item.itemId,
+            {
+              expectedContextVersion: preview.contextVersion,
+              expectedDataRevision: dataRevision,
+            },
+          );
+          dataRevision = result.dataRevision;
+        }
+        if (
+          selection.kind === 'delete' &&
+          this.#selectedInventoryItemId === item.itemId
+        )
+          this.#selectedInventoryItemId = null;
+        if (boundItem === item.itemId) {
+          this.#analysisUnavailable.set(scopeKey(selection.scope), {
+            reason:
+              selection.kind === 'delete'
+                ? 'deleted_from_inventory'
+                : 'removed_from_context',
+            itemId: item.itemId,
+            displayName: item.displayName,
+          });
+          this.#analysisFocus = undefined;
+        }
+        return true;
+      },
+    );
+  }
+
+  #inventorySelectionIsCurrent(
+    items: readonly InventoryItem[],
+    scope: WorkScope,
+  ): boolean {
+    const state = this.#readyState();
+    return (
+      state !== undefined &&
+      sameScope(scope, state.scope) &&
+      items.length > 0 &&
+      new Set(items.map((item) => item.itemId)).size === items.length &&
+      items.every((item) =>
+        state.inventory.items.some(
+          (current) =>
+            current.itemId === item.itemId &&
+            current.currentRevisionId === item.currentRevisionId &&
+            current.rootAnchorId === item.rootAnchorId,
+        ),
+      )
+    );
+  }
+
+  async #runInventorySelection(
+    command: ApplicationCommand,
+    items: readonly InventoryItem[],
+    apply: (
+      client: PlysmithApplicationClient,
+      item: InventoryItem,
+      index: number,
+    ) => Promise<boolean>,
+  ): Promise<InventorySelectionResult> {
+    const lifecycle = this.#lifecycle;
+    const scope = this.#scope;
+    const completedItemIds: string[] = [];
+    const succeeded = await this.#runCommand(command, async (client) => {
+      for (const [index, item] of items.entries()) {
+        if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
+          return false;
+        if (!(await apply(client, item, index))) return false;
+        completedItemIds.push(item.itemId);
+      }
+      return true;
+    });
+    return {
+      status:
+        lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope)
+          ? 'cancelled'
+          : succeeded === true
+            ? 'completed'
+            : 'failed',
+      completedItemIds,
+    };
   }
 
   async removeInventoryItemFromCurrentContext(
@@ -2329,6 +2715,19 @@ export class PlysmithApplicationStore {
     if (this.#manageInventoryRevisionDraft.preview.noOp) {
       return this.discardManagedInventoryRevision();
     }
+    const preview = this.#manageInventoryRevisionDraft.preview;
+    if (
+      preview.followingContexts.some(
+        (context) =>
+          context.contributionCount > 0 || context.changedScratchCount > 0,
+      ) &&
+      (draft?.itemId !== item.itemId ||
+        draft.preview.displayName !== displayName ||
+        draft.preview.summary !== (summary ?? undefined) ||
+        draft.preview.previewFingerprint !== preview.previewFingerprint)
+    ) {
+      return false;
+    }
     return this.saveManagedInventoryRevision();
   }
 
@@ -2439,6 +2838,7 @@ export class PlysmithApplicationStore {
         return;
       }
       if (scratch.intent.kind !== 'inventory_revision') return;
+      if (scratch.intent.mode === 'add_variation') return;
       const record = state.analysis.record;
       const preservedMoveCount = this.#visibleInventoryRevisionPreview(
         state.analysis,
@@ -2453,6 +2853,8 @@ export class PlysmithApplicationStore {
       await this.#startInventoryRevision(
         'truncate_after',
         anchorBeforeMoveCount(record, preservedMoveCount - 1),
+        undefined,
+        record.steps[preservedMoveCount - 1]?.anchorId,
       );
       return;
     }
@@ -2471,6 +2873,8 @@ export class PlysmithApplicationStore {
     await this.#startInventoryRevision(
       'truncate_after',
       anchorBeforeMoveCount(record, record.steps.length - 1),
+      undefined,
+      record.steps.at(-1)?.anchorId,
     );
   }
 
@@ -2483,7 +2887,159 @@ export class PlysmithApplicationStore {
     });
   }
 
-  async promoteAnalysisToInventoryRevision(): Promise<void> {
+  async removeAnalysisVariation(anchorId: string): Promise<void> {
+    const state = this.#readyState();
+    if (
+      state?.analysis.record === undefined ||
+      state.analysis.record.itemType !== 'analysis' ||
+      state.analysis.scratch !== undefined ||
+      state.busyCommand !== undefined
+    )
+      return;
+    const record = state.analysis.record;
+    const node = record.tree?.nodes.find(
+      (entry) => entry.anchorId === anchorId,
+    );
+    if (node === undefined || node.siblingOrder === 0) return;
+    const parentAnchorId =
+      node.parentNodeIndex === null
+        ? record.rootAnchorId
+        : record.tree!.nodes.find(
+            (entry) => entry.nodeIndex === node.parentNodeIndex,
+          )?.anchorId;
+    if (parentAnchorId === undefined) return;
+    await this.#startInventoryRevision(
+      'truncate_after',
+      parentAnchorId,
+      undefined,
+      anchorId,
+    );
+  }
+
+  getAnalysisNoteFormDrafts(
+    scope: WorkScope,
+    itemId: string,
+  ): readonly AnalysisNoteFormDraft[] {
+    return [
+      ...(this.#analysisNoteForms
+        .get(JSON.stringify([scopeKey(scope), itemId]))
+        ?.values() ?? []),
+    ];
+  }
+
+  getActiveAnalysisNoteForm(
+    scope: WorkScope,
+    itemId: string,
+  ): AnalysisNoteFormDraft | undefined {
+    const owner = JSON.stringify([scopeKey(scope), itemId]);
+    const key = this.#activeAnalysisNoteForms.get(owner);
+    return key === undefined
+      ? undefined
+      : this.#analysisNoteForms.get(owner)?.get(key);
+  }
+
+  getAnalysisNoteForm(
+    scope: WorkScope,
+    itemId: string,
+    draft: AnalysisNoteFormDraft,
+  ): AnalysisNoteFormDraft | undefined {
+    return this.#analysisNoteForms
+      .get(JSON.stringify([scopeKey(scope), itemId]))
+      ?.get(analysisNoteFormKey(draft));
+  }
+
+  setAnalysisNoteForm(
+    scope: WorkScope,
+    itemId: string,
+    draft: AnalysisNoteFormDraft | undefined,
+  ): void {
+    const owner = JSON.stringify([scopeKey(scope), itemId]);
+    if (draft === undefined) {
+      this.#activeAnalysisNoteForms.delete(owner);
+      return;
+    }
+    const key = analysisNoteFormKey(draft);
+    const drafts =
+      this.#analysisNoteForms.get(owner) ??
+      new Map<string, AnalysisNoteFormDraft>();
+    drafts.set(key, Object.freeze({ ...draft }));
+    this.#analysisNoteForms.set(owner, drafts);
+    this.#activeAnalysisNoteForms.set(owner, key);
+  }
+
+  discardAnalysisNoteForm(
+    scope: WorkScope,
+    itemId: string,
+    draft: AnalysisNoteFormDraft,
+  ): void {
+    const owner = JSON.stringify([scopeKey(scope), itemId]);
+    const key = analysisNoteFormKey(draft);
+    this.#analysisNoteForms.get(owner)?.delete(key);
+    if (this.#activeAnalysisNoteForms.get(owner) === key)
+      this.#activeAnalysisNoteForms.delete(owner);
+  }
+
+  getAnalysisRecordForm(
+    scope: WorkScope,
+    scratchId: string,
+  ): AnalysisRecordFormDraft | undefined {
+    return this.#analysisRecordForms.get(
+      JSON.stringify([scopeKey(scope), scratchId]),
+    );
+  }
+
+  setAnalysisRecordForm(
+    scope: WorkScope,
+    scratchId: string,
+    draft: AnalysisRecordFormDraft | undefined,
+  ): void {
+    const key = JSON.stringify([scopeKey(scope), scratchId]);
+    if (draft === undefined) this.#analysisRecordForms.delete(key);
+    else this.#analysisRecordForms.set(key, Object.freeze({ ...draft }));
+  }
+
+  getVariationCommentDraft(scratchId: string) {
+    const draft = this.#variationCommentDrafts.get(scopeKey(this.#scope));
+    return draft?.scratchId === scratchId ? draft : undefined;
+  }
+
+  getPlayoutCompletionForm(
+    scope: WorkScope,
+    draftId: string,
+  ): PlayoutCompletionFormDraft | undefined {
+    const entry = this.#playoutCompletionForms.get(scopeKey(scope));
+    return entry?.draftId === draftId ? entry.form : undefined;
+  }
+
+  setPlayoutCompletionForm(
+    scope: WorkScope,
+    draftId: string,
+    form: PlayoutCompletionFormDraft,
+  ): void {
+    this.#playoutCompletionForms.set(scopeKey(scope), {
+      draftId,
+      form: Object.freeze({ ...form }),
+    });
+  }
+
+  setVariationCommentDraft(
+    scratchId: string,
+    draft: {
+      enabled: boolean;
+      body: string;
+      noteScope: 'global' | 'context';
+    },
+  ): void {
+    if (this.#readyState()?.analysis.scratch?.scratchId !== scratchId) return;
+    this.#variationCommentDrafts.set(scopeKey(this.#scope), {
+      scratchId,
+      ...draft,
+    });
+  }
+
+  async promoteAnalysisToInventoryRevision(
+    mode?: 'add_variation',
+  ): Promise<void> {
     const state = this.#readyState();
     const scratch = state?.analysis.scratch;
     const record = state?.analysis.record;
@@ -2513,6 +3069,7 @@ export class PlysmithApplicationStore {
             anchorId: origin.anchorId,
             expectedScratchId: scratch.scratchId,
             expectedScratchRevision: scratch.scratchRevision,
+            ...(mode === undefined ? {} : { mode }),
           },
         );
         const preview = await client.previewInventoryRevision({
@@ -2554,6 +3111,29 @@ export class PlysmithApplicationStore {
     );
   }
 
+  getPathNoteFormDraft(scratchId: string, preparedBody: string) {
+    const draft = this.#pathNoteFormDrafts.get(scopeKey(this.#scope));
+    return draft?.scratchId === scratchId && draft.preparedBody === preparedBody
+      ? draft
+      : undefined;
+  }
+
+  setPathNoteFormDraft(
+    scratchId: string,
+    body: string,
+    noteScope: 'global' | 'context',
+  ): void {
+    const scratch = this.#readyState()?.analysis.scratch;
+    if (scratch?.scratchId !== scratchId || scratch.noteDraft === undefined)
+      return;
+    this.#pathNoteFormDrafts.set(scopeKey(this.#scope), {
+      scratchId,
+      preparedBody: scratch.noteDraft.body,
+      body,
+      noteScope,
+    });
+  }
+
   async prepareAnalysisNote(body: string): Promise<void> {
     const state = this.#readyState();
     const scratchRevision = state?.analysis.scratch?.scratchRevision;
@@ -2586,7 +3166,7 @@ export class PlysmithApplicationStore {
     ) {
       return;
     }
-    await this.#runCommand('clear_note', (client) =>
+    const cleared = await this.#runCommand('clear_note', (client) =>
       client.updateAnalysisScratch({
         scope: state.scope,
         expectedScratchId: scratchId,
@@ -2594,6 +3174,8 @@ export class PlysmithApplicationStore {
         action: { kind: 'clear_note' },
       }),
     );
+    if (cleared !== undefined)
+      this.#pathNoteFormDrafts.delete(scopeKey(state.scope));
   }
 
   async discardAnalysisScratch(): Promise<boolean> {
@@ -2639,7 +3221,9 @@ export class PlysmithApplicationStore {
     return this.openInventoryItem(item);
   }
 
-  async saveInventoryRevision(): Promise<boolean> {
+  async saveInventoryRevision(
+    comment?: SaveInventoryRevisionRequestDto['comment'],
+  ): Promise<boolean> {
     const state = this.#readyState();
     const scratch = state?.analysis.scratch;
     const preview = this.#visibleInventoryRevisionPreview(state?.analysis);
@@ -2651,23 +3235,56 @@ export class PlysmithApplicationStore {
     ) {
       return false;
     }
+    const lifecycle = this.#lifecycle;
     const result = await this.#runCommand(
       'save_inventory_revision',
-      (client) =>
-        client.saveInventoryRevision({
+      async (client) => {
+        const request = {
           scope: state.scope,
           expectedScratchId: scratch.scratchId,
           expectedScratchRevision: scratch.scratchRevision,
-          previewFingerprint: preview.previewFingerprint,
-        }),
+          ...(comment === undefined ? {} : { comment }),
+        };
+        const bound =
+          comment === undefined &&
+          this.#inventoryRevisionPreview?.comment === undefined
+            ? preview
+            : await client.previewInventoryRevision(request);
+        if (lifecycle !== this.#lifecycle || client !== this.#client)
+          return undefined;
+        if (inventoryRevisionNeedsLossReview(preview, bound)) {
+          return { kind: 'review' as const, preview: bound };
+        }
+        const saved = await client.saveInventoryRevision({
+          ...request,
+          previewFingerprint: bound.previewFingerprint,
+        });
+        return { kind: 'saved' as const, saved };
+      },
       false,
     );
     if (result === undefined) return false;
+    if (result.kind === 'review') {
+      this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
+        state.scope,
+        scratch,
+        result.preview,
+        comment,
+      );
+      this.#finishCommand();
+      return false;
+    }
+    if (result.saved.noOp) {
+      this.#announcement = 'analysis.variationExists';
+      this.#finishCommand();
+      return false;
+    }
+    this.#variationCommentDrafts.delete(scopeKey(state.scope));
     this.#inventoryRevisionPreview = undefined;
     this.#analysisFocus = Object.freeze({
-      itemId: result.itemId,
-      revisionId: result.revisionId,
-      anchorId: result.currentAnchorId,
+      itemId: result.saved.itemId,
+      revisionId: result.saved.revisionId,
+      anchorId: result.saved.currentAnchorId,
     });
     this.#announcement = 'inventory.revisionSaved';
     await this.refresh();
@@ -2747,6 +3364,7 @@ export class PlysmithApplicationStore {
     )
       return false;
     const scratchRevision = scratch.scratchRevision;
+    const lifecycle = this.#lifecycle;
     const targetContextId =
       destination === 'context' && state.scope.kind === 'context'
         ? state.scope.contextId
@@ -2780,6 +3398,8 @@ export class PlysmithApplicationStore {
           }
           expectedScratchRevision = cleared.scratch.scratchRevision;
         }
+        if (lifecycle !== this.#lifecycle || client !== this.#client)
+          return undefined;
         return client.createAnalysisRecord({
           scope: state.scope,
           expectedScratchId: scratch.scratchId,
@@ -2828,6 +3448,7 @@ export class PlysmithApplicationStore {
     ) {
       return false;
     }
+    const lifecycle = this.#lifecycle;
     const result = await this.#runCommand(
       'create_analysis_note',
       async (client) => {
@@ -2844,6 +3465,8 @@ export class PlysmithApplicationStore {
           }
           expectedScratchRevision = prepared.scratch.scratchRevision;
         }
+        if (lifecycle !== this.#lifecycle || client !== this.#client)
+          return undefined;
         return client.createAnalysisNote({
           scope: state.scope,
           expectedScratchId: scratch.scratchId,
@@ -3207,7 +3830,14 @@ export class PlysmithApplicationStore {
   }
 
   close(): void {
+    const preview = this.#importSession.preview;
+    if (preview !== undefined)
+      void this.#client
+        ?.discardImport({ previewId: preview.previewId })
+        .catch(() => undefined);
+    this.#importSession = { open: false };
     this.#lifecycle += 1;
+    this.#startupRestored = false;
     this.#busyCommand = undefined;
     this.#destructiveAction = undefined;
     this.#destructiveVersion += 1;
@@ -3221,6 +3851,12 @@ export class PlysmithApplicationStore {
     this.#revisionImpact = undefined;
     this.#contextAnalysisItems.clear();
     this.#analysisUnavailable.clear();
+    this.#variationCommentDrafts.clear();
+    this.#pathNoteFormDrafts.clear();
+    this.#analysisNoteForms.clear();
+    this.#activeAnalysisNoteForms.clear();
+    this.#analysisRecordForms.clear();
+    this.#playoutCompletionForms.clear();
     this.#listeners.clear();
   }
 
@@ -3229,7 +3865,7 @@ export class PlysmithApplicationStore {
     if (state === undefined) return;
     const scratch = state.analysis.scratch;
     if (scratch !== undefined) {
-      if (scratch.cursor !== scratch.steps.length) return;
+      if (!state.analysis.allowedActions.includes('apply_move')) return;
       await this.#updateScratch('update_scratch', {
         kind: 'apply_move',
         move,
@@ -3310,12 +3946,18 @@ export class PlysmithApplicationStore {
   }
 
   async #startInventoryRevision(
-    mode: 'extend' | 'truncate_after' | 'replace_move' | 'metadata',
+    mode:
+      | 'extend'
+      | 'truncate_after'
+      | 'replace_move'
+      | 'metadata'
+      | 'add_variation',
     anchorId: string,
     metadata?: {
       readonly displayName: string;
       readonly summary: string | null;
     },
+    lineAnchorId?: string,
   ): Promise<void> {
     const state = this.#readyState();
     const record = state?.analysis.record;
@@ -3342,6 +3984,7 @@ export class PlysmithApplicationStore {
           expectedScratchId: existingScratch?.scratchId ?? null,
           expectedScratchRevision: existingScratch?.scratchRevision ?? null,
           ...(metadata === undefined ? {} : metadata),
+          ...(lineAnchorId === undefined ? {} : { lineAnchorId }),
         });
         const preview =
           mode === 'replace_move' && result.scratch.steps.length === 0
@@ -3428,6 +4071,7 @@ export class PlysmithApplicationStore {
     const scratch = analysis.scratch;
     if (
       scratch?.intent.kind !== 'inventory_revision' ||
+      scratch.cursor !== scratch.steps.length ||
       (scratch.intent.mode === 'replace_move' && scratch.steps.length === 0)
     ) {
       return undefined;
@@ -3467,6 +4111,41 @@ export class PlysmithApplicationStore {
       return undefined;
     }
     return bound.preview;
+  }
+
+  #presentAnalysisTreePath(
+    analysis: AnalysisWorkspaceDto,
+  ): AnalysisWorkspaceDto {
+    const record = analysis.record;
+    if (record?.tree === undefined || analysis.scratch !== undefined)
+      return analysis;
+    const key = scopeKey(analysis.scope);
+    const remembered = this.#analysisTreePaths.get(key);
+    const preferred =
+      remembered?.itemId === record.itemId &&
+      remembered.revisionId === record.revisionId
+        ? chessTreePath(record, remembered.tipAnchorId)
+        : undefined;
+    const cursor =
+      preferred === undefined
+        ? -1
+        : record.currentAnchorId === record.rootAnchorId
+          ? 0
+          : preferred.steps.findIndex(
+              (step) => step.anchorId === record.currentAnchorId,
+            ) + 1;
+    const path =
+      preferred !== undefined &&
+      cursor >= 0 &&
+      (cursor > 0 || record.currentAnchorId === record.rootAnchorId)
+        ? { steps: preferred.steps, cursor }
+        : { steps: record.steps, cursor: record.cursor };
+    this.#analysisTreePaths.set(key, {
+      itemId: record.itemId,
+      revisionId: record.revisionId,
+      tipAnchorId: path.steps.at(-1)?.anchorId ?? record.rootAnchorId,
+    });
+    return { ...analysis, record: { ...record, ...path } };
   }
 
   #analysisRequest(): GetAnalysisWorkspaceRequestDto {
@@ -3518,6 +4197,35 @@ export class PlysmithApplicationStore {
     await this.#runCommand(command, (client) => action(client, request));
   }
 
+  async #readInventoryWindow(
+    client: PlysmithApplicationClient,
+  ): Promise<SearchInventoryResultDto> {
+    const request = this.#inventoryRequest();
+    const key = JSON.stringify({ scope: this.#scope, request });
+    if (key !== this.#inventoryWindowKey) {
+      this.#inventoryWindowKey = key;
+      this.#inventoryPageCount = 1;
+    }
+    const pages = this.#inventoryPageCount;
+    const lifecycle = this.#lifecycle;
+    let result = await client.searchInventory(request);
+    for (
+      let page = 1;
+      page < pages && result.nextCursor !== undefined;
+      page++
+    ) {
+      if (lifecycle !== this.#lifecycle || key !== this.#inventoryWindowKey)
+        return result;
+      const next = await client.searchInventory({
+        ...request,
+        cursor: result.nextCursor,
+      });
+      if (next.dataRevision !== result.dataRevision) return next;
+      result = mergeInventoryPages(result, next);
+    }
+    return result;
+  }
+
   #inventoryRequest(): SearchInventoryRequestDto {
     return {
       pageSize: '50',
@@ -3562,6 +4270,137 @@ export class PlysmithApplicationStore {
     });
   }
 
+  async openImport(): Promise<void> {
+    if (this.#importSession.open) return;
+    this.#importSession = { open: true };
+    this.#publishViewState();
+  }
+
+  async closeImport(): Promise<void> {
+    if (this.#busyCommand !== undefined) return;
+    const preview = this.#importSession.preview;
+    this.#importSession = { open: false };
+    this.#publishViewState();
+    if (preview !== undefined) {
+      try {
+        await this.#client?.discardImport({ previewId: preview.previewId });
+      } catch {
+        // Unpublished previews expire in the host; closing loses no inventory data.
+      }
+    }
+  }
+
+  async chooseImportFile(): Promise<void> {
+    const lifecycle = this.#lifecycle;
+    if (
+      this.#busyCommand !== undefined ||
+      this.#options.chooseImportFile === undefined
+    )
+      return;
+    const previous = this.#importSession;
+    const input = await this.#runImportCommand(async (client) => {
+      const inputLocator = await this.#options.chooseImportFile!();
+      if (inputLocator === undefined) return null;
+      const registered = await client.registerImportInput({ inputLocator });
+      if (previous.preview !== undefined)
+        await client.discardImport({ previewId: previous.preview.previewId });
+      return registered;
+    });
+    if (lifecycle !== this.#lifecycle) return;
+    if (input === null) {
+      this.#importSession = previous;
+      this.#publishViewState();
+      return;
+    }
+    if (input === undefined) return;
+    this.#importSession = { open: true, input };
+    this.#publishViewState();
+    await this.prepareImport();
+  }
+
+  async prepareImport(options: ImportPreparation = {}): Promise<void> {
+    const lifecycle = this.#lifecycle;
+    const input = this.#importSession.input;
+    const state = this.#readyState();
+    if (input === undefined || state === undefined) return;
+    const preview = await this.#runImportCommand((client) =>
+      client.prepareImport({
+        ...options,
+        inputHandle: input.inputHandle,
+        languageTag: state.preferences.uiLocale,
+      }),
+    );
+    if (lifecycle !== this.#lifecycle || preview === undefined) return;
+    this.#importSession = { open: true, preview };
+    this.#publishViewState();
+  }
+
+  async retryImportAsLatin1(): Promise<void> {
+    await this.prepareImport({ encoding: 'iso-8859-1' });
+  }
+
+  async checkImportNames(
+    candidates: Parameters<
+      PlysmithHostClient['checkImportNames']
+    >[0]['candidates'],
+  ): ReturnType<PlysmithHostClient['checkImportNames']> {
+    if (this.#client === undefined) throw new Error('Host unavailable');
+    return this.#client.checkImportNames({ candidates });
+  }
+
+  async publishImport(options: ImportPublication): Promise<void> {
+    const lifecycle = this.#lifecycle;
+    const preview = this.#importSession.preview;
+    if (preview === undefined || this.#busyCommand !== undefined) return;
+    const published = await this.#runCommand(
+      'import_command',
+      (client) =>
+        client.publishImport({ ...options, previewId: preview.previewId }),
+      false,
+    );
+    if (lifecycle !== this.#lifecycle) return;
+    if (published === undefined) {
+      this.#importSession = {
+        ...(this.#errorCode === 'import.not_found'
+          ? { open: true }
+          : this.#importSession),
+        errorCode: this.#errorCode ?? 'host.unavailable',
+      };
+      await this.refresh();
+    } else {
+      this.#importSession = {
+        open: true,
+        completedCount: published.items.length,
+      };
+      this.#inventoryContextOnly = false;
+      if (published.folderId !== undefined)
+        this.#selectedInventoryFolders.set(
+          scopeKey(this.#scope),
+          published.folderId,
+        );
+      await this.refresh();
+    }
+    if (lifecycle === this.#lifecycle) this.#finishCommand();
+  }
+
+  async #runImportCommand<T>(
+    action: (client: PlysmithApplicationClient) => Promise<T>,
+  ): Promise<T | undefined> {
+    if (this.#busyCommand !== undefined) return undefined;
+    const lifecycle = this.#lifecycle;
+    this.#importSession = { ...this.#importSession, errorCode: undefined };
+    const result = await this.#runCommand('import_command', action, false);
+    if (lifecycle !== this.#lifecycle) return undefined;
+    if (result === undefined) {
+      this.#importSession = {
+        ...this.#importSession,
+        errorCode: this.#errorCode ?? 'host.unavailable',
+      };
+      this.#publishViewState();
+    } else this.#finishCommand();
+    return result;
+  }
+
   async #runCommand<T>(
     command: ApplicationCommand,
     action: (client: PlysmithApplicationClient) => Promise<T>,
@@ -3586,6 +4425,7 @@ export class PlysmithApplicationStore {
       if (lifecycle !== this.#lifecycle) return undefined;
       succeeded = true;
       if (refreshAfter) await this.refresh();
+      if (lifecycle !== this.#lifecycle) return undefined;
       this.#diagnose({
         level: 'info',
         eventCode: 'renderer.command.completed',
@@ -3598,6 +4438,7 @@ export class PlysmithApplicationStore {
       if (lifecycle !== this.#lifecycle) return undefined;
       const errorCode = hostErrorCode(error);
       await this.refresh();
+      if (lifecycle !== this.#lifecycle) return undefined;
       this.#errorCode = errorCode;
       this.#diagnose({
         level: 'error',
@@ -3889,6 +4730,7 @@ export class PlysmithApplicationStore {
     this.#setState(
       Object.freeze({
         phase: 'ready',
+        importSession: this.#importSession,
         status: state.status,
         preferences: state.preferences,
         diagnostics: state.diagnostics,
@@ -4097,6 +4939,50 @@ function sameDataRevision(
   return revisions.every((revision) => revision === revisions[0]);
 }
 
+function mergeInventoryPages(
+  first: SearchInventoryResultDto,
+  next: SearchInventoryResultDto,
+): SearchInventoryResultDto {
+  const known = new Set(first.items.map((item) => item.itemId));
+  const items = [
+    ...first.items,
+    ...next.items.filter((item) => !known.has(item.itemId)),
+  ];
+  const itemIds = new Set(items.map((item) => item.itemId));
+  const ancestors = new Map(
+    [...first.ancestors, ...next.ancestors].map((item) => [item.itemId, item]),
+  );
+  const edges = new Map(
+    [...first.provenanceEdges, ...next.provenanceEdges].map((edge) => [
+      edge.itemId,
+      edge,
+    ]),
+  );
+  return Object.freeze({
+    items: Object.freeze(items),
+    ancestors: Object.freeze(
+      [...ancestors.values()].filter((item) => !itemIds.has(item.itemId)),
+    ),
+    provenanceEdges: Object.freeze([...edges.values()]),
+    dataRevision: next.dataRevision,
+    ...(next.nextCursor === undefined ? {} : { nextCursor: next.nextCursor }),
+  });
+}
+
+function inventorySelectionConflict(): HostClientProblem {
+  return new HostClientProblem({
+    type: 'urn:plysmith:problem:workspace.removal_preview_conflict',
+    title: 'Selection changed',
+    status: 409,
+    detail: 'The approved inventory selection is no longer current.',
+    instance: 'urn:plysmith:problem:inventory-selection',
+    code: 'workspace.removal_preview_conflict',
+    correlationId: 'inventory-selection',
+    retryable: false,
+    parameters: {},
+  });
+}
+
 function hostErrorCode(error: unknown): string {
   return error instanceof HostClientProblem
     ? error.problem.code
@@ -4111,6 +4997,16 @@ function sameScope(left: WorkScope, right: WorkScope): boolean {
   );
 }
 
+function analysisNoteFormKey(draft: AnalysisNoteFormDraft): string {
+  return JSON.stringify([
+    draft.targetKey,
+    draft.kind,
+    ...(draft.kind === 'edit'
+      ? [draft.contributionId, draft.contributionVersion]
+      : []),
+  ]);
+}
+
 function scopeKey(scope: WorkScope): string {
   return scope.kind === 'free' ? 'free' : scope.contextId;
 }
@@ -4119,6 +5015,7 @@ function bindInventoryRevisionPreview(
   scope: WorkScope,
   scratch: AnalysisWorkspaceDto['scratch'],
   preview: InventoryRevisionPreviewDto | undefined,
+  comment?: SaveInventoryRevisionRequestDto['comment'],
 ): BoundInventoryRevisionPreview | undefined {
   if (scratch === undefined || preview === undefined) return undefined;
   return Object.freeze({
@@ -4126,6 +5023,52 @@ function bindInventoryRevisionPreview(
     scratchId: scratch.scratchId,
     scratchRevision: scratch.scratchRevision,
     preview,
+    ...(comment === undefined ? {} : { comment }),
+  });
+}
+
+function inventoryRevisionNeedsLossReview(
+  previous: InventoryRevisionPreviewDto,
+  next: InventoryRevisionPreviewDto,
+): boolean {
+  // Counts cannot identify replaced notes or scratch work in a newer snapshot.
+  if (
+    next.dataRevision !== previous.dataRevision &&
+    (next.historicalGlobalContributionCount > 0 ||
+      next.followingContexts.some(
+        (context) =>
+          context.contributionCount > 0 || context.changedScratchCount > 0,
+      ))
+  )
+    return true;
+  if (
+    next.historicalGlobalContributionCount >
+    previous.historicalGlobalContributionCount
+  )
+    return true;
+  if (
+    next.followingContexts.some((context) => {
+      const before = previous.followingContexts.find(
+        (entry) => entry.contextId === context.contextId,
+      );
+      return (
+        context.contributionCount > (before?.contributionCount ?? 0) ||
+        context.changedScratchCount > (before?.changedScratchCount ?? 0)
+      );
+    })
+  )
+    return true;
+  return next.affectedContexts.some((context) => {
+    const before = previous.affectedContexts.find(
+      (entry) => entry.contextId === context.contextId,
+    );
+    return (
+      before === undefined ||
+      context.contributionCount > before.contributionCount ||
+      context.referenceCount > before.referenceCount ||
+      context.managementResumeCount > before.managementResumeCount ||
+      context.analysisResumeCount > before.analysisResumeCount
+    );
   });
 }
 

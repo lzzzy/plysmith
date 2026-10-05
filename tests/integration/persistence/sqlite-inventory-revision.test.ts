@@ -21,6 +21,7 @@ import {
   ResolvePendingRevisionImpact,
   SaveInventoryRevision,
   StartInventoryRevision,
+  type InventoryRevisionComment,
 } from '../../../app/application/inventory/index.ts';
 import {
   AddContextReference,
@@ -29,7 +30,8 @@ import {
   RemoveContextItem,
   SetWorkScopeResume,
 } from '../../../app/application/workspace/index.ts';
-import type { AnchorId } from '../../../app/domain/identity/index.ts';
+import { localId, type AnchorId } from '../../../app/domain/identity/index.ts';
+import type { ChessTreeCandidate } from '../../../app/domain/inventory/chess-tree-candidate.ts';
 import {
   contextWorkScope,
   freeWorkScope,
@@ -255,6 +257,1702 @@ async function addIndependentContextUse(
   return context;
 }
 
+async function createBranchingRecord(
+  store: SqlitePersistenceAdapter,
+  itemType: 'analysis' | 'game' = 'analysis',
+) {
+  const rules = new ChessJsRulesAdapter();
+  const root = rules.initialState();
+  const nodes: ChessTreeCandidate['nodes'][number][] = [];
+  for (const [parentNodeIndex, siblingOrder, value] of [
+    [null, 0, 'e4'],
+    [0, 0, 'e5'],
+    [null, 1, 'd4'],
+    [2, 0, 'd5'],
+    [3, 0, 'Nf3'],
+    [3, 1, 'c4'],
+    [2, 1, 'Nf6'],
+    [null, 2, 'Nf3'],
+    [7, 0, 'd5'],
+    [8, 0, 'd4'],
+  ] as const) {
+    const applied = rules.applyMove(
+      parentNodeIndex === null ? root : nodes[parentNodeIndex]!.after,
+      [],
+      { kind: 'notation', value, locale: 'en-GB' },
+    );
+    assert.ok(applied.ok);
+    nodes.push({
+      nodeIndex: nodes.length,
+      parentNodeIndex,
+      siblingOrder,
+      move: applied.value.move,
+      after: applied.value.after,
+      comments: [`Note ${nodes.length}`],
+      startingComments: [],
+    });
+  }
+  const published = await store.publishImport({
+    candidates: [
+      {
+        sourceOrder: 0,
+        itemType,
+        displayName: 'Tree',
+        content: {
+          sourceOrder: 0,
+          suggestedName: 'Tree',
+          status: 'ready',
+          root,
+          nodes,
+          initialComments: ['Root note'],
+          result: '*',
+          findings: [],
+        },
+      },
+    ],
+    folder: { kind: 'unfiled' },
+    languageTag: 'en-GB',
+    occurredAt: timestamp,
+  });
+  const record = (await store.readAnalysisRevision({
+    scope: freeWorkScope(),
+    ...published.items[0]!,
+  }))!;
+  assert.equal(record.tree!.nodes.length, 10);
+  return record;
+}
+
+for (const mode of ['metadata', 'truncate_after'] as const) {
+  test(`release audit: unassigned metadata draft survives external ${mode}`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createFrenchLine(cases);
+    const context = await cases.createContext.execute({
+      displayName: 'Unassigned',
+    });
+    const contextScope = contextWorkScope(context.context.contextId);
+    const draft = await cases.startRevision.execute({
+      scope: contextScope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+      mode: 'metadata',
+      displayName: 'Unsaved name',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const draftExpected = {
+      scope: contextScope,
+      expectedScratchId: draft.scratch.scratchId,
+      expectedScratchRevision: draft.scratch.scratchRevision,
+    };
+    const draftPreview = await cases.previewRevision.execute(draftExpected);
+    const before = await store.readContextAnalysisWorkspace(
+      context.context.contextId,
+    );
+    const scope = freeWorkScope();
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+      mode,
+      displayName: 'Published name',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const expected = {
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.deepEqual(preview.affectedContexts, []);
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    assert.deepEqual(saved.impacts, []);
+    const after = await store.readContextAnalysisWorkspace(
+      context.context.contextId,
+    );
+    assert.deepEqual(after?.scratch, before?.scratch);
+    assert.equal(after?.resumeVersion, before?.resumeVersion);
+    assert.equal(after?.record?.contextMember, false);
+    assert.deepEqual(
+      inspectStore(store, (db) =>
+        db.prepare('SELECT * FROM workspace_context_item').all(),
+      ),
+      [],
+    );
+    await assert.rejects(
+      cases.saveRevision.execute({
+        ...draftExpected,
+        previewFingerprint: draftPreview.previewFingerprint,
+      }),
+      { problemCode: 'inventory.revision_conflict' },
+    );
+    assert.deepEqual(
+      (await store.readContextAnalysisWorkspace(context.context.contextId))
+        ?.scratch,
+      before?.scratch,
+    );
+  });
+}
+
+for (const resolution of [
+  'keep_copy',
+  'use_target',
+  'remove_from_context',
+] as const) {
+  test(`release audit: game metadata impact supports ${resolution}`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store, 'game');
+    const context = await addIndependentContextUse(cases, base, 'Game review');
+    await addIndependentContextUse(cases, base, 'Other use');
+    const contextScope = contextWorkScope(context.context.contextId);
+    const note = await cases.createPositionNote.execute({
+      scope: contextScope,
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+      anchorId: base.tree!.nodes[3]!.anchorId,
+      body: 'Context insight',
+      languageTag: 'en-GB',
+      noteScope: { kind: 'context', contextId: context.context.contextId },
+    });
+    await cases.startRevision.execute({
+      scope: contextScope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+      mode: 'metadata',
+      displayName: 'Context name',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const scope = freeWorkScope();
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+      mode: 'metadata',
+      displayName: 'New game name',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const expected = {
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const impact = await cases.getImpact.execute({
+      impactId: saved.impacts[0]!.impactId,
+    });
+    const result = await cases.resolveImpact.execute({
+      impactId: impact.impactId,
+      expectedImpactVersion: impact.impactVersion,
+      expectedDataRevision: impact.dataRevision,
+      resolution:
+        resolution === 'keep_copy'
+          ? { kind: resolution, displayName: 'Retained analysis' }
+          : { kind: resolution },
+    });
+    assert.equal(
+      (await cases.getContext.execute({ contextId: context.context.contextId }))
+        .context.pendingRevisionImpactCount,
+      0,
+    );
+    const original = (await store.readAnalysisRevision({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    assert.equal(original.itemType, 'game');
+    assert.deepEqual(original.contributions, base.contributions);
+    if (resolution === 'keep_copy') {
+      assert.ok(result.contextItemId);
+      assert.ok(result.contextRevisionId);
+      const copy = (await store.readAnalysisRevision({
+        scope: contextScope,
+        itemId: result.contextItemId,
+        revisionId: result.contextRevisionId,
+      }))!;
+      assert.equal(copy.itemType, 'analysis');
+      assert.deepEqual(
+        copy.tree!.nodes,
+        base.tree!.nodes.map((node, index) => ({
+          ...node,
+          anchorId: copy.tree!.nodes[index]!.anchorId,
+        })),
+      );
+      assert.deepEqual(copy.origin, {
+        kind: 'inventory_anchor',
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: base.rootAnchorId,
+      });
+      assert.equal(copy.contributions.length, 1);
+      assert.equal(copy.contributions[0]!.body, 'Context insight');
+      assert.deepEqual(
+        copy.contributions[0]!.contributionId,
+        note.contributionId,
+      );
+      assert.deepEqual(
+        copy.contributions[0]!.anchorId,
+        copy.tree!.nodes[3]!.anchorId,
+      );
+      const scratch = (await store.readContextAnalysisWorkspace(
+        context.context.contextId,
+      ))!.scratch!;
+      assert.equal(scratch.origin.kind, 'inventory_anchor');
+      if (scratch.origin.kind === 'inventory_anchor')
+        assert.deepEqual(scratch.origin.itemId, copy.itemId);
+      assert.deepEqual(
+        inspectStore(store, (db) =>
+          db.prepare('PRAGMA foreign_key_check').all(),
+        ),
+        [],
+      );
+    }
+  });
+}
+
+for (const scenario of ['resume', 'scratch', 'removed_anchor'] as const) {
+  test(`release audit: free resume follows only compatible revisions (${scenario})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createFrenchLine(cases);
+    if (scenario !== 'resume') {
+      const started = await cases.update.execute({
+        scope: freeWorkScope(),
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        action: {
+          kind: 'start',
+          origin: {
+            kind: 'inventory_anchor',
+            itemId: base.itemId,
+            revisionId: base.revisionId,
+            anchorId: base.steps.at(-1)!.anchorId,
+          },
+        },
+      });
+      await cases.update.execute({
+        scope: freeWorkScope(),
+        expectedScratchId: started.scratch!.scratchId,
+        expectedScratchRevision: started.scratch!.scratchRevision,
+        action: {
+          kind: 'apply_move',
+          move: { kind: 'notation', value: 'Nc3', locale: 'en-GB' },
+        },
+      });
+    }
+    const before = await store.readFreeAnalysisWorkspace();
+    const context = await addIndependentContextUse(
+      cases,
+      base,
+      'Revision source',
+    );
+    const scope = contextWorkScope(context.context.contextId);
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+      mode: scenario === 'removed_anchor' ? 'truncate_after' : 'metadata',
+      displayName: 'Renamed analysis',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const expected = {
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const after = await store.readFreeAnalysisWorkspace();
+    const storedResume = inspectStore(store, (db) =>
+      db
+        .prepare(
+          'SELECT revision_id AS revisionId FROM workspace_analysis_resume WHERE context_id IS NULL',
+        )
+        .get(),
+    ) as { revisionId: number };
+    if (scenario === 'removed_anchor') {
+      assert.equal(storedResume.revisionId, base.revisionId.value);
+      assert.deepEqual(after.scratch, before.scratch);
+      assert.equal(after.record?.historical, true);
+    } else {
+      assert.equal(storedResume.revisionId, saved.revisionId.value);
+      assert.equal(after.record?.historical, false);
+      assert.equal(after.record?.displayName, 'Renamed analysis');
+      assert.equal(after.resumeVersion, before.resumeVersion! + 1);
+      assert.deepEqual(after.scratch?.steps, before.scratch?.steps);
+      if (scenario === 'scratch') {
+        assert.equal(after.scratch?.origin.kind, 'inventory_anchor');
+        if (after.scratch?.origin.kind === 'inventory_anchor')
+          assert.deepEqual(after.scratch.origin.revisionId, saved.revisionId);
+      }
+    }
+  });
+}
+
+for (const contextual of [false, true]) {
+  test(`repeated truncation keeps the draft identity and rebases the stored root (context: ${contextual})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const getWorkspace = new GetAnalysisWorkspace({
+      reader: store,
+      freeSession: cases.freeSession,
+      rules: new ChessJsRulesAdapter(),
+      storeStatus: store,
+    });
+    const base = await createBranchingRecord(store);
+    const nodes = base.tree!.nodes;
+    const context = contextual
+      ? await addIndependentContextUse(cases, base, 'Repeated takeback')
+      : undefined;
+    const scope =
+      context === undefined
+        ? freeWorkScope()
+        : contextWorkScope(context.context.contextId);
+    const primed = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: nodes[4]!.anchorId,
+      mode: 'extend',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    assert.equal(primed.scratch.root.playState.halfmoveClock, 1);
+    let scratchId = primed.scratch.scratchId;
+    let scratchRevision = primed.scratch.scratchRevision;
+    let previousPreview:
+      Awaited<ReturnType<typeof cases.previewRevision.execute>> | undefined;
+    for (const [cut, continuation] of [
+      [nodes[3]!.anchorId, nodes[4]!.anchorId],
+      [nodes[2]!.anchorId, nodes[3]!.anchorId],
+      [base.rootAnchorId, nodes[2]!.anchorId],
+    ] as const) {
+      const request = {
+        scope,
+        itemId: base.itemId,
+        baseRevisionId: base.revisionId,
+        anchorId: cut,
+        lineAnchorId: continuation,
+        mode: 'truncate_after' as const,
+        expectedScratchId: scratchId,
+        expectedScratchRevision: scratchRevision,
+      };
+      const started = await cases.startRevision.execute(request);
+      assert.equal(started.scratch.scratchId, scratchId);
+      assert.equal(started.scratch.scratchRevision, scratchRevision + 1);
+      await assert.rejects(cases.startRevision.execute(request), {
+        problemCode: 'analysis.scratch_revision_conflict',
+      });
+      scratchId = started.scratch.scratchId;
+      scratchRevision = started.scratch.scratchRevision;
+      const workspace = await getWorkspace.execute({ scope });
+      assert.deepEqual(workspace.scratch, started.scratch);
+      assert.equal(workspace.scratch!.origin.kind, 'inventory_anchor');
+      assert.equal(workspace.record!.currentAnchorId.value, continuation.value);
+      const expectedRoot =
+        cut.value === base.rootAnchorId.value
+          ? base.root
+          : nodes.find((node) => node.anchorId.value === cut.value)!.after;
+      assert.deepEqual(workspace.scratch!.root, expectedRoot);
+      const preview = await cases.previewRevision.execute({
+        scope,
+        expectedScratchId: scratchId,
+        expectedScratchRevision: scratchRevision,
+      });
+      assert.deepEqual(
+        preview.removedSteps[0]!.move,
+        nodes.find((node) => node.anchorId.value === continuation.value)!.move,
+      );
+      if (previousPreview !== undefined) {
+        await assert.rejects(
+          cases.saveRevision.execute({
+            scope,
+            expectedScratchId: scratchId,
+            expectedScratchRevision: scratchRevision,
+            previewFingerprint: previousPreview.previewFingerprint,
+          }),
+        );
+      }
+      previousPreview = preview;
+    }
+    const saved = await cases.saveRevision.execute({
+      scope,
+      expectedScratchId: scratchId,
+      expectedScratchRevision: scratchRevision,
+      previewFingerprint: previousPreview!.previewFingerprint,
+    });
+    const current = await cases.getRevision.execute({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    });
+    assert.deepEqual(
+      current.steps.map((step) => step.move.san),
+      ['e4', 'e5'],
+    );
+    assert.deepEqual(
+      current.tree!.nodes.map((node) => node.anchorId.value),
+      nodes
+        .filter((_, index) => ![2, 3, 4, 5, 6].includes(index))
+        .map((node) => node.anchorId.value),
+    );
+    assert.equal(
+      current.tree!.nodes.some((node) => node.move.san === 'd4'),
+      true,
+    );
+    assert.deepEqual(
+      (
+        await cases.getRevision.execute({
+          scope,
+          itemId: base.itemId,
+          revisionId: base.revisionId,
+        })
+      ).tree,
+      base.tree,
+    );
+  });
+}
+
+for (const selected of [5, 2, 6] as const) {
+  test(`truncation selects the intended branch instead of its main sibling (node ${selected})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store);
+    const nodes = base.tree!.nodes;
+    const node = nodes[selected]!;
+    const parent =
+      node.parentNodeIndex === null
+        ? base.rootAnchorId
+        : nodes[node.parentNodeIndex]!.anchorId;
+    const started = await cases.startRevision.execute({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: parent,
+      lineAnchorId: node.anchorId,
+      mode: 'truncate_after',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const expected = {
+      scope: freeWorkScope(),
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.deepEqual(preview.removedSteps[0]!.move, node.move);
+    assert.equal(preview.noOp, false);
+    const removed = selected === 2 ? [2, 3, 4, 5, 6] : [selected];
+    assert.equal(preview.historicalGlobalContributionCount, removed.length);
+    const workspace = await store.readFreeAnalysisWorkspace();
+    assert.equal(workspace.record!.currentAnchorId.value, node.anchorId.value);
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const current = await cases.getRevision.execute({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    });
+    assert.deepEqual(
+      current.steps.map((step) => step.move.san),
+      ['e4', 'e5'],
+    );
+    assert.deepEqual(
+      current.tree!.nodes.map((entry) => entry.anchorId.value),
+      nodes
+        .filter((_, index) => !removed.includes(index))
+        .map((entry) => entry.anchorId.value),
+    );
+    assert.equal(saved.currentAnchorId.value, parent.value);
+    assert.deepEqual(
+      (
+        await cases.getRevision.execute({
+          scope: freeWorkScope(),
+          itemId: base.itemId,
+          revisionId: base.revisionId,
+        })
+      ).tree,
+      base.tree,
+    );
+  });
+}
+
+async function prepareVariation(
+  cases: ReturnType<typeof useCases>,
+  base: Awaited<ReturnType<typeof createBranchingRecord>>,
+  anchorId: AnchorId,
+  moves: readonly string[],
+  scope = freeWorkScope(),
+) {
+  let { scratch } = await cases.startRevision.execute({
+    scope,
+    itemId: base.itemId,
+    baseRevisionId: base.revisionId,
+    anchorId,
+    mode: 'add_variation',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  for (const value of moves) {
+    const updated = await cases.update.execute({
+      scope,
+      expectedScratchId: scratch.scratchId,
+      expectedScratchRevision: scratch.scratchRevision,
+      action: {
+        kind: 'apply_move',
+        move: { kind: 'notation', value, locale: 'en-GB' },
+      },
+    });
+    scratch = updated.scratch!;
+  }
+  return {
+    scope,
+    expectedScratchId: scratch.scratchId,
+    expectedScratchRevision: scratch.scratchRevision,
+  };
+}
+
+for (const scenario of [
+  { selected: -1, moves: ['d4', 'd5', 'Nc3'], reused: 2, added: 1 },
+  { selected: 3, moves: ['Nc3', 'Nf6'], reused: 0, added: 2 },
+  { selected: 0, moves: ['c5'], reused: 0, added: 1 },
+  { selected: 1, moves: ['Nf3'], reused: 0, added: 1 },
+  { selected: -1, moves: ['d4', 'd5', 'Nf3'], reused: 3, added: 0 },
+  { selected: -1, moves: [], reused: 0, added: 0 },
+] as const) {
+  test(`native variation preserves the whole tree and reuses prefixes (${scenario.selected}: ${scenario.moves.join(' ')})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store);
+    const selected =
+      scenario.selected < 0
+        ? base.rootAnchorId
+        : base.tree!.nodes[scenario.selected]!.anchorId;
+    const request = await prepareVariation(
+      cases,
+      base,
+      selected,
+      scenario.moves,
+    );
+    const comment: InventoryRevisionComment = {
+      body: 'Optional comment',
+      languageTag: 'en-GB',
+      noteScope: { kind: 'global' },
+    };
+    const preview = await cases.previewRevision.execute({
+      ...request,
+      comment,
+    });
+    assert.deepEqual(preview.removedSteps, []);
+    assert.equal(preview.addedSteps.length, scenario.added);
+    assert.deepEqual(
+      preview.addedSteps.map((step) => step.move.san),
+      scenario.moves.slice(scenario.reused),
+    );
+    assert.deepEqual(preview.affectedContexts, []);
+    assert.equal(preview.noOp, scenario.added === 0);
+    const saved = await cases.saveRevision.execute({
+      ...request,
+      comment,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const current = (await store.readAnalysisRevision({
+      scope: request.scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    assert.equal(
+      current.tree!.nodes.length,
+      base.tree!.nodes.length + scenario.added,
+    );
+    for (const old of base.tree!.nodes) {
+      const retained = current.tree!.nodes.find(
+        (node) => node.anchorId.value === old.anchorId.value,
+      )!;
+      assert.ok(retained);
+      assert.deepEqual(retained.move, old.move);
+      assert.deepEqual(retained.after, old.after);
+      assert.equal(retained.siblingOrder, old.siblingOrder);
+      const parentAnchor = (record: typeof base, index: number | null) =>
+        index === null
+          ? record.rootAnchorId
+          : record.tree!.nodes[index]!.anchorId;
+      assert.deepEqual(
+        parentAnchor(current, retained.parentNodeIndex),
+        parentAnchor(base, old.parentNodeIndex),
+      );
+    }
+    assert.deepEqual(
+      current.steps.map((step) => step.move.san),
+      ['e4', 'e5'],
+    );
+    const historical = (await store.readAnalysisRevision({
+      scope: request.scope,
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+    }))!;
+    assert.deepEqual(historical.tree, base.tree);
+    if (scenario.added === 0) {
+      assert.deepEqual(saved.revisionId, base.revisionId);
+      assert.equal(saved.commentContributionId, undefined);
+      assert.deepEqual(current.contributions, base.contributions);
+      assert.equal(saved.dataRevision, preview.dataRevision);
+      assert.equal(
+        (await cases.freeSession.read())?.scratchId,
+        request.expectedScratchId,
+      );
+    } else {
+      assert.ok(saved.commentContributionId);
+      const note = current.contributions.find(
+        (entry) =>
+          String(entry.contributionId.value) === saved.commentContributionId,
+      )!;
+      assert.deepEqual(note.anchorId, selected);
+      assert.equal(note.body, comment.body);
+      assert.deepEqual(note.moves, []);
+      assert.equal(saved.dataRevision, preview.dataRevision + 1);
+      assert.equal(await cases.freeSession.read(), undefined);
+    }
+  });
+}
+
+test('native variations keep transposed occurrences separate and preserve context following', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createBranchingRecord(store);
+  const context = await addIndependentContextUse(cases, base, 'Training');
+  const first = await prepareVariation(
+    cases,
+    base,
+    base.tree!.nodes[4]!.anchorId,
+    ['g6'],
+  );
+  const p1 = await cases.previewRevision.execute(first);
+  const one = await cases.saveRevision.execute({
+    ...first,
+    previewFingerprint: p1.previewFingerprint,
+  });
+  const revised = (await store.readAnalysisRevision({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    revisionId: one.revisionId,
+  }))!;
+  const second = await prepareVariation(
+    cases,
+    revised,
+    base.tree!.nodes[9]!.anchorId,
+    ['g6'],
+  );
+  const p2 = await cases.previewRevision.execute(second);
+  assert.equal(p2.noOp, false);
+  const two = await cases.saveRevision.execute({
+    ...second,
+    previewFingerprint: p2.previewFingerprint,
+  });
+  const current = (await store.readAnalysisRevision({
+    scope: contextWorkScope(context.context.contextId),
+    itemId: base.itemId,
+    revisionId: two.revisionId,
+  }))!;
+  const a = current.tree!.nodes.find(
+    (node) => node.anchorId.value === one.currentAnchorId.value,
+  )!;
+  const b = current.tree!.nodes.find(
+    (node) => node.anchorId.value === two.currentAnchorId.value,
+  )!;
+  assert.equal(a.after.position.positionKey, b.after.position.positionKey);
+  assert.notEqual(a.anchorId.value, b.anchorId.value);
+  assert.notEqual(a.parentNodeIndex, b.parentNodeIndex);
+  assert.deepEqual(current.contributions, base.contributions);
+  assert.equal(current.historical, false);
+  assert.deepEqual(two.impacts, []);
+});
+
+for (const contextComment of [false, true]) {
+  test(`native variation and editable comment commit atomically (context: ${contextComment})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store);
+    const context = await addIndependentContextUse(cases, base, 'Training');
+    const scope = contextComment
+      ? contextWorkScope(context.context.contextId)
+      : freeWorkScope();
+    const request = await prepareVariation(
+      cases,
+      base,
+      base.tree!.nodes[0]!.anchorId,
+      ['c5'],
+      scope,
+    );
+    const comment: InventoryRevisionComment = {
+      body: '  1... c5: Sicilian  ',
+      languageTag: 'en-GB',
+      noteScope: contextComment
+        ? { kind: 'context', contextId: context.context.contextId }
+        : { kind: 'global' },
+    };
+    const preview = await cases.previewRevision.execute({
+      ...request,
+      comment,
+    });
+    for (const changed of [
+      { ...comment, body: 'Different' },
+      { ...comment, languageTag: 'de-DE' },
+    ]) {
+      await assert.rejects(
+        cases.saveRevision.execute({
+          ...request,
+          comment: changed,
+          previewFingerprint: preview.previewFingerprint,
+        }),
+      );
+    }
+    await assert.rejects(
+      cases.saveRevision.execute({
+        ...request,
+        comment,
+        expectedScratchRevision: request.expectedScratchRevision - 1,
+        previewFingerprint: preview.previewFingerprint,
+      }),
+    );
+    await assert.rejects(
+      cases.saveRevision.execute({
+        ...request,
+        previewFingerprint: preview.previewFingerprint,
+      }),
+    );
+    const database = new Database(storeDatabasePaths.get(store)!);
+    try {
+      database.exec(
+        "CREATE TRIGGER reject_variant_comment BEFORE INSERT ON workspace_contribution WHEN NEW.body = '1... c5: Sicilian' BEGIN SELECT RAISE(ABORT, 'injected note failure'); END",
+      );
+      await assert.rejects(
+        cases.saveRevision.execute({
+          ...request,
+          comment,
+          previewFingerprint: preview.previewFingerprint,
+        }),
+      );
+      assert.equal(
+        (
+          database
+            .prepare(
+              'SELECT current_revision_id AS id FROM inventory_item WHERE item_id = ?',
+            )
+            .get(base.itemId.value) as { id: number }
+        ).id,
+        base.revisionId.value,
+      );
+      assert.equal(
+        (await cases.previewRevision.execute({ ...request, comment }))
+          .previewFingerprint,
+        preview.previewFingerprint,
+      );
+      database.exec('DROP TRIGGER reject_variant_comment');
+    } finally {
+      database.close();
+    }
+    const saved = await cases.saveRevision.execute({
+      ...request,
+      comment: { ...comment, body: comment.body.trim() },
+      previewFingerprint: preview.previewFingerprint,
+    });
+    assert.ok(saved.commentContributionId);
+    assert.equal(saved.dataRevision, preview.dataRevision + 1);
+    const record = (await store.readAnalysisRevision({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    const note = record.contributions.find(
+      (entry) =>
+        String(entry.contributionId.value) === saved.commentContributionId,
+    )!;
+    assert.equal(note.body, comment.body.trim());
+    assert.deepEqual(note.anchorId, base.tree!.nodes[0]!.anchorId);
+    assert.deepEqual(note.moves, []);
+    await store.updateAnalysisNote({
+      scope,
+      contributionId: note.contributionId,
+      expectedContributionVersion: 1,
+      body: 'Edited normally',
+      occurredAt: timestamp,
+    });
+    const edited = (await store.readAnalysisRevision({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    assert.equal(
+      edited.contributions.find(
+        (entry) => entry.contributionId.value === note.contributionId.value,
+      )?.body,
+      'Edited normally',
+    );
+    const global = (await store.readAnalysisRevision({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    assert.equal(
+      global.contributions.some(
+        (entry) => entry.contributionId.value === note.contributionId.value,
+      ),
+      !contextComment,
+    );
+  });
+}
+
+test('native variation from a black-to-move FEN preserves move clocks and nested branches', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const scope = freeWorkScope();
+  const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 17';
+  const started = await cases.update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: { kind: 'start', origin: { kind: 'fen', fen } },
+  });
+  const created = await cases.createRecord.execute({
+    scope,
+    expectedScratchId: started.scratch!.scratchId,
+    expectedScratchRevision: started.scratch!.scratchRevision,
+    displayName: 'Black FEN',
+    languageTag: 'en-GB',
+  });
+  let base = (await store.readAnalysisRevision({
+    scope,
+    itemId: created.itemId,
+    revisionId: created.revisionId,
+  }))!;
+  const first = await prepareVariation(cases, base, base.rootAnchorId, [
+    'e5',
+    'Nf3',
+    'Nc6',
+  ]);
+  const p1 = await cases.previewRevision.execute(first);
+  const saved = await cases.saveRevision.execute({
+    ...first,
+    previewFingerprint: p1.previewFingerprint,
+  });
+  base = (await store.readAnalysisRevision({
+    scope,
+    itemId: base.itemId,
+    revisionId: saved.revisionId,
+  }))!;
+  assert.equal(base.root.fen, fen);
+  assert.deepEqual(base.steps, []);
+  assert.equal(base.tree!.nodes[0]!.after.playState.fullmoveNumber, 18);
+  assert.equal(base.tree!.nodes[0]!.siblingOrder, 1);
+  const next = await prepareVariation(cases, base, base.rootAnchorId, [
+    'e5',
+    'Nc3',
+    'Nf6',
+  ]);
+  const p2 = await cases.previewRevision.execute(next);
+  assert.deepEqual(
+    p2.addedSteps.map((step) => step.move.san),
+    ['Nc3', 'Nf6'],
+  );
+  const second = await cases.saveRevision.execute({
+    ...next,
+    previewFingerprint: p2.previewFingerprint,
+  });
+  const current = (await store.readAnalysisRevision({
+    scope,
+    itemId: base.itemId,
+    revisionId: second.revisionId,
+  }))!;
+  assert.equal(current.tree!.nodes.length, 5);
+  assert.deepEqual(current.steps, []);
+  const selected = (await store.readAnalysisRevision({
+    scope,
+    itemId: base.itemId,
+    revisionId: second.revisionId,
+    anchorId: base.tree!.nodes[2]!.anchorId,
+  }))!;
+  assert.deepEqual(
+    selected.steps.map((step) => step.move.san),
+    ['e5', 'Nf3', 'Nc6'],
+  );
+  const branch = current.tree!.nodes.find((node) => node.move.san === 'Nc3')!;
+  assert.equal(branch.siblingOrder, 1);
+  assert.deepEqual(
+    current.tree!.nodes[branch.parentNodeIndex!]!.anchorId,
+    base.tree!.nodes[0]!.anchorId,
+  );
+  const fingerprints = inspectStore(
+    store,
+    (database) =>
+      database
+        .prepare(
+          'SELECT hex(content_fingerprint) AS value FROM item_revision WHERE item_id = ? ORDER BY revision_number',
+        )
+        .all(base.itemId.value) as { value: string }[],
+  );
+  assert.equal(new Set(fingerprints.map((row) => row.value)).size, 3);
+});
+
+for (const inContext of [false, true]) {
+  test(`promotes exploration explicitly to a native variation (context: ${inContext})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store);
+    const context = await addIndependentContextUse(cases, base, 'Training');
+    const scope = inContext
+      ? contextWorkScope(context.context.contextId)
+      : freeWorkScope();
+    const anchorId = base.tree!.nodes[0]!.anchorId;
+    const explored = await cases.update.execute({
+      scope,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: {
+        kind: 'start',
+        origin: {
+          kind: 'inventory_anchor',
+          itemId: base.itemId,
+          revisionId: base.revisionId,
+          anchorId,
+        },
+        firstMove: { kind: 'notation', value: 'c5', locale: 'en-GB' },
+      },
+    });
+    const promoted = await cases.promoteRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId,
+      mode: 'add_variation',
+      expectedScratchId: explored.scratch!.scratchId,
+      expectedScratchRevision: explored.scratch!.scratchRevision,
+    });
+    assert.deepEqual(promoted.scratch.steps, explored.scratch!.steps);
+    assert.equal(promoted.scratch.intent.kind, 'inventory_revision');
+    assert.ok(
+      promoted.scratch.intent.kind === 'inventory_revision' &&
+        promoted.scratch.intent.mode === 'add_variation',
+    );
+    const request = {
+      scope,
+      expectedScratchId: promoted.scratch.scratchId,
+      expectedScratchRevision: promoted.scratch.scratchRevision,
+    };
+    if (inContext) {
+      await assert.rejects(
+        cases.previewRevision.execute({
+          ...request,
+          comment: {
+            body: 'Other context',
+            languageTag: 'en-GB',
+            noteScope: {
+              kind: 'context',
+              contextId: localId('working-context', 999),
+            },
+          },
+        }),
+      );
+    }
+    const preview = await cases.previewRevision.execute(request);
+    const saved = await cases.saveRevision.execute({
+      ...request,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const current = (await store.readAnalysisRevision({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+    }))!;
+    assert.deepEqual(
+      current.steps.map((step) => step.move.san),
+      ['e4', 'e5'],
+    );
+    assert.equal(current.tree!.nodes.length, 11);
+    assert.equal(saved.commentContributionId, undefined);
+    assert.deepEqual(current.contributions, base.contributions);
+  });
+}
+
+test('native variation reuses a complete linear record and retains its scratch on no-op', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createFrenchLine(cases);
+  assert.equal(base.tree, undefined);
+  const request = await prepareVariation(cases, base, base.steps[0]!.anchorId, [
+    'e6',
+    'd4',
+    'd5',
+  ]);
+  const comment: InventoryRevisionComment = {
+    body: 'Must not be published',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'global' },
+  };
+  const preview = await cases.previewRevision.execute({ ...request, comment });
+  assert.equal(preview.noOp, true);
+  assert.deepEqual(preview.addedSteps, []);
+  const saved = await cases.saveRevision.execute({
+    ...request,
+    comment,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  assert.equal(saved.commentContributionId, undefined);
+  assert.deepEqual(saved.currentAnchorId, base.steps.at(-1)!.anchorId);
+  assert.equal(
+    (await cases.freeSession.read())?.scratchId,
+    request.expectedScratchId,
+  );
+  assert.equal(
+    (
+      await store.readAnalysisRevision({
+        scope: request.scope,
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+      })
+    )?.contributions.length,
+    0,
+  );
+});
+
+test('a competing revision invalidates a variation preview without publishing its comment', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createBranchingRecord(store);
+  const context = await addIndependentContextUse(
+    cases,
+    base,
+    'Concurrent work',
+  );
+  const request = await prepareVariation(cases, base, base.rootAnchorId, [
+    'c4',
+  ]);
+  const comment: InventoryRevisionComment = {
+    body: 'Stale note',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'global' },
+  };
+  const preview = await cases.previewRevision.execute({ ...request, comment });
+  const other = await prepareVariation(
+    cases,
+    base,
+    base.rootAnchorId,
+    ['f4'],
+    contextWorkScope(context.context.contextId),
+  );
+  const competing = await cases.previewRevision.execute(other);
+  const saved = await cases.saveRevision.execute({
+    ...other,
+    previewFingerprint: competing.previewFingerprint,
+  });
+  await assert.rejects(
+    cases.saveRevision.execute({
+      ...request,
+      comment,
+      previewFingerprint: preview.previewFingerprint,
+    }),
+  );
+  const current = (await store.readAnalysisRevision({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    revisionId: saved.revisionId,
+  }))!;
+  assert.equal(
+    current.contributions.some((entry) => entry.body === comment.body),
+    false,
+  );
+  assert.equal(
+    current.tree!.nodes.some(
+      (node) => node.parentNodeIndex === null && node.move.san === 'c4',
+    ),
+    false,
+  );
+  assert.equal(
+    (await cases.freeSession.read())?.scratchId,
+    request.expectedScratchId,
+  );
+});
+
+test('native variation rejects game changes and invalid comment scopes without writes', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const game = await createBranchingRecord(store, 'game');
+  await assert.rejects(
+    prepareVariation(cases, game, game.rootAnchorId, ['c4']),
+  );
+  const base = await createFrenchLine(cases);
+  const request = await prepareVariation(cases, base, base.rootAnchorId, [
+    'd4',
+  ]);
+  for (const comment of [
+    { body: '', languageTag: 'en-GB', noteScope: { kind: 'global' } },
+    {
+      body: 'x'.repeat(128001),
+      languageTag: 'en-GB',
+      noteScope: { kind: 'global' },
+    },
+    { body: 'Note', languageTag: 'bad tag', noteScope: { kind: 'global' } },
+    {
+      body: 'Note',
+      languageTag: 'en-GB',
+      noteScope: {
+        kind: 'context',
+        contextId: localId('working-context', 999),
+      },
+    },
+  ] satisfies InventoryRevisionComment[]) {
+    await assert.rejects(
+      cases.previewRevision.execute({ ...request, comment }),
+    );
+  }
+  assert.equal(
+    (await cases.freeSession.read())?.scratchId,
+    request.expectedScratchId,
+  );
+});
+
+for (const scenario of [
+  {
+    moves: ['d4', 'd5', 'Nf3'],
+    preserved: 3,
+    removed: [],
+    added: 0,
+    mode: 'metadata',
+    noOp: true,
+  },
+  {
+    moves: ['d4', 'd5'],
+    preserved: 2,
+    removed: [4],
+    added: 0,
+    mode: 'truncate_after',
+    noOp: false,
+  },
+  {
+    moves: ['d4', 'd5', 'Nc3'],
+    preserved: 2,
+    removed: [4],
+    added: 1,
+    mode: 'replace_move',
+    noOp: false,
+  },
+  {
+    moves: ['Nf3', 'd5', 'd4'],
+    preserved: 0,
+    removed: [2, 3, 4, 5, 6],
+    added: 3,
+    mode: 'replace_move',
+    noOp: false,
+  },
+] as const) {
+  test(`reentered branch prefix retains only its own identities (${scenario.moves.join(' ')})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store);
+    const nodes = base.tree!.nodes;
+    const scope = freeWorkScope();
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: nodes[2]!.anchorId,
+      mode: 'replace_move',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      firstMove: {
+        kind: 'notation',
+        value: scenario.moves[0],
+        locale: 'en-GB',
+      },
+    });
+    let scratch = started.scratch;
+    for (const value of scenario.moves.slice(1)) {
+      const updated = await cases.update.execute({
+        scope,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+        action: {
+          kind: 'apply_move',
+          move: { kind: 'notation', value, locale: 'en-GB' },
+        },
+      });
+      scratch = updated.scratch!;
+    }
+    const expected = {
+      scope,
+      expectedScratchId: scratch.scratchId,
+      expectedScratchRevision: scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.equal(preview.mode, scenario.mode);
+    assert.equal(preview.noOp, scenario.noOp);
+    assert.equal(preview.preservedMoveCount, scenario.preserved);
+    assert.equal(preview.addedSteps.length, scenario.added);
+    assert.equal(
+      preview.historicalGlobalContributionCount,
+      scenario.removed.length,
+    );
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    assert.equal(saved.noOp, scenario.noOp);
+    const current = await cases.getRevision.execute({
+      scope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+      anchorId: saved.currentAnchorId,
+    });
+    const removed = new Set<number>(scenario.removed);
+    assert.equal(
+      current.tree!.nodes.length,
+      nodes.length - removed.size + scenario.added,
+    );
+    for (const [index, node] of nodes.entries()) {
+      assert.equal(
+        current.tree!.nodes.some(
+          (entry) => entry.anchorId.value === node.anchorId.value,
+        ),
+        !removed.has(index),
+      );
+    }
+    assert.deepEqual(
+      current.contributions.map((note) => note.body).sort(),
+      base.contributions
+        .filter(
+          (note) =>
+            !nodes.some(
+              (node, index) =>
+                removed.has(index) &&
+                node.anchorId.value === note.anchorId.value,
+            ),
+        )
+        .map((note) => note.body)
+        .sort(),
+    );
+    const historical = await cases.getRevision.execute({
+      scope,
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+    });
+    assert.deepEqual(historical.tree, base.tree);
+  });
+}
+
+for (const mode of ['truncate_after', 'replace_move'] as const) {
+  test(`reentered prefix preserves move identity and notes before extending (${mode})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createFrenchLine(cases, 'Italian prefix', [
+      'e4',
+      'e5',
+      'Nf3',
+      'Nc6',
+      'Bc4',
+      'Bc5',
+      'O-O',
+      'Nf6',
+      'd3',
+      'O-O',
+      'Nc3',
+      'h6',
+    ]);
+    const h6 = base.steps.at(-1)!;
+    const context = await addIndependentContextUse(
+      cases,
+      base,
+      'Annotated line',
+    );
+    const contextScope = contextWorkScope(context.context.contextId);
+    for (const noteScope of [
+      { kind: 'global' as const },
+      { kind: 'context' as const, contextId: context.context.contextId },
+    ]) {
+      await cases.createPositionNote.execute({
+        scope: contextScope,
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: h6.anchorId,
+        body: `${noteScope.kind} h6 note`,
+        languageTag: 'en-GB',
+        noteScope,
+      });
+    }
+    await cases.setResume.execute({
+      scope: contextScope,
+      area: 'analyze',
+      expectedResumeVersion: null,
+      mode: 'analyze',
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+      anchorId: h6.anchorId,
+    });
+    const scope = freeWorkScope();
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId:
+        mode === 'replace_move' ? h6.anchorId : base.steps.at(-2)!.anchorId,
+      mode,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      firstMove: { kind: 'notation', value: 'h6', locale: 'en-GB' },
+    });
+    const extended = await cases.update.execute({
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+      action: {
+        kind: 'apply_move',
+        move: { kind: 'notation', value: 'h3', locale: 'en-GB' },
+      },
+    });
+    const expected = {
+      scope,
+      expectedScratchId: extended.scratch!.scratchId,
+      expectedScratchRevision: extended.scratch!.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.equal(preview.mode, 'extend');
+    assert.equal(preview.preservedMoveCount, base.steps.length);
+    assert.deepEqual(
+      preview.addedSteps.map((step) => step.move.san),
+      ['h3'],
+    );
+    assert.deepEqual(preview.removedSteps, []);
+    assert.equal(preview.historicalGlobalContributionCount, 0);
+    assert.deepEqual(preview.affectedContexts, []);
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    assert.equal(saved.noOp, false);
+    assert.deepEqual(saved.impacts, []);
+    const current = await cases.getRevision.execute({
+      scope: contextScope,
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+      anchorId: saved.currentAnchorId,
+    });
+    assert.deepEqual(
+      current.steps.slice(0, -1).map((step) => step.anchorId),
+      base.steps.map((step) => step.anchorId),
+    );
+    assert.deepEqual(current.contributions.map((note) => note.body).sort(), [
+      'context h6 note',
+      'global h6 note',
+    ]);
+    assert.ok(
+      current.contributions.every(
+        (note) => note.anchorId.value === h6.anchorId.value,
+      ),
+    );
+    const revisions = await cases.listRevisions.execute({
+      itemId: base.itemId,
+    });
+    assert.equal(revisions.revisions[0]!.changeKind, 'extend');
+    const workspace = await cases.getContext.execute({
+      contextId: context.context.contextId,
+    });
+    assert.equal(workspace.context.pendingRevisionImpactCount, 0);
+    assert.equal(
+      workspace.references[0]!.currentRevisionId.value,
+      saved.revisionId.value,
+    );
+  });
+}
+
+for (const scenario of [
+  {
+    mode: 'metadata',
+    type: 'analysis',
+    selected: 5,
+    removed: [],
+    added: undefined,
+  },
+  {
+    mode: 'metadata',
+    type: 'game',
+    selected: 5,
+    removed: [],
+    added: undefined,
+  },
+  { mode: 'extend', type: 'analysis', selected: 5, removed: [], added: 'e6' },
+  {
+    mode: 'truncate_after',
+    type: 'analysis',
+    selected: 2,
+    removed: [3, 4, 5],
+    added: undefined,
+  },
+  {
+    mode: 'replace_move',
+    type: 'analysis',
+    selected: 2,
+    removed: [2, 3, 4, 5, 6],
+    added: 'c4',
+  },
+  {
+    mode: 'truncate_after',
+    type: 'analysis',
+    selected: -1,
+    removed: [0, 1],
+    added: undefined,
+  },
+] as const) {
+  test(`tree revision preserves unrelated branches and notes (${scenario.type}, ${scenario.mode}, anchor ${scenario.selected})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const base = await createBranchingRecord(store, scenario.type);
+    const nodes = base.tree!.nodes;
+    const selected =
+      scenario.selected < 0
+        ? base.rootAnchorId
+        : nodes[scenario.selected]!.anchorId;
+    const started = await cases.startRevision.execute({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      baseRevisionId: base.revisionId,
+      anchorId: selected,
+      mode: scenario.mode,
+      displayName: 'Revised tree',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      ...(scenario.added === undefined
+        ? {}
+        : {
+            firstMove: {
+              kind: 'notation',
+              value: scenario.added,
+              locale: 'en-GB',
+            },
+          }),
+    });
+    const expected = {
+      scope: freeWorkScope(),
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.equal(
+      preview.historicalGlobalContributionCount,
+      scenario.removed.length,
+    );
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    });
+    const current = await cases.getRevision.execute({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      revisionId: saved.revisionId,
+      anchorId: saved.currentAnchorId,
+    });
+    const removed = new Set<number>(scenario.removed);
+    const retained = nodes.filter((_, index) => !removed.has(index));
+    assert.equal(
+      current.tree!.nodes.length,
+      retained.length + Number(scenario.added !== undefined),
+    );
+    for (const [index, node] of nodes.entries()) {
+      const copied = current.tree!.nodes.find(
+        (entry) => entry.anchorId.value === node.anchorId.value,
+      );
+      assert.equal(copied !== undefined, !removed.has(index));
+      if (copied) {
+        assert.deepEqual(copied.move, node.move);
+        assert.deepEqual(copied.after, node.after);
+        assert.equal(copied.siblingOrder, node.siblingOrder);
+        assert.deepEqual(
+          copied.parentNodeIndex === null
+            ? null
+            : current.tree!.nodes[copied.parentNodeIndex]!.anchorId,
+          node.parentNodeIndex === null
+            ? null
+            : nodes[node.parentNodeIndex]!.anchorId,
+        );
+      }
+    }
+    assert.deepEqual(
+      current.contributions.map((note) => note.contributionId),
+      base.contributions
+        .filter(
+          (note) =>
+            !nodes.some(
+              (node, index) =>
+                removed.has(index) &&
+                node.anchorId.value === note.anchorId.value,
+            ),
+        )
+        .map((note) => note.contributionId),
+    );
+    const historical = await cases.getRevision.execute({
+      scope: freeWorkScope(),
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+    });
+    assert.deepEqual(historical.tree, base.tree);
+    assert.deepEqual(historical.contributions, base.contributions);
+    if (scenario.mode === 'metadata') {
+      assert.deepEqual(current.tree, base.tree);
+      assert.deepEqual(saved.currentAnchorId, selected);
+    }
+    if (scenario.mode === 'replace_move') {
+      const main = await cases.getRevision.execute({
+        scope: freeWorkScope(),
+        itemId: base.itemId,
+        revisionId: saved.revisionId,
+        anchorId: base.rootAnchorId,
+      });
+      assert.deepEqual(
+        main.steps.map((step) => step.move.san),
+        ['e4', 'e5'],
+      );
+      assert.deepEqual(
+        current.steps.map((step) => step.move.san),
+        ['c4'],
+      );
+      assert.equal(
+        current.tree!.nodes.find(
+          (node) => node.anchorId.value === saved.currentAnchorId.value,
+        )!.siblingOrder,
+        1,
+      );
+    }
+    if (scenario.selected === -1) {
+      const extended = await appendMove(
+        cases,
+        current,
+        base.rootAnchorId,
+        'c4',
+      );
+      const resumed = await cases.getRevision.execute({
+        scope: freeWorkScope(),
+        itemId: base.itemId,
+        revisionId: extended.revisionId,
+      });
+      assert.deepEqual(
+        resumed.steps.map((step) => step.move.san),
+        ['c4'],
+      );
+      assert.equal(resumed.tree!.nodes.length, retained.length + 1);
+    }
+  });
+}
+
+test('tree replacement reports nested occurrence, move and lost position anchors but retains transposed positions', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createBranchingRecord(store);
+  const nodes = base.tree!.nodes;
+  const database = new Database(storeDatabasePaths.get(store)!);
+  const positionAnchor = (anchorId: AnchorId) => {
+    const inserted = database
+      .prepare(
+        `INSERT INTO chess_anchor (anchor_kind, position_id)
+       SELECT 'position', occurrence.position_id FROM chess_occurrence_snapshot occurrence
+       JOIN chess_anchor anchor ON anchor.occurrence_id = occurrence.occurrence_id
+       WHERE anchor.anchor_id = ? AND occurrence.revision_id = ?`,
+      )
+      .run(anchorId.value, base.revisionId.value);
+    return localId('anchor', Number(inserted.lastInsertRowid));
+  };
+  let uniquePosition: AnchorId;
+  let sharedPosition: AnchorId;
+  let moveAnchor: AnchorId;
+  try {
+    uniquePosition = positionAnchor(nodes[5]!.anchorId);
+    sharedPosition = positionAnchor(nodes[4]!.anchorId);
+    const move = database
+      .prepare(
+        `SELECT move_anchor.anchor_id AS id FROM chess_anchor occurrence_anchor
+       JOIN chess_move_node_snapshot move ON move.child_occurrence_id = occurrence_anchor.occurrence_id
+       JOIN chess_anchor move_anchor ON move_anchor.move_node_id = move.move_node_id
+       WHERE occurrence_anchor.anchor_id = ? AND move.revision_id = ?`,
+      )
+      .get(nodes[5]!.anchorId.value, base.revisionId.value) as { id: number };
+    moveAnchor = localId('anchor', move.id);
+  } finally {
+    database.close();
+  }
+  assert.equal(
+    nodes[4]!.after.position.positionKey,
+    nodes[9]!.after.position.positionKey,
+  );
+  const context = await cases.createContext.execute({
+    displayName: 'Branch references',
+  });
+  for (const anchorId of [
+    nodes[6]!.anchorId,
+    moveAnchor,
+    uniquePosition,
+    sharedPosition,
+  ]) {
+    await cases.addReference.execute({
+      contextId: context.context.contextId,
+      itemId: base.itemId,
+      anchorId,
+    });
+  }
+  await addIndependentContextUse(cases, base, 'Other user');
+  const started = await cases.startRevision.execute({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    baseRevisionId: base.revisionId,
+    anchorId: nodes[2]!.anchorId,
+    mode: 'replace_move',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    firstMove: { kind: 'notation', value: 'c4', locale: 'en-GB' },
+  });
+  const expected = {
+    scope: freeWorkScope(),
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  };
+  const preview = await cases.previewRevision.execute(expected);
+  assert.equal(preview.historicalGlobalContributionCount, 5);
+  assert.equal(preview.affectedContexts.length, 1);
+  assert.equal(preview.affectedContexts[0]!.referenceCount, 3);
+  const saved = await cases.saveRevision.execute({
+    ...expected,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  const impact = await cases.getImpact.execute({
+    impactId: saved.impacts[0]!.impactId,
+  });
+  assert.equal(impact.referenceCount, 3);
+  const retainedPosition = await cases.getRevision.execute({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    revisionId: saved.revisionId,
+    anchorId: sharedPosition,
+  });
+  assert.equal(retainedPosition.revisionId.value, saved.revisionId.value);
+});
+
 test('publishes an immutable extension with stable prefix anchors', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
@@ -357,7 +2055,7 @@ test('promotes an explored continuation to a revision draft without replaying it
   });
 
   assert.equal(promoted.scratch.intent.kind, 'inventory_revision');
-  assert.equal(preview.mode, 'truncate_after');
+  assert.equal(preview.mode, 'replace_move');
   assert.deepEqual(
     preview.removedSteps.map((step) => step.move.san),
     ['d4', 'd5'],
@@ -1388,6 +3086,319 @@ test('supports root-only truncation and keeps a true no-op unpublished', async (
   assert.equal(record.rootAnchorId.value, first.rootAnchorId.value);
 });
 
+for (const change of ['add', 'remove'] as const) {
+  test(`rejects a branch deletion preview after an unaffected membership ${change}`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const first = await createBranchingRecord(store);
+    const removed = first.tree!.nodes[3]!.anchorId;
+    const retained = first.tree!.nodes[2]!.anchorId;
+    const context = await cases.createContext.execute({
+      displayName: 'Affected',
+    });
+    const contextId = context.context.contextId;
+    await cases.addReference.execute({
+      contextId,
+      itemId: first.itemId,
+      anchorId: removed,
+    });
+    await cases.createPositionNote.execute({
+      scope: contextWorkScope(contextId),
+      itemId: first.itemId,
+      revisionId: first.revisionId,
+      anchorId: removed,
+      body: 'Keep this context note',
+      languageTag: 'en-GB',
+      noteScope: { kind: 'context', contextId },
+    });
+    const other = await cases.createContext.execute({
+      displayName: 'Unaffected',
+    });
+    const otherId = other.context.contextId;
+    const addOther = () =>
+      cases.addReference.execute({
+        contextId: otherId,
+        itemId: first.itemId,
+        anchorId: first.rootAnchorId,
+      });
+    if (change === 'remove') await addOther();
+    const scope = freeWorkScope();
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: first.itemId,
+      baseRevisionId: first.revisionId,
+      anchorId: retained,
+      lineAnchorId: removed,
+      mode: 'truncate_after',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const expected = {
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(expected);
+    assert.equal(preview.affectedContexts.length, change === 'remove' ? 1 : 0);
+    if (change === 'add') {
+      await addOther();
+    } else {
+      const removal = await store.previewContextItemRemoval({
+        contextId: otherId,
+        itemId: first.itemId,
+      });
+      await cases.removeItem.execute({
+        contextId: otherId,
+        itemId: first.itemId,
+        expectedDataRevision: removal.dataRevision,
+        expectedContextVersion: removal.contextVersion,
+      });
+    }
+    const before = inspectStore(store, (db) => db.serialize());
+    await assert.rejects(
+      cases.saveRevision.execute({
+        ...expected,
+        previewFingerprint: preview.previewFingerprint,
+      }),
+      { problemCode: 'inventory.preview_conflict' },
+    );
+    assert.deepEqual(
+      inspectStore(store, (db) => db.serialize()),
+      before,
+    );
+    const refreshed = await cases.previewRevision.execute(expected);
+    assert.notEqual(refreshed.previewFingerprint, preview.previewFingerprint);
+    assert.equal(refreshed.affectedContexts.length, change === 'add' ? 1 : 0);
+    await cases.createContext.execute({ displayName: 'Unrelated' });
+    assert.equal(
+      (await cases.previewRevision.execute(expected)).previewFingerprint,
+      refreshed.previewFingerprint,
+    );
+    const saved = await cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: refreshed.previewFingerprint,
+    });
+    assert.equal(saved.impacts.length, change === 'add' ? 1 : 0);
+    assert.equal(
+      inspectStore(
+        store,
+        (db) =>
+          (
+            db
+              .prepare(
+                "SELECT status FROM workspace_contribution WHERE body = 'Keep this context note'",
+              )
+              .get() as { status: string }
+          ).status,
+      ),
+      change === 'add' ? 'active' : 'archived',
+    );
+  });
+}
+
+test('binds a resolved context pin to a later variation preview and keeps pinned notes read-only', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const first = await createBranchingRecord(store);
+  const removed = first.tree!.nodes[3]!.anchorId;
+  const context = await cases.createContext.execute({ displayName: 'Pinned' });
+  const contextId = context.context.contextId;
+  const scope = freeWorkScope();
+  await cases.addReference.execute({
+    contextId,
+    itemId: first.itemId,
+    anchorId: removed,
+  });
+  await addIndependentContextUse(cases, first, 'Following');
+  const cut = await cases.startRevision.execute({
+    scope,
+    itemId: first.itemId,
+    baseRevisionId: first.revisionId,
+    anchorId: first.tree!.nodes[2]!.anchorId,
+    lineAnchorId: removed,
+    mode: 'truncate_after',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const cutExpected = {
+    scope,
+    expectedScratchId: cut.scratch.scratchId,
+    expectedScratchRevision: cut.scratch.scratchRevision,
+  };
+  const cutPreview = await cases.previewRevision.execute(cutExpected);
+  const saved = await cases.saveRevision.execute({
+    ...cutExpected,
+    previewFingerprint: cutPreview.previewFingerprint,
+  });
+  assert.equal(saved.impacts.length, 1);
+  const pinned = await cases.getContext.execute({ contextId });
+  assert.equal(
+    pinned.references[0]!.currentRevisionId.value,
+    first.revisionId.value,
+  );
+  assert.ok(
+    await store.readAnalysisRevision({
+      scope: contextWorkScope(contextId),
+      itemId: first.itemId,
+      revisionId: first.revisionId,
+      anchorId: removed,
+    }),
+  );
+  for (const revisionId of [first.revisionId, saved.revisionId]) {
+    for (const noteScope of [
+      { kind: 'global' },
+      { kind: 'context', contextId },
+    ] as const) {
+      const before = inspectStore(store, (db) => db.serialize());
+      await assert.rejects(
+        cases.createPositionNote.execute({
+          scope: contextWorkScope(contextId),
+          itemId: first.itemId,
+          revisionId,
+          anchorId: first.rootAnchorId,
+          body: 'Blocked',
+          languageTag: 'en-GB',
+          noteScope,
+        }),
+        { problemCode: 'workspace.impact_conflict' },
+      );
+      assert.deepEqual(
+        inspectStore(store, (db) => db.serialize()),
+        before,
+      );
+    }
+  }
+  await cases.createPositionNote.execute({
+    scope,
+    itemId: first.itemId,
+    revisionId: saved.revisionId,
+    anchorId: first.rootAnchorId,
+    body: 'Free current note',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'global' },
+  });
+  const started = await cases.startRevision.execute({
+    scope,
+    itemId: first.itemId,
+    baseRevisionId: saved.revisionId,
+    anchorId: first.rootAnchorId,
+    mode: 'add_variation',
+    firstMove: { kind: 'notation', value: 'a3', locale: 'en-GB' },
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const expected = {
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  };
+  const preview = await cases.previewRevision.execute(expected);
+  const impact = await cases.getImpact.execute({
+    impactId: saved.impacts[0]!.impactId,
+  });
+  await cases.resolveImpact.execute({
+    impactId: impact.impactId,
+    expectedImpactVersion: impact.impactVersion,
+    expectedDataRevision: impact.dataRevision,
+    resolution: { kind: 'use_target' },
+  });
+  const before = inspectStore(store, (db) => db.serialize());
+  await assert.rejects(
+    cases.saveRevision.execute({
+      ...expected,
+      previewFingerprint: preview.previewFingerprint,
+    }),
+    { problemCode: 'inventory.preview_conflict' },
+  );
+  assert.deepEqual(
+    inspectStore(store, (db) => db.serialize()),
+    before,
+  );
+  const refreshed = await cases.previewRevision.execute(expected);
+  assert.equal(refreshed.affectedContexts.length, 0);
+  const current = await cases.saveRevision.execute({
+    ...expected,
+    previewFingerprint: refreshed.previewFingerprint,
+  });
+  await cases.createPositionNote.execute({
+    scope: contextWorkScope(contextId),
+    itemId: first.itemId,
+    revisionId: current.revisionId,
+    anchorId: first.rootAnchorId,
+    body: 'Resolved context note',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'context', contextId },
+  });
+});
+
+test('rejects a position note on a removed historical branch without writes', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const first = await createBranchingRecord(store);
+  const removed = first.tree!.nodes[3]!.anchorId;
+  const retained = first.tree!.nodes[2]!.anchorId;
+  const context = await cases.createContext.execute({
+    displayName: 'Following',
+  });
+  const contextId = context.context.contextId;
+  await cases.addReference.execute({
+    contextId,
+    itemId: first.itemId,
+    anchorId: removed,
+  });
+  const scope = freeWorkScope();
+  const started = await cases.startRevision.execute({
+    scope,
+    itemId: first.itemId,
+    baseRevisionId: first.revisionId,
+    anchorId: retained,
+    lineAnchorId: removed,
+    mode: 'truncate_after',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+  });
+  const expected = {
+    scope,
+    expectedScratchId: started.scratch.scratchId,
+    expectedScratchRevision: started.scratch.scratchRevision,
+  };
+  const preview = await cases.previewRevision.execute(expected);
+  const saved = await cases.saveRevision.execute({
+    ...expected,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  for (const noteScope of [freeWorkScope(), contextWorkScope(contextId)]) {
+    for (const anchorId of [removed, first.rootAnchorId]) {
+      const before = inspectStore(store, (db) => db.serialize());
+      await assert.rejects(
+        cases.createPositionNote.execute({
+          scope: noteScope,
+          itemId: first.itemId,
+          revisionId: first.revisionId,
+          anchorId,
+          body: 'Late historical note',
+          languageTag: 'en-GB',
+          noteScope: noteScope.kind === 'free' ? { kind: 'global' } : noteScope,
+        }),
+        { problemCode: 'analysis.invalid_note' },
+      );
+      assert.deepEqual(
+        inspectStore(store, (db) => db.serialize()),
+        before,
+      );
+    }
+    await cases.createPositionNote.execute({
+      scope: noteScope,
+      itemId: first.itemId,
+      revisionId: saved.revisionId,
+      anchorId: retained,
+      body: 'Current note',
+      languageTag: 'en-GB',
+      noteScope: noteScope.kind === 'free' ? { kind: 'global' } : noteScope,
+    });
+  }
+});
+
 test('rejects a preview after a newly affected dependency appears', async (t) => {
   const store = storeFixture(t);
   const cases = useCases(store);
@@ -1536,6 +3547,7 @@ test('the publishing context follows a truncation without reviewing its own chan
     updatedAutomatically: true,
     referenceCount: 1,
     contributionCount: 1,
+    changedScratchCount: 0,
     managementResumeCount: 0,
     analysisResumeCount: 0,
   });
@@ -1604,6 +3616,7 @@ test('one sole context follows an externally published truncation automatically'
     updatedAutomatically: true,
     referenceCount: 1,
     contributionCount: 0,
+    changedScratchCount: 0,
     managementResumeCount: 0,
     analysisResumeCount: 0,
   });
@@ -1623,6 +3636,135 @@ test('one sole context follows an externally published truncation automatically'
     saved.currentAnchorId.value,
   );
 });
+
+for (const scenario of ['empty', 'moves', 'retained', 'metadata'] as const) {
+  test(`automatic revision preview counts actual scratch loss: ${scenario}`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const first = await createFrenchLine(cases);
+    const context = await addIndependentContextUse(
+      cases,
+      first,
+      'Automatic context',
+    );
+    const contextScope = contextWorkScope(context.context.contextId);
+    const lineEnd = first.steps.at(-1)!.anchorId;
+    const retained = first.steps.at(-2)!.anchorId;
+    const competing =
+      scenario === 'metadata'
+        ? await cases.startRevision.execute({
+            scope: contextScope,
+            itemId: first.itemId,
+            baseRevisionId: first.revisionId,
+            anchorId: lineEnd,
+            mode: 'metadata',
+            displayName: 'Unsaved context name',
+            expectedScratchId: null,
+            expectedScratchRevision: null,
+          })
+        : await cases.update.execute({
+            scope: contextScope,
+            expectedScratchId: null,
+            expectedScratchRevision: null,
+            action: {
+              kind: 'start',
+              origin: {
+                kind: 'inventory_anchor',
+                itemId: first.itemId,
+                revisionId: first.revisionId,
+                anchorId: lineEnd,
+              },
+            },
+          });
+    let scratch = competing.scratch!;
+    if (scenario === 'moves' || scenario === 'retained') {
+      scratch = (
+        await cases.update.execute({
+          scope: contextScope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          action: {
+            kind: 'apply_move',
+            move: { kind: 'notation', value: 'Nc3', locale: 'en-GB' },
+          },
+        })
+      ).scratch!;
+    }
+    const publisher = await cases.startRevision.execute({
+      scope: freeWorkScope(),
+      itemId: first.itemId,
+      baseRevisionId: first.revisionId,
+      anchorId: scenario === 'metadata' ? lineEnd : retained,
+      mode:
+        scenario === 'metadata' || scenario === 'retained'
+          ? 'metadata'
+          : 'truncate_after',
+      displayName: 'Published name',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+    });
+    const request = {
+      scope: freeWorkScope(),
+      expectedScratchId: publisher.scratch.scratchId,
+      expectedScratchRevision: publisher.scratch.scratchRevision,
+    };
+    const preview = await cases.previewRevision.execute(request);
+    assert.equal(preview.affectedContexts.length, 0);
+    assert.equal(
+      preview.followingContexts[0]?.changedScratchCount,
+      scenario === 'moves' || scenario === 'metadata' ? 1 : 0,
+    );
+    assert.deepEqual(
+      (await store.readContextAnalysisWorkspace(context.context.contextId))
+        ?.scratch,
+      scratch,
+    );
+
+    let finalPreview = preview;
+    if (scenario === 'empty') {
+      scratch = (
+        await cases.update.execute({
+          scope: contextScope,
+          expectedScratchId: scratch.scratchId,
+          expectedScratchRevision: scratch.scratchRevision,
+          action: {
+            kind: 'apply_move',
+            move: { kind: 'notation', value: 'Nc3', locale: 'en-GB' },
+          },
+        })
+      ).scratch!;
+      await cases.update.execute({
+        scope: contextScope,
+        expectedScratchId: scratch.scratchId,
+        expectedScratchRevision: scratch.scratchRevision,
+        action: { kind: 'prepare_note', body: 'Unsaved thought' },
+      });
+      await assert.rejects(
+        cases.saveRevision.execute({
+          ...request,
+          previewFingerprint: preview.previewFingerprint,
+        }),
+        { problemCode: 'inventory.preview_conflict' },
+      );
+      finalPreview = await cases.previewRevision.execute(request);
+      assert.equal(finalPreview.followingContexts[0]?.changedScratchCount, 1);
+    }
+    const saved = await cases.saveRevision.execute({
+      ...request,
+      previewFingerprint: finalPreview.previewFingerprint,
+    });
+    assert.equal(saved.impacts.length, 0);
+    const after = await store.readContextAnalysisWorkspace(
+      context.context.contextId,
+    );
+    if (scenario === 'retained') {
+      assert.equal(after?.scratch?.scratchId, scratch.scratchId);
+      assert.deepEqual(after?.scratch?.steps, scratch.steps);
+    } else {
+      assert.equal(after?.scratch, undefined);
+    }
+  });
+}
 
 test('using the new version discards a competing context revision draft', async (t) => {
   const store = storeFixture(t);

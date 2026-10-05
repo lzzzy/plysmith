@@ -1,4 +1,4 @@
-import { Type } from '@sinclair/typebox';
+import { Type, type Static } from '@sinclair/typebox';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import type { FastifyInstance } from 'fastify';
 import type { HostDependencies } from './host-dependencies.ts';
@@ -24,6 +24,7 @@ import {
   InventoryRevisionPreviewSchema,
   InventoryRevisionReadQuerySchema,
   InventoryRevisionScratchBodySchema,
+  type InventoryRevisionCommentSchema,
   InventorySearchQuerySchema,
   ListInventoryRevisionsResultSchema,
   PageQuerySchema,
@@ -148,6 +149,11 @@ export function registerInventoryRoutes(
             request.body.baseRevisionId,
           ),
           anchorId: parseLocalId('anchor', request.body.anchorId),
+          ...(request.body.lineAnchorId === undefined
+            ? {}
+            : {
+                lineAnchorId: parseLocalId('anchor', request.body.lineAnchorId),
+              }),
           mode: request.body.mode,
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,
@@ -167,6 +173,7 @@ export function registerInventoryRoutes(
   api.post(
     '/inventory/revision-edits/preview',
     {
+      bodyLimit: 1048576,
       schema: {
         operationId: 'PreviewInventoryRevision',
         querystring: EmptyQuerySchema,
@@ -183,6 +190,7 @@ export function registerInventoryRoutes(
           scope: parseWorkScope(request.body.scope),
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,
+          ...parseRevisionComment(request.body.comment),
         }),
       ),
   );
@@ -213,6 +221,9 @@ export function registerInventoryRoutes(
           anchorId: parseLocalId('anchor', request.body.anchorId),
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,
+          ...(request.body.mode === undefined
+            ? {}
+            : { mode: request.body.mode }),
         }),
       ),
   );
@@ -220,6 +231,7 @@ export function registerInventoryRoutes(
   api.post(
     '/inventory/revision-edits/save',
     {
+      bodyLimit: 1048576,
       schema: {
         operationId: 'SaveInventoryRevision',
         querystring: EmptyQuerySchema,
@@ -237,6 +249,7 @@ export function registerInventoryRoutes(
           expectedScratchId: request.body.expectedScratchId,
           expectedScratchRevision: request.body.expectedScratchRevision,
           previewFingerprint: request.body.previewFingerprint,
+          ...parseRevisionComment(request.body.comment),
         }),
       ),
   );
@@ -300,4 +313,26 @@ export function registerInventoryRoutes(
         }),
       ),
   );
+}
+
+function parseRevisionComment(
+  comment: Static<typeof InventoryRevisionCommentSchema> | undefined,
+) {
+  if (comment === undefined) return {};
+  return {
+    comment: {
+      body: comment.body,
+      languageTag: comment.languageTag,
+      noteScope:
+        comment.noteScope.kind === 'global'
+          ? { kind: 'global' as const }
+          : {
+              kind: 'context' as const,
+              contextId: parseLocalId(
+                'working-context',
+                comment.noteScope.contextId,
+              ),
+            },
+    },
+  };
 }

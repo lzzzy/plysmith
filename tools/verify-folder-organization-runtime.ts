@@ -368,7 +368,8 @@ async function configureEngine() {
       arguments: [],
       threads: 1,
       hashMb: 16,
-      moveTimeMs: 50,
+      detailLevels: { fast: 500, thorough: 50, very_deep: 5_000 },
+      playoutBudget: 'thorough',
       startupTimeoutMs: 10_000,
       moveTimeoutMs: 10_000,
       stopTimeoutMs: 2_000,
@@ -1438,8 +1439,8 @@ async function rowActionsUi() {
   await selection.locator('button[aria-haspopup]').click();
   assert.equal(
     await page.getByRole('menuitem').count(),
-    1,
-    'Bulk selection only offers Clear; movement uses drag-and-drop',
+    3,
+    'Free selection offers move, inventory deletion and clear',
   );
   await page
     .getByRole('menuitem', {
@@ -1942,6 +1943,190 @@ async function presentationUi() {
   await screenshot('remembered-origins-before-restart');
 }
 
+async function selectionActionsUi() {
+  assert.ok(page);
+  const source = await folder('Selection source');
+  const parent = await folder('Selection destination');
+  const destination = await folder('Nested destination', parent);
+  const contextId = (
+    await client.createWorkingContext({ displayName: 'Selection context' })
+  ).context.contextId;
+  const records: Created[] = [];
+  for (const name of ['Selection first', 'Selection second']) {
+    const scratch = await update(free, {
+      kind: 'start',
+      origin: { kind: 'initial_position' },
+    });
+    records.push(await save(scratch, name, source));
+  }
+  await client.createPositionNote({
+    scope: free,
+    itemId: records[0]!.itemId,
+    revisionId: records[0]!.revisionId,
+    anchorId: records[0]!.rootAnchorId,
+    body: 'Global selection note',
+    languageTag: 'en-GB',
+    noteScope: { kind: 'global' },
+  });
+  await manage(undefined, false, 'origins');
+  await page
+    .getByRole('radio', { name: label('folders.view'), exact: true })
+    .press('Space');
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await manage();
+  const selection = page.getByRole('group', {
+    name: label('manage.selectionActions'),
+    exact: true,
+  });
+  async function select(folderId: string) {
+    for (const record of records) {
+      const entry = await item(record.itemId);
+      await itemRow(folderId, entry.displayName).getByRole('checkbox').check();
+    }
+  }
+  await select(source);
+  await screenshot('selection-actions-wide');
+  await activateAction(selection, label('selection.move'), true);
+  let dialog = page.getByRole('dialog');
+  await expect(
+    dialog.getByRole('button', { name: label('selection.move'), exact: true }),
+  ).toBeDisabled();
+  await dialog.getByRole('combobox').selectOption(destination);
+  await expect(dialog.getByRole('combobox')).toHaveValue(destination);
+  await expect(
+    dialog.getByRole('option', {
+      name: 'Selection destination / Nested destination',
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await screenshot('selection-move-hierarchy');
+  const beforeMove = (await client.getInventoryOrganization({})).dataRevision;
+  await dialog
+    .getByRole('button', { name: label('selection.move'), exact: true })
+    .press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect(selection).toHaveCount(0);
+  assert.equal(
+    (await client.getInventoryOrganization({})).dataRevision,
+    beforeMove + 1,
+  );
+  for (const record of records)
+    assert.equal((await item(record.itemId)).folderId, destination);
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await manage(contextId, true);
+  await select(destination);
+  await selection.locator('button[aria-haspopup]').press('Enter');
+  await expect(page.getByRole('menuitem')).toHaveCount(5);
+  await expect(
+    page.getByRole('menuitem', {
+      name: label('selection.remove'),
+      exact: true,
+    }),
+  ).toHaveAttribute('aria-disabled', 'true');
+  await screenshot('selection-context-menu-mobile');
+  await page
+    .getByRole('menuitem', { name: label('selection.include'), exact: true })
+    .press('Enter');
+  await expect(selection).toHaveCount(0);
+  for (const record of records)
+    assert.ok((await item(record.itemId)).contextIds.includes(contextId));
+  await select(destination);
+  await activateAction(selection, label('selection.remove'), true);
+  await expect(selection).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  for (const record of records)
+    assert.ok(!(await item(record.itemId)).contextIds.includes(contextId));
+  await select(destination);
+  await activateAction(selection, label('selection.include'));
+  await expect(selection).toHaveCount(0);
+  for (const record of records) {
+    await client.createPositionNote({
+      scope: { kind: 'context', contextId },
+      itemId: record.itemId,
+      revisionId: record.revisionId,
+      anchorId: record.rootAnchorId,
+      body: 'Context selection note ' + record.itemId,
+      languageTag: 'en-GB',
+      noteScope: { kind: 'context', contextId },
+    });
+  }
+  await manage(contextId);
+  await select(destination);
+  await activateAction(selection, label('selection.remove'));
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { level: 3 })).toHaveCount(2);
+  await screenshot('selection-context-loss-mobile');
+  await dialog
+    .getByRole('button', { name: label('action.cancel'), exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  for (const record of records)
+    assert.equal(
+      (await client.previewContextItemRemoval(contextId, record.itemId)).losses
+        .notes.length,
+      1,
+    );
+  await activateAction(selection, label('selection.remove'));
+  dialog = page.getByRole('dialog');
+  await dialog
+    .getByRole('button', { name: label('selection.remove'), exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(selection).toHaveCount(0);
+  for (const record of records)
+    assert.ok(!(await item(record.itemId)).contextIds.includes(contextId));
+  assert.equal(
+    (await client.previewInventoryItemDeletion(records[0]!.itemId)).global
+      .activeNoteCount,
+    1,
+  );
+
+  await manage(contextId, true);
+  await select(destination);
+  await activateAction(selection, label('selection.include'));
+  await expect(selection).toHaveCount(0);
+  for (const record of records)
+    assert.equal(
+      (await client.previewContextItemRemoval(contextId, record.itemId)).losses
+        .notes.length,
+      0,
+    );
+  await manage();
+  await select(destination);
+  await activateAction(selection, label('selection.delete'));
+  dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { level: 3 })).toHaveCount(2);
+  await screenshot('selection-inventory-loss-mobile');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  for (const record of records) await item(record.itemId);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await activateAction(selection, label('selection.delete'), true);
+  dialog = page.getByRole('dialog');
+  await expect(
+    dialog.getByRole('button', {
+      name: label('selection.delete'),
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await dialog
+    .getByRole('button', { name: label('selection.delete'), exact: true })
+    .press('Enter');
+  await expect(dialog).toBeHidden();
+  await expect(selection).toHaveCount(0);
+  for (const record of records)
+    assert.ok(
+      !(await inventory()).items.some(
+        (entry) => entry.itemId === record.itemId,
+      ),
+    );
+  await screenshot('selection-delete-completed');
+  await page
+    .getByRole('radio', { name: label('folders.origins'), exact: true })
+    .press('Space');
+}
+
 async function durableSnapshot() {
   assert.ok(seed);
   return {
@@ -1997,6 +2182,10 @@ try {
     await step('loss-free-actions-and-protected-custom-roots', lossFreeUi);
     await step('DE-EN-wide-mobile-views', responsiveUi);
     await step('scope-specific-presentation-and-area-return', presentationUi);
+    await step(
+      'bulk-selection-keyboard-context-loss-and-mobile',
+      selectionActionsUi,
+    );
   } else {
     limits.push(
       'API-only run: no Electron, drag gestures, save UI, loss dialogs, screenshots or Axe checks.',

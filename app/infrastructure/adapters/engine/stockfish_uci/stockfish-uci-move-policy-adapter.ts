@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { StockfishUciEngineProviderConfigurationInput } from '../../../../application/playout/engine-provider-configuration.ts';
 
 import {
   type MovePolicyDecision,
@@ -25,11 +26,12 @@ import type { StockfishUciRuntimeConfiguration } from './stockfish-uci-runtime.t
 export interface StockfishUciConfiguration extends StockfishUciRuntimeConfiguration {
   readonly instanceId: string;
   readonly displayName: string;
-  readonly moveTimeMs: number;
+  readonly detailLevels: StockfishUciEngineProviderConfigurationInput['detailLevels'];
+  readonly playoutBudget: StockfishUciEngineProviderConfigurationInput['playoutBudget'];
   readonly moveTimeoutMs: number;
 }
 
-const adapterVersion = 1;
+const adapterVersion = 2;
 
 export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
   readonly #configuration: StockfishUciConfiguration;
@@ -40,7 +42,10 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
     configuration: StockfishUciConfiguration,
     runtime: UciEngineRuntime,
   ) {
-    this.#configuration = Object.freeze({ ...configuration });
+    this.#configuration = Object.freeze({
+      ...configuration,
+      detailLevels: Object.freeze({ ...configuration.detailLevels }),
+    });
     this.#runtime = runtime;
     this.#descriptor = Object.freeze({
       instanceId: configuration.instanceId,
@@ -79,7 +84,7 @@ export class StockfishUciMovePolicyAdapter implements MovePolicyProvider {
           return chooseUciMove(session, this.#configuration, request);
         },
         {
-          waitTimeoutMs: this.#configuration.moveTimeoutMs,
+          waitTimeoutMs: stockfishQueueTimeoutMilliseconds(this.#configuration),
           ...(signal === undefined ? {} : { signal }),
         },
       );
@@ -105,10 +110,11 @@ async function chooseUciMove(
     performance.now() + configuration.startupTimeoutMs,
   );
   writeUciPosition(session, movePolicyPosition(request));
-  session.writeLine(`go movetime ${configuration.moveTimeMs}`);
+  const moveTimeMs = configuration.detailLevels[configuration.playoutBudget];
+  session.writeLine(`go movetime ${moveTimeMs}`);
   const move = await readUciBestMove(
     session,
-    performance.now() + configuration.moveTimeoutMs,
+    performance.now() + moveTimeMs + configuration.moveTimeoutMs,
   );
   await waitUntilUciReady(
     session,
@@ -129,8 +135,19 @@ export function stockfishUciConfigurationFingerprint(
         arguments: configuration.arguments,
         threads: configuration.threads,
         hashMb: configuration.hashMb,
-        moveTimeMs: configuration.moveTimeMs,
+        detailLevels: configuration.detailLevels,
+        playoutBudget: configuration.playoutBudget,
       }),
     )
     .digest('hex');
+}
+
+export function stockfishQueueTimeoutMilliseconds(
+  configuration: StockfishUciConfiguration,
+): number {
+  return (
+    Math.max(...Object.values(configuration.detailLevels)) +
+    configuration.moveTimeoutMs +
+    3 * configuration.startupTimeoutMs
+  );
 }

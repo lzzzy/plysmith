@@ -1,9 +1,21 @@
+import { importMessages } from './import-messages.ts';
+
 export const messages = {
   'de-DE': {
+    ...importMessages['de-DE'],
     'manage.actionsFor': 'Aktionen für „{name}“',
     'manage.selectionActions': 'Aktionen für die Auswahl',
     'manage.selectedCount': '{count} ausgewählt',
     'manage.clearSelection': 'Auswahl aufheben',
+    'selection.move': 'Auswahl in Ordner verschieben',
+    'selection.include': 'Auswahl in Arbeitskontext aufnehmen',
+    'selection.remove': 'Auswahl aus Arbeitskontext entfernen',
+    'selection.delete': 'Auswahl aus Bestand löschen',
+    'selection.delete.detail':
+      'Die ausgewählten Bestandseinträge werden gelöscht. Ihre gebundenen Verwendungen und Inhalte werden ebenfalls entfernt:',
+    'selection.chooseFolder': 'Ordner wählen',
+    'selection.failed':
+      'Verarbeitung gestoppt: {completed} erledigt, {remaining} nicht erledigt. Die übrigen Einträge bleiben ausgewählt.',
     'manage.editContext': 'Arbeitskontext bearbeiten',
     'folders.path': 'Pfad',
     'folders.subfolders': 'Unterordner',
@@ -19,7 +31,7 @@ export const messages = {
     'folders.delete': 'Ordner mit Unterordnern löschen',
     'folders.include': 'Ordner in Arbeitskontext aufnehmen',
     'folders.removeContext': 'Ordner aus Arbeitskontext entfernen',
-    'folders.selectItem': '„{name}“ zum Verschieben auswählen',
+    'folders.selectItem': '„{name}“ auswählen',
     'folders.expand': '„{name}“ aufklappen',
     'folders.collapse': '„{name}“ zuklappen',
     'folders.empty': 'Keine Einträge',
@@ -265,7 +277,6 @@ export const messages = {
     'playout.retry': 'Enginezug erneut versuchen',
     'playout.pause': 'Pausieren',
     'playout.stop': 'Partie beenden',
-    'playout.returnToGame': 'Zur aktuellen Stellung',
     'playout.recordMetadata':
       'Eigene Seite: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'Bestzug',
@@ -322,6 +333,10 @@ export const messages = {
     'analysis.start': 'Starten',
     'analysis.addNote': 'Notiz an dieser Stellung hinzufügen',
     'analysis.newNote': 'Neue Notiz',
+    'analysis.noteDraftUnavailable':
+      'Die Notiz oder ihre Stellung wurde inzwischen geändert oder entfernt. Dein ungespeicherter Text bleibt hier zum Übernehmen erhalten.',
+    'analysis.recoveredNoteDraft': 'Erhaltener Notizentwurf',
+    'analysis.discardNoteDraft': 'Notizentwurf verwerfen',
     'analysis.editNote': 'Notiz bearbeiten',
     'analysis.deleteNote': 'Notiz löschen',
     'analysis.confirmDeleteNote': 'Diese Notiz wirklich löschen?',
@@ -335,6 +350,8 @@ export const messages = {
     'analysis.continueExploration': 'Als Analysepfad weiterführen',
     'analysis.contextNote': 'Nur in diesem Arbeitskontext',
     'analysis.generalNote': 'Allgemein',
+    'analysis.resizePanels': 'Platz zwischen Zugliste und Engine aufteilen',
+    'analysis.panelShare': 'Zugliste {moves} Prozent, Engine {engine} Prozent',
     'analysis.notePlaceholder': 'Was ist an dieser Fortsetzung wichtig?',
     'analysis.prepareNote': 'Pfad in Notiz übernehmen',
     'analysis.saveAsNote': 'Als Notiz am Ausgangspunkt',
@@ -382,7 +399,7 @@ export const messages = {
       '{profile}: {percent} Prozent Wahrscheinlichkeit für diesen Zug',
     'positionAnalysis.budget.fast': 'Schnell',
     'positionAnalysis.budget.thorough': 'Gründlich',
-    'positionAnalysis.budget.very_deep': 'Sehr tief',
+    'positionAnalysis.budget.very_deep': 'Tief',
     'positionAnalysis.loading': 'Engine analysiert die Stellung …',
     'positionAnalysis.failed':
       'Diese Engine konnte die Stellung nicht analysieren.',
@@ -398,8 +415,19 @@ export const messages = {
     'inventory.displayName': 'Titel',
     'inventory.summary': 'Beschreibung',
     'inventory.emptyValue': 'Nicht gesetzt',
-    'inventory.mode.extend': 'Hauptvariante verlängern',
-    'inventory.mode.truncate_after': 'Hauptvariante abschneiden',
+    'inventory.mode.extend': 'Zugfolge verlängern',
+    'inventory.mode.add_variation': 'Als Variante speichern',
+    'analysis.createVariation': 'Variante anlegen',
+    'analysis.variationComment': 'Zugfolge auch als Kommentar speichern',
+    'analysis.variationExists': 'Diese Zugfolge ist bereits gespeichert.',
+    'analysis.variationScope': 'Variante im Bestand',
+    'chessTree.collapseVariation': 'Variante einklappen: {move}',
+    'chessTree.expandVariation': 'Variante ausklappen: {move}',
+    'chessTree.removeVariation': 'Variante löschen: {move}',
+    'inventory.globalNotesAffected':
+      '{count, plural, one {Eine allgemeine Notiz bleibt nur in der bisherigen Fassung sichtbar.} other {# allgemeine Notizen bleiben nur in der bisherigen Fassung sichtbar.}}',
+    'chessTree.branchPoint': 'Ausgangspunkt',
+    'inventory.mode.truncate_after': 'Zugfolge kürzen',
     'inventory.mode.replace_move': 'Zug und Fortsetzung ersetzen',
     'inventory.mode.metadata': 'Titel und Beschreibung ändern',
     'inventory.moveCount':
@@ -414,14 +442,12 @@ export const messages = {
       'In diesen Arbeitskontexten ist eine Entscheidung nötig',
     'inventory.contextsAffectedDetail':
       'Prüfen Sie nach dem Speichern, welche Fassung dort verwendet werden soll.',
-    'inventory.contextsRenamed': 'Neuer Name in Arbeitskontexten',
-    'inventory.contextsRenamedDetail':
-      'Nach dem Speichern erscheint dort der neue Name. Zugfolge, Notizen und gemerkte Ansichten bleiben unverändert.',
-    'inventory.contextsUpdated': 'Arbeitskontexte werden aktualisiert',
-    'inventory.contextsUpdatedDetail':
-      'Nach dem Speichern wird dort die neue Fassung angezeigt. Eine weitere Entscheidung ist nicht nötig.',
+    'inventory.automaticContextLosses':
+      'Beim Speichern entfallen Kontextinhalte',
+    'inventory.followingContextScratchLoss':
+      '{count, plural, one {# ungespeicherte Analyse mit Änderungen wird verworfen.} other {# ungespeicherte Analysen mit Änderungen werden verworfen.}}',
     'inventory.followingContextNotesHistorical':
-      '{count, plural, one {Die Notiz an einer entfallenden Stellung bleibt in der bisherigen Fassung erhalten und ist in der neuen Fassung nicht mehr sichtbar.} other {Die Notizen an entfallenden Stellungen bleiben in der bisherigen Fassung erhalten und sind in der neuen Fassung nicht mehr sichtbar.}}',
+      '{count, plural, one {Die Notiz an einer entfallenden Stellung wird aus diesem Arbeitskontext entfernt.} other {Die Notizen an entfallenden Stellungen werden aus diesem Arbeitskontext entfernt.}}',
     'inventory.backToEdit': 'Weiter bearbeiten',
     'inventory.saveRevision': 'Speichern',
     'inventory.discardRevision': 'Änderung verwerfen',
@@ -496,7 +522,7 @@ export const messages = {
     'diagnostics.title': 'Diagnose',
     'engines.title': 'Schachengine',
     'engines.description':
-      'Engine für das Ausspielen konfigurieren. Änderungen werden nach einem Neustart von Plysmith aktiv.',
+      'Engine für Analyse und Ausspielen konfigurieren. Änderungen werden nach einem Neustart von Plysmith aktiv.',
     'engines.configuration': 'Konfiguration',
     'engines.noneConfigured': 'Noch keine Engine konfiguriert',
     'engines.addStockfish': 'Stockfish hinzufügen',
@@ -504,7 +530,10 @@ export const messages = {
     'engines.executable': 'Programmdatei',
     'engines.choose': 'Auswählen',
     'engines.displayName': 'Anzeigename',
-    'engines.moveTime': 'Rechenzeit je Zug (ms)',
+    'engines.detailLevel.fast': 'Schnell (ms)',
+    'engines.detailLevel.thorough': 'Gründlich (ms)',
+    'engines.detailLevel.very_deep': 'Tief (ms)',
+    'engines.playoutBudget': 'Detaillevel für Ausspielen',
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
     'engines.maiaWeights': 'Maia-Gewichtedatei',
@@ -619,10 +648,20 @@ export const messages = {
       'Eine aktive Analyse mit diesem Namen ist bereits im Bestand. Wählen Sie einen anderen Namen; Ihr Entwurf bleibt erhalten.',
   },
   'en-GB': {
+    ...importMessages['en-GB'],
     'manage.actionsFor': 'Actions for “{name}”',
     'manage.selectionActions': 'Actions for selection',
     'manage.selectedCount': '{count} selected',
     'manage.clearSelection': 'Clear selection',
+    'selection.move': 'Move selection to folder',
+    'selection.include': 'Add selection to working context',
+    'selection.remove': 'Remove selection from working context',
+    'selection.delete': 'Delete selection from inventory',
+    'selection.delete.detail':
+      'The selected inventory items will be deleted, together with their bound uses and content:',
+    'selection.chooseFolder': 'Choose folder',
+    'selection.failed':
+      'Processing stopped: {completed} completed, {remaining} not completed. The remaining items stay selected.',
     'manage.editContext': 'Edit working context',
     'folders.path': 'Path',
     'folders.subfolders': 'Subfolders',
@@ -638,7 +677,7 @@ export const messages = {
     'folders.delete': 'Delete folder and subfolders',
     'folders.include': 'Include folder in working context',
     'folders.removeContext': 'Remove folder from working context',
-    'folders.selectItem': 'Select “{name}” for moving',
+    'folders.selectItem': 'Select “{name}”',
     'folders.expand': 'Expand “{name}”',
     'folders.collapse': 'Collapse “{name}”',
     'folders.empty': 'No records',
@@ -881,7 +920,6 @@ export const messages = {
     'playout.retry': 'Retry engine move',
     'playout.pause': 'Pause',
     'playout.stop': 'Stop game',
-    'playout.returnToGame': 'Return to current position',
     'playout.recordMetadata':
       'Your side: {player} · {result} · {provider} ({providerType}, {policy})',
     'playout.policy.best_move': 'best move',
@@ -936,6 +974,10 @@ export const messages = {
     'analysis.start': 'Start',
     'analysis.addNote': 'Add a note at this position',
     'analysis.newNote': 'New note',
+    'analysis.noteDraftUnavailable':
+      'The note or its position has changed or been removed. Your unsaved text is kept here for recovery.',
+    'analysis.recoveredNoteDraft': 'Recovered note draft',
+    'analysis.discardNoteDraft': 'Discard note draft',
     'analysis.editNote': 'Edit note',
     'analysis.deleteNote': 'Delete note',
     'analysis.confirmDeleteNote': 'Delete this note?',
@@ -949,6 +991,8 @@ export const messages = {
     'analysis.continueExploration': 'Continue as analysis path',
     'analysis.contextNote': 'This context only',
     'analysis.generalNote': 'General',
+    'analysis.resizePanels': 'Resize move list and engine panels',
+    'analysis.panelShare': 'Move list {moves} percent, engine {engine} percent',
     'analysis.notePlaceholder': 'What matters about this continuation?',
     'analysis.prepareNote': 'Turn path into note',
     'analysis.saveAsNote': 'As a note at the starting point',
@@ -995,7 +1039,7 @@ export const messages = {
       '{profile}: {percent} percent probability of this move',
     'positionAnalysis.budget.fast': 'Fast',
     'positionAnalysis.budget.thorough': 'Thorough',
-    'positionAnalysis.budget.very_deep': 'Very deep',
+    'positionAnalysis.budget.very_deep': 'Deep',
     'positionAnalysis.loading': 'Engine is analyzing the position …',
     'positionAnalysis.failed': 'This engine could not analyze the position.',
     'positionAnalysis.retry': 'Try again',
@@ -1010,8 +1054,19 @@ export const messages = {
     'inventory.displayName': 'Title',
     'inventory.summary': 'Description',
     'inventory.emptyValue': 'Not set',
-    'inventory.mode.extend': 'Extend main line',
-    'inventory.mode.truncate_after': 'Truncate main line',
+    'inventory.mode.extend': 'Extend line',
+    'inventory.mode.add_variation': 'Save as variation',
+    'analysis.createVariation': 'Create variation',
+    'analysis.variationComment': 'Also save move sequence as a comment',
+    'analysis.variationExists': 'This move sequence is already saved.',
+    'analysis.variationScope': 'Variation in inventory',
+    'chessTree.collapseVariation': 'Collapse variation: {move}',
+    'chessTree.expandVariation': 'Expand variation: {move}',
+    'chessTree.removeVariation': 'Delete variation: {move}',
+    'inventory.globalNotesAffected':
+      '{count, plural, one {One general note will only remain visible in the previous version.} other {# general notes will only remain visible in the previous version.}}',
+    'chessTree.branchPoint': 'Branch point',
+    'inventory.mode.truncate_after': 'Shorten line',
     'inventory.mode.replace_move': 'Replace move and continuation',
     'inventory.mode.metadata': 'Change title and description',
     'inventory.moveCount':
@@ -1024,14 +1079,12 @@ export const messages = {
     'inventory.contextsAffected': 'These working contexts need a decision',
     'inventory.contextsAffectedDetail':
       'After saving, choose which version to use in each of them.',
-    'inventory.contextsRenamed': 'New name in working contexts',
-    'inventory.contextsRenamedDetail':
-      'After saving, the new name appears there too. Moves, notes, and remembered views remain unchanged.',
-    'inventory.contextsUpdated': 'Working contexts will be updated',
-    'inventory.contextsUpdatedDetail':
-      'After saving, the new version appears there. No further decision is needed.',
+    'inventory.automaticContextLosses':
+      'Saving removes work from these contexts',
+    'inventory.followingContextScratchLoss':
+      '{count, plural, one {# unsaved analysis with changes will be discarded.} other {# unsaved analyses with changes will be discarded.}}',
     'inventory.followingContextNotesHistorical':
-      '{count, plural, one {The note at a removed position remains with the previous version and is no longer visible in the new version.} other {The notes at removed positions remain with the previous version and are no longer visible in the new version.}}',
+      '{count, plural, one {The note at a removed position will be removed from this working context.} other {The notes at removed positions will be removed from this working context.}}',
     'inventory.backToEdit': 'Continue editing',
     'inventory.saveRevision': 'Save',
     'inventory.discardRevision': 'Discard change',
@@ -1105,7 +1158,7 @@ export const messages = {
     'diagnostics.title': 'Diagnostics',
     'engines.title': 'Chess engine',
     'engines.description':
-      'Configure the engine used for playout. Changes become active after restarting Plysmith.',
+      'Configure the engine for analysis and playout. Changes become active after restarting Plysmith.',
     'engines.configuration': 'Configuration',
     'engines.noneConfigured': 'No engine configured yet',
     'engines.addStockfish': 'Add Stockfish',
@@ -1113,7 +1166,10 @@ export const messages = {
     'engines.executable': 'Executable',
     'engines.choose': 'Choose',
     'engines.displayName': 'Display name',
-    'engines.moveTime': 'Thinking time per move (ms)',
+    'engines.detailLevel.fast': 'Fast (ms)',
+    'engines.detailLevel.thorough': 'Thorough (ms)',
+    'engines.detailLevel.very_deep': 'Deep (ms)',
+    'engines.playoutBudget': 'Playout detail level',
     'engines.threads': 'Threads',
     'engines.hash': 'Hash (MB)',
     'engines.maiaWeights': 'Maia weights file',

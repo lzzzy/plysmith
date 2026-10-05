@@ -118,19 +118,28 @@ CREATE TABLE inventory_game_revision (
     item_id INTEGER NOT NULL,
     root_occurrence_id INTEGER NOT NULL,
     origin_mode TEXT NOT NULL CHECK (origin_mode IN ('initial_position', 'fen', 'position_setup', 'inventory_anchor')),
-    player_side TEXT NOT NULL CHECK (player_side IN ('white', 'black')),
-    result_kind TEXT NOT NULL CHECK (result_kind IN ('white_win', 'black_win', 'draw', 'unfinished')),
-    result_source TEXT NOT NULL CHECK (result_source IN ('manual', 'automatic')),
+    player_side TEXT CHECK (player_side IN ('white', 'black')),
+    result_kind TEXT CHECK (result_kind IN ('white_win', 'black_win', 'draw', 'unfinished')),
+    result_source TEXT CHECK (result_source IN ('manual', 'automatic')),
     result_reason TEXT CHECK (result_reason IN ('checkmate', 'stalemate', 'insufficient_material', 'threefold_repetition', 'seventy_five_move')),
-    policy_capability TEXT NOT NULL CHECK (policy_capability IN ('best_move', 'human_profile')),
-    provider_instance_id TEXT NOT NULL CHECK (length(trim(provider_instance_id)) > 0),
-    provider_fingerprint TEXT NOT NULL CHECK (length(trim(provider_fingerprint)) > 0),
-    provider_type TEXT NOT NULL CHECK (length(trim(provider_type)) > 0),
-    provider_display_name TEXT NOT NULL CHECK (length(trim(provider_display_name)) > 0),
+    policy_capability TEXT CHECK (policy_capability IN ('best_move', 'human_profile')),
+    provider_instance_id TEXT CHECK (length(trim(provider_instance_id)) > 0),
+    provider_fingerprint TEXT CHECK (length(trim(provider_fingerprint)) > 0),
+    provider_type TEXT CHECK (length(trim(provider_type)) > 0),
+    provider_display_name TEXT CHECK (length(trim(provider_display_name)) > 0),
     profile_model_name TEXT,
     profile_selection_mode TEXT CHECK (profile_selection_mode IN ('most_likely', 'sampled')),
     profile_history_mode TEXT CHECK (profile_history_mode IN ('known_position_history', 'position_only')),
     profile_reproducibility TEXT CHECK (profile_reproducibility IN ('deterministic', 'stochastic')),
+    CHECK (
+        (player_side IS NULL AND result_kind IS NULL AND result_source IS NULL AND
+         result_reason IS NULL AND policy_capability IS NULL AND provider_instance_id IS NULL AND
+         provider_fingerprint IS NULL AND provider_type IS NULL AND provider_display_name IS NULL AND
+         profile_model_name IS NULL AND profile_selection_mode IS NULL AND profile_history_mode IS NULL AND profile_reproducibility IS NULL) OR
+        (player_side IS NOT NULL AND result_kind IS NOT NULL AND result_source IS NOT NULL AND
+         policy_capability IS NOT NULL AND provider_instance_id IS NOT NULL AND
+         provider_fingerprint IS NOT NULL AND provider_type IS NOT NULL AND provider_display_name IS NOT NULL)
+    ),
     CHECK (
         (result_source = 'manual' AND result_reason IS NULL) OR
         (result_source = 'automatic' AND result_reason IS NOT NULL AND (

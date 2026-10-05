@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
-import { test, type TestContext } from 'node:test';
+import { beforeEach, describe, test, type TestContext } from 'node:test';
 import {
   SetUiLanguage,
   type UiLanguageChanged,
@@ -194,70 +194,80 @@ async function startTestHost(t: TestContext) {
   return { host, source, url, authorization, connect, setLanguage };
 }
 
-test(
-  'loopback: two clients see committed changes and disconnect releases the pending subscription',
-  { timeout: 10000 },
-  async (t) => {
-    const { source, connect, setLanguage, url, authorization } =
-      await startTestHost(t);
-    const first = await connect();
-    const second = await connect();
-    assert.equal(source.subscriptions.size, 2);
-    await setLanguage('en-GB', 1);
-    const firstEvent = await first.nextEvent();
-    assert.deepEqual(await second.nextEvent(), firstEvent);
-    assert.equal(firstEvent.kind, 'preference.ui-language-changed');
-    assert.equal(firstEvent.dataRevision, 1);
-    const snapshot = await fetch(`${url}/preferences`, {
-      headers: authorization,
-    });
-    const preferences = await snapshot.json();
-    assert.ok(
-      typeof preferences === 'object' &&
-        preferences !== null &&
-        'preferenceRevision' in preferences &&
-        'uiLocale' in preferences,
-    );
-    assert.equal(preferences.preferenceRevision, 2);
-    assert.equal(preferences.uiLocale, 'en-GB');
+describe('event stream loopback', { concurrency: false }, () => {
+  let fixture: Awaited<ReturnType<typeof startTestHost>>;
+  beforeEach(
+    async (t) => {
+      assert.ok('after' in t, 'Loopback setup requires a test context.');
+      fixture = await startTestHost(t);
+    },
+    { timeout: 10000 },
+  );
 
-    const closed = source.nextClose();
-    first.controller.abort();
-    await closed;
-    assert.equal(source.subscriptions.size, 1);
-    await setLanguage('de-DE', 2);
-    assert.equal((await second.nextEvent()).sequence, 2);
-  },
-);
+  test(
+    'loopback: two clients see committed changes and disconnect releases the pending subscription',
+    { timeout: 10000 },
+    async () => {
+      const { source, connect, setLanguage, url, authorization } = fixture;
+      const first = await connect();
+      const second = await connect();
+      assert.equal(source.subscriptions.size, 2);
+      await setLanguage('en-GB', 1);
+      const firstEvent = await first.nextEvent();
+      assert.deepEqual(await second.nextEvent(), firstEvent);
+      assert.equal(firstEvent.kind, 'preference.ui-language-changed');
+      assert.equal(firstEvent.dataRevision, 1);
+      const snapshot = await fetch(`${url}/preferences`, {
+        headers: authorization,
+      });
+      const preferences = await snapshot.json();
+      assert.ok(
+        typeof preferences === 'object' &&
+          preferences !== null &&
+          'preferenceRevision' in preferences &&
+          'uiLocale' in preferences,
+      );
+      assert.equal(preferences.preferenceRevision, 2);
+      assert.equal(preferences.uiLocale, 'en-GB');
 
-test(
-  'loopback: Last-Event-ID replays missed changes and an unknown cursor yields a gap before new events',
-  { timeout: 10000 },
-  async (t) => {
-    const { connect, setLanguage } = await startTestHost(t);
-    await setLanguage('en-GB', 1);
-    await setLanguage('de-DE', 2);
-    const replay = await connect('generation:1');
-    assert.equal((await replay.nextEvent()).eventId, 'generation:2');
-    const gap = await connect('previous-host:99');
-    assert.equal((await gap.nextEvent()).kind, 'host.replay-gap');
-    await setLanguage('en-GB', 3);
-    assert.equal((await gap.nextEvent()).eventId, 'generation:3');
-  },
-);
+      const closed = source.nextClose();
+      first.controller.abort();
+      await closed;
+      assert.equal(source.subscriptions.size, 1);
+      await setLanguage('de-DE', 2);
+      assert.equal((await second.nextEvent()).sequence, 2);
+    },
+  );
 
-test(
-  'loopback: host close releases idle streams and the port without waiting for a client disconnect',
-  { timeout: 10000 },
-  async (t) => {
-    const { host, source, connect } = await startTestHost(t);
-    const client = await connect();
-    await host.close();
-    assert.equal(source.subscriptions.size, 0);
-    assert.equal(host.server.listening, false);
-    assert.equal((await client.reader.read()).done, true);
-  },
-);
+  test(
+    'loopback: Last-Event-ID replays missed changes and an unknown cursor yields a gap before new events',
+    { timeout: 10000 },
+    async () => {
+      const { connect, setLanguage } = fixture;
+      await setLanguage('en-GB', 1);
+      await setLanguage('de-DE', 2);
+      const replay = await connect('generation:1');
+      assert.equal((await replay.nextEvent()).eventId, 'generation:2');
+      const gap = await connect('previous-host:99');
+      assert.equal((await gap.nextEvent()).kind, 'host.replay-gap');
+      await setLanguage('en-GB', 3);
+      assert.equal((await gap.nextEvent()).eventId, 'generation:3');
+    },
+  );
+
+  test(
+    'loopback: host close releases idle streams and the port without waiting for a client disconnect',
+    { timeout: 10000 },
+    async () => {
+      const { host, source, connect } = fixture;
+      const client = await connect();
+      await host.close();
+      assert.equal(source.subscriptions.size, 0);
+      assert.equal(host.server.listening, false);
+      assert.equal((await client.reader.read()).done, true);
+    },
+  );
+});
 
 test(
   'loopback: disconnect closes a subscription that completes registration late',

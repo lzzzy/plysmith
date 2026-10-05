@@ -258,7 +258,7 @@ export function RevisionImpactResolutionPanel({
                 value={copyName}
                 onChange={(event) => setCopyName(event.target.value)}
                 disabled={busy || needsReload || activeChoice !== undefined}
-                maxLength={200}
+                maxLength={160}
               />
             </label>
           </div>

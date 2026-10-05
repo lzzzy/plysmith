@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { after, type TestContext } from 'node:test';
 import { GetSystemStatus } from '../../../app/application/system/index.ts';
 import {
@@ -31,6 +32,15 @@ export function createFixture() {
     },
   };
   const dependencies: HostDependencies = {
+    registerImportInput: unavailableUseCase,
+    prepareImport: unavailableUseCase,
+    checkImportNames: unavailableUseCase,
+    publishImport: unavailableUseCase,
+    discardImport: {
+      execute: (): never => {
+        throw new Error('Use case not configured.');
+      },
+    },
     getSystemStatus: new GetSystemStatus({
       runtime: { getState: () => 'ready' },
       store,
@@ -174,6 +184,42 @@ export async function buildFixture(
 }
 
 let readOnlyFixture: ReturnType<typeof createReadOnlyFixture> | undefined;
+let routeFixture: ReturnType<typeof createReadOnlyFixture> | undefined;
+let routeFixtureInUse = false;
+
+type RouteOverrides = Omit<
+  Partial<HostDependencies>,
+  | 'events'
+  | 'security'
+  | 'diagnostics'
+  | 'productRelease'
+  | 'contractFingerprint'
+  | 'correlationIdFactory'
+>;
+
+// Sequential route contracts reuse compiled schemas, never stores or use cases.
+export async function buildRouteFixture(
+  t: TestContext,
+  overrides: RouteOverrides = {},
+) {
+  assert.equal(
+    routeFixtureInUse,
+    false,
+    'Route fixture requires sequential tests.',
+  );
+  routeFixtureInUse = true;
+  t.after(() => {
+    routeFixtureInUse = false;
+  });
+  routeFixture ??= createReadOnlyFixture();
+  const shared = await routeFixture;
+  const fixture = createFixture();
+  Object.assign(shared.dependencies, fixture.dependencies, overrides);
+  return {
+    ...fixture,
+    host: { inject: shared.host.inject.bind(shared.host) },
+  };
+}
 
 async function createReadOnlyFixture() {
   const fixture = createFixture();
@@ -189,6 +235,7 @@ export function buildReadOnlyFixture() {
 
 after(async () => {
   if (readOnlyFixture) await (await readOnlyFixture).host.close();
+  if (routeFixture) await (await routeFixture).host.close();
 });
 
 export function languageEvent(sequence = 1): HostEvent {

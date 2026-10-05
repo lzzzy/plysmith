@@ -1,4 +1,5 @@
 import { ApplicationProblem } from '../problems/application-problem.ts';
+import type { ObjectiveAnalysisBudget } from '../analysis/position-analysis.ts';
 
 interface EngineProviderConfigurationBase {
   readonly instanceId: string;
@@ -11,7 +12,8 @@ export interface StockfishUciEngineProviderConfigurationInput extends EngineProv
   readonly arguments: readonly string[];
   readonly threads: number;
   readonly hashMb: number;
-  readonly moveTimeMs: number;
+  readonly detailLevels: Readonly<Record<ObjectiveAnalysisBudget, number>>;
+  readonly playoutBudget: ObjectiveAnalysisBudget;
   readonly startupTimeoutMs: number;
   readonly moveTimeoutMs: number;
   readonly stopTimeoutMs: number;
