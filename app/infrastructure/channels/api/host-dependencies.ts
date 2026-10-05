@@ -62,6 +62,7 @@ import type {
   CheckImportNames,
   PublishImport,
   DiscardImport,
+  CancelImportPreparation,
 } from '../../../application/inventory/import-use-cases.ts';
 import type {
   CompletePlayoutUseCase,
@@ -83,6 +84,7 @@ export interface HostDependencies {
   readonly checkImportNames: Pick<CheckImportNames, 'execute'>;
   readonly publishImport: Pick<PublishImport, 'execute'>;
   readonly discardImport: Pick<DiscardImport, 'execute'>;
+  readonly cancelImportPreparation: Pick<CancelImportPreparation, 'execute'>;
   readonly getInventoryOrganization: GetInventoryOrganizationUseCase;
   readonly changeInventoryOrganization: ChangeInventoryOrganizationUseCase;
   readonly previewContextFolderRemoval: PreviewContextFolderRemovalUseCase;

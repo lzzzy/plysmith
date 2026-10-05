@@ -10,6 +10,7 @@ import {
   type ContentFormatLimits,
 } from '../../../../application/inventory/content-format-port.ts';
 import type { ChessState } from '../../../../domain/chess_graph/index.ts';
+import { IMPORT_LIMITS } from '../../../../application/inventory/import-limits.ts';
 import type {
   ChessTreeCandidate,
   ImportedMoveNode,
@@ -55,12 +56,29 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
       checkAbort(request.signal);
       if (sourceOrder >= limits.maxCandidates)
         throw new ContentFormatError('provider_resource_exhausted');
-      const candidate = await this.parseCandidate(
-        source,
-        sourceOrder++,
-        limits,
-        request.signal,
-      );
+      const candidate = framer.lastCandidateResourceLimited
+        ? {
+            sourceOrder: sourceOrder++,
+            suggestedName: `PGN ${sourceOrder}`,
+            status: 'rejected' as const,
+            nodes: [],
+            initialComments: [],
+            result: '*' as const,
+            findings: [
+              {
+                code: 'pgn_resource_limit',
+                disposition: 'invalid' as const,
+                feature: 'resources',
+                severity: 'error' as const,
+              },
+            ],
+          }
+        : await this.parseCandidate(
+            source,
+            sourceOrder++,
+            limits,
+            request.signal,
+          );
       checkAbort(request.signal);
       await request.onCandidate(candidate);
       checkAbort(request.signal);
@@ -100,6 +118,15 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
       severity: ImportFidelityFinding['severity'] = 'info',
       nodeIndex?: number,
     ): void => {
+      if (
+        findings.some(
+          (finding) =>
+            finding.code === code &&
+            finding.disposition === disposition &&
+            finding.severity === severity,
+        )
+      )
+        return;
       findings.push({
         code,
         disposition,
@@ -111,6 +138,8 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
     try {
       const shielded = shieldPgn(source.replace(/\r\n?/g, '\n'), limits);
       headers = shielded.headers;
+      if (shielded.duplicateFen)
+        add('pgn_duplicate_fen_normalized', 'normalized', 'fen');
       const tag = (name: string): string | undefined =>
         headers.find(
           (header) => header.name.toLowerCase() === name.toLowerCase(),
@@ -176,19 +205,9 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
       let hasDirectives = false;
       type Fragment = { offset: number; text: string };
       const anchorComments = new Map<number | null, Fragment[]>();
-      const restoreComments = (
-        value: string | undefined,
-        expectedNagCount = 0,
-      ): Fragment[] => {
+      const restoreComments = (value: string | undefined): Fragment[] => {
         const restored: Fragment[] = [];
-        let nagIndex = 0;
         for (const marker of value?.trim().split(/\s+/).filter(Boolean) ?? []) {
-          const nag = /^PLYSMITHNAG(\d+)$/.exec(marker);
-          if (nag) {
-            if (++nagIndex > expectedNagCount)
-              throw new InvalidPgn('pgn_comment_fidelity');
-            continue;
-          }
           const match = /^PLYSMITHCOMMENT(\d+)$/.exec(marker);
           if (!match) throw new InvalidPgn('pgn_comment_fidelity');
           const index = Number(match[1]);
@@ -203,8 +222,6 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
             text,
           });
         }
-        if (nagIndex !== expectedNagCount)
-          throw new InvalidPgn('pgn_comment_fidelity');
         return restored;
       };
       initialComments = tagComments([
@@ -212,15 +229,16 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
         { name: 'Result', value: result },
       ]);
       anchorComments.set(null, restoreComments(parsed.gameComment?.comment));
-      let hasNags = false;
+      let hasNags = shielded.hasNags;
       type Frame = {
         line: ParseTree['moves'];
         index: number;
         parent: number | null;
         before: ChessState;
+        depth: number;
       };
       const stack: Frame[] = [
-        { line: parsed.moves, index: 0, parent: null, before: root },
+        { line: parsed.moves, index: 0, parent: null, before: root, depth: 0 },
       ];
       const siblingCounts = new Map<number | null, number>();
       while (stack.length > 0) {
@@ -228,14 +246,17 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
         const frame = stack.pop()!;
         const move = frame.line[frame.index];
         if (!move) continue;
-        if (nodes.length >= limits.maxNodesPerCandidate)
+        if (
+          nodes.length >= limits.maxNodesPerCandidate ||
+          frame.depth >= IMPORT_LIMITS.maxPathHalfMoves
+        )
           throw new ContentFormatError('provider_resource_exhausted');
         const nodeIndex = nodes.length;
-        const applied = this.rules.applyMove(frame.before, [], {
-          kind: 'notation',
-          value: move.notation.notation,
-          locale: 'en-GB',
-        });
+        const applied = applyPgnMove(
+          this.rules,
+          frame.before,
+          move.notation.notation,
+        );
         if (!applied.ok) {
           add('pgn_illegal_san', 'invalid', 'san', 'error', nodeIndex);
           throw new InvalidPgn('pgn_illegal_san');
@@ -245,11 +266,10 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
           throw new InvalidPgn('pgn_invalid_nag');
         hasNags ||= nags.length > 0;
         const siblingOrder = siblingCounts.get(frame.parent) ?? 0;
+        if (siblingOrder > IMPORT_LIMITS.maxAlternativesPerOccurrence)
+          throw new ContentFormatError('provider_resource_exhausted');
         siblingCounts.set(frame.parent, siblingOrder + 1);
-        anchorComments.set(
-          nodeIndex,
-          restoreComments(move.commentAfter, nags.length),
-        );
+        anchorComments.set(nodeIndex, restoreComments(move.commentAfter));
         anchorComments
           .get(frame.parent)!
           .push(...restoreComments(move.commentMove));
@@ -276,12 +296,14 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
             index: 0,
             parent: frame.parent,
             before: frame.before,
+            depth: frame.depth,
           });
         stack.push({
           line: frame.line,
           index: frame.index + 1,
           parent: nodeIndex,
           before: applied.value.after,
+          depth: frame.depth + 1,
         });
       }
       if (usedComments.size !== shielded.comments.length)
@@ -298,7 +320,10 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
             .sort((a, b) => a.offset - b.offset)
             .map((fragment) => fragment.text.trim()),
         ].filter((text) => text.trim().length > 0);
-        return parts.length === 0 ? [] : [parts.join('\n\n')];
+        const text = parts.join('\n\n');
+        if (text.length > IMPORT_LIMITS.maxSingleNoteCharacters)
+          throw new ContentFormatError('provider_resource_exhausted');
+        return text.length === 0 ? [] : [text];
       };
       initialComments = aggregate(null, initialComments);
       nodes = nodes.map((node) => ({
@@ -319,17 +344,24 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
       if (nodes.some((node) => node.siblingOrder > 0))
         add('pgn_rav_preserved', 'preserved', 'rav');
     } catch (error) {
-      if (error instanceof ContentFormatError) throw error;
-      if (!(error instanceof InvalidPgn)) throw error;
-      if (!findings.some((finding) => finding.code === error.code))
-        add(
-          error.code,
-          error.code.endsWith('_unsupported') ? 'unsupported' : 'invalid',
-          'pgn',
-          'error',
-        );
+      if (
+        error instanceof ContentFormatError &&
+        error.code === 'provider_resource_exhausted'
+      ) {
+        add('pgn_resource_limit', 'invalid', 'resources', 'error');
+      } else {
+        if (!(error instanceof InvalidPgn)) throw error;
+        if (!findings.some((finding) => finding.code === error.code))
+          add(
+            error.code,
+            error.code.endsWith('_unsupported') ? 'unsupported' : 'invalid',
+            'pgn',
+            'error',
+          );
+      }
       nodes = [];
       root = undefined;
+      initialComments = [];
     }
     const titleTag = (name: string): string | undefined =>
       meaningfulTagValue(
@@ -359,6 +391,40 @@ export class PgnContentFormatAdapter implements ContentFormatPort {
       findings,
     };
   }
+}
+
+function applyPgnMove(
+  rules: ChessRulesPort,
+  before: ChessState,
+  notation: string,
+) {
+  const applied = rules.applyMove(before, [], {
+    kind: 'notation',
+    value: notation,
+    locale: 'en-GB',
+  });
+  if (applied.ok) return applied;
+  // Accept redundant origins only when the legal move set proves a unique match.
+  const match = /^([KQRBN])([a-h])?([1-8])?([x-]?)([a-h][1-8])([+#]?)$/.exec(
+    notation,
+  );
+  if (!match || (!match[2] && !match[3])) return applied;
+  const legal = rules.legalMoves(before, []);
+  if (!legal.ok) return applied;
+  const matches = legal.value.filter(
+    (move) =>
+      move.san[0] === match[1] &&
+      move.to === match[5] &&
+      (!match[2] || move.from[0] === match[2]) &&
+      (!match[3] || move.from[1] === match[3]) &&
+      move.san.includes('x') === (match[4] === 'x') &&
+      (!match[6] || move.san.endsWith(match[6])),
+  );
+  if (matches.length !== 1) return applied;
+  return rules.applyMove(before, [], {
+    kind: 'coordinates',
+    value: matches[0]!.from + matches[0]!.to,
+  });
 }
 
 function checkAbort(signal: AbortSignal): void {

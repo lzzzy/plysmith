@@ -420,6 +420,8 @@ function createStore(
     registerImportInput: async () =>
       assert.fail('no import operation expected'),
     prepareImport: async () => assert.fail('no import operation expected'),
+    cancelImportPreparation: async () =>
+      assert.fail('no import operation expected'),
     publishImport: async () => assert.fail('no import operation expected'),
     discardImport: async () => assert.fail('no import operation expected'),
     checkImportNames: async () => assert.fail('no import operation expected'),

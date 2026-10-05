@@ -28,9 +28,18 @@ erforderlich.
 Aktuell werden lokale Standard-PGN-Dateien verarbeitet. Ein Downloadlink ist
 noch kein Eingabefeld für einen URL-Import. ZIP-Dateien müssen außerhalb von
 Plysmith entpackt werden. Für eine Datei gelten derzeit **16 MiB, höchstens
-1.000 Kandidaten und höchstens 512 Zugknoten pro Kandidat**. Varianten zählen
-mit; die Dateigröße allein sagt deshalb wenig über die Importierbarkeit aus.
+256 vorbereitete Kapitel und 2.048 Zugknoten je Kapitel** einschließlich Varianten.
+Eine Vorbereitung enthält zusammen höchstens 32.768 Knoten. Pro Speicherung
+sind höchstens **100 Kapitel und 16.384 Knoten** auswählbar. Einzelne Pfade sind
+auf 1.000 Halbzüge, Alternativen an einer Stellung auf 64 begrenzt.
+Die Dateigröße allein sagt deshalb wenig über die Importierbarkeit aus.
 Die Vorschau ist maßgeblich, insbesondere bei fremden oder veränderten Dateien.
+
+Die [Kapazitätsanalyse vom 5. Oktober 2026](pgn-capacity-analysis.md) untersucht
+einen größeren Korpus und trennt Kapitelkomplexität, sinnvolle Importmenge und
+Appschutz. Das [umgesetzte Budgetprofil](pgn-import-budgets.md) beschreibt auch
+Text-, Speicher- und Laufzeitgrenzen. Zu große klar abgegrenzte Kapitel werden
+einzeln abgewiesen; globale Grenzen lassen keine halbe Vorschau entstehen.
 
 **Öffentlich herunterladbar bedeutet nicht automatisch frei weiterverteilbar.**
 Für die hier verlinkten Nutzerstudien wird keine CC0-Lizenz behauptet. Für das

@@ -11,6 +11,8 @@ import {
   PublishImport,
 } from '../../../app/application/inventory/import-use-cases.ts';
 import type { ContentFormatPort } from '../../../app/application/inventory/content-format-port.ts';
+import { IMPORT_LIMITS } from '../../../app/application/inventory/import-limits.ts';
+import { measureImportCandidate } from '../../../app/application/inventory/import-content-budget.ts';
 import type {
   ImportPreview,
   PublishImportRequest,
@@ -93,21 +95,168 @@ async function fixture(
     },
   };
 }
-test('previews include all 1000 summaries and reject the next candidate without persisting anything', async (t) => {
+test('previews include all bounded summaries and reject the next candidate without persisting anything', async (t) => {
   const f = await fixture(t);
   const source = Array.from(
-    { length: 1000 },
+    { length: IMPORT_LIMITS.maxCandidates },
     (_, index) => `[Event "Study ${index}"]\n*`,
   ).join('\n');
   const preview = await f.prepare(source);
-  assert.equal(preview.candidates.length, 1000);
-  assert.equal(preview.candidates[999]!.sourceOrder, 999);
+  assert.equal(preview.candidates.length, IMPORT_LIMITS.maxCandidates);
+  assert.equal(
+    preview.candidates.at(-1)!.sourceOrder,
+    IMPORT_LIMITS.maxCandidates - 1,
+  );
   assert.deepEqual(f.snapshot(), []);
   f.active.discard(preview.previewId);
   await assert.rejects(f.prepare(source + '\n[Event "Extra"]\n*'), {
     problemCode: 'import.provider_resource_exhausted',
   });
   assert.deepEqual(f.snapshot(), []);
+});
+
+test('targeted preparation cancellation leaves no preview and permits a new import', async (t) => {
+  const f = await fixture(t);
+  const input = await f.input('Nf3 Nf6 Ng1 Ng8 '.repeat(250) + '*');
+  const preparing = f.active.prepare({
+    inputHandle: input.inputHandle,
+    languageTag: 'en-GB',
+  });
+  const rejected = assert.rejects(preparing, {
+    problemCode: 'import.interrupted',
+  });
+  assert.deepEqual(await f.active.cancelPreparation(input.inputHandle), {
+    cancelled: true,
+  });
+  await rejected;
+  assert.deepEqual(await f.active.cancelPreparation(input.inputHandle), {
+    cancelled: false,
+  });
+  assert.deepEqual(f.snapshot(), []);
+  assert.equal((await f.prepare()).candidates.length, 1);
+});
+
+test('publication selection is bounded without consuming the larger preview', async (t) => {
+  const f = await fixture(t);
+  const preview = await f.prepare(
+    Array.from(
+      { length: 101 },
+      (_, index) => `[Event "Study ${index}"] *`,
+    ).join('\n'),
+  );
+  await assert.rejects(f.publish.execute(selection(preview)), {
+    problemCode: 'import.invalid_selection',
+  });
+  assert.deepEqual(f.snapshot(), []);
+  const request = selection(preview);
+  const result = await f.publish.execute({
+    ...request,
+    candidates: request.candidates.slice(0, 100),
+  });
+  assert.equal(result.items.length, 100);
+});
+
+test('cumulative preparation and shared retention budgets release rejected and discarded contents', async (t) => {
+  const base = new PgnContentFormatAdapter(new ChessJsRulesAdapter());
+  let chapter: ChessTreeCandidate | undefined;
+  const line = 'Nf3 Nf6 Ng1 Ng8 '.repeat(128).trim();
+  await base.decode(
+    (async function* () {
+      yield `Nf3 (${line}) (${line}) (${line}) ${line.slice(4)} *`;
+    })(),
+    {
+      signal: new AbortController().signal,
+      onCandidate: async (candidate) => {
+        chapter = candidate;
+      },
+    },
+  );
+  assert.equal(chapter!.nodes.length, IMPORT_LIMITS.maxNodesPerCandidate);
+  let count = 17;
+  const repeated: ContentFormatPort = {
+    descriptor: {
+      ...base.descriptor,
+      formatId: 'budget-test',
+      fileExtensions: ['.budget'],
+    },
+    async decode(_chunks, request) {
+      for (let sourceOrder = 0; sourceOrder < count; sourceOrder++)
+        await request.onCandidate({ ...chapter!, sourceOrder });
+    },
+  };
+  const f = await fixture(t, [repeated]);
+  const prepare = async () =>
+    f.active.prepare({
+      inputHandle: (await f.input('budget source', '.budget')).inputHandle,
+      languageTag: 'en-GB',
+    });
+  await assert.rejects(prepare(), {
+    problemCode: 'import.provider_resource_exhausted',
+  });
+  count = 16;
+  const first = await prepare();
+  const second = await prepare();
+  count = 1;
+  await assert.rejects(prepare(), {
+    problemCode: 'import.provider_resource_exhausted',
+  });
+  f.active.discard(first.previewId);
+  const third = await prepare();
+  assert.equal(third.candidates.length, 1);
+  f.advance(IMPORT_LIMITS.previewLifetimeMs + 1);
+  count = 16;
+  assert.equal((await prepare()).candidates.length, 16);
+  assert.deepEqual(f.active.discard(second.previewId), { discarded: false });
+  assert.deepEqual(f.snapshot(), []);
+});
+
+test('preparation enforces aggregated note budgets before retaining the next candidate', async (t) => {
+  const base = new PgnContentFormatAdapter(new ChessJsRulesAdapter());
+  const repeated: ContentFormatPort = {
+    descriptor: {
+      ...base.descriptor,
+      formatId: 'note-budget-test',
+      fileExtensions: ['.notes'],
+    },
+    async decode(_chunks, request) {
+      for (let sourceOrder = 0; sourceOrder < 33; sourceOrder++)
+        await request.onCandidate({
+          sourceOrder,
+          suggestedName: `Chapter ${sourceOrder}`,
+          status: 'ready',
+          root: new ChessJsRulesAdapter().initialState(),
+          nodes: [],
+          initialComments: ['x'.repeat(IMPORT_LIMITS.maxSingleNoteCharacters)],
+          findings: [],
+          result: '*',
+        });
+    },
+  };
+  const f = await fixture(t, [repeated]);
+  await assert.rejects(
+    f.active.prepare({
+      inputHandle: (await f.input('notes', '.notes')).inputHandle,
+      languageTag: 'en-GB',
+    }),
+    { problemCode: 'import.provider_resource_exhausted' },
+  );
+  assert.equal((await f.prepare()).candidates.length, 1);
+  assert.deepEqual(f.snapshot(), []);
+});
+
+test('independent candidate validation counts the text actually retained, including whitespace', () => {
+  const candidate: ChessTreeCandidate = {
+    sourceOrder: 0,
+    suggestedName: 'Text',
+    status: 'ready',
+    nodes: [],
+    initialComments: [' '.repeat(IMPORT_LIMITS.maxSingleNoteCharacters) + 'x'],
+    findings: [],
+    result: '*',
+  };
+  assert.throws(() => measureImportCandidate(candidate), {
+    problemCode: 'import.provider_resource_exhausted',
+  });
 });
 
 test('host shutdown aborts a running decoder and forgets provisional contents', async (t) => {
@@ -147,6 +296,44 @@ test('host shutdown aborts a running decoder and forgets provisional contents', 
     f.source.acquire(input.inputHandle, 'utf-8', new AbortController().signal),
     { problemCode: 'import.input_not_found' },
   );
+});
+
+test('preparation deadline reports a resource limit and releases the input and slot', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const started = Promise.withResolvers<void>();
+  const base = new PgnContentFormatAdapter(new ChessJsRulesAdapter());
+  const waiting: ContentFormatPort = {
+    descriptor: {
+      ...base.descriptor,
+      formatId: 'deadline-test',
+      fileExtensions: ['.deadline'],
+    },
+    async decode(_chunks, request) {
+      started.resolve();
+      await new Promise<void>((resolve) =>
+        request.signal.addEventListener('abort', () => resolve(), {
+          once: true,
+        }),
+      );
+    },
+  };
+  const f = await fixture(t, [waiting]);
+  const input = await f.input('deadline source', '.deadline');
+  const rejected = assert.rejects(
+    f.active.prepare({ inputHandle: input.inputHandle, languageTag: 'en-GB' }),
+    {
+      problemCode: 'import.provider_resource_exhausted',
+    },
+  );
+  await started.promise;
+  t.mock.timers.tick(IMPORT_LIMITS.maxPreparationDurationMs);
+  await rejected;
+  await assert.rejects(
+    f.source.acquire(input.inputHandle, 'utf-8', new AbortController().signal),
+    { problemCode: 'import.input_not_found' },
+  );
+  assert.equal((await f.prepare()).candidates.length, 1);
+  assert.deepEqual(f.snapshot(), []);
 });
 
 function selection(preview: ImportPreview): PublishImportRequest {

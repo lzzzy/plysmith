@@ -13,6 +13,10 @@ export type PublishImportRequest = components['schemas']['PublishImportBody'];
 export type ImportPublished = components['schemas']['ImportPublished'];
 export type DiscardImportRequest = components['schemas']['DiscardImportBody'];
 export type DiscardImportResult = components['schemas']['DiscardImportResult'];
+export type CancelImportPreparationRequest =
+  components['schemas']['CancelImportPreparationBody'];
+export type CancelImportPreparationResult =
+  components['schemas']['CancelImportPreparationResult'];
 
 export type GetInventoryOrganizationRequest =
   components['schemas']['InventoryOrganizationQuery'];
@@ -187,6 +191,9 @@ export interface HostClient {
   checkImportNames(request: CheckImportNamesRequest): Promise<ImportNameChecks>;
   publishImport(request: PublishImportRequest): Promise<ImportPublished>;
   discardImport(request: DiscardImportRequest): Promise<DiscardImportResult>;
+  cancelImportPreparation(
+    request: CancelImportPreparationRequest,
+  ): Promise<CancelImportPreparationResult>;
   getInventoryOrganization(
     request: GetInventoryOrganizationRequest,
   ): Promise<InventoryOrganization>;

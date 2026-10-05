@@ -9,6 +9,7 @@
     "outDir": "build/types/renderer"
   },
   "include": [
+    "app/application/inventory/import-limits.ts",
     "contracts/**/*.ts",
     "app/infrastructure/channels/api/contract.ts",
     "app/infrastructure/channels/api/schemas.ts",

@@ -11,8 +11,9 @@ import type {
   ImportInputDescriptor,
 } from '../../../../application/inventory/import-models.ts';
 import { importProblem } from '../../../../application/inventory/import-problems.ts';
+import { IMPORT_LIMITS } from '../../../../application/inventory/import-limits.ts';
 
-const maximumInputBytes = 16 * 1024 * 1024;
+const maximumInputBytes = IMPORT_LIMITS.maxInputBytes;
 const maximumRegisteredInputs = 16;
 const inputLifetimeMs = 30 * 60 * 1000;
 

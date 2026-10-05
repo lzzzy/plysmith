@@ -16,6 +16,8 @@ import {
   ImportPublishedSchema,
   DiscardImportBodySchema,
   DiscardImportResultSchema,
+  CancelImportPreparationBodySchema,
+  CancelImportPreparationResultSchema,
   type ImportFolderDestinationSchema,
 } from './import-schemas.ts';
 
@@ -51,6 +53,21 @@ export function registerImportRoutes(
   dependencies: HostDependencies,
 ): void {
   const api = host.withTypeProvider<TypeBoxTypeProvider>();
+  api.post(
+    '/inventory/imports/cancel-preparation',
+    {
+      schema: {
+        operationId: 'CancelImportPreparation',
+        querystring: EmptyQuerySchema,
+        body: CancelImportPreparationBodySchema,
+        response: {
+          200: Type.Ref(CancelImportPreparationResultSchema),
+          ...problemResponses,
+        },
+      },
+    },
+    async ({ body }) => dependencies.cancelImportPreparation.execute(body),
+  );
   api.post(
     '/inventory/import-inputs',
     {

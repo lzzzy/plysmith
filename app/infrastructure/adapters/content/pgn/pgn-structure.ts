@@ -2,20 +2,21 @@ import {
   ContentFormatError,
   type ContentFormatLimits,
 } from '../../../../application/inventory/content-format-port.ts';
+import { IMPORT_LIMITS } from '../../../../application/inventory/import-limits.ts';
 
 export const pgnLimits: ContentFormatLimits = Object.freeze({
-  maxInputCharacters: 16 * 1024 * 1024,
-  maxCandidateCharacters: 64 * 1024,
-  maxCandidates: 1000,
-  maxNodesPerCandidate: 512,
-  maxVariationDepth: 32,
-  maxHeadersPerCandidate: 64,
-  maxStringCharacters: 8192,
-  maxLineCharacters: 16384,
-  maxSyntaxCharacters: 2048,
-  maxTokensPerCandidate: 1024,
-  maxCommentsPerCandidate: 256,
-  maxVariationsPerCandidate: 128,
+  maxInputCharacters: IMPORT_LIMITS.maxInputBytes,
+  maxCandidateCharacters: IMPORT_LIMITS.maxCandidateCharacters,
+  maxCandidates: IMPORT_LIMITS.maxCandidates,
+  maxNodesPerCandidate: IMPORT_LIMITS.maxNodesPerCandidate,
+  maxVariationDepth: IMPORT_LIMITS.maxVariationDepth,
+  maxHeadersPerCandidate: IMPORT_LIMITS.maxHeadersPerCandidate,
+  maxStringCharacters: IMPORT_LIMITS.maxStringCharacters,
+  maxLineCharacters: IMPORT_LIMITS.maxLineCharacters,
+  maxSyntaxCharacters: IMPORT_LIMITS.maxSyntaxCharacters,
+  maxTokensPerCandidate: IMPORT_LIMITS.maxTokensPerCandidate,
+  maxCommentsPerCandidate: IMPORT_LIMITS.maxCommentsPerCandidate,
+  maxVariationsPerCandidate: IMPORT_LIMITS.maxVariationsPerCandidate,
 });
 
 export class InvalidPgn extends Error {
@@ -44,6 +45,8 @@ export class PgnFramer {
   private depth = 0;
   private lineLength = 0;
   private total = 0;
+  private limited = false;
+  lastCandidateResourceLimited = false;
 
   private readonly limits: ContentFormatLimits;
   constructor(limits: ContentFormatLimits) {
@@ -54,21 +57,28 @@ export class PgnFramer {
     this.total += character.length;
     if (this.total > this.limits.maxInputCharacters)
       throw new ContentFormatError('input_too_large');
-    this.lineLength =
-      character === '\n' || character === '\r' ? 0 : this.lineLength + 1;
-    if (this.lineLength > this.limits.maxLineCharacters)
-      throw new ContentFormatError('provider_resource_exhausted');
     let complete: string | undefined;
     if (this.mode === 'text' && /[\s{}();\[\]*]/.test(character)) {
       if (this.depth === 0 && isResult(this.token)) {
         complete = this.buffer;
+        this.lastCandidateResourceLimited = this.limited;
         this.buffer = '';
+        this.limited = false;
+        this.lineLength = 0;
       }
       this.token = '';
     }
-    this.buffer += character;
-    if (this.buffer.length > this.limits.maxCandidateCharacters)
-      throw new ContentFormatError('provider_resource_exhausted');
+    this.lineLength =
+      character === '\n' || character === '\r'
+        ? 0
+        : this.lineLength + character.length;
+    if (this.lineLength > this.limits.maxLineCharacters) this.limited = true;
+    if (
+      this.buffer.length + character.length <=
+      this.limits.maxCandidateCharacters
+    )
+      this.buffer += character;
+    else this.limited = true;
     if (this.mode === 'brace') {
       if (character === '}') this.mode = 'text';
     } else if (this.mode === 'line') {
@@ -83,15 +93,26 @@ export class PgnFramer {
     else if (character === '[') this.mode = 'tag';
     else if (character === '(') {
       this.depth += 1;
-      if (this.depth > this.limits.maxVariationDepth)
-        throw new ContentFormatError('provider_resource_exhausted');
+      if (this.depth > this.limits.maxVariationDepth) this.limited = true;
     } else if (character === ')') this.depth -= 1;
-    else if (!/\s/.test(character)) this.token += character;
+    else if (
+      !/\s/.test(character) &&
+      this.token.length <= this.limits.maxStringCharacters
+    )
+      this.token += character;
     return complete;
   }
 
   finish(): string | undefined {
-    return this.buffer.trim().length === 0 ? undefined : this.buffer;
+    this.lastCandidateResourceLimited = this.limited;
+    if (
+      this.limited &&
+      ((this.mode !== 'text' && this.mode !== 'line') || this.depth !== 0)
+    )
+      throw new ContentFormatError('provider_resource_exhausted');
+    return !this.limited && this.buffer.trim().length === 0
+      ? undefined
+      : this.buffer;
   }
 }
 
@@ -101,6 +122,8 @@ export interface ShieldedPgn {
   readonly comments: string[];
   readonly commentOffsets: number[];
   readonly result?: '1-0' | '0-1' | '1/2-1/2' | '*';
+  readonly hasNags: boolean;
+  readonly duplicateFen: boolean;
 }
 
 /** Shields the library's lossy tag coercion/comment directive extraction, not move grammar. */
@@ -113,7 +136,6 @@ export function shieldPgn(
   const commentOffsets: number[] = [];
   const output: string[] = [];
   type Annotations = {
-    nags: string[];
     drawOffers: string[];
     comments: string[];
   };
@@ -127,6 +149,9 @@ export function shieldPgn(
   let result: ShieldedPgn['result'];
   let variationResult = false;
   let offset = 0;
+  let headerCount = 0;
+  let hasNags = false;
+  let duplicateFen = false;
   const annotate = (kind: keyof Annotations, value: string): void => {
     const anchor = anchors[depth];
     if (anchor === undefined) {
@@ -135,7 +160,7 @@ export function shieldPgn(
     }
     let attached = annotations.get(anchor);
     if (attached === undefined) {
-      attached = { nags: [], drawOffers: [], comments: [] };
+      attached = { drawOffers: [], comments: [] };
       annotations.set(anchor, attached);
     }
     attached[kind].push(value);
@@ -177,19 +202,21 @@ export function shieldPgn(
         );
       if (!match) throw new InvalidPgn('pgn_invalid_header');
       if (
-        headers.length >= limits.maxHeadersPerCandidate ||
+        ++headerCount > limits.maxHeadersPerCandidate ||
         match[1]!.length > limits.maxStringCharacters ||
         match[2]!.length > limits.maxStringCharacters
       )
         throw new ContentFormatError('provider_resource_exhausted');
       const name = match[1]!;
-      if (
-        headers.some(
-          (header) => header.name.toLowerCase() === name.toLowerCase(),
-        )
-      )
-        throw new InvalidPgn('pgn_duplicate_header');
-      headers.push({ name, value: match[2]!.replace(/\\(["\\])/g, '$1') });
+      const value = match[2]!.replace(/\\(["\\])/g, '$1');
+      const existing = headers.find(
+        (header) => header.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing !== undefined) {
+        if (name.toLowerCase() !== 'fen' || existing.value !== value)
+          throw new InvalidPgn('pgn_duplicate_header');
+        duplicateFen = true;
+      } else headers.push({ name, value });
       output.push(' ');
       offset += match[0].length;
       continue;
@@ -237,18 +264,24 @@ export function shieldPgn(
         result = token;
       }
     }
-    // The library requires NAGs before comments and RAVs. Reorder only annotations
-    // of the same lexical anchor; the library still validates all move grammar.
+    // Validate omitted annotations before the library; prose and move grammar remain untouched.
     if (
       /^(?:\$\d+|[!?]+|\+-|-\+|[=D\u203c\u2047\u2049\u2048\u25a1\u221e\u2a72\u2a71\u00b1\u2213\u2a00\u27f3\u2192\u2191\u21c6])$/.test(
         token,
       )
     ) {
-      annotate('nags', ` ${token} `);
-      // Keep the original position while the library parses NAGs before prose.
-      annotate('comments', ` {PLYSMITHNAG${offset}} `);
+      if (
+        anchors[depth] === undefined ||
+        (/^\$/.test(token) && Number(token.slice(1)) > 255) ||
+        (/^[!?]+$/.test(token) &&
+          !['!', '?', '!!', '??', '!?', '?!'].includes(token))
+      )
+        throw new InvalidPgn('pgn_invalid_nag');
+      hasNags = true;
+      output.push(' ');
     } else {
-      anchors[depth] = output.length;
+      if (!/^\d+\.+$/.test(token))
+        anchors[depth] = isResult(token) ? undefined : output.length;
       output.push(token);
     }
     offset += token.length;
@@ -261,15 +294,14 @@ export function shieldPgn(
         const attached = annotations.get(index);
         return attached === undefined
           ? text
-          : text +
-              attached.nags.join('') +
-              attached.drawOffers.join('') +
-              attached.comments.join('');
+          : text + attached.drawOffers.join('') + attached.comments.join('');
       })
       .join(''),
     headers,
     comments,
     commentOffsets,
+    hasNags,
+    duplicateFen,
     ...(result === undefined ? {} : { result }),
   };
 }

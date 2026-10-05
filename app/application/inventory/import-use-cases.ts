@@ -18,6 +18,11 @@ import type {
   PublishImportRequest,
 } from './import-models.ts';
 import { importProblem } from './import-problems.ts';
+import { IMPORT_LIMITS } from './import-limits.ts';
+import {
+  assertImportPublicationBudget,
+  measureImportCandidate,
+} from './import-content-budget.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
 
 export class RegisterImportInput {
@@ -37,6 +42,13 @@ interface PreviewContent {
   readonly languageTag: string;
   readonly expiresAt: number;
   publishing: boolean;
+  readonly budget: HeldImportBudget;
+}
+
+interface HeldImportBudget {
+  nodes: number;
+  noteCharacters: number;
+  bytes: number;
 }
 
 export class ActiveImportPreviews {
@@ -45,7 +57,14 @@ export class ActiveImportPreviews {
   readonly #clock: InventoryClock;
   readonly #createPreviewId: () => string;
   readonly #previews = new Map<string, PreviewContent>();
-  readonly #preparing = new Map<AbortController, Promise<ImportPreview>>();
+  readonly #preparing = new Map<
+    string,
+    {
+      controller: AbortController;
+      promise: Promise<ImportPreview>;
+      budget: HeldImportBudget;
+    }
+  >();
   readonly #publishing = new Set<Promise<ImportPublished>>();
   #closing = false;
 
@@ -66,23 +85,40 @@ export class ActiveImportPreviews {
 
   prepare(request: PrepareImportRequest): Promise<ImportPreview> {
     this.#prune();
-    if (this.#closing || this.#previews.size + this.#preparing.size >= 3) {
+    if (this.#preparing.has(request.inputHandle))
+      return Promise.reject(importProblem('preparation_busy'));
+    if (
+      this.#closing ||
+      this.#previews.size + this.#preparing.size >=
+        IMPORT_LIMITS.maxActivePreparations
+    ) {
       this.#source.forget(request.inputHandle);
       return Promise.reject(importProblem('preparation_busy'));
     }
     const controller = new AbortController();
-    const promise = this.#prepare(request, controller.signal);
-    this.#preparing.set(controller, promise);
-    void promise.then(
-      () => this.#preparing.delete(controller),
-      () => this.#preparing.delete(controller),
+    const budget: HeldImportBudget = { nodes: 0, noteCharacters: 0, bytes: 0 };
+    const timeout = setTimeout(
+      () => controller.abort(importProblem('provider_resource_exhausted')),
+      IMPORT_LIMITS.maxPreparationDurationMs,
     );
+    const promise = this.#prepare(request, controller.signal, budget)
+      .catch((error: unknown) => {
+        if (controller.signal.reason instanceof ApplicationProblem)
+          throw controller.signal.reason;
+        throw error;
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        this.#preparing.delete(request.inputHandle);
+      });
+    this.#preparing.set(request.inputHandle, { controller, promise, budget });
     return promise;
   }
 
   async #prepare(
     request: PrepareImportRequest,
     signal: AbortSignal,
+    budget: HeldImportBudget,
   ): Promise<ImportPreview> {
     if (
       !/^[a-f0-9-]{36}$/.test(request.inputHandle) ||
@@ -95,6 +131,7 @@ export class ActiveImportPreviews {
     }
     let input:
       Awaited<ReturnType<SourceAcquisitionPort['acquire']>> | undefined;
+    let inputClosed = false;
     try {
       input = await this.#source.acquire(
         request.inputHandle,
@@ -107,7 +144,7 @@ export class ActiveImportPreviews {
         signal,
         onCandidate: async (candidate) => {
           if (signal.aborted) throw importProblem('interrupted');
-          if (candidates.length >= 1000)
+          if (candidates.length >= IMPORT_LIMITS.maxCandidates)
             throw importProblem('provider_resource_exhausted');
           if (
             !Number.isSafeInteger(candidate.sourceOrder) ||
@@ -117,9 +154,30 @@ export class ActiveImportPreviews {
             )
           )
             throw importProblem('invalid_candidate');
+          const measured = measureImportCandidate(candidate);
+          const bytes = new TextEncoder().encode(
+            JSON.stringify(candidate),
+          ).byteLength;
+          const held = this.#heldBudget();
+          if (
+            budget.nodes + measured.nodes > IMPORT_LIMITS.maxPreparationNodes ||
+            budget.noteCharacters + measured.noteCharacters >
+              IMPORT_LIMITS.maxNoteCharacters ||
+            budget.bytes + bytes > IMPORT_LIMITS.maxPreviewBytes ||
+            held.nodes + measured.nodes > IMPORT_LIMITS.maxActiveNodes ||
+            held.noteCharacters + measured.noteCharacters >
+              IMPORT_LIMITS.maxActiveNoteCharacters ||
+            held.bytes + bytes > IMPORT_LIMITS.maxActiveBytes
+          )
+            throw importProblem('provider_resource_exhausted');
+          budget.nodes += measured.nodes;
+          budget.noteCharacters += measured.noteCharacters;
+          budget.bytes += bytes;
           candidates.push(freezeContent(structuredClone(candidate)));
         },
       });
+      await input.close();
+      inputClosed = true;
       if (signal.aborted || this.#closing) throw importProblem('interrupted');
       const previewId = this.#createPreviewId();
       if (this.#previews.has(previewId))
@@ -127,9 +185,14 @@ export class ActiveImportPreviews {
       this.#previews.set(previewId, {
         candidates: Object.freeze(candidates),
         languageTag: request.languageTag,
-        expiresAt: Date.parse(this.#clock.now()) + 30 * 60 * 1000,
+        expiresAt:
+          Date.parse(this.#clock.now()) + IMPORT_LIMITS.previewLifetimeMs,
         publishing: false,
+        budget: { ...budget },
       });
+      budget.nodes = 0;
+      budget.noteCharacters = 0;
+      budget.bytes = 0;
       this.#source.forget(request.inputHandle);
       return freezeContent({
         previewId,
@@ -159,7 +222,7 @@ export class ActiveImportPreviews {
         this.#source.forget(request.inputHandle);
       throw error;
     } finally {
-      await input?.close();
+      if (!inputClosed) await input?.close();
     }
   }
 
@@ -175,7 +238,10 @@ export class ActiveImportPreviews {
     if (preview.publishing)
       return Promise.reject(importProblem('publication_busy'));
     validateNames(request.candidates);
-    if (request.candidates.length === 0)
+    if (
+      request.candidates.length === 0 ||
+      request.candidates.length > IMPORT_LIMITS.maxPublishedCandidates
+    )
       throw importProblem('invalid_selection');
     const candidates = request.candidates.map((selection) => {
       const content = preview.candidates.find(
@@ -195,6 +261,9 @@ export class ActiveImportPreviews {
         throw importProblem('warning_confirmation_required');
       return { ...selection, content };
     });
+    assertImportPublicationBudget(
+      candidates.map((candidate) => candidate.content),
+    );
     const folder = structuredClone(request.folder);
     preview.publishing = true;
     const promise = Promise.resolve()
@@ -225,14 +294,40 @@ export class ActiveImportPreviews {
     return { discarded: this.#previews.delete(previewId) };
   }
 
+  async cancelPreparation(
+    inputHandle: string,
+  ): Promise<{ readonly cancelled: boolean }> {
+    const preparation = this.#preparing.get(inputHandle);
+    if (preparation === undefined) return { cancelled: false };
+    preparation.controller.abort();
+    await preparation.promise.catch(() => undefined);
+    return { cancelled: true };
+  }
+
   async close(): Promise<void> {
     this.#closing = true;
-    for (const controller of this.#preparing.keys()) controller.abort();
+    for (const preparation of this.#preparing.values())
+      preparation.controller.abort();
     await Promise.allSettled([
-      ...this.#preparing.values(),
+      ...[...this.#preparing.values()].map(
+        (preparation) => preparation.promise,
+      ),
       ...this.#publishing,
     ]);
     this.#previews.clear();
+  }
+
+  #heldBudget(): HeldImportBudget {
+    const result = { nodes: 0, noteCharacters: 0, bytes: 0 };
+    for (const { budget } of [
+      ...this.#preparing.values(),
+      ...this.#previews.values(),
+    ]) {
+      result.nodes += budget.nodes;
+      result.noteCharacters += budget.noteCharacters;
+      result.bytes += budget.bytes;
+    }
+    return result;
   }
 
   #prune(): void {
@@ -303,11 +398,25 @@ export class DiscardImport {
   }
 }
 
+export class CancelImportPreparation {
+  private readonly active: ActiveImportPreviews;
+  constructor(active: ActiveImportPreviews) {
+    this.active = active;
+  }
+  execute(request: {
+    readonly inputHandle: string;
+  }): Promise<{ readonly cancelled: boolean }> {
+    if (!/^[a-f0-9-]{36}$/.test(request.inputHandle))
+      throw importProblem('invalid_request');
+    return this.active.cancelPreparation(request.inputHandle);
+  }
+}
+
 function validateNames(
   candidates: CheckImportNamesRequest['candidates'],
 ): void {
   if (
-    candidates.length > 1000 ||
+    candidates.length > IMPORT_LIMITS.maxCandidates ||
     new Set(candidates.map((candidate) => candidate.sourceOrder)).size !==
       candidates.length ||
     candidates.some(

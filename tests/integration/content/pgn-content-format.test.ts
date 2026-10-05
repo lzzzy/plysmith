@@ -52,6 +52,115 @@ test('aggregates ordered prose and branch introductions into one note per anchor
   );
 });
 
+test('accepts large study trees with separately bounded paths and alternatives', async () => {
+  const line = 'Nf3 Nf6 Ng1 Ng8 '.repeat(128).trim();
+  const source = `Nf3 (${line}) (${line}) (${line}) ${line.slice(4)} *`;
+  const [candidate] = await decode(source, source.length);
+  assert.equal(candidate!.status, 'ready');
+  assert.equal(candidate!.nodes.length, 2048);
+  const [oversized] = await decode(
+    source.replace(/ \*$/, ' Nf3 *'),
+    source.length,
+  );
+  assert.equal(oversized!.status, 'rejected');
+  assert.ok(
+    oversized!.findings.some(
+      (finding) => finding.code === 'pgn_resource_limit',
+    ),
+  );
+});
+
+test('rejects only the safely framed chapter whose path or alternatives exceed the limit', async () => {
+  for (const source of [
+    'Nf3 Nf6 Ng1 Ng8 '.repeat(250) + 'Nf3 *',
+    'e4 ' + '(d4) '.repeat(65) + '*',
+    `{${'x'.repeat(pgnLimits.maxStringCharacters + 1)}} *`,
+  ]) {
+    const candidates = await decode(
+      source + '\n[Event "Next"] d4 *',
+      source.length,
+    );
+    assert.deepEqual(
+      candidates.map((candidate) => candidate.status),
+      ['rejected', 'ready'],
+    );
+    assert.equal(candidates[0]!.root, undefined);
+    assert.deepEqual(candidates[0]!.nodes, []);
+    assert.ok(
+      candidates[0]!.findings.some(
+        (finding) => finding.code === 'pgn_resource_limit',
+      ),
+    );
+  }
+});
+
+test('omits long annotation runs before library parsing and aggregates repeated omissions', async () => {
+  const [nags] = await decode(
+    'e4 ' + '$1 '.repeat(4000) + '{literal $14} *',
+    20000,
+  );
+  assert.equal(nags!.status, 'ready');
+  assert.deepEqual(nags!.nodes[0]!.comments, ['literal $14']);
+  const moves = 'Nf3 (=) Nf6 (=) Ng1 (=) Ng8 (=) '.repeat(250);
+  const [draws] = await decode(moves + '*', moves.length);
+  assert.equal(draws!.status, 'warning');
+  assert.equal(draws!.nodes.length, 1000);
+  assert.equal(
+    draws!.findings.filter(
+      (finding) => finding.code === 'pgn_draw_offer_unsupported',
+    ).length,
+    1,
+  );
+});
+
+test('accepts identical repeated FEN headers but rejects conflicting duplicates', async () => {
+  const fen = '4k3/8/8/8/8/8/8/R3K3 b Q - 7 12';
+  const [candidate] = await decode(
+    `[SetUp "1"] [FEN "${fen}"] [FEN "${fen}"] Kf7 *`,
+  );
+  assert.equal(candidate!.status, 'ready');
+  assert.equal(candidate!.nodes[0]!.move.san, 'Kf7');
+  assert.equal(
+    (await decode(`[SetUp "1"] [FEN "${fen}"] [FEN "bad"] *`))[0]!.status,
+    'rejected',
+  );
+});
+
+test('normalizes only uniquely legal redundant SAN origins', async () => {
+  const [candidate] = await decode('1.Ng1f3 Ng8f6 *', 1);
+  assert.equal(candidate!.status, 'ready');
+  assert.deepEqual(
+    candidate!.nodes.map((node) => node.move.san),
+    ['Nf3', 'Nf6'],
+  );
+  for (const source of ['Ng2f3 *', 'Ng1xf3 *', 'Ng1f3+ *']) {
+    assert.equal((await decode(source))[0]!.status, 'rejected', source);
+  }
+});
+
+test('frames exact character boundaries without counting the next delimiter twice', async () => {
+  const source = ' '.repeat(pgnLimits.maxCandidateCharacters - 4) + 'e4 *';
+  const candidates = await decode(source + ' d4 *', 4096);
+  assert.deepEqual(
+    candidates.map((candidate) => candidate.status),
+    ['ready', 'ready'],
+  );
+});
+
+test('treats an over-budget EOF line comment as a safely isolated rejected chapter', async () => {
+  for (const ending of ['', '\n']) {
+    const candidates = await decode(
+      'e4 *\nd4 ;' + 'x'.repeat(70000) + ending,
+      4096,
+    );
+    assert.deepEqual(
+      candidates.map((candidate) => candidate.status),
+      ['ready', 'rejected'],
+    );
+    assert.equal(candidates[1]!.findings[0]!.code, 'pgn_resource_limit');
+  }
+});
+
 test('filters technical directives and preserves their surrounding author text', async () => {
   const [candidate] = await decode(
     '1.e4 {Plan\n\n[%cal Ge2e4] Keep this explanation.} $1 *',
@@ -471,11 +580,9 @@ test('keeps the annotation cap effective when NAGs and comments alternate', asyn
     candidate!.nodes[0]!.comments[0]!.split('\n\n').length,
     pgnLimits.maxCommentsPerCandidate,
   );
-  await assert.rejects(
-    decode(`1.e4 ${annotation}{extra} $1 e5 *`),
-    (error: unknown) =>
-      error instanceof ContentFormatError &&
-      error.code === 'provider_resource_exhausted',
+  assert.equal(
+    (await decode(`1.e4 ${annotation}{extra} $1 e5 *`))[0]!.status,
+    'rejected',
   );
 });
 
@@ -627,27 +734,37 @@ test('enforces parser resource bounds before invoking chess rules', async () => 
   };
   const adapter = new PgnContentFormatAdapter(rules);
   for (const source of [
-    '1. e4 ' + '('.repeat(pgnLimits.maxVariationDepth + 1),
     '{' + 'a'.repeat(pgnLimits.maxStringCharacters + 1) + '} *',
     ' '.repeat(pgnLimits.maxLineCharacters + 1),
     '[Custom "' + 'x'.repeat(pgnLimits.maxStringCharacters + 1) + '"] *',
-    '1. e4 ' + '$1 '.repeat(1025) + '*',
-    '1. e4 ' + '!'.repeat(2049) + '*',
+    '1. e4 ' + '$1 '.repeat(pgnLimits.maxTokensPerCandidate + 1) + '*',
     Array.from({ length: 65 }, (_, index) => `[Tag${index} "x"]`).join(' ') +
       '*',
   ]) {
-    await assert.rejects(
-      adapter.decode(chunks(source, 4096), {
-        signal: new AbortController().signal,
-        onCandidate: async () => {
-          assert.fail('candidate must not be emitted');
-        },
-      }),
-      (error: unknown) =>
-        error instanceof ContentFormatError &&
-        error.code === 'provider_resource_exhausted',
+    const candidates: ChessTreeCandidate[] = [];
+    await adapter.decode(chunks(source, 4096), {
+      signal: new AbortController().signal,
+      onCandidate: async (candidate) => {
+        candidates.push(candidate);
+      },
+    });
+    assert.equal(candidates[0]!.status, 'rejected');
+    assert.ok(
+      candidates[0]!.findings.some(
+        (finding) => finding.code === 'pgn_resource_limit',
+      ),
     );
   }
+  await assert.rejects(
+    adapter.decode(
+      chunks('1.e4 ' + '('.repeat(pgnLimits.maxVariationDepth + 1)),
+      {
+        signal: new AbortController().signal,
+        onCandidate: async () => assert.fail('no proven boundary'),
+      },
+    ),
+    { code: 'provider_resource_exhausted' },
+  );
 });
 
 test('enforces the candidate cap and awaits each writer callback', async () => {
@@ -655,7 +772,7 @@ test('enforces the candidate cap and awaits each writer callback', async () => {
   let writing = false;
   await assert.rejects(
     new PgnContentFormatAdapter(new ChessJsRulesAdapter()).decode(
-      chunks('* '.repeat(1001), 2002),
+      chunks('* '.repeat(pgnLimits.maxCandidates + 1), 2002),
       {
         signal: new AbortController().signal,
         onCandidate: async (candidate) => {
@@ -671,10 +788,10 @@ test('enforces the candidate cap and awaits each writer callback', async () => {
       error instanceof ContentFormatError &&
       error.code === 'provider_resource_exhausted',
   );
-  assert.equal(received, 1000);
+  assert.equal(received, pgnLimits.maxCandidates);
 });
 
-test('accepts the depth boundary and rejects a move beyond the node boundary', async () => {
+test('accepts depth and path boundaries and rejects a longer path', async () => {
   const [deep] = await decode(
     'e4 ('.repeat(pgnLimits.maxVariationDepth) +
       'e4' +
@@ -683,16 +800,11 @@ test('accepts the depth boundary and rejects a move beyond the node boundary', a
   );
   assert.equal(deep!.status, 'ready');
   assert.equal(deep!.nodes.length, pgnLimits.maxVariationDepth + 1);
-  const line = 'Nf3 Nf6 Ng1 Ng8 '.repeat(pgnLimits.maxNodesPerCandidate / 4);
+  const line = 'Nf3 Nf6 Ng1 Ng8 '.repeat(250);
   const [full] = await decode(line + '*');
   assert.equal(full!.status, 'ready');
-  assert.equal(full!.nodes.length, pgnLimits.maxNodesPerCandidate);
-  await assert.rejects(
-    decode(line + 'Nf3*'),
-    (error: unknown) =>
-      error instanceof ContentFormatError &&
-      error.code === 'provider_resource_exhausted',
-  );
+  assert.equal(full!.nodes.length, 1000);
+  assert.equal((await decode(line + 'Nf3*'))[0]!.status, 'rejected');
 });
 
 test('cancels before input, during CPU work and between emitted candidates', async () => {

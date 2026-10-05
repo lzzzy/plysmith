@@ -19,7 +19,7 @@ import {
   RadioGroup,
 } from 'react-aria-components';
 import { FormattedMessage, useIntl } from 'react-intl';
-import { HostClientProblem } from '../../host_client/index.ts';
+import { HostClientProblem, importLimits } from '../../host_client/index.ts';
 import type {
   ImportPreview,
   ImportPublication,
@@ -47,6 +47,8 @@ export function ImportDialog({
   const dialog = useRef<HTMLElement>(null);
   const session = state.importSession;
   const busy = state.busyCommand !== undefined || state.refreshing;
+  const preparing = session?.activity === 'preparing';
+  const dismissalBlocked = busy && !preparing;
   const message = (id: string) => intl.formatMessage({ id });
   useEffect(() => {
     if (
@@ -62,8 +64,8 @@ export function ImportDialog({
     <ModalOverlay
       className={styles.overlay!}
       isOpen={session.open}
-      isDismissable={!busy}
-      isKeyboardDismissDisabled={busy}
+      isDismissable={!dismissalBlocked}
+      isKeyboardDismissDisabled={dismissalBlocked}
       onOpenChange={(open) => {
         if (!open) void store.closeImport();
       }}
@@ -83,7 +85,7 @@ export function ImportDialog({
               className={styles.iconButton!}
               aria-label={message('import.close')}
               title={message('import.close')}
-              disabled={busy}
+              disabled={dismissalBlocked}
               onClick={() => void store.closeImport()}
             >
               <X size={18} aria-hidden="true" />
@@ -102,9 +104,9 @@ export function ImportDialog({
                 <FolderOpen size={16} aria-hidden="true" />
                 <FormattedMessage id="import.choose" />
               </Button>
-              {busy && (
+              {session.activity !== undefined && (
                 <span role="status">
-                  <FormattedMessage id="import.preparing" />
+                  <FormattedMessage id={'import.' + session.activity} />
                 </span>
               )}
             </div>
@@ -141,10 +143,12 @@ export function ImportDialog({
             <footer className={styles.footer}>
               <Button
                 className={styles.button!}
-                isDisabled={busy}
+                isDisabled={dismissalBlocked}
                 onPress={() => void store.closeImport()}
               >
-                <FormattedMessage id="import.close" />
+                <FormattedMessage
+                  id={preparing ? 'import.cancel' : 'import.close'}
+                />
               </Button>
             </footer>
           )}
@@ -179,13 +183,15 @@ function ImportPreviewForm({
   const [prefix, setPrefix] = useState(preview.sourceDisplayName + ' - ');
   const prefixInput = useRef<HTMLInputElement>(null);
   const [names, setNames] = useState<Record<number, string>>({});
+  const available = preview.candidates.filter(
+    (candidate) => candidate.status !== 'rejected',
+  );
+  const allFit =
+    available.length <= importLimits.maxPublishedCandidates &&
+    available.reduce((total, candidate) => total + candidate.moveCount, 0) <=
+      importLimits.maxPublicationNodes;
   const [selected, setSelected] = useState(
-    () =>
-      new Set(
-        preview.candidates
-          .filter((c) => c.status !== 'rejected')
-          .map((c) => c.sourceOrder),
-      ),
+    () => new Set(allFit ? available.map((c) => c.sourceOrder) : []),
   );
   const [types, setTypes] = useState<Record<number, 'analysis' | 'game'>>({});
   const [offset, setOffset] = useState(0);
@@ -195,13 +201,21 @@ function ImportPreviewForm({
     readonly result?: NameChecks;
     readonly errorCode?: string;
   }>();
-  const selections = preview.candidates
-    .filter((c) => selected.has(c.sourceOrder))
-    .map((c) => ({
-      sourceOrder: c.sourceOrder,
-      itemType: types[c.sourceOrder] ?? ('analysis' as const),
-      displayName: (prefix + (names[c.sourceOrder] ?? c.suggestedName)).trim(),
-    }));
+  const selectedCandidates = available.filter((c) =>
+    selected.has(c.sourceOrder),
+  );
+  const selectedNodes = selectedCandidates.reduce(
+    (total, candidate) => total + candidate.moveCount,
+    0,
+  );
+  const selectionFits =
+    selectedCandidates.length <= importLimits.maxPublishedCandidates &&
+    selectedNodes <= importLimits.maxPublicationNodes;
+  const selections = selectedCandidates.map((c) => ({
+    sourceOrder: c.sourceOrder,
+    itemType: types[c.sourceOrder] ?? ('analysis' as const),
+    displayName: (prefix + (names[c.sourceOrder] ?? c.suggestedName)).trim(),
+  }));
   const validNames = selections.every(
     (c) => c.displayName.length > 0 && c.displayName.length <= 160,
   );
@@ -241,6 +255,7 @@ function ImportPreviewForm({
     (folderName.trim().length > 0 && folderName.trim().length <= 160);
   const canPublish =
     !busy &&
+    selectionFits &&
     validFolder &&
     validNames &&
     checked &&
@@ -257,7 +272,7 @@ function ImportPreviewForm({
   const visible = preview.candidates.slice(offset, offset + 100);
 
   useEffect(() => {
-    if (!validNames || selections.length === 0) return;
+    if (!selectionFits || !validNames || selections.length === 0) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       void store
@@ -284,7 +299,14 @@ function ImportPreviewForm({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [namesKey, validationKey, validNames, selections.length, store]);
+  }, [
+    namesKey,
+    validationKey,
+    validNames,
+    selectionFits,
+    selections.length,
+    store,
+  ]);
 
   function changeSelection(candidate: Candidate, included: boolean) {
     setSelected((current) => {
@@ -378,13 +400,33 @@ function ImportPreviewForm({
             warnings: warningCandidates.length,
           }}
         />
-        {!checked && validNames && (
+        {!checked && validNames && selectionFits && (
           <span>
             {' '}
             · <FormattedMessage id="import.checkingNames" />
           </span>
         )}
       </p>
+      <p id="import-selected-moves" className={styles.summary} role="status">
+        <FormattedMessage
+          id="import.selectedMoves"
+          values={{ moves: selectedNodes }}
+        />
+      </p>
+      {(!selectionFits || (!allFit && selections.length === 0)) && (
+        <p
+          className={selectionFits ? styles.summary : styles.problem}
+          role="status"
+        >
+          <FormattedMessage
+            id={
+              selectionFits
+                ? 'import.selectWithinBudget'
+                : 'import.selectionOverBudget'
+            }
+          />
+        </p>
+      )}
       {checks?.key === validationKey && checks.errorCode !== undefined && (
         <ImportProblem code={checks.errorCode} />
       )}
@@ -658,6 +700,7 @@ function ImportPreviewForm({
         <button
           type="submit"
           className={styles.primary!}
+          aria-describedby="import-selected-moves"
           disabled={!canPublish}
         >
           <Download size={16} aria-hidden="true" />

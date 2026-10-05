@@ -34,6 +34,10 @@ export type DiscardImportRequestDto =
   components['schemas']['DiscardImportBody'];
 export type DiscardImportResultDto =
   components['schemas']['DiscardImportResult'];
+export type CancelImportPreparationRequestDto =
+  components['schemas']['CancelImportPreparationBody'];
+export type CancelImportPreparationResultDto =
+  components['schemas']['CancelImportPreparationResult'];
 
 export type GetInventoryOrganizationRequestDto =
   components['schemas']['InventoryOrganizationQuery'];
@@ -257,6 +261,23 @@ export class PlysmithHostClient {
       });
       return unwrap<ImportNameChecksDto>(
         result.data as unknown as ImportNameChecksDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async cancelImportPreparation(
+    request: CancelImportPreparationRequestDto,
+  ): Promise<CancelImportPreparationResultDto> {
+    try {
+      const result = await this.#client.POST(
+        '/inventory/imports/cancel-preparation',
+        { body: request },
+      );
+      return unwrap<CancelImportPreparationResultDto>(
+        result.data,
         result.error,
       );
     } catch (error) {

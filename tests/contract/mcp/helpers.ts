@@ -121,6 +121,12 @@ export async function connectMcp(
         return overrides.checkImportNames(request);
       throw new Error('checkImportNames fixture not configured');
     },
+    async cancelImportPreparation(request) {
+      calls.push({ method: 'cancelImportPreparation', request });
+      if (overrides.cancelImportPreparation)
+        return overrides.cancelImportPreparation(request);
+      throw new Error('cancelImportPreparation fixture not configured');
+    },
     async publishImport(request) {
       calls.push({ method: 'publishImport', request });
       if (overrides.publishImport) return overrides.publishImport(request);

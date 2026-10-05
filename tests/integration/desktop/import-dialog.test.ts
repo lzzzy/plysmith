@@ -124,6 +124,7 @@ function render(
   overrides: Partial<ImportPreview> = {},
   busy = false,
   errorCode?: string,
+  activity: 'choosing' | 'preparing' | 'publishing' = 'publishing',
 ) {
   const errors: string[] = [];
   const html = renderToStaticMarkup(
@@ -149,7 +150,10 @@ function render(
           ...(busy ? { busyCommand: 'import_command' } : {}),
           importSession: {
             open: true,
-            preview: { ...preview, ...overrides },
+            ...(activity === 'preparing'
+              ? {}
+              : { preview: { ...preview, ...overrides } }),
+            ...(busy ? { activity } : {}),
             ...(errorCode === undefined ? {} : { errorCode }),
           },
         },
@@ -168,6 +172,7 @@ test('German and English import previews offer only a folder and common prefix, 
     assert.match(html, /value="italian-game.pgn"/);
     assert.match(html, /value="Italienisch"/);
     assert.match(html, /maxlength="160"/i);
+    assert.match(html, /aria-describedby="import-selected-moves"/);
     assert.doesNotMatch(
       html,
       /Zielkontext|Vorbereitete Importe|Destination context|Prepared imports|SHA-256|SourceCommit|Save names|Namen speichern/,
@@ -205,7 +210,111 @@ test('publication stays disabled until names and selected warnings are reviewed;
     render('en-GB', {}, true),
     /data-keyboard-dismiss-disabled="true"/,
   );
-  assert.match(render('de-DE', {}, true), /Wird vorbereitet/);
+  assert.match(render('de-DE', {}, true), /Auswahl wird gespeichert/);
+});
+
+test('preparation exposes the existing cancel action and permits keyboard dismissal', () => {
+  const html = render('en-GB', {}, true, undefined, 'preparing');
+  assert.match(html, /data-keyboard-dismiss-disabled="false"/);
+  assert.match(html, /Preparing/);
+  const cancel = html
+    .match(/<button[^>]*>[^]*?<\/button>/g)
+    ?.find((button) => button.includes('Cancel import'));
+  assert.ok(cancel);
+  assert.doesNotMatch(cancel, /disabled/);
+});
+
+test('preselection accepts exact publication budgets and never picks a hidden subset above either limit', () => {
+  for (const [count, moveCount, expected] of [
+    [100, 1, 100],
+    [101, 1, 0],
+    [8, 2048, 8],
+    [9, 2048, 0],
+    [1, 0, 1],
+    [1, 1, 1],
+    [63, 132, 63],
+  ]) {
+    const candidates: ImportPreview['candidates'] = Array.from(
+      { length: count! },
+      (_, sourceOrder) => ({
+        sourceOrder,
+        suggestedName: 'Chapter ' + sourceOrder,
+        status: 'ready',
+        moveCount: moveCount!,
+        variationCount: 0,
+        findings: [],
+      }),
+    );
+    const html = render('en-GB', { candidates });
+    assert.match(html, new RegExp(`${expected} of ${count} selected`));
+    assert.equal(
+      (html.match(/type="checkbox"[^>]*checked/g) ?? []).length,
+      expected,
+    );
+    const moves = expected! * moveCount!;
+    assert.match(
+      html,
+      new RegExp(
+        `<p id="import-selected-moves"[^>]*>${new Intl.NumberFormat('en-GB').format(moves)} half-move${moves === 1 ? '' : 's'} including variations</p>`,
+      ),
+    );
+    assert.doesNotMatch(html, /100 chapters|\/ 16,384/);
+    const german = render('de-DE', { candidates });
+    assert.match(german, new RegExp(`${expected} von ${count} ausgewählt`));
+    assert.match(
+      german,
+      new RegExp(
+        `<p id="import-selected-moves"[^>]*>${new Intl.NumberFormat('de-DE').format(moves)} ${moves === 1 ? 'Halbzug' : 'Halbzüge'} einschließlich Varianten</p>`,
+      ),
+    );
+    assert.doesNotMatch(german, /100 Kapitel|\/ 16\.384/);
+    if (expected === 0) assert.match(html, /No chapters selected yet/);
+  }
+});
+
+test('new import findings are localized without raw technical codes', () => {
+  const candidates: ImportPreview['candidates'] = [
+    {
+      ...preview.candidates[1]!,
+      findings: [
+        {
+          code: 'pgn_resource_limit',
+          disposition: 'invalid',
+          severity: 'error',
+          feature: 'structure',
+        },
+      ],
+    },
+    {
+      ...preview.candidates[0]!,
+      findings: [
+        {
+          code: 'pgn_duplicate_fen_normalized',
+          disposition: 'normalized',
+          severity: 'info',
+          feature: 'metadata',
+        },
+      ],
+    },
+  ];
+  assert.match(
+    render('de-DE', { candidates }),
+    /zulässige Größe oder Komplexität/,
+  );
+  assert.match(render('en-GB', { candidates }), /allowed size or complexity/);
+  assert.doesNotMatch(render('en-GB', { candidates }), /pgn_resource_limit/);
+  assert.match(
+    render('de-DE', { candidates }),
+    /Identische Angaben zur Ausgangsstellung/,
+  );
+  assert.match(
+    render('en-GB', { candidates }),
+    /Identical starting-position tags/,
+  );
+  assert.doesNotMatch(
+    render('de-DE', { candidates }),
+    /pgn_duplicate_fen_normalized/,
+  );
 });
 
 test('namespaced import problems remain specific and localized', () => {

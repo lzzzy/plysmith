@@ -1,4 +1,5 @@
 import { Type } from '@sinclair/typebox';
+import { IMPORT_LIMITS } from '../../../application/inventory/import-limits.ts';
 
 const closed = { additionalProperties: false } as const;
 const id = () => Type.String({ pattern: '^[1-9][0-9]{0,15}$' });
@@ -35,7 +36,10 @@ export const ImportInputDescriptorSchema = Type.Object(
   {
     inputHandle: previewId(),
     displayName: Type.String({ minLength: 1, maxLength: 255 }),
-    inputSize: Type.Integer({ minimum: 1, maximum: 16777216 }),
+    inputSize: Type.Integer({
+      minimum: 1,
+      maximum: IMPORT_LIMITS.maxInputBytes,
+    }),
   },
   { ...closed, $id: 'ImportInputDescriptor' },
 );
@@ -53,10 +57,18 @@ export const ImportCandidatePreviewSchema = Type.Object(
       Type.Literal('rejected'),
     ]),
     suggestedName: Type.String({ minLength: 1, maxLength: 200 }),
-    moveCount: Type.Integer({ minimum: 0 }),
-    variationCount: Type.Integer({ minimum: 0 }),
+    moveCount: Type.Integer({
+      minimum: 0,
+      maximum: IMPORT_LIMITS.maxNodesPerCandidate,
+    }),
+    variationCount: Type.Integer({
+      minimum: 0,
+      maximum: IMPORT_LIMITS.maxNodesPerCandidate,
+    }),
     rootFen: Type.Optional(Type.String({ maxLength: 128 })),
-    findings: Type.Array(ImportFidelityFindingSchema, { maxItems: 1000 }),
+    findings: Type.Array(ImportFidelityFindingSchema, {
+      maxItems: IMPORT_LIMITS.maxFindingsPerCandidate,
+    }),
   },
   { ...closed, $id: 'ImportCandidatePreview' },
 );
@@ -65,10 +77,15 @@ export const ImportPreviewSchema = Type.Object(
   {
     previewId: previewId(),
     sourceDisplayName: Type.String({ minLength: 1, maxLength: 255 }),
-    inputSize: Type.Integer({ minimum: 1 }),
+    inputSize: Type.Integer({
+      minimum: 1,
+      maximum: IMPORT_LIMITS.maxInputBytes,
+    }),
     encoding: encoding(),
     formatId: formatId(),
-    candidates: Type.Array(ImportCandidatePreviewSchema, { maxItems: 1000 }),
+    candidates: Type.Array(ImportCandidatePreviewSchema, {
+      maxItems: IMPORT_LIMITS.maxCandidates,
+    }),
   },
   { ...closed, $id: 'ImportPreview' },
 );
@@ -93,7 +110,7 @@ export const CheckImportNamesBodySchema = Type.Object(
         },
         closed,
       ),
-      { maxItems: 1000 },
+      { maxItems: IMPORT_LIMITS.maxCandidates },
     ),
   },
   { ...closed, $id: 'CheckImportNamesBody' },
@@ -111,7 +128,7 @@ export const ImportNameChecksSchema = Type.Object(
         },
         closed,
       ),
-      { maxItems: 1000 },
+      { maxItems: IMPORT_LIMITS.maxCandidates },
     ),
     dataRevision: Type.Integer({ minimum: 0 }),
   },
@@ -149,7 +166,7 @@ export const PublishImportBodySchema = Type.Object(
         },
         closed,
       ),
-      { minItems: 1, maxItems: 1000 },
+      { minItems: 1, maxItems: IMPORT_LIMITS.maxPublishedCandidates },
     ),
     folder: ImportFolderDestinationSchema,
     confirmWarnings: Type.Boolean(),
@@ -162,6 +179,14 @@ export const DiscardImportBodySchema = Type.Object(
     previewId: previewId(),
   },
   { ...closed, $id: 'DiscardImportBody' },
+);
+export const CancelImportPreparationBodySchema = Type.Object(
+  { inputHandle: previewId() },
+  { ...closed, $id: 'CancelImportPreparationBody' },
+);
+export const CancelImportPreparationResultSchema = Type.Object(
+  { cancelled: Type.Boolean() },
+  { ...closed, $id: 'CancelImportPreparationResult' },
 );
 export const DiscardImportResultSchema = Type.Object(
   {
@@ -181,7 +206,7 @@ export const ImportPublishedSchema = Type.Object(
         },
         closed,
       ),
-      { maxItems: 1000 },
+      { maxItems: IMPORT_LIMITS.maxPublishedCandidates },
     ),
     folderId: Type.Optional(id()),
     dataRevision: Type.Integer({ minimum: 0 }),
@@ -201,6 +226,8 @@ export const importSchemas = [
   ImportFolderDestinationSchema,
   PublishImportBodySchema,
   DiscardImportBodySchema,
+  CancelImportPreparationBodySchema,
+  CancelImportPreparationResultSchema,
   DiscardImportResultSchema,
   ImportPublishedSchema,
 ] as const;

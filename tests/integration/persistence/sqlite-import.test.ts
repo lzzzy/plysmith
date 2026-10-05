@@ -10,6 +10,9 @@ import { PgnContentFormatAdapter } from '../../../app/infrastructure/adapters/co
 import type { ChessTreeCandidate } from '../../../app/domain/inventory/chess-tree-candidate.ts';
 import type { ImportRepository } from '../../../app/application/inventory/import-ports.ts';
 import { localId } from '../../../app/domain/identity/index.ts';
+import { publishImport } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-import.ts';
+import { readChessTree } from '../../../app/infrastructure/adapters/persistence/sqlite/sqlite-import-graph.ts';
+import { IMPORT_LIMITS } from '../../../app/application/inventory/import-limits.ts';
 
 const time = '2026-10-02T12:00:00.000Z';
 const scope = { kind: 'free' } as const;
@@ -89,6 +92,157 @@ function counts(db: Database.Database) {
     ]),
   );
 }
+
+test('graph statements are prepared once per publication and remain local to that operation', async (t) => {
+  const f = fixture(t);
+  const content = (await parsed('1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 *'))[0]!;
+  const prepared = t.mock.method(f.db, 'prepare');
+  for (const batch of [0, 1]) {
+    const offset = prepared.mock.callCount();
+    const result = f.db.transaction(() =>
+      publishImport(f.db, {
+        candidates: Array.from({ length: 3 }, (_, sourceOrder) => ({
+          sourceOrder,
+          displayName: `Batch ${batch} chapter ${sourceOrder}`,
+          itemType: 'analysis' as const,
+          content: { ...content, sourceOrder },
+        })),
+        folder: { kind: 'unfiled' },
+        languageTag: 'en-GB',
+        occurredAt: time,
+      }),
+    )();
+    assert.equal(result.items.length, 3);
+    const calls = prepared.mock.calls.slice(offset);
+    for (const table of [
+      'chess_occurrence_identity',
+      'chess_occurrence_snapshot',
+      'chess_play_state_snapshot',
+      'chess_move_node_identity',
+      'chess_move_node_snapshot',
+      'chess_position',
+    ]) {
+      assert.equal(
+        calls.filter((call) =>
+          new RegExp(`INSERT(?: OR IGNORE)? INTO ${table}\\b`).test(
+            call.arguments[0],
+          ),
+        ).length,
+        1,
+        `${table} in batch ${batch}`,
+      );
+    }
+    const record = (await f.store.readAnalysisRevision({
+      scope,
+      ...result.items[0]!,
+    }))!;
+    assert.equal(record.steps.length, content.nodes.length);
+  }
+});
+
+test('tree reads load positions with their occurrences instead of querying every node', async (t) => {
+  const f = fixture(t);
+  const input = await request();
+  const published = await f.store.publishImport(input);
+  const item = published.items[0]!;
+  const original = (await f.store.readAnalysisRevision({ scope, ...item }))!;
+  const prepared = t.mock.method(f.db, 'prepare');
+  const tree = readChessTree(f.db, item.revisionId.value)!;
+  assert.deepEqual(tree, original.tree);
+  assert.deepEqual(
+    tree.nodes.map((node) => node.after),
+    input.candidates[0]!.content.nodes.map((node) => node.after),
+  );
+  assert.equal(prepared.mock.callCount(), 2);
+});
+
+test('publication deadline rolls back the final candidate, folder and revision before commit', async (t) => {
+  const f = fixture(t);
+  const first = await request();
+  const candidate = first.candidates[0]!;
+  const before = counts(f.db);
+  const revision = (await f.store.readStoreStatus()).dataRevision;
+  const countItems = f.db.prepare('SELECT count(*) AS n FROM inventory_item');
+  const clock = t.mock.method(performance, 'now', () =>
+    (countItems.get() as { n: number }).n === 0
+      ? 0
+      : IMPORT_LIMITS.maxPublicationDurationMs + 1,
+  );
+  assert.throws(
+    f.db.transaction(() =>
+      publishImport(f.db, {
+        ...first,
+        folder: { kind: 'new', displayName: 'Timeout rollback' },
+        candidates: [
+          {
+            ...candidate,
+            content: { ...candidate.content, initialComments: [], nodes: [] },
+          },
+        ],
+      }),
+    ),
+    { problemCode: 'import.provider_resource_exhausted' },
+  );
+  clock.mock.restore();
+  assert.deepEqual(counts(f.db), before);
+  assert.equal((await f.store.readStoreStatus()).dataRevision, revision);
+  await f.store.publishImport(first);
+});
+
+for (const budget of ['nodes', 'notes'] as const) {
+  test(`publication rechecks cumulative ${budget} across otherwise valid candidates`, async (t) => {
+    const f = fixture(t);
+    const first = await request();
+    const template = first.candidates[0]!;
+    const content =
+      budget === 'nodes'
+        ? (await parsed(`${'Nf3 Nf6 Ng1 Ng8 '.repeat(42)}*`))[0]!
+        : {
+            ...template.content,
+            nodes: [],
+            initialComments: ['x'.repeat(42000)],
+          };
+    assert.notEqual(content.status, 'rejected');
+    const before = counts(f.db);
+    const revision = (await f.store.readStoreStatus()).dataRevision;
+    await assert.rejects(
+      f.store.publishImport({
+        ...first,
+        folder: { kind: 'new', displayName: 'Cumulative rollback' },
+        candidates: Array.from({ length: 100 }, (_, sourceOrder) => ({
+          ...template,
+          sourceOrder,
+          displayName: `Chapter ${sourceOrder}`,
+          content: { ...content, sourceOrder },
+        })),
+      }),
+      { problemCode: 'import.provider_resource_exhausted' },
+    );
+    assert.deepEqual(counts(f.db), before);
+    assert.equal((await f.store.readStoreStatus()).dataRevision, revision);
+  });
+}
+
+test('publication rechecks its selection budget before creating any inventory records', async (t) => {
+  const f = fixture(t);
+  const first = await request();
+  const candidate = first.candidates[0]!;
+  const before = counts(f.db);
+  await assert.rejects(
+    f.store.publishImport({
+      ...first,
+      folder: { kind: 'new', displayName: 'Over budget' },
+      candidates: Array.from({ length: 101 }, (_, sourceOrder) => ({
+        ...candidate,
+        sourceOrder,
+        displayName: `Chapter ${sourceOrder}`,
+        content: { ...candidate.content, sourceOrder },
+      })),
+    }),
+    { problemCode: 'import.invalid_selection' },
+  );
+  assert.deepEqual(counts(f.db), before);
+});
 
 test('schema stores only native records and no import operation, history, staging or receipt', async (t) => {
   const f = fixture(t);
@@ -197,7 +351,7 @@ test('a later invalid candidate rolls back the new folder, earlier graph, notes,
   const content = {
     ...candidate.content,
     sourceOrder: 1,
-    nodes: [{ ...candidate.content.nodes[0]!, nodeIndex: 99 }],
+    nodes: [{ ...candidate.content.nodes[0]!, siblingOrder: 99 }],
   };
   await assert.rejects(
     f.store.publishImport({

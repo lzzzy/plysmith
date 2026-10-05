@@ -175,6 +175,7 @@ async function fixture(
     getEngineProviderConfigurations: async () => ({ providers: [] }),
     registerImportInput: async () => input,
     prepareImport: async () => preview(),
+    cancelImportPreparation: async () => ({ cancelled: true }),
     checkImportNames: async (request) => ({
       candidates: request.candidates.map((candidate) => ({
         ...candidate,
@@ -191,7 +192,7 @@ async function fixture(
     }),
     ...overrides,
   } satisfies Partial<PlysmithApplicationClient>;
-  const client = Object.assign(new PlysmithHostClient(connection), reads);
+  let client = Object.assign(new PlysmithHostClient(connection), reads);
   const store = new PlysmithApplicationStore({
     getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
     chooseImportFile: picker,
@@ -207,6 +208,13 @@ async function fixture(
   return {
     store,
     diagnostics,
+    replaceClient: (replacement: Partial<PlysmithApplicationClient>) => {
+      client = Object.assign(
+        new PlysmithHostClient(connection),
+        reads,
+        replacement,
+      );
+    },
     refreshes: () => refreshes,
     setDataRevision: (revision: number) => {
       dataRevision = revision;
@@ -329,6 +337,109 @@ test('closing discards the ephemeral preview and reopening cannot resume it', as
   assert.deepEqual(session(store), { open: false });
   await store.openImport();
   assert.deepEqual(session(store), { open: true });
+});
+
+test('closing preparation cancels its input and suppresses late errors without clearing a newer command', async (t) => {
+  const first = Promise.withResolvers<ImportPreview>();
+  const second = Promise.withResolvers<ImportPreview>();
+  const started = Promise.withResolvers<void>();
+  const cancelled: string[] = [];
+  let prepares = 0;
+  const { store, diagnostics } = await fixture({
+    prepareImport: async () => {
+      if (++prepares === 1) {
+        started.resolve();
+        return first.promise;
+      }
+      return second.promise;
+    },
+    cancelImportPreparation: async ({ inputHandle }) => {
+      cancelled.push(inputHandle);
+      return { cancelled: true };
+    },
+  });
+  t.after(() => store.close());
+  const choosing = store.chooseImportFile();
+  await started.promise;
+  await store.closeImport();
+  assert.deepEqual(cancelled, [input.inputHandle]);
+  assert.deepEqual(session(store), { open: false });
+  await store.openImport();
+  const next = store.chooseImportFile();
+  await new Promise((resolve) => setImmediate(resolve));
+  first.reject(problem('import.interrupted'));
+  await choosing;
+  const current = store.getSnapshot();
+  assert.ok(current.phase === 'ready');
+  assert.equal(current.busyCommand, 'import_command');
+  assert.equal(current.errorCode, undefined);
+  assert.equal(session(store).errorCode, undefined);
+  assert.equal(
+    diagnostics.some((event) => event.problemCode === 'import.interrupted'),
+    false,
+  );
+  second.resolve(preview());
+  await next;
+  assert.equal(session(store).preview?.previewId, previewId);
+});
+
+test('a late successful preparation is discarded after cancellation or lifecycle replacement', async (t) => {
+  for (const restart of [false, true]) {
+    const response = Promise.withResolvers<ImportPreview>();
+    const started = Promise.withResolvers<void>();
+    const discarded: string[] = [];
+    const cancelled: string[] = [];
+    const { store, replaceClient } = await fixture({
+      prepareImport: async () => {
+        started.resolve();
+        return response.promise;
+      },
+      cancelImportPreparation: async ({ inputHandle }) => {
+        cancelled.push(inputHandle);
+        return { cancelled: false };
+      },
+      discardImport: async ({ previewId }) => {
+        discarded.push(previewId);
+        return { discarded: true };
+      },
+    });
+    t.after(() => store.close());
+    const choosing = store.chooseImportFile();
+    await started.promise;
+    if (restart) {
+      replaceClient({
+        discardImport: async () =>
+          assert.fail('late preview belongs to the original client'),
+      });
+      await store.start();
+    } else await store.closeImport();
+    await store.openImport();
+    response.resolve(preview());
+    await choosing;
+    assert.deepEqual(cancelled, [input.inputHandle]);
+    assert.deepEqual(discarded, [previewId]);
+    assert.deepEqual(session(store), { open: true });
+  }
+});
+
+test('publication cannot be cancelled by closing the dialog', async (t) => {
+  const response =
+    Promise.withResolvers<
+      Awaited<ReturnType<PlysmithHostClient['publishImport']>>
+    >();
+  const { store } = await fixture({
+    publishImport: async () => response.promise,
+    cancelImportPreparation: async () =>
+      assert.fail('publication must remain atomic'),
+  });
+  t.after(() => store.close());
+  await store.chooseImportFile();
+  const publishing = store.publishImport(publication);
+  await store.closeImport();
+  assert.equal(session(store).open, true);
+  assert.equal(session(store).preview?.previewId, previewId);
+  response.resolve({ items: [], dataRevision: 0 });
+  await publishing;
 });
 
 test('publication sends complete prefixed names and a folder, refreshes once, and creates no context association', async (t) => {

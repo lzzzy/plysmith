@@ -1829,6 +1829,31 @@
         ],
         "type": "object"
       },
+      "CancelImportPreparationBody": {
+        "additionalProperties": false,
+        "properties": {
+          "inputHandle": {
+            "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "inputHandle"
+        ],
+        "type": "object"
+      },
+      "CancelImportPreparationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "type": "object"
+      },
       "CanonicalMove": {
         "additionalProperties": false,
         "properties": {
@@ -2128,7 +2153,7 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 256,
             "type": "array"
           }
         },
@@ -4488,10 +4513,11 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 64,
             "type": "array"
           },
           "moveCount": {
+            "maximum": 2048,
             "minimum": 0,
             "type": "integer"
           },
@@ -4532,6 +4558,7 @@
             "type": "string"
           },
           "variationCount": {
+            "maximum": 2048,
             "minimum": 0,
             "type": "integer"
           }
@@ -4751,7 +4778,7 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 256,
             "type": "array"
           },
           "dataRevision": {
@@ -4855,10 +4882,11 @@
                     ],
                     "type": "object"
                   },
-                  "maxItems": 1000,
+                  "maxItems": 64,
                   "type": "array"
                 },
                 "moveCount": {
+                  "maximum": 2048,
                   "minimum": 0,
                   "type": "integer"
                 },
@@ -4899,6 +4927,7 @@
                   "type": "string"
                 },
                 "variationCount": {
+                  "maximum": 2048,
                   "minimum": 0,
                   "type": "integer"
                 }
@@ -4913,7 +4942,7 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 256,
             "type": "array"
           },
           "encoding": {
@@ -4938,6 +4967,7 @@
             "type": "string"
           },
           "inputSize": {
+            "maximum": 16777216,
             "minimum": 1,
             "type": "integer"
           },
@@ -4997,7 +5027,7 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 100,
             "type": "array"
           }
         },
@@ -7948,7 +7978,7 @@
               ],
               "type": "object"
             },
-            "maxItems": 1000,
+            "maxItems": 100,
             "minItems": 1,
             "type": "array"
           },
@@ -14873,6 +14903,133 @@
         }
       }
     },
+    "/inventory/imports/cancel-preparation": {
+      "post": {
+        "operationId": "CancelImportPreparation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "inputHandle": {
+                    "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "inputHandle"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelImportPreparationResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
     "/inventory/imports/discard": {
       "post": {
         "operationId": "DiscardImport",
@@ -15030,7 +15187,7 @@
                       ],
                       "type": "object"
                     },
-                    "maxItems": 1000,
+                    "maxItems": 256,
                     "type": "array"
                   }
                 },
@@ -15359,7 +15516,7 @@
                       ],
                       "type": "object"
                     },
-                    "maxItems": 1000,
+                    "maxItems": 100,
                     "minItems": 1,
                     "type": "array"
                   },

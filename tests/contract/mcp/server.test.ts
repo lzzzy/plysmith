@@ -94,6 +94,7 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'register_import_input',
       'prepare_import',
       'check_import_names',
+      'cancel_import_preparation',
       'publish_import',
       'discard_import',
       'get_system_status',

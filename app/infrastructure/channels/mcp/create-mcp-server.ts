@@ -19,6 +19,8 @@ import {
   ImportNameChecksSchema,
   DiscardImportBodySchema,
   DiscardImportResultSchema,
+  CancelImportPreparationBodySchema,
+  CancelImportPreparationResultSchema,
   PublishImportBodySchema,
   ImportPublishedSchema,
 } from './import-schemas.ts';
@@ -227,6 +229,19 @@ export function createMcpServer({
         anyOf: [ImportNameChecksSchema, HostProblemSchema],
       },
       annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'cancel_import_preparation',
+      title: 'Cancel import preparation',
+      description:
+        'Cancel a running preparation and release provisional contents without inventory writes.',
+      inputSchema: CancelImportPreparationBodySchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [CancelImportPreparationResultSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, idempotentHint: true },
       _meta: problemMetadata,
     },
     {
@@ -1034,6 +1049,14 @@ export function createMcpServer({
             throw new Error('Invalid host response');
           return toolResult(dto, 'Check import names completed.');
         }
+        case 'cancel_import_preparation': {
+          if (!Value.Check(CancelImportPreparationBodySchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.cancelImportPreparation(args);
+          if (!Value.Check(CancelImportPreparationResultSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, 'Cancel import preparation completed.');
+        }
         case 'publish_import': {
           if (!Value.Check(PublishImportBodySchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -1762,6 +1785,8 @@ function inputSchema(name: string) {
       return PrepareImportBodySchema;
     case 'check_import_names':
       return CheckImportNamesBodySchema;
+    case 'cancel_import_preparation':
+      return CancelImportPreparationBodySchema;
     case 'publish_import':
       return PublishImportBodySchema;
     case 'discard_import':

@@ -1,3 +1,4 @@
+export { importLimits } from '../../../../contracts/host/index.ts';
 export {
   connectHost,
   type RegisterImportInputRequestDto,
@@ -8,6 +9,8 @@ export {
   type ImportNameChecksDto,
   type DiscardImportRequestDto,
   type DiscardImportResultDto,
+  type CancelImportPreparationRequestDto,
+  type CancelImportPreparationResultDto,
   type PublishImportRequestDto,
   type ImportPublishedDto,
   type GetInventoryOrganizationRequestDto,

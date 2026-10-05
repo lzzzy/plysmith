@@ -8,6 +8,8 @@ import {
   type ImportNameChecksDto,
   type DiscardImportRequestDto,
   type DiscardImportResultDto,
+  type CancelImportPreparationRequestDto,
+  type CancelImportPreparationResultDto,
   type PublishImportRequestDto,
   type ImportPublishedDto,
   type ContextRemovalPreviewDto,
@@ -139,6 +141,11 @@ export class RediscoveringHostClient {
     request: CheckImportNamesRequestDto,
   ): Promise<ImportNameChecksDto> {
     return (await this.#currentClient()).checkImportNames(request);
+  }
+  async cancelImportPreparation(
+    request: CancelImportPreparationRequestDto,
+  ): Promise<CancelImportPreparationResultDto> {
+    return (await this.#currentClient()).cancelImportPreparation(request);
   }
   async publishImport(
     request: PublishImportRequestDto,

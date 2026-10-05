@@ -7,6 +7,8 @@ import type {
   ImportPublished,
 } from '../../../../application/inventory/import-models.ts';
 import { importProblem } from '../../../../application/inventory/import-problems.ts';
+import { IMPORT_LIMITS } from '../../../../application/inventory/import-limits.ts';
+import { assertImportPublicationBudget } from '../../../../application/inventory/import-content-budget.ts';
 import { inventoryOrganizationProblem } from '../../../../application/inventory/inventory-organization.ts';
 import { localId } from '../../../../domain/identity/index.ts';
 import {
@@ -22,7 +24,10 @@ import {
   incrementDataRevision,
   readDataRevision,
 } from './sqlite-store-helpers.ts';
-import { importFingerprint, insertImportGraph } from './sqlite-import-graph.ts';
+import {
+  importFingerprint,
+  prepareImportGraph,
+} from './sqlite-import-graph.ts';
 
 function nameKey(value: string): string {
   return value.trim().normalize('NFKC').toLocaleLowerCase();
@@ -33,7 +38,7 @@ export function checkImportNames(
   request: CheckImportNamesRequest,
 ): ImportNameChecks {
   if (
-    request.candidates.length > 1000 ||
+    request.candidates.length > IMPORT_LIMITS.maxCandidates ||
     new Set(request.candidates.map((candidate) => candidate.sourceOrder))
       .size !== request.candidates.length ||
     request.candidates.some(
@@ -123,7 +128,15 @@ export function publishImport(
   db: Database.Database,
   request: Parameters<ImportRepository['publishImport']>[0],
 ): ImportPublished {
+  const deadline = performance.now() + IMPORT_LIMITS.maxPublicationDurationMs;
+  const checkBudget = () => {
+    if (performance.now() >= deadline)
+      throw importProblem('provider_resource_exhausted');
+  };
   if (request.candidates.length === 0) throw importProblem('invalid_selection');
+  assertImportPublicationBudget(
+    request.candidates.map(({ content }) => content),
+  );
   if (
     checkImportNames(db, request).candidates.some(
       (candidate) => !candidate.available,
@@ -132,7 +145,32 @@ export function publishImport(
     throw importProblem('name_conflict');
   const folder = destination(db, request.folder);
   const time = request.occurredAt;
+  const insertImportGraph = prepareImportGraph(db, checkBudget);
+  const insertItem = db.prepare(
+    "INSERT INTO inventory_item(item_type, origin_kind, lifecycle, folder_id, created_at_utc, updated_at_utc) VALUES (?, 'structured_import', 'active', ?, ?, ?)",
+  );
+  const insertRevision = db.prepare(
+    "INSERT INTO item_revision(item_id, revision_number, display_name, language_tag, content_fingerprint, creator_role, created_at_utc) VALUES (?, 1, ?, ?, ?, 'importer', ?)",
+  );
+  const insertGame = db.prepare(
+    'INSERT INTO inventory_game_revision(revision_id, item_id, root_occurrence_id, origin_mode) SELECT revision_id, item_id, root_occurrence_id, origin_mode FROM inventory_analysis_revision WHERE revision_id = ?',
+  );
+  const deleteAnalysis = db.prepare(
+    'DELETE FROM inventory_analysis_revision WHERE revision_id = ?',
+  );
+  const setCurrentRevision = db.prepare(
+    'UPDATE inventory_item SET current_revision_id = ? WHERE item_id = ?',
+  );
+  const selectRoot = db.prepare(
+    "SELECT a.anchor_id AS id FROM inventory_chess_revision r JOIN chess_anchor a ON a.occurrence_id = r.root_occurrence_id AND a.anchor_kind = 'occurrence' WHERE r.revision_id = ?",
+  );
+  const insertSearch = db.prepare(
+    `INSERT INTO search_document(projection_version, subject_kind, item_id, item_revision_id, anchor_id, language_tag,
+      evidence_class, scope_kind, stable_sort_value, title, aliases_concepts, metadata, body)
+      VALUES (1, 'item_revision', ?, ?, ?, ?, 'source', 'global', ?, ?, '', ?, '')`,
+  );
   const items = request.candidates.map((candidate) => {
+    checkBudget();
     const { content, itemType, displayName, sourceOrder } = candidate;
     if (
       content.status === 'rejected' ||
@@ -142,27 +180,18 @@ export function publishImport(
     )
       throw importProblem('invalid_candidate');
     const item = Number(
-      db
-        .prepare(
-          "INSERT INTO inventory_item(item_type, origin_kind, lifecycle, folder_id, created_at_utc, updated_at_utc) VALUES (?, 'structured_import', 'active', ?, ?, ?)",
-        )
-        .run(itemType, folder, time, time).lastInsertRowid,
+      insertItem.run(itemType, folder, time, time).lastInsertRowid,
     );
     const revision = Number(
-      db
-        .prepare(
-          "INSERT INTO item_revision(item_id, revision_number, display_name, language_tag, content_fingerprint, creator_role, created_at_utc) VALUES (?, 1, ?, ?, ?, 'importer', ?)",
-        )
-        .run(
-          item,
-          displayName,
-          request.languageTag,
-          importFingerprint(content),
-          time,
-        ).lastInsertRowid,
+      insertRevision.run(
+        item,
+        displayName,
+        request.languageTag,
+        importFingerprint(content),
+        time,
+      ).lastInsertRowid,
     );
     insertImportGraph(
-      db,
       item,
       revision,
       content,
@@ -171,26 +200,12 @@ export function publishImport(
       displayName,
     );
     if (itemType === 'game') {
-      db.prepare(
-        'INSERT INTO inventory_game_revision(revision_id, item_id, root_occurrence_id, origin_mode) SELECT revision_id, item_id, root_occurrence_id, origin_mode FROM inventory_analysis_revision WHERE revision_id = ?',
-      ).run(revision);
-      db.prepare(
-        'DELETE FROM inventory_analysis_revision WHERE revision_id = ?',
-      ).run(revision);
+      insertGame.run(revision);
+      deleteAnalysis.run(revision);
     }
-    db.prepare(
-      'UPDATE inventory_item SET current_revision_id = ? WHERE item_id = ?',
-    ).run(revision, item);
-    const root = db
-      .prepare(
-        "SELECT a.anchor_id AS id FROM inventory_chess_revision r JOIN chess_anchor a ON a.occurrence_id = r.root_occurrence_id AND a.anchor_kind = 'occurrence' WHERE r.revision_id = ?",
-      )
-      .get(revision) as { id: number };
-    db.prepare(
-      `INSERT INTO search_document(projection_version, subject_kind, item_id, item_revision_id, anchor_id, language_tag,
-      evidence_class, scope_kind, stable_sort_value, title, aliases_concepts, metadata, body)
-      VALUES (1, 'item_revision', ?, ?, ?, ?, 'source', 'global', ?, ?, '', ?, '')`,
-    ).run(
+    setCurrentRevision.run(revision, item);
+    const root = selectRoot.get(revision) as { id: number };
+    insertSearch.run(
       item,
       revision,
       root.id,
@@ -205,11 +220,13 @@ export function publishImport(
       sourceOrder,
     };
   });
+  const dataRevision = incrementDataRevision(db, time);
+  checkBudget();
   return {
     items,
     ...(folder === null
       ? {}
       : { folderId: localId('inventory-folder', folder) }),
-    dataRevision: incrementDataRevision(db, time),
+    dataRevision,
   };
 }

@@ -329,6 +329,25 @@ for (const [channel, schemas] of [
       true,
     );
     assert.equal(
+      Value.Check(schemas.CancelImportPreparationBodySchema, {
+        inputHandle: previewId,
+      }),
+      true,
+    );
+    assert.equal(
+      Value.Check(schemas.CancelImportPreparationBodySchema, {
+        inputHandle: previewId,
+        operationId: previewId,
+      }),
+      false,
+    );
+    assert.equal(
+      Value.Check(schemas.CancelImportPreparationResultSchema, {
+        cancelled: false,
+      }),
+      true,
+    );
+    assert.equal(
       Value.Check(schemas.DiscardImportResultSchema, { discarded: false }),
       true,
     );
@@ -341,7 +360,7 @@ for (const [channel, schemas] of [
     );
   });
 
-  test(`${channel} carries at most 1000 summaries and complete names`, () => {
+  test(`${channel} bounds preparation and publication separately`, () => {
     const summary = {
       sourceOrder: 0,
       status: 'ready',
@@ -351,20 +370,13 @@ for (const [channel, schemas] of [
       findings: [],
     };
     for (const [count, valid] of [
-      [1000, true],
-      [1001, false],
+      [256, true],
+      [257, false],
     ] as const) {
       const candidates = Array.from({ length: count }, (_, sourceOrder) => ({
         ...selection,
         sourceOrder,
       }));
-      assert.equal(
-        Value.Check(schemas.PublishImportBodySchema, {
-          ...publish,
-          candidates,
-        }),
-        valid,
-      );
       assert.equal(
         Value.Check(schemas.CheckImportNamesBodySchema, {
           candidates: candidates.map(({ sourceOrder, displayName }) => ({
@@ -383,6 +395,21 @@ for (const [channel, schemas] of [
           formatId: 'pgn',
           candidates: candidates.map(({ sourceOrder }) => ({
             ...summary,
+            sourceOrder,
+          })),
+        }),
+        valid,
+      );
+    }
+    for (const [count, valid] of [
+      [100, true],
+      [101, false],
+    ] as const) {
+      assert.equal(
+        Value.Check(schemas.PublishImportBodySchema, {
+          ...publish,
+          candidates: Array.from({ length: count }, (_, sourceOrder) => ({
+            ...selection,
             sourceOrder,
           })),
         }),
@@ -424,7 +451,7 @@ for (const [channel, schemas] of [
   });
 }
 
-test('import routes map folder IDs and carry 1000 Unicode names within a bounded body', async (t) => {
+test('import routes map folder IDs and carry 256 Unicode names within a bounded body', async (t) => {
   const calls: unknown[] = [];
   const { host } = await buildRouteFixture(t, {
     checkImportNames: {
@@ -457,7 +484,7 @@ test('import routes map folder IDs and carry 1000 Unicode names within a bounded
       },
     },
   });
-  const candidates = Array.from({ length: 1000 }, (_, sourceOrder) => ({
+  const candidates = Array.from({ length: 256 }, (_, sourceOrder) => ({
     ...selection,
     sourceOrder,
     displayName: '界'.repeat(150) + String(sourceOrder),
@@ -468,12 +495,16 @@ test('import routes map folder IDs and carry 1000 Unicode names within a bounded
       displayName,
     })),
   };
-  assert.ok(Buffer.byteLength(JSON.stringify(names)) > 256 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(names)) > 16 * 1024);
   for (const [url, payload] of [
     ['/inventory/imports/names', names],
     [
       '/inventory/imports/publish',
-      { ...publish, candidates, folder: { kind: 'existing', folderId: '3' } },
+      {
+        ...publish,
+        candidates: candidates.slice(0, 100),
+        folder: { kind: 'existing', folderId: '3' },
+      },
     ],
     [
       '/inventory/imports/publish',
@@ -517,6 +548,38 @@ test('import routes map folder IDs and carry 1000 Unicode names within a bounded
   assert.equal(calls.length, 3);
 });
 
+test('targeted prepare cancellation crosses MCP and HTTP without inventing an import job', async (t) => {
+  const { host } = await buildRouteFixture(t, {
+    cancelImportPreparation: {
+      execute: async (request) => {
+        assert.deepEqual(request, { inputHandle: previewId });
+        return { cancelled: true };
+      },
+    },
+  });
+  const { client, calls } = await connectMcp(t, {
+    cancelImportPreparation: async (request) => {
+      const response = await host.inject({
+        method: 'POST',
+        url: '/inventory/imports/cancel-preparation',
+        headers,
+        payload: request,
+      });
+      assert.equal(response.statusCode, 200, response.body);
+      return response.json<{ cancelled: boolean }>();
+    },
+  });
+  const result = await client.callTool({
+    name: 'cancel_import_preparation',
+    arguments: { inputHandle: previewId },
+  });
+  assert.notEqual(result.isError, true, JSON.stringify(result));
+  assertToolData(result, { cancelled: true });
+  assert.deepEqual(calls, [
+    { method: 'cancelImportPreparation', request: { inputHandle: previewId } },
+  ]);
+});
+
 test('removed import operations have no routes or allowed preflights', async (t) => {
   const { host } = await buildRouteFixture(t);
   for (const url of [
@@ -546,6 +609,7 @@ test('removed import operations have no routes or allowed preflights', async (t)
   for (const url of [
     '/inventory/import-inputs',
     '/inventory/imports/preview',
+    '/inventory/imports/cancel-preparation',
     '/inventory/imports/names',
     '/inventory/imports/publish',
     '/inventory/imports/discard',

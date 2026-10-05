@@ -31,6 +31,7 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/inventory': ['GET'],
   '/inventory/import-inputs': ['POST'],
   '/inventory/imports/preview': ['POST'],
+  '/inventory/imports/cancel-preparation': ['POST'],
   '/inventory/imports/names': ['POST'],
   '/inventory/imports/publish': ['POST'],
   '/inventory/imports/discard': ['POST'],

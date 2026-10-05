@@ -34,6 +34,7 @@ export function createFixture() {
   const dependencies: HostDependencies = {
     registerImportInput: unavailableUseCase,
     prepareImport: unavailableUseCase,
+    cancelImportPreparation: unavailableUseCase,
     checkImportNames: unavailableUseCase,
     publishImport: unavailableUseCase,
     discardImport: {

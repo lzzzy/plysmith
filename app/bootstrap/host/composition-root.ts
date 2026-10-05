@@ -40,6 +40,7 @@ import {
   CheckImportNames,
   PublishImport,
   DiscardImport,
+  CancelImportPreparation,
 } from '../../application/inventory/index.ts';
 import {
   GetUserPreferences,
@@ -606,6 +607,7 @@ export async function composeHost(
       checkImportNames: new CheckImportNames(persistence),
       publishImport: new PublishImport(importDependencies),
       discardImport: new DiscardImport(importPreparations),
+      cancelImportPreparation: new CancelImportPreparation(importPreparations),
       getSystemStatus,
       getDiagnosticSettings,
       setDiagnosticLogLevel,

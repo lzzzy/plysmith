@@ -133,6 +133,7 @@ export {
   ActiveImportPreviews,
   RegisterImportInput,
   PrepareImport,
+  CancelImportPreparation,
   CheckImportNames,
   PublishImport,
   DiscardImport,

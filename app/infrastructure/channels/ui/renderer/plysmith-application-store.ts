@@ -111,6 +111,7 @@ export type ImportPreparation = Omit<
 >;
 export interface ImportSession {
   readonly open: boolean;
+  readonly activity?: 'choosing' | 'preparing' | 'publishing' | undefined;
   readonly preview?: ImportPreview;
   readonly input?: Awaited<
     ReturnType<PlysmithHostClient['registerImportInput']>
@@ -189,6 +190,7 @@ export interface PlysmithApplicationClient extends Pick<
   PlysmithHostClient,
   | 'registerImportInput'
   | 'prepareImport'
+  | 'cancelImportPreparation'
   | 'checkImportNames'
   | 'publishImport'
   | 'discardImport'
@@ -653,6 +655,12 @@ export class PlysmithApplicationStore {
     | undefined;
   readonly #analysisConsumerId = `desktop-${crypto.randomUUID()}`;
   #importSession: ImportSession = { open: false };
+  #importPreparation:
+    | {
+        readonly client: PlysmithApplicationClient;
+        readonly inputHandle: string;
+      }
+    | undefined;
 
   constructor(options: PlysmithApplicationStoreOptions) {
     this.#options = options;
@@ -715,6 +723,7 @@ export class PlysmithApplicationStore {
   }
 
   async start(): Promise<void> {
+    void this.#cancelImportPreparation();
     this.#importSession = {
       open: this.#importSession.open,
     };
@@ -3830,6 +3839,7 @@ export class PlysmithApplicationStore {
   }
 
   close(): void {
+    void this.#cancelImportPreparation();
     const preview = this.#importSession.preview;
     if (preview !== undefined)
       void this.#client
@@ -4277,6 +4287,13 @@ export class PlysmithApplicationStore {
   }
 
   async closeImport(): Promise<void> {
+    if (this.#importPreparation !== undefined) {
+      const cancellation = this.#cancelImportPreparation();
+      this.#importSession = { open: false };
+      this.#finishCommand();
+      await cancellation;
+      return;
+    }
     if (this.#busyCommand !== undefined) return;
     const preview = this.#importSession.preview;
     this.#importSession = { open: false };
@@ -4298,6 +4315,7 @@ export class PlysmithApplicationStore {
     )
       return;
     const previous = this.#importSession;
+    this.#importSession = { ...previous, activity: 'choosing' };
     const input = await this.#runImportCommand(async (client) => {
       const inputLocator = await this.#options.chooseImportFile!();
       if (inputLocator === undefined) return null;
@@ -4312,7 +4330,11 @@ export class PlysmithApplicationStore {
       this.#publishViewState();
       return;
     }
-    if (input === undefined) return;
+    if (input === undefined) {
+      this.#importSession = { ...this.#importSession, activity: undefined };
+      this.#publishViewState();
+      return;
+    }
     this.#importSession = { open: true, input };
     this.#publishViewState();
     await this.prepareImport();
@@ -4322,17 +4344,80 @@ export class PlysmithApplicationStore {
     const lifecycle = this.#lifecycle;
     const input = this.#importSession.input;
     const state = this.#readyState();
-    if (input === undefined || state === undefined) return;
-    const preview = await this.#runImportCommand((client) =>
-      client.prepareImport({
+    const client = this.#client;
+    if (
+      input === undefined ||
+      state === undefined ||
+      client === undefined ||
+      this.#busyCommand !== undefined
+    )
+      return;
+    const preparation = { client, inputHandle: input.inputHandle };
+    this.#importPreparation = preparation;
+    const current = () =>
+      this.#importPreparation === preparation &&
+      lifecycle === this.#lifecycle &&
+      client === this.#client;
+    this.#importSession = { open: true, input, activity: 'preparing' };
+    this.#busyCommand = 'import_command';
+    this.#errorCode = undefined;
+    this.#announcement = undefined;
+    this.#publishViewState();
+    const startedAt = performance.now();
+    try {
+      const preview = await client.prepareImport({
         ...options,
         inputHandle: input.inputHandle,
         languageTag: state.preferences.uiLocale,
-      }),
-    );
-    if (lifecycle !== this.#lifecycle || preview === undefined) return;
-    this.#importSession = { open: true, preview };
-    this.#publishViewState();
+      });
+      if (!current()) {
+        await client
+          .discardImport({ previewId: preview.previewId })
+          .catch(() => undefined);
+        return;
+      }
+      this.#importSession = { open: true, preview };
+      this.#diagnose({
+        level: 'info',
+        eventCode: 'renderer.command.completed',
+        operation: 'import_command',
+        status: 'succeeded',
+        durationMilliseconds: performance.now() - startedAt,
+      });
+    } catch (error) {
+      if (!current()) return;
+      const errorCode = hostErrorCode(error);
+      await this.refresh();
+      if (!current()) return;
+      this.#errorCode = errorCode;
+      this.#importSession = { open: true, input, errorCode };
+      this.#diagnose({
+        level: 'error',
+        eventCode: 'renderer.command.failed',
+        operation: 'import_command',
+        status: 'failed',
+        problemCode: errorCode,
+        durationMilliseconds: performance.now() - startedAt,
+      });
+    } finally {
+      if (current()) {
+        this.#importPreparation = undefined;
+        this.#finishCommand();
+      }
+    }
+  }
+
+  async #cancelImportPreparation(): Promise<void> {
+    const preparation = this.#importPreparation;
+    this.#importPreparation = undefined;
+    if (preparation === undefined) return;
+    try {
+      await preparation.client.cancelImportPreparation({
+        inputHandle: preparation.inputHandle,
+      });
+    } catch {
+      // Late previews are discarded by their original client; host expiry is the fallback.
+    }
   }
 
   async retryImportAsLatin1(): Promise<void> {
@@ -4352,6 +4437,7 @@ export class PlysmithApplicationStore {
     const lifecycle = this.#lifecycle;
     const preview = this.#importSession.preview;
     if (preview === undefined || this.#busyCommand !== undefined) return;
+    this.#importSession = { ...this.#importSession, activity: 'publishing' };
     const published = await this.#runCommand(
       'import_command',
       (client) =>
@@ -4364,6 +4450,7 @@ export class PlysmithApplicationStore {
         ...(this.#errorCode === 'import.not_found'
           ? { open: true }
           : this.#importSession),
+        activity: undefined,
         errorCode: this.#errorCode ?? 'host.unavailable',
       };
       await this.refresh();

@@ -1,5 +1,6 @@
 packages:
   - '.'
+enableGlobalVirtualStore: false
 verifyDepsBeforeRun: error
 overrides:
   js-yaml@4.3.1: 4.3.2

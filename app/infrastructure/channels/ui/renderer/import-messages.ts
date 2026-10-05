@@ -17,6 +17,8 @@ export const importMessages = {
       'Ein Tag steht an einer ungültigen Position.',
     'import.pgn_invalid_header': 'Ein Quell-Tag ist ungültig.',
     'import.pgn_duplicate_header': 'Ein Quell-Tag kommt mehrfach vor.',
+    'import.pgn_duplicate_fen_normalized':
+      'Identische Angaben zur Ausgangsstellung wurden zusammengeführt.',
     'import.pgn_unbalanced_rav': 'Die Variantenklammern sind unausgeglichen.',
     'import.pgn_variation_result_unsupported':
       'Eine Ergebnisangabe innerhalb einer Variante wird nicht unterstützt.',
@@ -44,6 +46,16 @@ export const importMessages = {
     'import.preparation_busy':
       'Es werden bereits zu viele Dateien eingelesen. Bitte kurz warten.',
     'import.preparing': 'Wird vorbereitet …',
+    'import.choosing': 'Datei wird ausgewählt …',
+    'import.publishing': 'Auswahl wird gespeichert …',
+    'import.selectedMoves':
+      '{moves, plural, one {# Halbzug einschließlich Varianten} other {# Halbzüge einschließlich Varianten}}',
+    'import.selectWithinBudget':
+      'Die gesamte Datei überschreitet die Grenzen für einen Import. Noch keine Kapitel ausgewählt.',
+    'import.selectionOverBudget':
+      'Die Auswahl überschreitet die Importgrenzen. Bitte weniger Kapitel auswählen.',
+    'import.pgn_resource_limit':
+      'Dieses Kapitel überschreitet die zulässige Größe oder Komplexität und kann nicht importiert werden.',
     'import.ready': 'Bereit',
     'import.warning': 'Warnung',
     'import.rejected': 'Abgelehnt',
@@ -58,7 +70,8 @@ export const importMessages = {
     'import.select': '„{name}“ auswählen',
     'import.conflict': 'Name bereits vergeben',
     'import.suggestion': 'Vorschlag: {name}',
-    'import.moves': '{moves} Züge · {variations} Varianten',
+    'import.moves':
+      '{moves, plural, one {# Halbzug} other {# Halbzüge}} · {variations, plural, one {# Variante} other {# Varianten}}',
     'import.findings': 'Inhaltsprüfung ({count})',
     'import.preserved': 'Erhalten',
     'import.normalized': 'Normalisiert',
@@ -128,6 +141,8 @@ export const importMessages = {
     'import.pgn_misplaced_header': 'A tag appears in an invalid position.',
     'import.pgn_invalid_header': 'A source tag is invalid.',
     'import.pgn_duplicate_header': 'A source tag occurs more than once.',
+    'import.pgn_duplicate_fen_normalized':
+      'Identical starting-position tags were combined.',
     'import.pgn_unbalanced_rav': 'Variation brackets are unbalanced.',
     'import.pgn_variation_result_unsupported':
       'A result inside a variation is unsupported.',
@@ -154,6 +169,16 @@ export const importMessages = {
     'import.preparation_busy':
       'Too many files are being read. Please wait briefly.',
     'import.preparing': 'Preparing …',
+    'import.choosing': 'Choosing file …',
+    'import.publishing': 'Saving selection …',
+    'import.selectedMoves':
+      '{moves, plural, one {# half-move including variations} other {# half-moves including variations}}',
+    'import.selectWithinBudget':
+      'The complete file exceeds the limits for one import. No chapters selected yet.',
+    'import.selectionOverBudget':
+      'The selection exceeds the import limits. Please select fewer chapters.',
+    'import.pgn_resource_limit':
+      'This chapter exceeds the allowed size or complexity and cannot be imported.',
     'import.ready': 'Ready',
     'import.warning': 'Warning',
     'import.rejected': 'Rejected',
@@ -168,7 +193,8 @@ export const importMessages = {
     'import.select': 'Select “{name}”',
     'import.conflict': 'Name already in use',
     'import.suggestion': 'Suggestion: {name}',
-    'import.moves': '{moves} moves · {variations} variations',
+    'import.moves':
+      '{moves, plural, one {# half-move} other {# half-moves}} · {variations, plural, one {# variation} other {# variations}}',
     'import.findings': 'Content review ({count})',
     'import.preserved': 'Preserved',
     'import.normalized': 'Normalised',

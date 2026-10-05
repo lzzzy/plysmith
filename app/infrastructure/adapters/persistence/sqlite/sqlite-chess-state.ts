@@ -11,7 +11,7 @@ import {
 import { localId, type PositionId } from '../../../../domain/identity/index.ts';
 import { SqlitePersistenceProblem } from './sqlite-persistence-problem.ts';
 
-interface PositionRow {
+export interface PositionRow {
   readonly positionId: number;
   readonly boardKey: string;
   readonly sideToMove: 'white' | 'black';
@@ -26,32 +26,38 @@ export function ensurePosition(
   database: Database.Database,
   position: Position,
 ): PositionId {
-  const values = positionValues(position);
-  database
-    .prepare(
-      `INSERT OR IGNORE INTO chess_position
+  return prepareEnsurePosition(database)(position);
+}
+
+export function prepareEnsurePosition(
+  database: Database.Database,
+): (position: Position) => PositionId {
+  const insert = database.prepare(
+    `INSERT OR IGNORE INTO chess_position
          (rule_set_id, board_key, side_to_move,
           white_king_side, white_queen_side,
           black_king_side, black_queen_side,
           effective_en_passant_square, position_hash)
        VALUES ('standardChess', ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(...values, positionHash(position));
-  const row = database
-    .prepare(
-      `SELECT position_id AS positionId
+  );
+  const select = database.prepare(
+    `SELECT position_id AS positionId
          FROM chess_position
         WHERE rule_set_id = 'standardChess'
           AND board_key = ? AND side_to_move = ?
           AND white_king_side = ? AND white_queen_side = ?
           AND black_king_side = ? AND black_queen_side = ?
           AND effective_en_passant_square = ?`,
-    )
-    .get(...values) as { positionId: number } | undefined;
-  if (row === undefined) {
-    throw new SqlitePersistenceProblem('persistence.unavailable');
-  }
-  return localId('position', row.positionId);
+  );
+  return (position) => {
+    const values = positionValues(position);
+    insert.run(...values, positionHash(position));
+    const row = select.get(...values) as { positionId: number } | undefined;
+    if (row === undefined) {
+      throw new SqlitePersistenceProblem('persistence.unavailable');
+    }
+    return localId('position', row.positionId);
+  };
 }
 
 export function readChessState(
@@ -80,6 +86,17 @@ export function readChessState(
   if (row === undefined) {
     throw new SqlitePersistenceProblem('persistence.incompatible_store');
   }
+  return chessStateFromPositionRow(row, playState);
+}
+
+export function chessStateFromPositionRow(
+  row: PositionRow,
+  playState: {
+    readonly halfmoveClock: number;
+    readonly fullmoveNumber: number;
+    readonly historyKnowledge: HistoryKnowledge;
+  },
+): ChessState {
   const position = createPosition({
     ruleSetId: 'standardChess',
     boardKey: row.boardKey,
