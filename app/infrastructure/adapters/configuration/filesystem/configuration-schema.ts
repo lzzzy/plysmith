@@ -5,6 +5,7 @@ import {
   ENGINE_PROVIDER_TIMEOUT_LIMITS,
   STOCKFISH_DETAIL_LEVEL_LIMITS,
 } from '../../../../../contracts/host/engine-provider-configuration.ts';
+import { LICHESS_TOKEN_ENVIRONMENT_VARIABLE } from '../../../../../contracts/host/live-provider-configuration.ts';
 
 const ProviderInstanceIdSchema = Type.String({
   minLength: 1,
@@ -139,6 +140,33 @@ export const EngineProviderConfigurationDocumentSchema = Type.Union([
   StockfishUciProviderConfigurationSchema,
   MaiaChessProviderConfigurationSchema,
 ]);
+
+export const LichessProviderConfigurationSchema = Type.Object(
+  {
+    schemaVersion: Type.Literal(1),
+    provider: Type.Literal('lichess'),
+    configurationRevision: Type.String({
+      pattern:
+        '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+    }),
+    lichess: Type.Object(
+      {
+        tokenEnvironmentVariable: Type.Literal(
+          LICHESS_TOKEN_ENVIRONMENT_VARIABLE,
+        ),
+      },
+      { additionalProperties: false },
+    ),
+  },
+  {
+    $id: 'https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/lichess-provider.schema.json',
+    additionalProperties: false,
+  },
+);
+
+export type LichessProviderConfiguration = Static<
+  typeof LichessProviderConfigurationSchema
+>;
 
 export type PlysmithConfiguration = Static<typeof PlysmithConfigurationSchema>;
 export type SqliteProviderConfiguration = Static<

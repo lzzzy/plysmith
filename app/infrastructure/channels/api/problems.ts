@@ -10,6 +10,148 @@ export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
 
 const catalog = {
+  'configuration.live_invalid': [
+    400,
+    'Invalid live configuration',
+    'Enter a valid personal Lichess API token.',
+  ],
+  'configuration.live_conflict': [
+    409,
+    'Live configuration conflict',
+    'Read the current configuration before saving.',
+  ],
+  'configuration.live_write_failed': [
+    503,
+    'Live configuration unavailable',
+    'The live configuration could not be saved.',
+  ],
+  'live.fair_play_blocked': [
+    403,
+    'Engine assistance unavailable',
+    'Engine assistance is disabled until ongoing human games are confirmed finished.',
+  ],
+  'live.authentication_failed': [
+    401,
+    'Lichess authentication failed',
+    'Check the personal API token and its permissions in settings.',
+  ],
+  'live.rate_limited': [
+    429,
+    'Lichess request limit',
+    'Wait before reconnecting to Lichess.',
+  ],
+  'live.provider_unavailable': [
+    503,
+    'Lichess unavailable',
+    'The connection to Lichess is unavailable.',
+  ],
+  'live.protocol_error': [
+    502,
+    'Invalid Lichess response',
+    'The live game could not be verified.',
+  ],
+  'live.move_rejected': [
+    409,
+    'Move rejected',
+    'Lichess rejected the move. Read the current game before continuing.',
+  ],
+  'live.move_uncertain': [
+    409,
+    'Move confirmation pending',
+    'The move may have reached Lichess. Resynchronize before continuing; do not resend it.',
+  ],
+  'live.account_mismatch': [
+    403,
+    'Account changed',
+    'Use the original account to confirm that its games have finished.',
+  ],
+  'live.busy': [
+    409,
+    'Live command in progress',
+    'Wait for the current command to finish.',
+  ],
+  'live.closed': [409, 'Live connection closed', 'Open a new live connection.'],
+  'live.game_too_long': [
+    413,
+    'Live game limit',
+    'This game exceeds the supported recording length.',
+  ],
+  'live.guard_unavailable': [
+    503,
+    'Fair-play state unavailable',
+    'Engine assistance remains disabled until its safety state can be verified.',
+  ],
+  'live.illegal_move': [
+    400,
+    'Illegal live move',
+    'Choose a legal move in the current game.',
+  ],
+  'live.invalid_action': [
+    400,
+    'Invalid live action',
+    'Choose an action available in the current game.',
+  ],
+  'live.invalid_game': [
+    400,
+    'Invalid game link',
+    'Use a normal Lichess game URL.',
+  ],
+  'live.invalid_save': [
+    400,
+    'Invalid game save',
+    'Choose a valid game name and destination.',
+  ],
+  'live.invalid_selection': [
+    400,
+    'Invalid live position',
+    'Select a position from the recorded game.',
+  ],
+  'live.no_session': [
+    404,
+    'No live game',
+    'Open a game before using live commands.',
+  ],
+  'live.not_configured': [
+    409,
+    'Lichess not configured',
+    'Configure a personal API token in settings and restart Plysmith.',
+  ],
+  'live.not_connected': [
+    409,
+    'Live game disconnected',
+    'Reconnect and verify the current game before continuing.',
+  ],
+  'live.not_finished': [
+    409,
+    'Game not finished',
+    'Wait for the final verified game before saving.',
+  ],
+  'live.not_playable': [
+    409,
+    'Game not playable in Plysmith',
+    'Continue this game in the Lichess browser.',
+  ],
+  'live.not_your_turn': [409, 'Not your turn', 'Wait for the opponent move.'],
+  'live.own_game': [
+    403,
+    'Own ongoing game',
+    'Open your own game without engine assistance.',
+  ],
+  'live.session_exists': [
+    409,
+    'Live recording open',
+    'Save or discard the current recording before opening another game.',
+  ],
+  'live.stale_state': [
+    409,
+    'Live game changed',
+    'Read the current game before repeating the action.',
+  ],
+  'live.unsupported_variant': [
+    400,
+    'Unsupported chess variant',
+    'Only standard chess is supported.',
+  ],
   'import.publication_busy': [
     409,
     'Import publication busy',
@@ -559,7 +701,9 @@ export function installProblemHandling(
     }
     if (error instanceof ApplicationProblem) {
       if (
-        error.problemCode.startsWith('import.') &&
+        (error.problemCode.startsWith('import.') ||
+          error.problemCode.startsWith('live.') ||
+          error.problemCode.startsWith('configuration.live_')) &&
         Object.hasOwn(catalog, error.problemCode)
       ) {
         return replyWithProblem(

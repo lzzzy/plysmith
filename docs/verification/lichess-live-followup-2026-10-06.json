@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-06",
+  "scope": "Live-Folgekorrektur: gemerkter Online/Offline-Modus, laufende Uhren und Zeitueberschreitungsabschluss",
+  "sourceGates": {
+    "typechecks": { "passed": 4, "failed": 0 },
+    "eslint": "passed",
+    "dependencyBoundaries": {
+      "status": "passed",
+      "modules": 511,
+      "dependencies": 2400
+    },
+    "hostClientBrowser": "passed",
+    "generatedContracts": "passed",
+    "format": "passed",
+    "diffCheck": "passed"
+  },
+  "build": {
+    "command": "node tools/build-desktop.ts",
+    "exitCode": 0,
+    "modules": 3489
+  },
+  "fullSuite": {
+    "command": "node --test --test-concurrency=1 tests/**/*.test.ts",
+    "log": "build/verification/live-followup-tests.log",
+    "exitCode": 0,
+    "tests": 1140,
+    "passed": 1140,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "durationMilliseconds": 735793.909,
+    "scheduling": "Finaler Gesamtnachweis mit Dateiparallelitaet1; Projektscript bleibt2. Fristen und interne Konkurrenzpruefungen unveraendert.",
+    "finalUiFollowup": "Danach nur zwei Rendererbedingungen fuer bewusstes Offline und entsprechende Abnahmeassertionen nachgepflegt: Browserrepro rot/gruen, alle Sourcegates, Build und Native erneut bestanden. Keine zweite Vollsuite fuer diese reine Anzeigenachpflege behaupten."
+  },
+  "focusedRegressions": {
+    "provider": 21,
+    "service": 24,
+    "desktopPreference": 3,
+    "host": 7,
+    "transport": 18,
+    "mcpAllowlist": 1,
+    "clockPure": 3,
+    "browserRuntime": {
+      "command": "node --test tests/unit/ui/live-renderer-runtime.ts tests/unit/ui/live-clock-runtime.ts",
+      "exitCode": 0,
+      "passed": 6,
+      "failed": 0
+    },
+    "overlap": "Die .test.ts-Fokuspruefungen sind Teilmengen der Vollsuite; Browserruntime ist ein gesondertes Opt-in. Zahlen nicht addieren."
+  },
+  "runtime": {
+    "command": "node tools/verify-live-runtime.ts",
+    "diagnosticWrapper": "Finale Laeufe zusaetzlich mit tokenfreier Errnodiagnose fuer Dateisystem-Schreiboperationen; keine Produktabstraktion oder Wiederholung ergaenzt.",
+    "proof": "build/verification/live/447188fc-4136-4562-98b8-ef64b33df3fb/proof.json",
+    "exitCode": 0,
+    "passedSections": 7,
+    "failedSections": 0,
+    "screenshots": 48,
+    "rendererErrors": 0,
+    "accessibilityFindings": 0,
+    "externalRequests": 0,
+    "viewports": [390, 900, 1280],
+    "locales": ["de-DE", "en-GB"],
+    "flows": [
+      "Frischer Desktop/Host startet ohne Provideranfrage offline",
+      "Explizites Online/Offline schliesst Streams ohne Aufnahmeverlust oder Guardfreigabe",
+      "Bewusstes Offline erscheint nicht als Verbindungsabbruch und besitzt keinen redundanten Refreshbutton",
+      "Laufende Uhr ohne Hosttick, Fokusrevision oder lokale Ergebnisentscheidung",
+      "Terminaler Flag, fehlgeschlagener Export und Refresh mit Ergebnis1-0 sowie normaler Endablage",
+      "Eigener Zug, Remisaktionen, Promotion, Beobachtung, Resync und Verwerfen",
+      "Gespeichertes Online verbindet nach Desktop-/Hostneustart; gespeichertes Offline sendet nichts",
+      "Drei normale gespeicherte Partien nach Neustart erhalten; kein Live-Resume",
+      "Alle eigenen Host-/Electronressourcen beendet"
+    ]
+  },
+  "publicReadOnlyDiagnosis": {
+    "authentication": "none",
+    "observation": "Ein reales outoftime-Export enthielt61Halbzuege und62Uhrwerte mit abschliessender0. Der korrigierte Produktadapter las ended/white_win mit Schwarz0 und ohne zusaetzlichen Zug.",
+    "writes": "none"
+  },
+  "unconfirmedObservation": {
+    "problemCode": "configuration.live_write_failed",
+    "proof": "build/verification/live/b740bec2-9775-4acb-9d84-96082457de8c/proof.json",
+    "status": "Einmaliger Fehler beim Speichern einer isolierten frischen Testkonfiguration; in zwei anschliessenden vollstaendigen Nativelaeufen mit Dateisystemdiagnose nicht reproduziert. Ursache nicht belegt, kein Produktfix oder allgemeine Fehlerfreiheit behaupten."
+  },
+  "limits": [
+    "Deterministischer Fakeprovider in eigenen Testhomes; keine echten Tokens, Kontoaktionen oder Nutzerbestandsaenderungen.",
+    "Echter oeffentlicher Export nur lesend ohne Token geprueft; keine schreibende Lichess-E2E-Abnahme.",
+    "Keine echte Engine im nativen Live-Ablauf; reale Konto-/Netzwerk-/Stockfish-Abnahme bleibt Nutzerschritt.",
+    "Electron-Reflow und Axe sind keine physische Mobilgeraete- oder menschliche Screenreaderabnahme.",
+    "Offline folgt wie alle Commands der Busygrenze; kein paralleler Notabbruch eines unbestaetigten POST.",
+    "Die Moduswahl liegt ausschliesslich im Desktopprofil; kein neues SQLite-/Konfigschema und kein Migrationspfad.",
+    "Der urspruengliche Nachweis lichess-live-2026-10-06.json bleibt historisch erhalten.",
+    "Kein Commit, Push oder Release."
+  ]
+}

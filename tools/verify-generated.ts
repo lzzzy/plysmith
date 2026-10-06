@@ -25,6 +25,7 @@ try {
       'sqlite-provider.schema.json',
       'stockfish-uci-provider.schema.json',
       'maia-chess-provider.schema.json',
+      'lichess-provider.schema.json',
     ],
   );
   const hostContractRoot = path.join(temporaryRoot, 'host-contract');

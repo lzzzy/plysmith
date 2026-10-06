@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-06",
+  "scope": "Optional match ratings beside Live player names, without provisional markers or profile requests",
+  "regressions": {
+    "beforeImplementation": { "tests": 3, "passed": 0, "failed": 3 },
+    "afterImplementation": { "tests": 3, "passed": 3, "failed": 0 },
+    "focusedLiveRun": {
+      "tests": 95,
+      "passed": 94,
+      "failed": 1,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMilliseconds": 261289,
+      "failure": "A string in the browser test returned a function rather than invoking the DOM check. Product behavior was unaffected."
+    },
+    "finalRendererRunAfterTestFix": {
+      "tests": 1,
+      "passed": 1,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMilliseconds": 5007
+    }
+  },
+  "coverage": [
+    "Export, Board snapshot and account opponent ratings, without interpreting provisional or ratingDiff",
+    "Missing and malformed ratings",
+    "HTTP and MCP pass-through",
+    "Live opponent choice and both session player names",
+    "Text bounds at 1440 and 390 pixel widths",
+    "Recording, save, reconnect, clocks and Fair Play regressions"
+  ],
+  "sourceGates": {
+    "typecheckAllFourProjects": "passed",
+    "finalTestsTypecheck": "passed",
+    "lint": "passed",
+    "finalBrowserTestLint": "passed",
+    "boundaries": "passed: 511 modules, 2400 dependencies",
+    "generatedContracts": "passed",
+    "browserClient": "passed",
+    "desktopBuild": "passed: 3489 renderer modules",
+    "format": "passed",
+    "diffCheck": "passed"
+  },
+  "limits": [
+    "No full-suite or real-account acceptance claim",
+    "No real token, account write, user host restart or user data change",
+    "No new persistence, profile polling, save-name change or rating-change calculation",
+    "No commit, push or release"
+  ]
+}

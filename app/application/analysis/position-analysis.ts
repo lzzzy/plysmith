@@ -5,6 +5,7 @@ import type {
 } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
+import type { FairPlayGate } from '../live/fair-play-gate.ts';
 import {
   requireInventoryWorkAccess,
   type InventoryWorkAccess,
@@ -117,13 +118,19 @@ export type PositionAnalysisMode =
   | { readonly kind: 'human_policy' };
 
 export interface PositionAnalysisRequest {
-  readonly work: InventoryWorkAccess;
+  readonly work: InventoryWorkAccess | LiveAnalysisWork;
   readonly consumerId: string;
   readonly laneId: string;
   readonly providerInstanceId: string;
   readonly candidateCount: number;
   readonly focus: PositionAnalysisFocus;
   readonly mode: PositionAnalysisMode;
+}
+
+export interface LiveAnalysisWork {
+  readonly kind: 'live';
+  readonly revision: number;
+  readonly ply: number;
 }
 
 export interface PositionAnalysisProviderRequest {
@@ -215,24 +222,43 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
   readonly #providers: PositionAnalysisRegistry;
   readonly #lanes: ActivePositionAnalysisLanes;
   readonly #workspace: InventoryWorkAccessReader;
+  readonly #fairPlay: FairPlayGate | undefined;
+  readonly #liveFocus:
+    | ((work: LiveAnalysisWork, focus: PositionAnalysisFocus) => void)
+    | undefined;
 
   constructor(dependencies: {
     readonly rules: ChessRulesPort;
     readonly providers: PositionAnalysisRegistry;
     readonly lanes: ActivePositionAnalysisLanes;
     readonly workspace: InventoryWorkAccessReader;
+    readonly fairPlay?: FairPlayGate;
+    readonly liveFocus?: (
+      work: LiveAnalysisWork,
+      focus: PositionAnalysisFocus,
+    ) => void;
   }) {
     this.#rules = dependencies.rules;
     this.#providers = dependencies.providers;
     this.#lanes = dependencies.lanes;
     this.#workspace = dependencies.workspace;
+    this.#fairPlay = dependencies.fairPlay;
+    this.#liveFocus = dependencies.liveFocus;
   }
 
   async execute(
     request: PositionAnalysisRequest,
   ): Promise<PositionAnalysisSnapshot> {
+    return this.#fairPlay === undefined
+      ? this.#execute(request)
+      : this.#fairPlay.run(() => this.#execute(request));
+  }
+
+  async #execute(
+    request: PositionAnalysisRequest,
+  ): Promise<PositionAnalysisSnapshot> {
     validateRequest(request);
-    await this.#requireAccess(request.work);
+    await this.#requireAccess(request.work, request.focus);
     validateFocus(this.#rules, request.focus);
     validatePositionAnalysisProviderRequest(this.#rules, request);
     const capability =
@@ -259,7 +285,7 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
       ) {
         throw new PositionAnalysisProviderError('provider_protocol_error');
       }
-      await this.#requireAccess(request.work);
+      await this.#requireAccess(request.work, request.focus);
       return snapshot;
     } catch (error) {
       if (error instanceof ApplicationProblem) throw error;
@@ -271,7 +297,16 @@ export class AnalyzePosition implements AnalyzePositionUseCase {
     }
   }
 
-  #requireAccess(work: InventoryWorkAccess): Promise<void> {
+  async #requireAccess(
+    work: InventoryWorkAccess | LiveAnalysisWork,
+    focus: PositionAnalysisFocus,
+  ): Promise<void> {
+    if (!('scope' in work)) {
+      if (this.#liveFocus === undefined)
+        throw positionAnalysisProblem('invalid_focus');
+      this.#liveFocus(work, focus);
+      return;
+    }
     return requireInventoryWorkAccess(
       this.#workspace,
       work.scope,

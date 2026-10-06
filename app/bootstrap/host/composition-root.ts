@@ -128,6 +128,26 @@ import {
   productRelease,
 } from '../../../contracts/host/index.ts';
 import { RuntimeStatus } from './runtime-status.ts';
+import { localId } from '../../domain/identity/index.ts';
+import {
+  FairPlayGate,
+  fairPlayUseCase,
+} from '../../application/live/fair-play-gate.ts';
+import {
+  fairPlayMovePolicies,
+  fairPlayPositionAnalyses,
+} from '../../application/live/fair-play-providers.ts';
+import { LiveService } from '../../application/live/live-session.ts';
+import type { LiveProviderPort } from '../../application/live/live-ports.ts';
+import {
+  GetLiveProviderConfiguration,
+  SaveLiveProviderConfiguration,
+} from '../../application/live/live-provider-configuration.ts';
+import {
+  FileLiveProviderConfigurationRepository,
+  loadLichessToken,
+} from '../../infrastructure/adapters/configuration/filesystem/index.ts';
+import { LichessLiveProvider } from '../../infrastructure/adapters/live/lichess/index.ts';
 
 export interface ComposeHostOptions {
   readonly applicationHome: string;
@@ -135,6 +155,7 @@ export interface ComposeHostOptions {
   readonly hostToken?: string;
   readonly now?: () => string;
   readonly correlationIdFactory?: () => string;
+  readonly liveProvider?: LiveProviderPort;
 }
 
 export interface ComposedHost {
@@ -156,6 +177,7 @@ export async function composeHost(
   let host: FastifyInstance | undefined;
   let diagnostics: FileDiagnosticLog | undefined;
   let importPreparations: ActiveImportPreviews | undefined;
+  let live: LiveService | undefined;
   const engineRuntimes: UciEngineRuntime[] = [];
 
   try {
@@ -215,6 +237,7 @@ export async function composeHost(
       },
     });
     const eventStream = new HostEventStream({
+      dataRevision: (await persistence.readStoreStatus()).dataRevision,
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.correlationIdFactory === undefined
         ? {}
@@ -231,6 +254,66 @@ export async function composeHost(
       events: eventStream,
     });
     const rules = new ChessJsRulesAdapter();
+    const fairPlay = new FairPlayGate();
+    const liveConfigurations = new FileLiveProviderConfigurationRepository(
+      options.applicationHome,
+    );
+    const liveConfiguration = await liveConfigurations.get();
+    const getLiveProviderConfiguration = new GetLiveProviderConfiguration({
+      repository: liveConfigurations,
+      activeConfigurationRevision: liveConfiguration.configurationRevision,
+    });
+    const saveLiveProviderConfiguration = new SaveLiveProviderConfiguration(
+      liveConfigurations,
+    );
+    const lichessConfigured = configuration.liveProviders.some(
+      (provider) =>
+        provider.provider === 'lichess' && provider.status === 'available',
+    );
+    const lichessToken = lichessConfigured
+      ? await loadLichessToken(options.applicationHome)
+      : undefined;
+    const liveProvider =
+      options.liveProvider ??
+      (lichessToken === undefined
+        ? undefined
+        : new LichessLiveProvider({ token: lichessToken }));
+    const livePersistence = persistence;
+    live = new LiveService({
+      ...(liveProvider === undefined ? {} : { provider: liveProvider }),
+      rules,
+      fairPlay,
+      now: clock.now,
+      guard: livePersistence,
+      writer: {
+        async saveLiveGame(request) {
+          const saved = await livePersistence.saveLiveGame(request);
+          eventStream.publish({
+            kind: 'inventory.item-created',
+            itemId: localId('inventory-item', saved.itemId),
+            revisionId: localId('item-revision', saved.revisionId),
+            dataRevision: saved.dataRevision,
+            occurredAt: clock.now(),
+          });
+          if (request.workingContextId !== undefined)
+            eventStream.publish({
+              kind: 'inventory.organization-changed',
+              contextId: localId('working-context', request.workingContextId),
+              itemIds: [localId('inventory-item', saved.itemId)],
+              dataRevision: saved.dataRevision,
+              occurredAt: clock.now(),
+            });
+          return saved;
+        },
+      },
+      onChange: () => {
+        if (live !== undefined) {
+          const state = live.getState();
+          eventStream.publishLiveChange(state.revision, state.fairPlayBlocked);
+        }
+      },
+    });
+    await live.initialize();
     const importSource = new LocalFileSourceAcquisition();
     importPreparations = new ActiveImportPreviews({
       source: importSource,
@@ -317,7 +400,7 @@ export async function composeHost(
         runtime,
       });
     }
-    const movePolicies = new ConfiguredMovePolicyRegistry(
+    const rawMovePolicies = new ConfiguredMovePolicyRegistry(
       configuration.playoutEngines.map((engine): MovePolicyProvider => {
         if (engine.provider === 'unknown') {
           return new UnavailableMovePolicyProvider({
@@ -348,7 +431,8 @@ export async function composeHost(
         });
       }),
     );
-    const positionAnalyses = new ConfiguredPositionAnalysisRegistry(
+    const movePolicies = fairPlayMovePolicies(rawMovePolicies, fairPlay);
+    const rawPositionAnalyses = new ConfiguredPositionAnalysisRegistry(
       configuration.analysisEngines.flatMap(
         (engine): readonly PositionAnalysisProvider[] => {
           const binding = runtimeBindings.get(engine.instanceId);
@@ -373,6 +457,10 @@ export async function composeHost(
           return [];
         },
       ),
+    );
+    const positionAnalyses = fairPlayPositionAnalyses(
+      rawPositionAnalyses,
+      fairPlay,
     );
     const configuredEngineProviders = await engineProviderConfigurations.list();
     const activeEngineFingerprints = new Map(
@@ -406,6 +494,8 @@ export async function composeHost(
       positionAnalyses,
     );
     const analyzePosition = new AnalyzePosition({
+      fairPlay,
+      liveFocus: (work, focus) => live!.requireAnalysisFocus(work, focus),
       workspace: persistence,
       rules,
       providers: positionAnalyses,
@@ -602,6 +692,9 @@ export async function composeHost(
     const correlationIdFactory = options.correlationIdFactory ?? randomUUID;
 
     host = await buildHost({
+      live,
+      getLiveProviderConfiguration,
+      saveLiveProviderConfiguration,
       registerImportInput: new RegisterImportInput(importSource),
       prepareImport: new PrepareImport(importPreparations),
       checkImportNames: new CheckImportNames(persistence),
@@ -615,11 +708,11 @@ export async function composeHost(
       createDiagnosticReport,
       getUserPreferences,
       setUiLanguage,
-      getAnalysisWorkspace,
+      getAnalysisWorkspace: fairPlayUseCase(getAnalysisWorkspace, fairPlay),
       listPositionAnalysisProviders,
       analyzePosition,
       validateAnalysisSetup,
-      updateAnalysisScratch,
+      updateAnalysisScratch: fairPlayUseCase(updateAnalysisScratch, fairPlay),
       createAnalysisRecord,
       createAnalysisNote,
       createPositionNote,
@@ -638,11 +731,17 @@ export async function composeHost(
       previewContextItemRemoval,
       previewWorkingContextDeletion,
       deleteWorkingContext,
-      startInventoryRevision,
-      promoteAnalysisToInventoryRevision,
-      previewInventoryRevision,
+      startInventoryRevision: fairPlayUseCase(startInventoryRevision, fairPlay),
+      promoteAnalysisToInventoryRevision: fairPlayUseCase(
+        promoteAnalysisToInventoryRevision,
+        fairPlay,
+      ),
+      previewInventoryRevision: fairPlayUseCase(
+        previewInventoryRevision,
+        fairPlay,
+      ),
       saveInventoryRevision,
-      getInventoryRevision,
+      getInventoryRevision: fairPlayUseCase(getInventoryRevision, fairPlay),
       listInventoryRevisions,
       getPendingRevisionImpact,
       resolvePendingRevisionImpact,
@@ -655,14 +754,17 @@ export async function composeHost(
       setWorkScopeResume,
       setManagementPresentation,
       listMovePolicyProviders,
-      getPlayout,
-      startPlayout,
-      submitPlayoutMove,
-      retryPlayoutPolicyMove,
-      pausePlayout,
-      resumePlayout,
-      stopPlayout,
-      cancelPlayoutCompletion,
+      getPlayout: fairPlayUseCase(getPlayout, fairPlay),
+      startPlayout: fairPlayUseCase(startPlayout, fairPlay),
+      submitPlayoutMove: fairPlayUseCase(submitPlayoutMove, fairPlay),
+      retryPlayoutPolicyMove: fairPlayUseCase(retryPlayoutPolicyMove, fairPlay),
+      pausePlayout: fairPlayUseCase(pausePlayout, fairPlay),
+      resumePlayout: fairPlayUseCase(resumePlayout, fairPlay),
+      stopPlayout: fairPlayUseCase(stopPlayout, fairPlay),
+      cancelPlayoutCompletion: fairPlayUseCase(
+        cancelPlayoutCompletion,
+        fairPlay,
+      ),
       completePlayout,
       discardPlayout,
       getEngineProviderConfigurations,
@@ -677,7 +779,9 @@ export async function composeHost(
       diagnostics,
     });
 
+    live.start();
     return createComposedHost({
+      live,
       applicationHome: options.applicationHome,
       lease,
       persistence,
@@ -694,6 +798,7 @@ export async function composeHost(
       eventCode: 'host.lifecycle.start_failed',
       status: 'failed',
     });
+    await live?.close();
     await host?.close();
     await importPreparations?.close();
     await Promise.allSettled(engineRuntimes.map((runtime) => runtime.close()));
@@ -705,6 +810,7 @@ export async function composeHost(
 }
 
 function createComposedHost(input: {
+  readonly live: LiveService;
   readonly applicationHome: string;
   readonly lease: HostOwnerLease;
   readonly persistence: SqlitePersistenceAdapter;
@@ -740,6 +846,7 @@ function createComposedHost(input: {
 }
 
 async function closeComposedHost(input: {
+  readonly live: LiveService;
   readonly applicationHome: string;
   readonly lease: HostOwnerLease;
   readonly persistence: SqlitePersistenceAdapter;
@@ -757,6 +864,7 @@ async function closeComposedHost(input: {
   });
   await clearHostDiscovery(input.applicationHome, input.lease.ownerId);
   const failures: unknown[] = [];
+  await input.live.close();
   const processClosures = await Promise.allSettled([
     Promise.resolve().then(() => input.host.close()),
     ...input.engineRuntimes.map((runtime) => runtime.close()),

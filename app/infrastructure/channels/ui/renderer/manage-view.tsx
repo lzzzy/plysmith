@@ -149,12 +149,17 @@ export function ManageView({
         : undefined) !== activeContextId
     )
       return;
+    if (
+      current.fairPlayBlocked &&
+      (command === 'open' || command === 'rename' || command === 'resolve')
+    )
+      return;
     if (command === 'include')
       void store.addInventoryItemToCurrentContext(item);
     else if (command === 'remove') void store.prepareContextItemRemoval(item);
     else if (command === 'delete')
       void store.prepareInventoryItemDeletion(item);
-    else if (command === 'open' && !current.analysis.scratchHasChanges)
+    else if (command === 'open' && !current.analysis?.scratchHasChanges)
       void store.openInventoryItem(item);
     else setItemAction({ itemId: item.itemId, kind: command });
   }
@@ -171,6 +176,7 @@ export function ManageView({
     setItemAction(undefined);
   }
   useEffect(() => {
+    if (state.fairPlayBlocked) return;
     if (selectedImpact === undefined) {
       if (state.revisionImpact !== undefined) store.closeRevisionImpact();
       return;
@@ -182,6 +188,7 @@ export function ManageView({
       void store.openRevisionImpact(selectedImpact.impactId);
     }
   }, [
+    state.fairPlayBlocked,
     selectedImpact?.impactId,
     state.busyCommand,
     state.revisionImpact?.impact.impactId,
@@ -199,7 +206,7 @@ export function ManageView({
         <div className={styles.headerActions}>
           <Button
             className={styles.secondaryButton!}
-            isDisabled={isBusy}
+            isDisabled={isBusy || state.fairPlayBlocked}
             onPress={() => void store.openImport()}
           >
             <Download aria-hidden="true" size={16} />
@@ -213,7 +220,11 @@ export function ManageView({
           </span>
           <Button
             className={styles.primaryButton!}
-            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            isDisabled={
+              state.busyCommand !== undefined ||
+              state.refreshing ||
+              state.fairPlayBlocked
+            }
             onPress={() => void store.openNewPlayout()}
           >
             <Play aria-hidden="true" size={16} />
@@ -221,9 +232,14 @@ export function ManageView({
           </Button>
           <Button
             className={styles.primaryButton!}
-            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            isDisabled={
+              state.busyCommand !== undefined ||
+              state.refreshing ||
+              state.fairPlayBlocked
+            }
             onPress={() => {
-              if (state.analysis.scratchHasChanges) setAnalysisStart('initial');
+              if (state.analysis?.scratchHasChanges)
+                setAnalysisStart('initial');
               else void store.startScratchAtInitialPosition();
             }}
           >
@@ -232,7 +248,11 @@ export function ManageView({
           </Button>
           <Button
             className={styles.secondaryButton!}
-            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            isDisabled={
+              state.busyCommand !== undefined ||
+              state.refreshing ||
+              state.fairPlayBlocked
+            }
             onPress={() => setAnalysisStart('setup')}
           >
             <ChessPieceGlyph className={styles.setupGlyph!} symbol="♔" />
@@ -241,7 +261,7 @@ export function ManageView({
         </div>
       </header>
 
-      <ImportDialog state={state} store={store} />
+      {!state.fairPlayBlocked && <ImportDialog state={state} store={store} />}
       <div className={styles.manageGrid}>
         <aside className={styles.contextPanel} aria-labelledby="contexts-title">
           <div className={styles.panelHeading}>
@@ -549,6 +569,7 @@ export function ManageView({
         </aside>
       </div>
       {itemAction !== undefined &&
+        !state.fairPlayBlocked &&
         selectedItem?.itemId === itemAction.itemId && (
           <ManagementDialog
             titleId={
@@ -597,12 +618,12 @@ export function ManageView({
           />
         </ManagementDialog>
       )}
-      {analysisStart !== undefined && (
+      {analysisStart !== undefined && !state.fairPlayBlocked && (
         <AnalysisSetupDialog
           key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${analysisStart}`}
           isOpen
           requestedStart={analysisStart}
-          hasScratch={state.analysis.scratchHasChanges}
+          hasScratch={state.analysis?.scratchHasChanges ?? false}
           isBusy={state.busyCommand !== undefined}
           store={store}
           onOpenChange={(open) => {
@@ -1112,11 +1133,13 @@ function ItemInspector({
           </dd>
         </div>
       </dl>
-      <InventoryDetailsView
-        key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${item.itemId}-${item.currentRevisionId}`}
-        item={item}
-        store={store}
-      />
+      {!state.fairPlayBlocked && (
+        <InventoryDetailsView
+          key={`${state.scope.kind === 'context' ? state.scope.contextId : 'free'}-${item.itemId}-${item.currentRevisionId}`}
+          item={item}
+          store={store}
+        />
+      )}
     </div>
   );
 }
@@ -1202,7 +1225,7 @@ function ItemActionContent({
   const showScratchDecision = kind === 'open';
   const renameBlocked =
     state.scope.kind === 'free' &&
-    state.analysis.scratchHasChanges &&
+    (state.analysis?.scratchHasChanges ?? false) &&
     state.manageInventoryRevisionDraft === undefined;
 
   return (

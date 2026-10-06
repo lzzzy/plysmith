@@ -154,6 +154,17 @@ test('MCP advertises the explicit playout-capable allowlist and two fixed resour
       'cancel_playout_completion',
       'complete_playout',
       'discard_playout',
+      'get_live_state',
+      'get_live_provider_configuration',
+      'observe_live_game',
+      'play_live_game',
+      'select_live_position',
+      'submit_live_move',
+      'act_live_game',
+      'refresh_live_game',
+      'disconnect_live_game',
+      'discard_live_game',
+      'save_live_game',
     ],
   );
   assert.deepEqual(client.getServerCapabilities(), {

@@ -104,6 +104,64 @@ export async function connectMcp(
 ) {
   const calls: { method: string; request?: unknown }[] = [];
   const hostClient: HostClient = {
+    async getLiveState() {
+      calls.push({ method: 'getLiveState' });
+      if (overrides.getLiveState) return overrides.getLiveState();
+      throw new Error('getLiveState fixture not configured');
+    },
+    async getLiveProviderConfiguration() {
+      calls.push({ method: 'getLiveProviderConfiguration' });
+      if (overrides.getLiveProviderConfiguration)
+        return overrides.getLiveProviderConfiguration();
+      throw new Error('getLiveProviderConfiguration fixture not configured');
+    },
+    async observeLiveGame(request) {
+      calls.push({ method: 'observeLiveGame', request });
+      if (overrides.observeLiveGame) return overrides.observeLiveGame(request);
+      throw new Error('observeLiveGame fixture not configured');
+    },
+    async playLiveGame(request) {
+      calls.push({ method: 'playLiveGame', request });
+      if (overrides.playLiveGame) return overrides.playLiveGame(request);
+      throw new Error('playLiveGame fixture not configured');
+    },
+    async selectLivePosition(request) {
+      calls.push({ method: 'selectLivePosition', request });
+      if (overrides.selectLivePosition)
+        return overrides.selectLivePosition(request);
+      throw new Error('selectLivePosition fixture not configured');
+    },
+    async submitLiveMove(request) {
+      calls.push({ method: 'submitLiveMove', request });
+      if (overrides.submitLiveMove) return overrides.submitLiveMove(request);
+      throw new Error('submitLiveMove fixture not configured');
+    },
+    async actLiveGame(request) {
+      calls.push({ method: 'actLiveGame', request });
+      if (overrides.actLiveGame) return overrides.actLiveGame(request);
+      throw new Error('actLiveGame fixture not configured');
+    },
+    async refreshLiveGame(request) {
+      calls.push({ method: 'refreshLiveGame', request });
+      if (overrides.refreshLiveGame) return overrides.refreshLiveGame(request);
+      throw new Error('refreshLiveGame fixture not configured');
+    },
+    async disconnectLiveGame(request) {
+      calls.push({ method: 'disconnectLiveGame', request });
+      if (overrides.disconnectLiveGame)
+        return overrides.disconnectLiveGame(request);
+      throw new Error('disconnectLiveGame fixture not configured');
+    },
+    async discardLiveGame(request) {
+      calls.push({ method: 'discardLiveGame', request });
+      if (overrides.discardLiveGame) return overrides.discardLiveGame(request);
+      throw new Error('discardLiveGame fixture not configured');
+    },
+    async saveLiveGame(request) {
+      calls.push({ method: 'saveLiveGame', request });
+      if (overrides.saveLiveGame) return overrides.saveLiveGame(request);
+      throw new Error('saveLiveGame fixture not configured');
+    },
     async registerImportInput(request) {
       calls.push({ method: 'registerImportInput', request });
       if (overrides.registerImportInput)

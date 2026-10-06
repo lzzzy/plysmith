@@ -1,0 +1,3 @@
+export const LICHESS_PROVIDER_INSTANCE_ID = 'lichess-main';
+export const LICHESS_TOKEN_ENVIRONMENT_VARIABLE = 'PLYSMITH_LICHESS_TOKEN';
+export const LICHESS_TOKEN_PATTERN = '^[A-Za-z0-9_-]{1,512}$';

@@ -1,0 +1,106 @@
+{
+  "date": "2026-10-06",
+  "scope": "Beobachterabschluss bei Aufgabe, Wiederverbindung und Entfernung des dauerhaften Verzoegerungshinweises",
+  "diagnosis": {
+    "currentHostLog": "diagnostics/host-20261006070045422-a5c825f1-8c64-4d0e-b1ee-c434557448db-0.ndjson",
+    "failedFinalReadsUtc": [
+      "2026-10-06T07:18:53.792Z",
+      "2026-10-06T07:19:56.441Z"
+    ],
+    "problemCode": "live.protocol_error",
+    "publicGame": "https://lichess.org/ITPqDAXj",
+    "rawExport": {
+      "status": "resign",
+      "winner": "black",
+      "halfmoves": 104,
+      "clocks": 105,
+      "lastClockCentiseconds": 208
+    },
+    "parserBeforeFix": "live.protocol_error",
+    "parserAfterFix": {
+      "status": "ended",
+      "outcome": "black_win",
+      "halfmoves": 104,
+      "whiteClockMs": 2080,
+      "blackClockMs": 310670
+    },
+    "publicStream": "Tokenloser GET liefert Startmetadaten, Positionen und terminale resign-Metadaten; keine schreibende Aktion.",
+    "source": "https://github.com/lichess-org/lila/blob/master/modules/game/src/main/Game.scala",
+    "networkCause": "Die konkrete Ursache der zwischenzeitlichen Netzwerkunterbrechung ist durch das aktuelle Log nicht belegt. Stale Sessionwarnung und fehlerhafter Abschluss sind reproduziert."
+  },
+  "redGreen": {
+    "beforeFix": {
+      "passed": 1,
+      "failed": 4,
+      "scope": "Asynchrone Terminaluhr, Adapter-EOF, Warnungsabbau und ongoing-EOF gegen bestehenden Code"
+    },
+    "afterFix": "Gesamter fokussierter Liveumfang gruen; zusaetzliche Adapter-Service-Saveprobe und sofortige Board-Eingabesperre vor dem EOF-Export bestanden. UI-Banner separat durch Astra rot/gruen geprueft."
+  },
+  "focusedSuite": {
+    "exitCode": 0,
+    "tests": 95,
+    "passed": 95,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "durationMilliseconds": 171612.4925,
+    "files": [
+      "tests/integration/live/lichess-provider.test.ts",
+      "tests/unit/live/live-session.test.ts",
+      "tests/integration/live/host-live.test.ts",
+      "tests/integration/live/sqlite-live-record.test.ts",
+      "tests/contract/api/live.test.ts",
+      "tests/contract/mcp/live-tools.test.ts",
+      "tests/contract/host-client/live-connection.test.ts",
+      "tests/unit/ui/live-clock-presentation.test.ts",
+      "tests/unit/ui/live-clock-runtime.ts",
+      "tests/unit/ui/live-renderer-runtime.ts",
+      "tests/integration/desktop/renderer-messages.test.ts"
+    ]
+  },
+  "sourceGates": {
+    "typechecks": {
+      "passed": 4,
+      "failed": 0,
+      "toolsAfterHarnessUpdate": "passed"
+    },
+    "eslint": "passed; letzter Harness separat erneut geprueft",
+    "dependencyBoundaries": {
+      "status": "passed",
+      "modules": 511,
+      "dependencies": 2400
+    },
+    "hostClientBrowser": "passed",
+    "generatedContracts": "passed",
+    "format": "passed",
+    "diffCheck": "passed"
+  },
+  "build": { "exitCode": 0, "modules": 3489 },
+  "runtime": {
+    "command": "node tools/verify-live-runtime.ts",
+    "proof": "build/verification/live/02a88ec7-9b85-4e03-89c2-00783c3a0f4c/proof.json",
+    "exitCode": 0,
+    "passedSections": 7,
+    "failedSections": 0,
+    "screenshots": 50,
+    "accessibilityFindings": 0,
+    "rendererErrors": 0,
+    "externalRequests": 0,
+    "viewports": [390, 900, 1280],
+    "locales": ["de-DE", "en-GB"],
+    "newFlows": [
+      "Beobachterunterbrechung und automatische Wiederverbindung ohne alte Warnung oder Fokuswechsel",
+      "Kein dauerhafter Delayhinweis oder Message-Key-Fallback",
+      "Sauberer Streamabschluss ohne Endereignis bestaetigt Exportergebnis und fehlende Endzuege",
+      "Speichern in gewoehnlichem Ordner/Arbeitskontext und Bestand nach physischem Neustart"
+    ]
+  },
+  "limits": [
+    "Fokussierte Regression statt erneuter Vollsuite; der vorherige 1140-Test-Nachweis ist historisch, nicht Nachweis dieser Korrektur.",
+    "Echte oeffentliche beendete Partie ausschliesslich tokenlos lesend; keine echten Kontoaktionen, Secrets oder Nutzerbestandsaenderungen.",
+    "Native Abnahme mit Fakeprovider in eigenen Homes und ohne echte Engine. Netzwerkbedingungen und schreibende Kontoabnahme bleiben Nutzertest.",
+    "Keine neuen Persistenzformate, Konfigmigrationen, Retryabstraktionen oder Zeitbudgetaenderungen.",
+    "Keine explizite Uebernahme oder Neustart des Nutzerhosts; Entwicklungs-Watcher koennen auf Quellcodeaenderungen reagieren. Keine Live-Resumezusage.",
+    "Kein Commit, Push oder Release."
+  ]
+}

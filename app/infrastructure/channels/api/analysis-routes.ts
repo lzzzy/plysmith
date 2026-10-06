@@ -97,19 +97,22 @@ export function registerAnalysisRoutes(
       positionAnalysisSnapshotDto(
         await dependencies.analyzePosition.execute({
           ...request.body,
-          work: {
-            scope: parseWorkScope(request.body.work.scope),
-            subject:
-              request.body.work.subject.kind === 'position'
-                ? { kind: 'position' }
-                : {
-                    kind: 'inventory_item',
-                    itemId: parseLocalId(
-                      'inventory-item',
-                      request.body.work.subject.itemId,
-                    ),
-                  },
-          },
+          work:
+            'kind' in request.body.work
+              ? request.body.work
+              : {
+                  scope: parseWorkScope(request.body.work.scope),
+                  subject:
+                    request.body.work.subject.kind === 'position'
+                      ? { kind: 'position' }
+                      : {
+                          kind: 'inventory_item',
+                          itemId: parseLocalId(
+                            'inventory-item',
+                            request.body.work.subject.itemId,
+                          ),
+                        },
+                },
         }),
       ),
   );

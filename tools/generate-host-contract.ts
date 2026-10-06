@@ -20,6 +20,29 @@ export async function generateHostContract(
     },
   };
   const host = await buildHost({
+    live: {
+      getState: () => ({
+        revision: 0,
+        configured: false,
+        online: false,
+        connection: 'unconfigured',
+        fairPlayBlocked: false,
+        games: [],
+      }),
+      observe: unavailableUseCase.execute,
+      play: unavailableUseCase.execute,
+      select: () => {
+        throw new Error('Contract generation does not execute use cases.');
+      },
+      move: unavailableUseCase.execute,
+      act: unavailableUseCase.execute,
+      refresh: unavailableUseCase.execute,
+      disconnect: unavailableUseCase.execute,
+      discard: unavailableUseCase.execute,
+      save: unavailableUseCase.execute,
+    },
+    getLiveProviderConfiguration: unavailableUseCase,
+    saveLiveProviderConfiguration: unavailableUseCase,
     registerImportInput: unavailableUseCase,
     prepareImport: unavailableUseCase,
     cancelImportPreparation: unavailableUseCase,

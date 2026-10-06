@@ -57,7 +57,7 @@ preferencesStoreContract(
   'SQLite preferences port contract',
   async (t) => storeFixture(t).open(),
   false,
-  9,
+  10,
 );
 
 test('persists a committed command across reopening even when its response was lost', async (t) => {
@@ -80,7 +80,7 @@ test('persists a committed command across reopening even when its response was l
     },
   );
   assert.deepEqual(await reopened.readStoreStatus(), {
-    schemaVersion: 9,
+    schemaVersion: 10,
     dataRevision: 1,
   });
 });
@@ -207,6 +207,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
       { name: 'inventory_game_source_ply', strict: 1 },
       { name: 'inventory_item', strict: 1 },
       { name: 'item_revision', strict: 1 },
+      { name: 'live_fair_play_guard', strict: 1 },
       { name: 'playout_completion_receipt', strict: 1 },
       { name: 'playout_draft', strict: 1 },
       { name: 'playout_ply', strict: 1 },
@@ -254,6 +255,7 @@ test('the current schema contains all strict tables and a healthy FTS projection
         { migrationId: 7, size: 32 },
         { migrationId: 8, size: 32 },
         { migrationId: 9, size: 32 },
+        { migrationId: 10, size: 32 },
       ],
     );
     assert.throws(() =>
@@ -540,7 +542,7 @@ test('rejects incompatible migration history and a missing singleton without res
     'DELETE FROM preference_state',
     'DELETE FROM runtime_store_state',
     'DELETE FROM runtime_schema_migration',
-    'UPDATE runtime_store_state SET schema_version = 10',
+    'UPDATE runtime_store_state SET schema_version = 11',
   ]) {
     const fixture = storeFixture(t);
     await fixture.open().close();

@@ -10,12 +10,16 @@ import {
 } from './configuration-problem.ts';
 import {
   EngineProviderConfigurationDocumentSchema,
+  LichessProviderConfigurationSchema,
   PlysmithConfigurationSchema,
   SqliteProviderConfigurationSchema,
   type MaiaChessProviderConfiguration,
   type PlysmithConfiguration,
   type StockfishUciProviderConfiguration,
+  type LichessProviderConfiguration,
 } from './configuration-schema.ts';
+import { loadLichessToken } from './lichess-secret.ts';
+import { LICHESS_PROVIDER_INSTANCE_ID } from '../../../../../contracts/host/live-provider-configuration.ts';
 
 export interface RuntimeConfiguration {
   readonly central: PlysmithConfiguration;
@@ -26,7 +30,23 @@ export interface RuntimeConfiguration {
   };
   readonly analysisEngines: readonly RuntimeEngineConfiguration[];
   readonly playoutEngines: readonly RuntimePlayoutEngineConfiguration[];
+  readonly liveProviders: readonly RuntimeLiveProviderConfiguration[];
 }
+
+export type RuntimeLiveProviderConfiguration =
+  | {
+      readonly instanceId: string;
+      readonly provider: 'lichess';
+      readonly status: 'available' | 'unavailable';
+      readonly configuration: LichessProviderConfiguration;
+      readonly problemCode?: 'configuration.live_token_missing';
+    }
+  | {
+      readonly instanceId: string;
+      readonly provider: 'unknown';
+      readonly status: 'unavailable';
+      readonly problemCode: 'configuration.provider_invalid';
+    };
 
 export type RuntimeEngineConfiguration =
   | {
@@ -88,6 +108,42 @@ export async function loadConfiguration(
   const playoutEngines = central.bindings.playoutEngines.map(
     (engineId) => loadedEngines.get(engineId) ?? unavailableEngine(engineId),
   );
+  const liveProviders = await Promise.all(
+    central.bindings.liveProviders.map(
+      async (liveId): Promise<RuntimeLiveProviderConfiguration> => {
+        try {
+          if (liveId !== LICHESS_PROVIDER_INSTANCE_ID)
+            throw new Error('Unsupported live provider.');
+          const configuration = await readDocument(
+            path.join(activeDirectory, `${liveId}.json`),
+            LichessProviderConfigurationSchema,
+            'configuration.central_invalid',
+            'configuration.central_invalid',
+          );
+          const tokenConfigured =
+            (await loadLichessToken(applicationHome)) !== undefined;
+          Object.freeze(configuration.lichess);
+          Object.freeze(configuration);
+          return Object.freeze({
+            instanceId: liveId,
+            provider: 'lichess',
+            status: tokenConfigured ? 'available' : 'unavailable',
+            configuration,
+            ...(tokenConfigured
+              ? {}
+              : { problemCode: 'configuration.live_token_missing' as const }),
+          });
+        } catch {
+          return Object.freeze({
+            instanceId: liveId,
+            provider: 'unknown',
+            status: 'unavailable',
+            problemCode: 'configuration.provider_invalid',
+          });
+        }
+      },
+    ),
+  );
 
   return Object.freeze({
     central,
@@ -101,6 +157,7 @@ export async function loadConfiguration(
     }),
     analysisEngines: Object.freeze(analysisEngines),
     playoutEngines: Object.freeze(playoutEngines),
+    liveProviders: Object.freeze(liveProviders),
   });
 }
 

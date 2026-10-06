@@ -24,6 +24,7 @@ import { registerImportRoutes } from './import-routes.ts';
 import { registerWorkspaceRoutes } from './workspace-routes.ts';
 import { registerPlayoutRoutes } from './playout-routes.ts';
 import { registerEngineProviderRoutes } from './engine-provider-routes.ts';
+import { registerLiveRoutes } from './live-routes.ts';
 
 function preferencesDto(model: UserPreferences) {
   return {
@@ -176,4 +177,5 @@ export function registerUseCaseRoutes(
   registerWorkspaceRoutes(api, dependencies);
   registerPlayoutRoutes(api, dependencies);
   registerEngineProviderRoutes(api, dependencies);
+  registerLiveRoutes(api, dependencies);
 }

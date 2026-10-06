@@ -22,6 +22,7 @@ import {
 } from './plysmith-application-store.ts';
 import { SettingsView } from './settings-view.tsx';
 import { PlayoutReplacementDialog, PlayoutView } from './playout-view.tsx';
+import { LiveGames, LiveNavigationDialog, LiveView } from './live-view.tsx';
 import styles from './application-shell.module.css';
 
 export function PlysmithApplication({
@@ -98,10 +99,12 @@ function ApplicationFrame({
             icon={<Activity aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('playout')}
           />
-          <Button className={styles.disabledActivity!} isDisabled>
-            <Radio aria-hidden="true" size={19} />
-            <FormattedMessage id="activity.live" />
-          </Button>
+          <ActivityButton
+            activity="live"
+            current={state.activity}
+            icon={<Radio aria-hidden="true" size={19} />}
+            onPress={() => store.setActivity('live')}
+          />
         </nav>
         <Button
           className={`${styles.activityButton!} ${state.activity === 'settings' ? styles.activeActivity : ''}`}
@@ -191,16 +194,30 @@ function ApplicationFrame({
         {state.activity === 'manage' && (
           <ManageView state={state} store={store} />
         )}
-        {state.activity === 'analyze' && (
+        {state.activity !== 'live' && <LiveGames state={state} store={store} />}
+        {state.fairPlayBlocked && (
+          <section className={styles.errorNotice} role="status">
+            <FormattedMessage
+              id={
+                state.live?.fairPlayBlocked ? 'live.fairPlay' : 'live.verifying'
+              }
+            />
+          </section>
+        )}
+        {state.activity === 'analyze' && !state.fairPlayBlocked && (
           <AnalysisView state={state} store={store} />
         )}
-        {state.activity === 'playout' && (
+        {state.activity === 'playout' && !state.fairPlayBlocked && (
           <PlayoutView state={state} store={store} />
         )}
         {state.activity === 'settings' && (
           <SettingsView state={state} store={store} />
         )}
-        <PlayoutReplacementDialog state={state} store={store} />
+        {state.activity === 'live' && <LiveView state={state} store={store} />}
+        <LiveNavigationDialog state={state} store={store} />
+        {!state.fairPlayBlocked && (
+          <PlayoutReplacementDialog state={state} store={store} />
+        )}
       </div>
     </div>
   );
@@ -212,7 +229,10 @@ function ActivityButton({
   icon,
   onPress,
 }: {
-  readonly activity: Extract<ActivityId, 'manage' | 'analyze' | 'playout'>;
+  readonly activity: Extract<
+    ActivityId,
+    'manage' | 'analyze' | 'playout' | 'live'
+  >;
   readonly current: ActivityId;
   readonly icon: ReactNode;
   readonly onPress: () => void;

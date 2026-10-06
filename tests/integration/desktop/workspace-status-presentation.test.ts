@@ -64,6 +64,7 @@ function render(
   view: 'analysis' | 'playout',
   options: {
     removed?: boolean;
+    fairPlayBlocked?: boolean;
     status?: 'stopped' | 'paused' | 'terminal';
     busy?: boolean;
     saved?: boolean;
@@ -88,6 +89,7 @@ function render(
       createElement(view === 'analysis' ? AnalysisView : PlayoutView, {
         state: {
           phase: 'ready',
+          fairPlayBlocked: options.fairPlayBlocked ?? false,
           scope: { kind: 'context', contextId: '1' },
           preferences: { uiLocale: 'en-GB' },
           refreshing: false,
@@ -314,6 +316,19 @@ function render(
     ),
   );
 }
+
+test('fair-play removes the entire analysis view including cached notes and engines', () => {
+  assert.equal(render('analysis', { fairPlayBlocked: true, notes: true }), '');
+  assert.equal(
+    renderToStaticMarkup(
+      createElement(AnalysisView, {
+        state: { phase: 'ready', fairPlayBlocked: false, analysis: undefined },
+        store: {},
+      }),
+    ),
+    '',
+  );
+});
 
 test('revision UI uses normalized mode, added count and preserved prefix instead of raw scratch intent', () => {
   const markup = render('analysis', { normalizedRevision: true });

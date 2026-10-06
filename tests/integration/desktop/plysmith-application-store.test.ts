@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { type TestContext } from 'node:test';
+import { inactiveLiveClient } from '../../unit/ui/live-client-fixture.ts';
 import { HostClientProblem } from '../../../app/infrastructure/channels/host_client/index.ts';
 
 import type {
   AnalysisWorkspaceDto,
+  LiveStateDto,
   ContextRemovalPreviewDto,
   AnalyzePositionRequestDto,
   DiagnosticReportManifestDto,
@@ -339,6 +341,7 @@ function createClient(
   const scopeKey = (scope: WorkScopeWorkspaceDto['scope']) =>
     scope.kind === 'free' ? 'free' : scope.contextId;
   const client: PlysmithApplicationClient = {
+    ...inactiveLiveClient,
     registerImportInput: async () =>
       assert.fail('no import operation expected'),
     prepareImport: async () => assert.fail('no import operation expected'),
@@ -659,7 +662,7 @@ test('explicit line selection replaces old branch intent while sequential naviga
     const state = store.getSnapshot();
     assert.equal(state.phase, 'ready');
     return state.phase === 'ready'
-      ? state.analysis.record!.steps.map((step) => step.anchorId)
+      ? state.analysis?.record!.steps.map((step) => step.anchorId)
       : [];
   };
   await store.openRecordAnchor('16');
@@ -1106,7 +1109,7 @@ test('a stale scope read cannot replace the current workspace', async () => {
   assert.equal(snapshot.phase, 'ready');
   if (snapshot.phase === 'ready') {
     assert.deepEqual(snapshot.scope, { kind: 'free' });
-    assert.deepEqual(snapshot.analysis.scope, { kind: 'free' });
+    assert.deepEqual(snapshot.analysis?.scope, { kind: 'free' });
     assert.equal(snapshot.refreshing, false);
   }
   store.close();
@@ -1152,7 +1155,7 @@ test('a free scratch event refreshes despite an unchanged data revision', async 
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.scratchId
+      ? snapshot.analysis?.scratch?.scratchId
       : undefined,
     'external-scratch',
   );
@@ -1898,7 +1901,7 @@ test('opening a completed game persists free analysis and restores it after rest
   t.after(() => restarted.close());
   await restarted.start();
   assert.equal(readyStore(restarted).activity, 'analyze');
-  assert.equal(readyStore(restarted).analysis.record?.currentAnchorId, '13');
+  assert.equal(readyStore(restarted).analysis?.record?.currentAnchorId, '13');
 });
 
 function lifecycleFixture(overrides: Partial<PlysmithApplicationClient> = {}) {
@@ -2523,7 +2526,7 @@ for (const scope of [
       assert.deepEqual(state.scope, scope);
       assert.equal(state.activity, area);
       assert.equal(state.selectedInventoryItemId, fixture.item.itemId);
-      assert.equal(state.analysis.record?.currentAnchorId, '14');
+      assert.equal(state.analysis?.record?.currentAnchorId, '14');
       assert.equal(state.scopeWorkspace.analysisResume?.resumeVersion, 2);
       assert.equal(fixture.resumeWrites.length, 3);
       const writes = fixture.startupWrites.length;
@@ -2566,7 +2569,7 @@ for (const reason of ['missing', 'deleted'] as const) {
     t.after(() => store.close());
     await store.start();
     assert.deepEqual(readyStore(store).scope, { kind: 'free' });
-    assert.equal(readyStore(store).analysis.record?.currentAnchorId, '14');
+    assert.equal(readyStore(store).analysis?.record?.currentAnchorId, '14');
     assert.deepEqual(
       readyStore(store).startupNotice,
       fixture.backend.startup.unavailableContext,
@@ -2771,7 +2774,7 @@ for (const stage of ['preview', 'delete'] as const) {
       kind: 'context',
       contextId: '7',
     });
-    assert.equal(readyStore(store).analysis.record?.itemId, '11');
+    assert.equal(readyStore(store).analysis?.record?.itemId, '11');
     assert.equal(readyStore(store).startupNotice, undefined);
     assert.equal(
       readyStore(store).destructiveAction?.status,
@@ -2806,7 +2809,7 @@ test('confirmed context deletion falls back to the free workspace and preserves 
   ]);
   assert.deepEqual(readyStore(store).scope, { kind: 'free' });
   assert.equal(readyStore(store).inspectedInventoryFolderId, undefined);
-  assert.equal(readyStore(store).analysis.record?.currentAnchorId, '14');
+  assert.equal(readyStore(store).analysis?.record?.currentAnchorId, '14');
   assert.deepEqual(readyStore(store).startupNotice, {
     contextId: '7',
     displayName: 'Repertoire',
@@ -2835,7 +2838,7 @@ test('confirmed inventory deletion binds the current revision and retains its di
       },
     },
   ]);
-  assert.equal(readyStore(store).analysis.record, undefined);
+  assert.equal(readyStore(store).analysis?.record, undefined);
   assert.deepEqual(readyStore(store).analysisUnavailable, {
     itemId: '11',
     displayName: fixture.item.displayName,
@@ -3572,7 +3575,7 @@ test('discarding an open draft happens before opening another context analysis',
     'analyze',
   );
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.scratch : undefined,
     undefined,
   );
   store.close();
@@ -4467,7 +4470,7 @@ for (const scopeKind of ['free', 'context'] as const) {
             request.anchorId === undefined,
         ),
       );
-      assert.equal(readyStore(store).analysis.record?.currentAnchorId, '14');
+      assert.equal(readyStore(store).analysis?.record?.currentAnchorId, '14');
       await store.applyBoardMove('c7', 'c5');
       assert.deepEqual(moves, [
         {
@@ -4487,7 +4490,7 @@ for (const scopeKind of ['free', 'context'] as const) {
         },
       ]);
       assert.equal(
-        readyStore(store).analysis.scratch?.steps[0]?.move.san,
+        readyStore(store).analysis?.scratch?.steps[0]?.move.san,
         'c5',
       );
     } finally {
@@ -4621,7 +4624,7 @@ test('a lost scratch write response is not retried', async () => {
   );
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.scratchId
+      ? snapshot.analysis?.scratch?.scratchId
       : undefined,
     'accepted-before-response-loss',
   );
@@ -4757,7 +4760,7 @@ test('a custom position starts one new analysis and opens the analysis activity'
   );
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.scratchId
+      ? snapshot.analysis?.scratch?.scratchId
       : undefined,
     'setup-scratch',
   );
@@ -4826,7 +4829,7 @@ test('starting from the initial position clears a previous item focus before ref
     assert.equal(snapshot.activity, 'analyze');
     assert.equal(snapshot.refreshing, false);
     assert.equal(snapshot.busyCommand, undefined);
-    assert.deepEqual(snapshot.analysis.legalMoves, [
+    assert.deepEqual(snapshot.analysis?.legalMoves, [
       { from: 'e2', to: 'e4', san: 'e4' },
     ]);
   }
@@ -4897,7 +4900,7 @@ test('the first board move in an empty analysis starts one atomic analysis path'
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.steps[0]?.move.san
+      ? snapshot.analysis?.scratch?.steps[0]?.move.san
       : undefined,
     'e4',
   );
@@ -5044,7 +5047,7 @@ test('failed saves report failure without consuming visible drafts', async () =>
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.scratchId
+      ? snapshot.analysis?.scratch?.scratchId
       : undefined,
     'scratch-1',
   );
@@ -5402,9 +5405,9 @@ for (const scopeKind of ['free', 'context'] as const) {
       const snapshot = store.getSnapshot();
       assert.equal(snapshot.phase, 'ready');
       if (snapshot.phase !== 'ready') throw new Error('Expected ready');
-      assert.equal(snapshot.analysis.scratch?.intent.kind, 'exploration');
-      assert.equal(snapshot.analysis.scratch?.steps.length, 2);
-      assert.equal(snapshot.analysis.record?.revisionId, '12');
+      assert.equal(snapshot.analysis?.scratch?.intent.kind, 'exploration');
+      assert.equal(snapshot.analysis?.scratch?.steps.length, 2);
+      assert.equal(snapshot.analysis?.record?.revisionId, '12');
       assert.equal(snapshot.inventoryRevisionPreview, undefined);
       assert.equal(await store.saveInventoryRevision(), false);
       assert.equal(revisionStarts, 0);
@@ -5520,7 +5523,7 @@ test('discarding a resumed inventory exploration returns to its source anchor', 
   });
   const snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.record?.itemId : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.record?.itemId : undefined,
     '11',
   );
   store.close();
@@ -5607,7 +5610,7 @@ test('a partial inventory revision remains viewable without requesting a save pr
   assert.deepEqual(previewedScratchRevisions, [1]);
   const snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.scratch?.cursor : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.scratch?.cursor : undefined,
     0,
   );
   assert.equal(
@@ -5643,12 +5646,12 @@ test('playing the saved next move navigates without creating a scratch', async (
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.record?.currentAnchorId
+      ? snapshot.analysis?.record?.currentAnchorId
       : undefined,
     '14',
   );
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.scratch : undefined,
     undefined,
   );
   store.close();
@@ -5771,7 +5774,7 @@ test('taking back the last exploration move uses the dedicated scratch action', 
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.steps.length
+      ? snapshot.analysis?.scratch?.steps.length
       : undefined,
     0,
   );
@@ -5827,7 +5830,7 @@ test('taking back the only anchored exploration move returns to the saved analys
   });
   const snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.scratch : undefined,
     undefined,
   );
   store.close();
@@ -6155,16 +6158,16 @@ for (const succeeds of [true, false]) {
     const snapshot = store.getSnapshot();
     assert.equal(snapshot.phase, 'ready');
     if (snapshot.phase !== 'ready') throw new Error('Expected ready');
-    assert.deepEqual(snapshot.analysis.scratch?.steps, scratch.steps);
-    assert.deepEqual(snapshot.analysis.scratch?.root, scratch.root);
-    assert.deepEqual(snapshot.analysis.scratch?.origin, scratch.origin);
-    assert.equal(snapshot.analysis.scratch?.scratchId, scratch.scratchId);
+    assert.deepEqual(snapshot.analysis?.scratch?.steps, scratch.steps);
+    assert.deepEqual(snapshot.analysis?.scratch?.root, scratch.root);
+    assert.deepEqual(snapshot.analysis?.scratch?.origin, scratch.origin);
+    assert.equal(snapshot.analysis?.scratch?.scratchId, scratch.scratchId);
     assert.equal(
-      snapshot.analysis.scratch?.intent.kind,
+      snapshot.analysis?.scratch?.intent.kind,
       succeeds ? 'exploration' : 'inventory_revision',
     );
-    assert.equal(snapshot.analysis.scratch?.scratchRevision, succeeds ? 8 : 7);
-    assert.equal(snapshot.analysis.record?.revisionId, '12');
+    assert.equal(snapshot.analysis?.scratch?.scratchRevision, succeeds ? 8 : 7);
+    assert.equal(snapshot.analysis?.record?.revisionId, '12');
     if (succeeds) assert.equal(snapshot.inventoryRevisionPreview, undefined);
     store.close();
   });
@@ -6243,7 +6246,7 @@ for (const mode of [undefined, 'add_variation'] as const) {
     const snapshot = store.getSnapshot();
     assert.equal(
       snapshot.phase === 'ready'
-        ? snapshot.analysis.scratch?.intent.kind
+        ? snapshot.analysis?.scratch?.intent.kind
         : undefined,
       'inventory_revision',
     );
@@ -6297,7 +6300,7 @@ test('an empty variation never takes back the saved prefix and a played game can
   let snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
-      ? snapshot.analysis.scratch?.intent.kind
+      ? snapshot.analysis?.scratch?.intent.kind
       : undefined,
     'inventory_revision',
   );
@@ -6306,7 +6309,7 @@ test('an empty variation never takes back the saved prefix and a played game can
   await store.removeAnalysisVariation('14');
   snapshot = store.getSnapshot();
   assert.equal(
-    snapshot.phase === 'ready' ? snapshot.analysis.scratch : undefined,
+    snapshot.phase === 'ready' ? snapshot.analysis?.scratch : undefined,
     undefined,
   );
   store.close();
@@ -6648,7 +6651,7 @@ for (const outcome of ['saved', 'no_op', 'failure'] as const) {
     const snapshot = store.getSnapshot();
     assert.equal(
       snapshot.phase === 'ready'
-        ? snapshot.analysis.scratch?.scratchId
+        ? snapshot.analysis?.scratch?.scratchId
         : undefined,
       outcome === 'saved' ? undefined : 'variation',
     );
@@ -6983,7 +6986,7 @@ test('explicit management deselection survives stale refresh and a repeated cont
   );
   assert.equal(writes.length, 2);
   assert.equal(
-    repeated.phase === 'ready' ? repeated.analysis.record : undefined,
+    repeated.phase === 'ready' ? repeated.analysis?.record : undefined,
     undefined,
   );
   store.close();
@@ -7102,7 +7105,9 @@ test('engine analysis binds the displayed ancestor and blocks outsiders before q
     ).kind,
     'completed',
   );
-  assert.deepEqual(requests[1]?.work.subject, {
+  const capturedWork = requests[1]?.work;
+  assert.ok(capturedWork !== undefined && 'subject' in capturedWork);
+  assert.deepEqual(capturedWork.subject, {
     kind: 'inventory_item',
     itemId: '11',
   });
@@ -7147,7 +7152,7 @@ test('folder-only membership permits origin navigation and engine analysis witho
   const state = store.getSnapshot();
   assert.equal(state.phase, 'ready');
   if (state.phase === 'ready') {
-    assert.equal(state.analysis.record?.itemId, '11');
+    assert.equal(state.analysis?.record?.itemId, '11');
     assert.equal(state.analysisUnavailable, undefined);
     assert.deepEqual(state.contextWorkspace?.references, []);
   }
@@ -7261,7 +7266,7 @@ test('a remotely removed explicit context focus retries the current resume once 
   const state = store.getSnapshot();
   assert.ok(state.phase === 'ready');
   assert.equal(state.status.persistence.dataRevision, 1);
-  assert.equal(state.analysis.record?.itemId, '31');
+  assert.equal(state.analysis?.record?.itemId, '31');
   assert.deepEqual(
     state.contextWorkspace?.references.map((reference) => reference.itemId),
     ['31'],
@@ -7318,7 +7323,7 @@ test(
     await Promise.all([refreshing, navigation]);
     const state = store.getSnapshot();
     assert.ok(state.phase === 'ready');
-    assert.equal(state.analysis.record?.itemId, '41');
+    assert.equal(state.analysis?.record?.itemId, '41');
     assert.equal(state.errorCode, undefined);
     assert.equal(state.analysisUnavailable, undefined);
     assert.equal(requests.at(-1)?.itemId, '41');
@@ -7504,6 +7509,592 @@ function contextWorkClient(
   });
 }
 
+function liveFixture(
+  revision = 1,
+  role: 'play' | 'observe' = 'play',
+): LiveStateDto {
+  return {
+    revision,
+    configured: true,
+    online: true,
+    connection: 'connected',
+    fairPlayBlocked: role === 'play',
+    games: [],
+    session: {
+      gameId: 'abcdefgh',
+      analysisRevision: 1,
+      role,
+      white: { name: 'White' },
+      black: { name: 'Black' },
+      playerSide: 'white',
+      root: initialState,
+      current: initialState,
+      steps: [],
+      selectedPly: 0,
+      legalMoves: [],
+      status: 'ongoing',
+      connected: true,
+      outcome: 'unfinished',
+      pendingMove: false,
+    },
+  };
+}
+
+test('fair-play startup and refresh load settings without requesting assistance', async (t) => {
+  const reads: string[] = [];
+  let locale: UserPreferencesDto['uiLocale'] = 'de-DE';
+  const forbidden = async (name: string) => {
+    reads.push(name);
+    throw workAccessProblem('live.fair_play_blocked');
+  };
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => liveFixture(),
+      getAnalysisWorkspace: () => forbidden('analysis'),
+      getPlayout: () => forbidden('playout'),
+      getUserPreferences: async () => ({ ...preferences(), uiLocale: locale }),
+      setUiLanguage: async (request) => {
+        locale = request.uiLocale;
+        return {
+          changed: true,
+          preferences: { ...preferences(), uiLocale: locale },
+        };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(store.getSnapshot().phase, 'ready');
+  assert.deepEqual(reads, []);
+  await store.setUiLanguage('en-GB');
+  assert.equal(readyStore(store).preferences.uiLocale, 'en-GB');
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.equal(readyStore(store).errorCode, undefined);
+  assert.deepEqual(reads, []);
+});
+
+test('live startup failure keeps cached assistance blocked until a verified read', async (t) => {
+  let fails = true;
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => {
+        if (fails) throw new Error('offline');
+        return inactiveLiveClient.getLiveState();
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.deepEqual(await store.analyzePosition(engineWorkRequest('11')), {
+    kind: 'cancelled',
+  });
+  fails = false;
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+});
+
+test('refresh recovers a racing fair-play rejection and reloads assistance only after verified release', async (t) => {
+  let live = await inactiveLiveClient.getLiveState();
+  let starting = false;
+  let analysisReads = 0;
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      getAnalysisWorkspace: async () => {
+        analysisReads++;
+        if (starting) {
+          live = liveFixture(2);
+          throw workAccessProblem('live.fair_play_blocked');
+        }
+        return savedAnalysis();
+      },
+      getPlayout: async () => {
+        if (starting) throw workAccessProblem('live.fair_play_blocked');
+        return null;
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.ok(readyStore(store).analysis?.record);
+  starting = true;
+  await store.refresh();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.equal(readyStore(store).analysis, undefined);
+  assert.equal(readyStore(store).errorCode, undefined);
+  assert.equal(analysisReads, 2);
+  await store.refresh();
+  assert.equal(analysisReads, 2);
+  starting = false;
+  live = { ...(await inactiveLiveClient.getLiveState()), revision: 3 };
+  await store.refreshLiveState();
+  await store.refresh();
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+  assert.ok(readyStore(store).analysis?.record);
+});
+
+test('live reads reject older responses and gate immediately while verifying', async (t) => {
+  const pending: ((state: LiveStateDto) => void)[] = [];
+  let deferred = false;
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () =>
+        deferred
+          ? new Promise<LiveStateDto>((resolve) => pending.push(resolve))
+          : inactiveLiveClient.getLiveState(),
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  deferred = true;
+  const old = store.refreshLiveState();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  const current = store.refreshLiveState();
+  pending[1]!(liveFixture(3));
+  await current;
+  pending[0]!(await inactiveLiveClient.getLiveState());
+  await old;
+  assert.equal(readyStore(store).live?.revision, 3);
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+});
+
+test('live own game has no rewind and only submits a connected player turn once', async (t) => {
+  let live = liveFixture();
+  const moves: string[] = [];
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      submitLiveMove: async (request) => {
+        moves.push(request.move);
+        live = {
+          ...live,
+          revision: 2,
+          session: { ...live.session!, pendingMove: true },
+        };
+        return live;
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  await store.selectLivePosition(0);
+  await store.submitLiveMove('a7', 'a8', 'knight');
+  await store.submitLiveMove('a7', 'a8', 'knight');
+  assert.deepEqual(moves, ['a7a8n']);
+  live = {
+    ...live,
+    revision: 3,
+    session: { ...live.session!, pendingMove: false, connected: false },
+  };
+  await store.refreshLiveState();
+  await store.submitLiveMove('e2', 'e4');
+  assert.equal(moves.length, 1);
+});
+
+test('live departure confirms recording discard without ending own game or unblocking help', async (t) => {
+  let live = liveFixture();
+  let discards = 0;
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      discardLiveGame: async () => {
+        discards++;
+        live = {
+          revision: 2,
+          configured: true,
+          online: true,
+          connection: 'connected',
+          fairPlayBlocked: true,
+          games: [],
+        };
+        return live;
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  store.setActivity('live');
+  store.setActivity('settings');
+  assert.equal(readyStore(store).activity, 'live');
+  assert.equal(readyStore(store).pendingLiveNavigation?.kind, 'activity');
+  store.cancelLiveNavigation();
+  assert.equal(discards, 0);
+  store.setActivity('settings');
+  await store.confirmLiveNavigation();
+  assert.equal(readyStore(store).activity, 'settings');
+  assert.equal(readyStore(store).live?.session, undefined);
+  assert.equal(readyStore(store).pendingLiveNavigation, undefined);
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.equal(discards, 1);
+});
+
+test('live state events invalidate independently of activity and persistence revision', async (t) => {
+  let live = await inactiveLiveClient.getLiveState();
+  let onChange: (event: HostEvent) => void = () =>
+    assert.fail('not subscribed');
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => createClient({ getLiveState: async () => live }),
+    createEventSubscription: (_connection, change) => {
+      onChange = change;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  store.setActivity('settings');
+  live = liveFixture(4);
+  onChange({
+    kind: 'live.changed',
+    eventId: 'live-4',
+    sequence: 1,
+    dataRevision: 0,
+    occurredAt: '2026-10-05T10:00:00.000Z',
+    subscriptionRevision: 1,
+    correlationId: 'live',
+    payload: { revision: 4, fairPlayBlocked: true },
+  });
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readyStore(store).live?.revision, 4);
+  assert.equal(readyStore(store).activity, 'settings');
+});
+
+test('live configuration token never enters store snapshots on success or failure', async (t) => {
+  const canary = 'ui-only-fake-token-canary';
+  const snapshots: string[] = [];
+  let fails = false;
+  const store = createReadyStore(
+    createClient({
+      saveLiveProviderConfiguration: async (request) => {
+        assert.equal(request.token, canary);
+        if (fails) throw new Error(canary);
+        return {
+          configured: true,
+          tokenConfigured: true,
+          configurationRevision: 'next',
+          restartRequired: true,
+        };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  store.subscribe(() => snapshots.push(JSON.stringify(store.getSnapshot())));
+  await store.start();
+  assert.equal(await store.saveLiveProviderConfiguration(canary), true);
+  fails = true;
+  assert.equal(await store.saveLiveProviderConfiguration(canary), false);
+  assert.equal(
+    snapshots.some((snapshot) => snapshot.includes(canary)),
+    false,
+  );
+});
+
+test('live invalidation discards an in-flight engine result even after a later safe state', async (t) => {
+  let release: (() => void) | undefined;
+  let live = await inactiveLiveClient.getLiveState();
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      analyzePosition: async (request) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return {
+          kind: 'objective',
+          focusKey: request.focus.focusKey,
+          providerInstanceId: request.providerInstanceId,
+          providerDisplayName: 'Stockfish',
+          historyCompleteness: 'complete',
+          budget: 'fast',
+          perspective: 'white',
+          candidates: [],
+          search: { limiter: { kind: 'movetime', value: 500 } },
+        };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  const reading = store.analyzePosition({
+    ...engineWorkRequest('11'),
+    work: { scope: { kind: 'free' }, subject: { kind: 'position' } },
+  });
+  assert.ok(release);
+  live = liveFixture();
+  await store.refreshLiveState();
+  live = { ...(await inactiveLiveClient.getLiveState()), revision: 2 };
+  await store.refreshLiveState();
+  release();
+  assert.deepEqual(await reading, { kind: 'cancelled' });
+});
+
+test('live recording is saved only explicitly after completion with selected folder', async (t) => {
+  let live = liveFixture(5, 'observe');
+  const requests: Parameters<PlysmithApplicationClient['saveLiveGame']>[0][] =
+    [];
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      saveLiveGame: async (request) => {
+        requests.push(request);
+        live = await inactiveLiveClient.getLiveState();
+        live = { ...live, revision: 7 };
+        return { itemId: 11, revisionId: 12, dataRevision: 0 };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(await store.saveLiveGame('White - Black', '9'), false);
+  live = {
+    ...live,
+    revision: 6,
+    session: { ...live.session!, status: 'ended', outcome: 'draw' },
+  };
+  await store.refreshLiveState();
+  assert.equal(requests.length, 0);
+  assert.equal(await store.saveLiveGame('White - Black', '9'), true);
+  assert.deepEqual(requests, [
+    {
+      displayName: 'White - Black',
+      folderId: 9,
+      expectedRevision: 6,
+      languageTag: 'de-DE',
+    },
+  ]);
+  assert.equal(readyStore(store).live?.session, undefined);
+  assert.equal(readyStore(store).announcement, 'live.saved');
+});
+
+test('live context switch remains pending until central confirmation', async (t) => {
+  const store = createReadyStore(
+    createClient({ getLiveState: async () => liveFixture() }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+  assert.deepEqual(readyStore(store).pendingLiveNavigation, {
+    kind: 'scope',
+    scope: { kind: 'context', contextId: '7' },
+  });
+  store.cancelLiveNavigation();
+  assert.equal(readyStore(store).pendingLiveNavigation, undefined);
+  assert.ok(readyStore(store).live?.session);
+});
+
+for (const changedFocus of [false, true]) {
+  test(`live analysis ${changedFocus ? 'rejects a changed selected history' : 'survives clock-only revisions'}`, async (t) => {
+    let live = liveFixture(5, 'observe');
+    let release: (() => void) | undefined;
+    const store = createReadyStore(
+      createClient({
+        getLiveState: async () => live,
+        analyzePosition: async (request) => {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return {
+            kind: 'objective',
+            focusKey: request.focus.focusKey,
+            providerInstanceId: request.providerInstanceId,
+            providerDisplayName: 'Stockfish',
+            historyCompleteness: 'complete',
+            budget: 'fast',
+            perspective: 'white',
+            candidates: [],
+            search: { limiter: { kind: 'movetime', value: 500 } },
+          };
+        },
+      }),
+    );
+    t.after(() => store.close());
+    await store.start();
+    const reading = store.analyzePosition({
+      ...engineWorkRequest('11'),
+      work: { kind: 'live', revision: 1, ply: 0 },
+    });
+    assert.ok(release);
+    live = {
+      ...live,
+      revision: 6,
+      session: {
+        ...live.session!,
+        analysisRevision: changedFocus ? 2 : 1,
+        whiteClockMs: 20000,
+      },
+    };
+    await store.refreshLiveState();
+    release();
+    assert.equal(
+      (await reading).kind,
+      changedFocus ? 'cancelled' : 'completed',
+    );
+  });
+}
+
+test('live guard hints preserve safe panels but never release a newer blocked or unknown state', async (t) => {
+  const pending: {
+    resolve: (state: LiveStateDto) => void;
+    reject: () => void;
+  }[] = [];
+  let defer = false;
+  let onChange: (event: HostEvent) => void = () =>
+    assert.fail('not subscribed');
+  const client = createClient({
+    getLiveState: async () =>
+      defer
+        ? new Promise<LiveStateDto>((resolve, reject) =>
+            pending.push({
+              resolve,
+              reject: () => reject(new Error('offline')),
+            }),
+          )
+        : inactiveLiveClient.getLiveState(),
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: (_connection, change) => {
+      onChange = change;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  defer = true;
+  const changed = (revision: number, fairPlayBlocked: boolean) =>
+    onChange({
+      kind: 'live.changed',
+      eventId: `hint-${revision}`,
+      sequence: revision,
+      dataRevision: 0,
+      occurredAt: '2026-10-05T10:00:00.000Z',
+      subscriptionRevision: 1,
+      correlationId: 'live',
+      payload: { revision, fairPlayBlocked },
+    });
+  const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+  changed(1, false);
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+  changed(3, true);
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.equal(readyStore(store).live?.fairPlayBlocked, true);
+  changed(2, false);
+  assert.equal(pending.length, 2);
+  changed(4, false);
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  pending[0]!.resolve({
+    ...(await inactiveLiveClient.getLiveState()),
+    revision: 1,
+  });
+  pending[1]!.resolve(liveFixture(3));
+  await settle();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  pending[2]!.resolve({
+    ...(await inactiveLiveClient.getLiveState()),
+    revision: 4,
+  });
+  await settle();
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+  changed(5, false);
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+  pending[3]!.reject();
+  await settle();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  changed(6, false);
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  pending[4]!.resolve({
+    ...(await inactiveLiveClient.getLiveState()),
+    revision: 6,
+  });
+  await settle();
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+});
+
+for (const destination of ['activity', 'observe', 'play'] as const) {
+  test(`live discard waits for newer SSE state before ${destination} navigation`, async (t) => {
+    let reads = 0;
+    let oldRead: ((state: LiveStateDto) => void) | undefined;
+    let onChange: (event: HostEvent) => void = () =>
+      assert.fail('not subscribed');
+    const idle = {
+      ...(await inactiveLiveClient.getLiveState()),
+      configured: true,
+      online: true,
+      connection: 'connected' as const,
+      revision: 3,
+    };
+    const nextGame = {
+      ...liveFixture(4, 'observe'),
+      session: { ...liveFixture(4, 'observe').session!, gameId: 'ijklmnop' },
+    };
+    const client = createClient({
+      getLiveState: async () => {
+        reads++;
+        if (reads === 1) return liveFixture(1, 'observe');
+        if (reads === 2)
+          return new Promise<LiveStateDto>((resolve) => {
+            oldRead = resolve;
+          });
+        return idle;
+      },
+      discardLiveGame: async () => {
+        onChange({
+          kind: 'live.changed',
+          eventId: 'discard-3',
+          sequence: 1,
+          dataRevision: 0,
+          occurredAt: '2026-10-05T10:00:00.000Z',
+          subscriptionRevision: 1,
+          correlationId: 'live',
+          payload: { revision: 3, fairPlayBlocked: false },
+        });
+        return { ...idle, revision: 2 };
+      },
+      observeLiveGame: async (request) => {
+        assert.equal(request.expectedRevision, 3);
+        return nextGame;
+      },
+      playLiveGame: async (request) => {
+        assert.equal(request.expectedRevision, 3);
+        return nextGame;
+      },
+    });
+    const store = new PlysmithApplicationStore({
+      getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+      createClient: () => client,
+      createEventSubscription: (_connection, change) => {
+        onChange = change;
+        return { ready: Promise.resolve(), close: () => undefined };
+      },
+    });
+    t.after(() => store.close());
+    await store.start();
+    store.setActivity('live');
+    if (destination === 'activity') store.setActivity('manage');
+    if (destination === 'observe')
+      await store.observeLiveGame('https://lichess.org/ijklmnop');
+    if (destination === 'play') await store.playLiveGame('ijklmnop');
+    await store.confirmLiveNavigation();
+    assert.equal(readyStore(store).pendingLiveNavigation, undefined);
+    assert.equal(
+      readyStore(store).activity,
+      destination === 'activity' ? 'manage' : 'live',
+    );
+    assert.equal(
+      readyStore(store).live?.session?.gameId,
+      destination === 'activity' ? undefined : 'ijklmnop',
+    );
+    assert.ok(oldRead);
+    oldRead(liveFixture(1, 'observe'));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(readyStore(store).pendingLiveNavigation, undefined);
+  });
+}
+
 function createReadyStore(client: PlysmithApplicationClient) {
   return new PlysmithApplicationStore({
     getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
@@ -7514,6 +8105,137 @@ function createReadyStore(client: PlysmithApplicationClient) {
     }),
   });
 }
+
+function livePreferenceStorage(t: TestContext) {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'localStorage',
+  );
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    },
+  });
+  t.after(() => {
+    if (descriptor)
+      Object.defineProperty(globalThis, 'localStorage', descriptor);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+  return values;
+}
+
+test('Live defaults offline and remembers an explicit online or offline choice across desktop starts', async (t) => {
+  const storage = livePreferenceStorage(t);
+  let live: LiveStateDto = {
+    revision: 0,
+    configured: true,
+    online: false,
+    connection: 'disconnected',
+    fairPlayBlocked: false,
+    games: [],
+  };
+  const calls: string[] = [];
+  const client = createClient({
+    getLiveState: async () => live,
+    refreshLiveGame: async ({ expectedRevision }) => {
+      assert.equal(expectedRevision, live.revision);
+      calls.push('online');
+      live = {
+        ...live,
+        revision: live.revision + 1,
+        online: true,
+        connection: 'connected',
+      };
+      return live;
+    },
+    disconnectLiveGame: async ({ expectedRevision }) => {
+      assert.equal(expectedRevision, live.revision);
+      calls.push('offline');
+      live = {
+        ...live,
+        revision: live.revision + 1,
+        online: false,
+        connection: 'disconnected',
+      };
+      return live;
+    },
+  });
+  const first = createReadyStore(client);
+  t.after(() => first.close());
+  await first.start();
+  assert.deepEqual(calls, []);
+  assert.equal(readyStore(first).live?.online, false);
+  await first.refreshLiveGame();
+  assert.equal(storage.get('Plysmith.liveOnline'), 'true');
+  first.close();
+  live = { ...live, revision: 0, online: false, connection: 'disconnected' };
+  const second = createReadyStore(client);
+  t.after(() => second.close());
+  await second.start();
+  assert.deepEqual(calls, ['online', 'online']);
+  assert.equal(readyStore(second).live?.online, true);
+  await second.disconnectLiveGame();
+  assert.equal(storage.get('Plysmith.liveOnline'), 'false');
+  second.close();
+  live = { ...live, revision: 0 };
+  const third = createReadyStore(client);
+  t.after(() => third.close());
+  await third.start();
+  await third.refresh();
+  assert.equal(readyStore(third).live?.online, false);
+  assert.deepEqual(calls, ['online', 'online', 'offline']);
+});
+
+test('failed Live toggles do not replace the remembered choice', async (t) => {
+  const storage = livePreferenceStorage(t);
+  const live: LiveStateDto = {
+    revision: 0,
+    configured: true,
+    online: false,
+    connection: 'disconnected',
+    fairPlayBlocked: false,
+    games: [],
+  };
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => live,
+      refreshLiveGame: async () => {
+        throw workAccessProblem('live.stale_state');
+      },
+      disconnectLiveGame: async () => {
+        throw workAccessProblem('live.stale_state');
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  await store.refreshLiveGame();
+  assert.equal(storage.get('Plysmith.liveOnline'), undefined);
+  storage.set('Plysmith.liveOnline', 'true');
+  await store.disconnectLiveGame();
+  assert.equal(storage.get('Plysmith.liveOnline'), 'true');
+});
+
+test('remembered Live online does not connect when access is not configured', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('Plysmith.liveOnline', 'true');
+  let calls = 0;
+  const store = createReadyStore(
+    createClient({
+      refreshLiveGame: async () => {
+        calls++;
+        assert.fail('Unconfigured Live must stay offline');
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(calls, 0);
+  assert.equal(storage.get('Plysmith.liveOnline'), 'true');
+});
 
 test('inline note forms retain independent scopes, contributions and base versions without host writes', async () => {
   const store = createReadyStore(createClient());
@@ -7621,6 +8343,41 @@ test('management content reads a requested historical revision without opening a
   assert.equal(store.getSnapshot(), before);
   store.close();
 });
+
+for (const failure of [false, true]) {
+  test(`live browser start suppresses late management ${failure ? 'errors' : 'notes'} and further detail reads`, async (t) => {
+    let live = await inactiveLiveClient.getLiveState();
+    let finish: (() => void) | undefined;
+    let reads = 0;
+    const store = createReadyStore(
+      createClient({
+        getLiveState: async () => live,
+        getInventoryRevision: async () => {
+          reads++;
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          if (failure) throw workAccessProblem('live.fair_play_blocked');
+          return savedAnalysis().record!;
+        },
+      }),
+    );
+    t.after(() => store.close());
+    await store.start();
+    const item = { itemId: '11', currentRevisionId: '12' };
+    const reading = store.readInventoryDetails(item);
+    assert.ok(finish);
+    live = liveFixture();
+    await store.refreshLiveState();
+    finish();
+    assert.deepEqual(await reading, { kind: 'cancelled' });
+    assert.deepEqual(await store.readInventoryDetails(item), {
+      kind: 'cancelled',
+    });
+    assert.equal(reads, 1);
+    assert.equal(readyStore(store).errorCode, undefined);
+  });
+}
 
 test('management content failure is local and does not replace the ready workspace', async () => {
   const store = createReadyStore(
@@ -7907,7 +8664,7 @@ test('local removal retains the previously open analysis name through command re
     ),
     true,
   );
-  assert.equal(fixture.snapshot().analysis.record, undefined);
+  assert.equal(fixture.snapshot().analysis?.record, undefined);
   assert.deepEqual(
     fixture.snapshot().analysisUnavailable,
     removedAnalysisNotice,
@@ -7938,7 +8695,7 @@ for (const deletedItemId of ['11', '99']) {
     const fixture = analysisRemovalFixture();
     t.after(() => fixture.store.close());
     await fixture.start();
-    assert.equal(fixture.snapshot().analysis.record?.itemId, '11');
+    assert.equal(fixture.snapshot().analysis?.record?.itemId, '11');
 
     fixture.remove();
     await fixture.store.refresh();
@@ -7946,8 +8703,8 @@ for (const deletedItemId of ['11', '99']) {
       fixture.snapshot().analysisUnavailable,
       removedAnalysisNotice,
     );
-    assert.equal(fixture.snapshot().analysis.record, undefined);
-    assert.equal(fixture.snapshot().analysis.scratch, undefined);
+    assert.equal(fixture.snapshot().analysis?.record, undefined);
+    assert.equal(fixture.snapshot().analysis?.scratch, undefined);
     assert.equal(fixture.snapshot().inventory.items.length, 0);
     assert.equal(
       fixture
@@ -8034,10 +8791,10 @@ for (const entry of ['manage', 'analysis-target'] as const) {
               anchorId: '13',
             });
       await entered.promise;
-      assert.equal(fixture.snapshot().analysis.record?.itemId, '11');
+      assert.equal(fixture.snapshot().analysis?.record?.itemId, '11');
       release.resolve();
       await opening;
-      assert.equal(fixture.snapshot().analysis.record, undefined);
+      assert.equal(fixture.snapshot().analysis?.record, undefined);
       assert.deepEqual(
         fixture.snapshot().analysisUnavailable,
         removedAnalysisNotice,
@@ -8076,7 +8833,7 @@ test('a failed replacement read retains the previously confirmed removal cause',
     }),
     false,
   );
-  assert.equal(fixture.snapshot().analysis.record, undefined);
+  assert.equal(fixture.snapshot().analysis?.record, undefined);
   assert.deepEqual(
     fixture.snapshot().analysisUnavailable,
     removedAnalysisNotice,
@@ -8125,7 +8882,7 @@ test('new analysis clears removal cause permanently even when the new scratch la
   fixture.remove();
   await fixture.store.refresh();
   assert.equal(await fixture.store.startScratchAtInitialPosition(), true);
-  assert.equal(fixture.snapshot().analysis.scratch?.scratchId, 'new-analysis');
+  assert.equal(fixture.snapshot().analysis?.scratch?.scratchId, 'new-analysis');
   assert.equal(fixture.snapshot().analysisUnavailable, undefined);
   fixture.backend.scratch = undefined;
   fixture.backend.revision += 1;
@@ -8168,7 +8925,7 @@ test('opening another assigned analysis clears the previous removal cause', asyn
     }),
     true,
   );
-  assert.equal(fixture.snapshot().analysis.record?.itemId, '31');
+  assert.equal(fixture.snapshot().analysis?.record?.itemId, '31');
   assert.equal(fixture.snapshot().analysisUnavailable, undefined);
   fixture.backend.recordId = undefined;
   fixture.backend.revision += 1;
@@ -8261,7 +9018,7 @@ test('an older consistent read cannot create a removal cause', async (t) => {
   fixture.backend.revision = 4;
   await fixture.store.refresh();
   assert.equal(fixture.snapshot().status.persistence.dataRevision, 5);
-  assert.equal(fixture.snapshot().analysis.record?.itemId, '11');
+  assert.equal(fixture.snapshot().analysis?.record?.itemId, '11');
   assert.equal(fixture.snapshot().analysisUnavailable, undefined);
 });
 
@@ -8295,7 +9052,7 @@ test(
     const refreshing = fixture.store.refresh();
     await entered.promise;
     assert.equal(fixture.snapshot().analysisUnavailable, undefined);
-    assert.equal(fixture.snapshot().analysis.record?.itemId, '11');
+    assert.equal(fixture.snapshot().analysis?.record?.itemId, '11');
     release.resolve();
     await refreshing;
     assert.deepEqual(

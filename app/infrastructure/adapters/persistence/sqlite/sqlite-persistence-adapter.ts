@@ -4,6 +4,15 @@ import Database from 'better-sqlite3';
 import type { ImportRepository } from '../../../../application/inventory/import-ports.ts';
 import * as imports from './sqlite-import.ts';
 import type {
+  LiveFairPlayGuardState,
+  LiveRecordWriter,
+} from '../../../../application/live/live-models.ts';
+import {
+  saveLiveGame as writeLiveGame,
+  readLiveFairPlayGuard,
+  writeLiveFairPlayGuard,
+} from './sqlite-live.ts';
+import type {
   AnalysisRecordWriter,
   FreeAnalysisPersistence,
   AnalysisNoteWriter,
@@ -222,6 +231,20 @@ export class SqlitePersistenceAdapter
   publishImport(request: Parameters<ImportRepository['publishImport']>[0]) {
     return this.#enqueueWrite(() =>
       imports.publishImport(this.#writer, request),
+    );
+  }
+
+  saveLiveGame(request: Parameters<LiveRecordWriter['saveLiveGame']>[0]) {
+    return this.#enqueueWrite(() => writeLiveGame(this.#writer, request));
+  }
+
+  async readLiveFairPlayGuard(): Promise<LiveFairPlayGuardState> {
+    return this.#readSnapshot(readLiveFairPlayGuard);
+  }
+
+  writeLiveFairPlayGuard(state: LiveFairPlayGuardState): Promise<void> {
+    return this.#enqueueWrite(() =>
+      writeLiveFairPlayGuard(this.#writer, state),
     );
   }
 

@@ -19,6 +19,14 @@ import {
 
 export type RegisterImportInputRequestDto =
   components['schemas']['RegisterImportInputBody'];
+export type LiveStateDto = components['schemas']['LiveState'];
+export type LiveSavedDto = components['schemas']['LiveSaved'];
+export type LiveCommandRequestDto = components['schemas']['LiveCommandBody'];
+export type SaveLiveGameRequestDto = components['schemas']['SaveLiveGameBody'];
+export type LiveProviderConfigurationDto =
+  components['schemas']['LiveProviderConfiguration'];
+export type SaveLiveProviderConfigurationRequestDto =
+  components['schemas']['SaveLiveProviderConfigurationBody'];
 export type ImportInputDescriptorDto =
   components['schemas']['ImportInputDescriptor'];
 export type PrepareImportRequestDto =
@@ -218,6 +226,101 @@ export class PlysmithHostClient {
       baseUrl: connection.endpoint,
       fetch: createHostFetch(connection, options),
     });
+  }
+
+  async getLiveState(): Promise<LiveStateDto> {
+    try {
+      const result = await this.#client.GET('/live');
+      return unwrap<LiveStateDto>(
+        result.data as unknown as LiveStateDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async liveCommand(request: LiveCommandRequestDto): Promise<LiveStateDto> {
+    try {
+      const result = await this.#client.POST('/live/commands', {
+        body: request,
+      });
+      return unwrap<LiveStateDto>(
+        result.data as unknown as LiveStateDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+  observeLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'observe' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'observe' });
+  }
+  playLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'play' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'play' });
+  }
+  selectLivePosition(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'select' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'select' });
+  }
+  submitLiveMove(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'move' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'move' });
+  }
+  actLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'act' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'act' });
+  }
+  refreshLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'refresh' });
+  }
+  disconnectLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'disconnect' });
+  }
+  discardLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return this.liveCommand({ ...request, kind: 'discard' });
+  }
+
+  async saveLiveGame(request: SaveLiveGameRequestDto): Promise<LiveSavedDto> {
+    try {
+      const result = await this.#client.POST('/live/games', { body: request });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+  async getLiveProviderConfiguration(): Promise<LiveProviderConfigurationDto> {
+    try {
+      const result = await this.#client.GET('/configuration/live');
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+  async saveLiveProviderConfiguration(
+    request: SaveLiveProviderConfigurationRequestDto,
+  ): Promise<LiveProviderConfigurationDto> {
+    try {
+      const result = await this.#client.PUT('/configuration/live', {
+        body: request,
+      });
+      return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
   }
 
   async registerImportInput(

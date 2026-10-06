@@ -32,6 +32,36 @@ export function createFixture() {
     },
   };
   const dependencies: HostDependencies = {
+    live: {
+      getState: () => ({
+        revision: 0,
+        configured: false,
+        online: false,
+        connection: 'unconfigured',
+        fairPlayBlocked: false,
+        games: [],
+      }),
+      observe: unavailableUseCase.execute,
+      play: unavailableUseCase.execute,
+      select: () => {
+        throw new Error('Use case not configured for this fixture.');
+      },
+      move: unavailableUseCase.execute,
+      act: unavailableUseCase.execute,
+      refresh: unavailableUseCase.execute,
+      disconnect: unavailableUseCase.execute,
+      discard: unavailableUseCase.execute,
+      save: unavailableUseCase.execute,
+    },
+    getLiveProviderConfiguration: {
+      execute: async () => ({
+        configured: false,
+        tokenConfigured: false,
+        configurationRevision: null,
+        restartRequired: false,
+      }),
+    },
+    saveLiveProviderConfiguration: unavailableUseCase,
     registerImportInput: unavailableUseCase,
     prepareImport: unavailableUseCase,
     cancelImportPreparation: unavailableUseCase,

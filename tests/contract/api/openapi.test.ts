@@ -27,6 +27,7 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/analysis/scratch',
     '/analysis/setup-validation',
     '/analysis/workspace',
+    '/configuration/live',
     '/diagnostics/report-manifest',
     '/diagnostics/reports',
     '/diagnostics/settings',
@@ -54,6 +55,9 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/inventory/organization/removal-preview',
     '/inventory/revision-edits/preview',
     '/inventory/revision-edits/save',
+    '/live',
+    '/live/commands',
+    '/live/games',
     '/playout',
     '/playout/cancel-completion',
     '/playout/complete',
@@ -81,6 +85,11 @@ test('OpenAPI 3.0.3 exposes only the explicit unversioned operations and bearer 
     '/workspace/startup',
   ]);
   const expected = [
+    ['/configuration/live', 'get', 'GetLiveProviderConfiguration'],
+    ['/configuration/live', 'put', 'SaveLiveProviderConfiguration'],
+    ['/live', 'get', 'GetLiveState'],
+    ['/live/commands', 'post', 'LiveCommand'],
+    ['/live/games', 'post', 'SaveLiveGame'],
     ['/inventory/import-inputs', 'post', 'RegisterImportInput'],
     ['/inventory/imports/preview', 'post', 'PrepareImport'],
     [
@@ -309,6 +318,12 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
     'RemoveContextItemBody',
     'DeleteWorkingContextBody',
     'DeleteInventoryItemBody',
+    'LiveState',
+    'LiveSaved',
+    'LiveProviderConfiguration',
+    'SaveLiveGameBody',
+    'SaveLiveProviderConfigurationBody',
+    'LiveChangedEvent',
   ]) {
     const schema:
       | NonNullable<NonNullable<ApiDocument['components']>['schemas']>[string]
@@ -327,6 +342,7 @@ test('OpenAPI retains closed DTOs, explicit responses and the shared SSE union',
   );
   assert.deepEqual(api.components?.schemas?.HostEvent, {
     anyOf: [
+      { $ref: '#/components/schemas/LiveChangedEvent' },
       { $ref: '#/components/schemas/InventoryItemDeletedEvent' },
       { $ref: '#/components/schemas/WorkspaceContextDeletedEvent' },
       { $ref: '#/components/schemas/WorkspaceStartupUpdatedEvent' },

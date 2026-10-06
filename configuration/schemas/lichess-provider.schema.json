@@ -1,0 +1,38 @@
+{
+  "$id": "https://github.com/lzzzy/plysmith/blob/main/configuration/schemas/lichess-provider.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "configurationRevision": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "lichess": {
+      "additionalProperties": false,
+      "properties": {
+        "tokenEnvironmentVariable": {
+          "const": "PLYSMITH_LICHESS_TOKEN",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tokenEnvironmentVariable"
+      ],
+      "type": "object"
+    },
+    "provider": {
+      "const": "lichess",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "number"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "provider",
+    "configurationRevision",
+    "lichess"
+  ],
+  "type": "object"
+}

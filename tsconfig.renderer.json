@@ -14,6 +14,7 @@
     "app/infrastructure/channels/api/contract.ts",
     "app/infrastructure/channels/api/schemas.ts",
     "app/infrastructure/channels/api/import-schemas.ts",
+    "app/infrastructure/channels/api/live-schemas.ts",
     "app/infrastructure/channels/host_client/**/*.ts",
     "app/infrastructure/channels/ui/renderer/**/*.ts",
     "app/infrastructure/channels/ui/renderer/**/*.tsx"

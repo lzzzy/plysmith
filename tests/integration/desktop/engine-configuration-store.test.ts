@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { inactiveLiveClient } from '../../unit/ui/live-client-fixture.ts';
 
 import {
   HostClientProblem,
@@ -417,6 +418,7 @@ function createStore(
     dataRevision: 0,
   };
   const client: PlysmithApplicationClient = {
+    ...inactiveLiveClient,
     registerImportInput: async () =>
       assert.fail('no import operation expected'),
     prepareImport: async () => assert.fail('no import operation expected'),

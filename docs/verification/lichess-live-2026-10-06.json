@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-06",
+  "scope": "Minimaler Lichess-Live-Slice: eigenes Board-Spiel, fremde Beobachtung und ausdrueckliche Endablage",
+  "sourceGates": {
+    "log": "build/lichess-live-verify-complete.log",
+    "typechecks": { "passed": 4, "failed": 0 },
+    "eslint": "passed",
+    "dependencyBoundaries": {
+      "status": "passed",
+      "modules": 506,
+      "dependencies": 2384
+    },
+    "hostClientBrowser": "passed",
+    "generatedContracts": "passed",
+    "combinedVerify": "Sourcegates gruen, zusammengesetzter pnpm-verify-Lauf wegen eines Testzeitabbruchs nicht Exit0. Finaler Volltest separat unter fullSuite nachgewiesen."
+  },
+  "build": {
+    "command": "node tools/build-desktop.ts",
+    "log": "build/lichess-live-build-complete.log",
+    "exitCode": 0,
+    "modules": 3487
+  },
+  "format": {
+    "command": "pnpm run format:check",
+    "log": "build/lichess-live-format-complete.log",
+    "exitCode": 0
+  },
+  "diffCheck": { "command": "git diff --check", "exitCode": 0 },
+  "fullSuite": {
+    "command": "node --test --test-concurrency=1 tests/**/*.test.ts",
+    "log": "build/lichess-live-tests-complete.log",
+    "exitCode": 0,
+    "tests": 1113,
+    "passed": 1113,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "durationMilliseconds": 614822.8856,
+    "scheduling": "Finaler Nachweis mit Dateiparallelitaet1. Projektscript weiterhin2, Testfristen und interne Konkurrenzpruefungen unveraendert.",
+    "previousRun": "Bei Dateiparallelitaet2:1112 bestanden, ein bestehender MCP-Replacementtest nach20089ms bei20000ms abgebrochen. Unveraendert isoliert9835ms, im finalen Gesamtlauf8418ms bestanden."
+  },
+  "runtime": {
+    "command": "node tools/verify-live-runtime.ts",
+    "proof": "build/verification/live/5f399ccf-67dc-4a2a-97e6-5fa711f0f8f0/proof.json",
+    "log": "build/lichess-live-runtime-final.log",
+    "passedSections": 6,
+    "failedSections": 0,
+    "screenshots": 40,
+    "rendererErrors": 0,
+    "accessibilityFindings": 0,
+    "externalRequests": 0,
+    "viewports": [390, 900, 1280],
+    "locales": ["de-DE", "en-GB"],
+    "flows": [
+      "Write-only-Einstellungen und vollstaendiger Neustart",
+      "Beobachtung mit Vorgeschichte und stabilem historischem Fokus",
+      "Browserstart und hostweite Fair-Play-Sperre",
+      "Eigener Zug, Remisaktionen, Verbindungsverlust und Resync",
+      "Aufgabe, Umwandlung und Verwerfen ohne Bestandsanlage",
+      "Terminaler Export mit bisher unsichtbaren Schlusszuegen",
+      "Normale Partieablage mit Ordner und Arbeitskontext",
+      "Erreichbare Speicheraktion bei beiden Splittergrenzen",
+      "Bestand nach Neustart erhalten, Liveansicht leer und eigene Prozesse beendet"
+    ]
+  },
+  "focusedRegressions": {
+    "preflightAndLiveApi": 16,
+    "applicationStoreAndImport": 235,
+    "presentation": 33,
+    "overlap": "Fokuspruefungen sind Teilmengen der Vollsuite, nicht zusaetzlich zu addieren."
+  },
+  "fixes": [
+    "Live-Routen in der geschlossenen Preflight-Allowlist und OpenAPI-Methodeparitaet",
+    "Erlaubte Settings-/Verwaltungsreads trotz Fair-Play-Sperre",
+    "Explizit nicht-geladene Analyse, Gatewechsel und Entsperr-Recovery",
+    "Scrollbegrenztes Livepanel ohne Ueberlagerung der Speicheraktion",
+    "Sichtbarkeit durch vorhandene ReadyState-Eltern ohne doppelte Store-Subscription"
+  ],
+  "limits": [
+    "Runtime mit deterministischem Fakeprovider und isoliertem Testhome, ohne reale Tokens oder Lichess-Aktionen.",
+    "Keine echte Engine im Live-Runtimetest; Fokus- und Provider-/Fair-Play-Vertraege besitzen Backendregressionen.",
+    "Reale Konto-/Partieabnahme und Stockfish-Live-UI bleiben vor einer Veroeffentlichung manuell zu pruefen.",
+    "Fensterbreiten sind Electron-Reflow-Proben, keine physischen Mobilgeraete oder menschliche Screenreaderabnahme.",
+    "Datenformat10 ohne Format9-Migration oder automatisches Loeschen; Nutzerbestand und Konfiguration unveraendert.",
+    "Kein Commit, Push oder Release."
+  ]
+}

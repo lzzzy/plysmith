@@ -1830,21 +1830,206 @@ const objectiveAnalysisBudget = Type.Union([
   Type.Literal('very_deep'),
 ]);
 
+const liveGameId = Type.String({ pattern: '^[a-zA-Z0-9]{8}$' });
+const liveName = Type.String({ minLength: 1, maxLength: 160 });
+const liveSide = Type.Union([Type.Literal('white'), Type.Literal('black')]);
+const livePlayer = Type.Object(
+  {
+    id: Type.Optional(liveName),
+    name: liveName,
+    rating: Type.Optional(revision),
+  },
+  objectOptions,
+);
+const livePly = Type.Integer({ minimum: 0, maximum: 1000 });
+const expectedLiveRevision = { expectedRevision: revision };
+
+export const ExpectedLiveArgumentsSchema = Type.Object(
+  expectedLiveRevision,
+  objectOptions,
+);
+export const ObserveLiveArgumentsSchema = Type.Object(
+  {
+    ...expectedLiveRevision,
+    url: Type.String({ minLength: 1, maxLength: 256 }),
+  },
+  objectOptions,
+);
+export const PlayLiveArgumentsSchema = Type.Object(
+  { ...expectedLiveRevision, gameId: liveGameId },
+  objectOptions,
+);
+export const SelectLiveArgumentsSchema = Type.Object(
+  { ...expectedLiveRevision, ply: livePly },
+  objectOptions,
+);
+export const SubmitLiveMoveArgumentsSchema = Type.Object(
+  {
+    ...expectedLiveRevision,
+    move: Type.String({ pattern: '^[a-h][1-8][a-h][1-8][qrbn]?$' }),
+  },
+  objectOptions,
+);
+export const ActLiveArgumentsSchema = Type.Object(
+  {
+    ...expectedLiveRevision,
+    action: Type.Union([
+      Type.Literal('resign'),
+      Type.Literal('abort'),
+      Type.Literal('offer_draw'),
+      Type.Literal('accept_draw'),
+      Type.Literal('decline_draw'),
+    ]),
+  },
+  objectOptions,
+);
+export const SaveLiveGameArgumentsSchema = Type.Object(
+  {
+    ...expectedLiveRevision,
+    displayName: liveName,
+    languageTag: Type.Union([Type.Literal('de-DE'), Type.Literal('en-GB')]),
+    folderId: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    ),
+    workingContextId: Type.Optional(
+      Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    ),
+  },
+  objectOptions,
+);
+export const LiveSavedSchema = Type.Object(
+  {
+    itemId: Type.Integer({ minimum: 1 }),
+    revisionId: Type.Integer({ minimum: 1 }),
+    dataRevision: revision,
+  },
+  objectOptions,
+);
+export const LiveProviderConfigurationSchema = Type.Object(
+  {
+    configured: Type.Boolean(),
+    tokenConfigured: Type.Boolean(),
+    configurationRevision: Type.Union([
+      Type.String({ maxLength: 128 }),
+      Type.Null(),
+    ]),
+    restartRequired: Type.Boolean(),
+  },
+  objectOptions,
+);
+export const LiveStateSchema = Type.Object(
+  {
+    revision,
+    configured: Type.Boolean(),
+    online: Type.Boolean(),
+    connection: Type.Union([
+      Type.Literal('unconfigured'),
+      Type.Literal('disconnected'),
+      Type.Literal('connecting'),
+      Type.Literal('connected'),
+      Type.Literal('reconnecting'),
+      Type.Literal('failed'),
+    ]),
+    fairPlayBlocked: Type.Boolean(),
+    accountName: Type.Optional(liveName),
+    games: Type.Array(
+      Type.Object(
+        {
+          gameId: liveGameId,
+          displayName: liveName,
+          opponentRating: Type.Optional(revision),
+          playerSide: liveSide,
+          boardCompatible: Type.Boolean(),
+          standard: Type.Boolean(),
+        },
+        objectOptions,
+      ),
+      { maxItems: 100 },
+    ),
+    problemCode: Type.Optional(Type.String({ maxLength: 160 })),
+    session: Type.Optional(
+      Type.Object(
+        {
+          gameId: liveGameId,
+          role: Type.Union([Type.Literal('observe'), Type.Literal('play')]),
+          analysisRevision: revision,
+          white: livePlayer,
+          black: livePlayer,
+          playerSide: Type.Optional(liveSide),
+          root: chessState,
+          steps: Type.Array(
+            Type.Object(
+              { move: canonicalMove, after: chessState },
+              objectOptions,
+            ),
+            { maxItems: 1000 },
+          ),
+          selectedPly: livePly,
+          current: chessState,
+          legalMoves: Type.Array(canonicalMove, { maxItems: 256 }),
+          status: Type.Union([
+            Type.Literal('ongoing'),
+            Type.Literal('finalizing'),
+            Type.Literal('ended'),
+          ]),
+          connected: Type.Boolean(),
+          outcome: Type.Union([
+            Type.Literal('white_win'),
+            Type.Literal('black_win'),
+            Type.Literal('draw'),
+            Type.Literal('unfinished'),
+          ]),
+          pendingMove: Type.Boolean(),
+          whiteClockMs: Type.Optional(revision),
+          blackClockMs: Type.Optional(revision),
+          clockUpdatedAt: Type.Optional(Type.String({ maxLength: 64 })),
+          whiteDrawOffer: Type.Optional(Type.Boolean()),
+          blackDrawOffer: Type.Optional(Type.Boolean()),
+          focus: Type.Optional(
+            Type.Object(
+              {
+                focusKey: Type.String({ maxLength: 256 }),
+                root: chessState,
+                moves: Type.Array(canonicalMove, { maxItems: 1000 }),
+                current: chessState,
+              },
+              objectOptions,
+            ),
+          ),
+          problemCode: Type.Optional(Type.String({ maxLength: 160 })),
+        },
+        objectOptions,
+      ),
+    ),
+  },
+  objectOptions,
+);
+
 export const AnalyzePositionArgumentsSchema = Type.Object(
   {
-    work: Type.Object(
-      {
-        scope: workScope,
-        subject: Type.Union([
-          Type.Object({ kind: Type.Literal('position') }, objectOptions),
-          Type.Object(
-            { kind: Type.Literal('inventory_item'), itemId: localId },
-            objectOptions,
-          ),
-        ]),
-      },
-      objectOptions,
-    ),
+    work: Type.Union([
+      Type.Object(
+        {
+          scope: workScope,
+          subject: Type.Union([
+            Type.Object({ kind: Type.Literal('position') }, objectOptions),
+            Type.Object(
+              { kind: Type.Literal('inventory_item'), itemId: localId },
+              objectOptions,
+            ),
+          ]),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('live'),
+          revision,
+          ply: Type.Integer({ minimum: 0, maximum: 1000 }),
+        },
+        objectOptions,
+      ),
+    ]),
     consumerId: Type.String({ minLength: 1, maxLength: 128 }),
     laneId: Type.String({ minLength: 1, maxLength: 128 }),
     providerInstanceId: Type.String({ minLength: 1, maxLength: 160 }),

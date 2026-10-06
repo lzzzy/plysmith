@@ -1,4 +1,5 @@
 import type { components } from '../../../../contracts/host/index.ts';
+import type { PlysmithHostClient } from '../host_client/index.ts';
 
 export type RegisterImportInputRequest =
   components['schemas']['RegisterImportInputBody'];
@@ -183,7 +184,20 @@ export interface HostClientFailure {
  * Safe failures reject with HostClientFailure. All other rejections are private.
  * setUiLanguage must send at most once, including after a connection failure.
  */
-export interface HostClient {
+export interface HostClient extends Pick<
+  PlysmithHostClient,
+  | 'getLiveState'
+  | 'observeLiveGame'
+  | 'playLiveGame'
+  | 'selectLivePosition'
+  | 'submitLiveMove'
+  | 'actLiveGame'
+  | 'refreshLiveGame'
+  | 'disconnectLiveGame'
+  | 'discardLiveGame'
+  | 'saveLiveGame'
+  | 'getLiveProviderConfiguration'
+> {
   registerImportInput(
     request: RegisterImportInputRequest,
   ): Promise<ImportInputDescriptor>;

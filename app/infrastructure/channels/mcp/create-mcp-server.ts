@@ -25,6 +25,18 @@ import {
   ImportPublishedSchema,
 } from './import-schemas.ts';
 import type { HostClient } from './host-client.ts';
+import {
+  ActLiveArgumentsSchema,
+  ExpectedLiveArgumentsSchema,
+  LiveProviderConfigurationSchema,
+  LiveSavedSchema,
+  LiveStateSchema,
+  ObserveLiveArgumentsSchema,
+  PlayLiveArgumentsSchema,
+  SaveLiveGameArgumentsSchema,
+  SelectLiveArgumentsSchema,
+  SubmitLiveMoveArgumentsSchema,
+} from './schemas.ts';
 import { hostProblem, localProblem } from './problems.ts';
 import {
   addContextReferenceResultDto,
@@ -981,6 +993,151 @@ export function createMcpServer({
       _meta: problemMetadata,
     },
   );
+  tools.push(
+    {
+      name: 'get_live_state',
+      title: 'Get live state',
+      description:
+        'Read account connection, detected own games, fair-play status and the current live session.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'get_live_provider_configuration',
+      title: 'Get live provider configuration',
+      description:
+        'Read whether the live provider and token are configured and whether a restart is required. Never returns credentials.',
+      inputSchema: EmptyArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveProviderConfigurationSchema, HostProblemSchema],
+      },
+      annotations: readAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'observe_live_game',
+      title: 'Observe live game',
+      description:
+        'Observe a normal-chess Lichess game selected by URL and record its moves. Own ongoing games cannot be observed with engine assistance.',
+      inputSchema: ObserveLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, openWorldHint: true },
+      _meta: problemMetadata,
+    },
+    {
+      name: 'play_live_game',
+      title: 'Play live game',
+      description:
+        'Open a detected own Board-compatible normal-chess game. Engines remain blocked while an own game is active.',
+      inputSchema: PlayLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, openWorldHint: true },
+      _meta: problemMetadata,
+    },
+    {
+      name: 'select_live_position',
+      title: 'Select live position',
+      description:
+        'Select an available recorded ply and return the host-authoritative position and analysis focus.',
+      inputSchema: SelectLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'submit_live_move',
+      title: 'Submit live move',
+      description:
+        'Submit one human-selected UCI move to the own live game. Never retry an uncertain outcome automatically; refresh the game first.',
+      inputSchema: SubmitLiveMoveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, openWorldHint: true },
+      _meta: problemMetadata,
+    },
+    {
+      name: 'act_live_game',
+      title: 'Act on live game',
+      description:
+        'Resign, abort, offer, accept or decline a draw in the own live game. Sends the action once.',
+      inputSchema: ActLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: { ...destructiveWriteAnnotations, openWorldHint: true },
+      _meta: problemMetadata,
+    },
+    {
+      name: 'refresh_live_game',
+      title: 'Refresh live game',
+      description:
+        'Reconcile the current live game with the provider using the expected session revision.',
+      inputSchema: ExpectedLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: { ...writeAnnotations, openWorldHint: true },
+      _meta: problemMetadata,
+    },
+    {
+      name: 'disconnect_live_game',
+      title: 'Disconnect live game',
+      description:
+        'Stop live connections using the expected revision while retaining the local recording and known fair-play restriction.',
+      inputSchema: ExpectedLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'discard_live_game',
+      title: 'Discard live game',
+      description:
+        'Close the local live recording without saving an inventory item. Does not resign a running Lichess game or release its fair-play restriction.',
+      inputSchema: ExpectedLiveArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveStateSchema, HostProblemSchema],
+      },
+      annotations: destructiveWriteAnnotations,
+      _meta: problemMetadata,
+    },
+    {
+      name: 'save_live_game',
+      title: 'Save live game',
+      description:
+        'Save a completed live recording as a game record, optionally assigning its folder and working context.',
+      inputSchema: SaveLiveGameArgumentsSchema,
+      outputSchema: {
+        type: 'object',
+        anyOf: [LiveSavedSchema, HostProblemSchema],
+      },
+      annotations: writeAnnotations,
+      _meta: problemMetadata,
+    },
+  );
   const resources: Resource[] = [
     {
       name: 'system_status',
@@ -1025,6 +1182,98 @@ export function createMcpServer({
 
     try {
       switch (params.name) {
+        case 'get_live_state': {
+          const dto = await hostClient.getLiveState();
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(
+            dto,
+            `Live connection: ${dto.connection}. Revision ${dto.revision}.`,
+          );
+        }
+        case 'get_live_provider_configuration': {
+          const dto = await hostClient.getLiveProviderConfiguration();
+          if (!Value.Check(LiveProviderConfigurationSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(
+            dto,
+            dto.configured
+              ? 'Live provider configured.'
+              : 'Live provider not configured.',
+          );
+        }
+        case 'observe_live_game': {
+          if (!Value.Check(ObserveLiveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.observeLiveGame(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, `Live observation revision ${dto.revision}.`);
+        }
+        case 'play_live_game': {
+          if (!Value.Check(PlayLiveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.playLiveGame(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, `Live play revision ${dto.revision}.`);
+        }
+        case 'select_live_position': {
+          if (!Value.Check(SelectLiveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.selectLivePosition(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, `Live position revision ${dto.revision}.`);
+        }
+        case 'submit_live_move': {
+          if (!Value.Check(SubmitLiveMoveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.submitLiveMove(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(
+            dto,
+            `Live move response revision ${dto.revision}.`,
+          );
+        }
+        case 'act_live_game': {
+          if (!Value.Check(ActLiveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.actLiveGame(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(
+            dto,
+            `Live action response revision ${dto.revision}.`,
+          );
+        }
+        case 'refresh_live_game':
+        case 'disconnect_live_game':
+        case 'discard_live_game': {
+          if (!Value.Check(ExpectedLiveArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto =
+            params.name === 'refresh_live_game'
+              ? await hostClient.refreshLiveGame(args)
+              : params.name === 'disconnect_live_game'
+                ? await hostClient.disconnectLiveGame(args)
+                : await hostClient.discardLiveGame(args);
+          if (!Value.Check(LiveStateSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(dto, `Live session revision ${dto.revision}.`);
+        }
+        case 'save_live_game': {
+          if (!Value.Check(SaveLiveGameArgumentsSchema, args))
+            return toolProblem(localProblem('request.invalid'));
+          const dto = await hostClient.saveLiveGame(args);
+          if (!Value.Check(LiveSavedSchema, dto))
+            throw new Error('Invalid host response');
+          return toolResult(
+            dto,
+            `Live game saved as inventory item ${dto.itemId}.`,
+          );
+        }
         case 'register_import_input': {
           if (!Value.Check(RegisterImportInputBodySchema, args))
             return toolProblem(localProblem('request.invalid'));
@@ -1779,6 +2028,25 @@ function resumeRequest(args: typeof SetWorkScopeResumeArgumentsSchema.static) {
 
 function inputSchema(name: string) {
   switch (name) {
+    case 'get_live_state':
+    case 'get_live_provider_configuration':
+      return EmptyArgumentsSchema;
+    case 'observe_live_game':
+      return ObserveLiveArgumentsSchema;
+    case 'play_live_game':
+      return PlayLiveArgumentsSchema;
+    case 'select_live_position':
+      return SelectLiveArgumentsSchema;
+    case 'submit_live_move':
+      return SubmitLiveMoveArgumentsSchema;
+    case 'act_live_game':
+      return ActLiveArgumentsSchema;
+    case 'refresh_live_game':
+    case 'disconnect_live_game':
+    case 'discard_live_game':
+      return ExpectedLiveArgumentsSchema;
+    case 'save_live_game':
+      return SaveLiveGameArgumentsSchema;
     case 'register_import_input':
       return RegisterImportInputBodySchema;
     case 'prepare_import':

@@ -64,6 +64,9 @@ import { RevisionFollowingContexts } from './revision-following-contexts.tsx';
 import styles from './analysis-view.module.css';
 
 type ReadyState = Extract<PlysmithApplicationState, { phase: 'ready' }>;
+type AnalysisReadyState = ReadyState & {
+  readonly analysis: NonNullable<ReadyState['analysis']>;
+};
 type NoteEditor =
   | AnalysisNoteFormDraft
   | {
@@ -80,10 +83,12 @@ export function AnalysisView({
   readonly state: ReadyState;
   readonly store: PlysmithApplicationStore;
 }) {
+  const analysis = state.analysis;
+  if (state.fairPlayBlocked || analysis === undefined) return null;
   return (
     <AnalysisWorkspaceView
-      key={JSON.stringify([state.scope, state.analysis.record?.itemId])}
-      state={state}
+      key={JSON.stringify([state.scope, analysis.record?.itemId])}
+      state={{ ...state, analysis }}
       store={store}
     />
   );
@@ -93,7 +98,7 @@ function AnalysisWorkspaceView({
   state,
   store,
 }: {
-  readonly state: ReadyState;
+  readonly state: AnalysisReadyState;
   readonly store: PlysmithApplicationStore;
 }) {
   const intl = useIntl();
@@ -366,7 +371,7 @@ function AnalysisWorkspaceView({
   );
   const activePosition = path.positions[activePositionIndex];
   const positionAnalysisWork = useMemo<
-    AnalyzePositionRequestDto['work']
+    Extract<AnalyzePositionRequestDto['work'], { readonly scope: unknown }>
   >(() => {
     const itemId =
       activePosition?.target?.itemId ??

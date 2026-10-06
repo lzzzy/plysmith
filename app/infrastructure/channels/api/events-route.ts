@@ -29,6 +29,15 @@ function eventDto(event: ApplicationHostEvent): HostEvent {
     correlationId: event.correlationId,
   };
   switch (event.kind) {
+    case 'live.changed':
+      return {
+        ...metadata,
+        kind: event.kind,
+        payload: {
+          revision: event.payload.revision,
+          fairPlayBlocked: event.payload.fairPlayBlocked,
+        },
+      };
     case 'inventory.organization-changed':
       return {
         ...metadata,

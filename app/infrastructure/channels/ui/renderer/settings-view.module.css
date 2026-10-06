@@ -4,6 +4,31 @@
   padding: 26px 36px 50px;
 }
 
+.liveTokenForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  margin-top: 20px;
+}
+.liveTokenForm label {
+  display: grid;
+  flex: 1 1 240px;
+  min-width: 0;
+  gap: 7px;
+  font-size: 13px;
+}
+.liveTokenForm input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid #c8ced7;
+  border-radius: 5px;
+  font: inherit;
+}
+
 .pageHeader {
   display: flex;
   align-items: flex-end;

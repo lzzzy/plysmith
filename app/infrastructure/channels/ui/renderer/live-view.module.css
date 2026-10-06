@@ -1,0 +1,152 @@
+.urlForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  max-width: 760px;
+  margin: 24px 0;
+}
+.sessionPane {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+.urlForm label {
+  grid-column: 1 / -1;
+  font-size: 13px;
+  font-weight: 650;
+}
+.urlForm input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #bbc4cf;
+  border-radius: 5px;
+  font: inherit;
+}
+.games {
+  display: grid;
+  gap: 8px;
+}
+.game {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #d8dde4;
+  background: #fff;
+}
+.game > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.clockCaption {
+  margin: 0;
+  padding: 12px 16px 0;
+  color: #5f6873;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.clocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 12px 16px;
+  border-bottom: 1px solid #d8dde4;
+}
+.clocks dt {
+  color: #5f6873;
+  font-size: 12px;
+}
+.clocks dd {
+  margin: 4px 0 0;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+.navigation {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 12px;
+}
+.navigation > :first-child {
+  flex: 1;
+  margin: 0;
+}
+.navigation button {
+  flex-shrink: 0;
+}
+.status {
+  padding: 0 16px;
+  font-size: 12px;
+  color: #69551f;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .urlForm {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.header {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.header > [role='status'] {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.connectionSwitch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 105px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.switchTrack {
+  display: flex;
+  align-items: center;
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid #697686;
+  border-radius: 12px;
+  background: #e2e7ed;
+}
+.switchTrack > span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #5b6675;
+}
+.connectionSwitch[data-selected] .switchTrack {
+  background: #2d5fa8;
+  border-color: #2d5fa8;
+}
+.connectionSwitch[data-selected] .switchTrack > span {
+  transform: translateX(16px);
+  background: #fff;
+}
+.connectionSwitch[data-focus-visible] .switchTrack {
+  outline: 2px solid #2d5fa8;
+  outline-offset: 3px;
+}
+.connectionSwitch[data-disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+
+@media (max-width: 980px) {
+  .workspace > :global([data-analysis-layout]) {
+    grid-column: auto;
+  }
+}

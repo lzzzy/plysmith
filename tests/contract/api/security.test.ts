@@ -32,6 +32,11 @@ test('every route checks authentication before body validation or use cases', as
     ['GET', '/diagnostics/report-manifest'],
     ['POST', '/diagnostics/reports'],
     ['GET', '/events'],
+    ['GET', '/live'],
+    ['POST', '/live/commands'],
+    ['POST', '/live/games'],
+    ['GET', '/configuration/live'],
+    ['PUT', '/configuration/live'],
   ] as const) {
     const response = await host.inject({
       method,
@@ -162,6 +167,11 @@ test('browser preflight covers every public use-case route including queries and
     ['/analysis/position-notes', 'POST', 'POST'],
     ['/analysis/notes/1', 'PATCH', 'PATCH, DELETE'],
     ['/analysis/notes/1', 'DELETE', 'PATCH, DELETE'],
+    ['/configuration/live', 'GET', 'GET, PUT'],
+    ['/configuration/live', 'PUT', 'GET, PUT'],
+    ['/live', 'GET', 'GET'],
+    ['/live/commands', 'POST', 'POST'],
+    ['/live/games', 'POST', 'POST'],
     ['/engine-providers/configurations', 'GET', 'GET'],
     ['/engine-providers/configuration-preview', 'POST', 'POST'],
     ['/engine-providers/configurations/stockfish-local', 'PUT', 'PUT, DELETE'],
@@ -230,6 +240,43 @@ test('browser preflight covers every public use-case route including queries and
   }
 });
 
+test('every documented operation has an exact browser preflight grant', async () => {
+  const { host } = await buildReadOnlyFixture();
+  const api = host.swagger();
+  assert.ok('openapi' in api);
+  const methods = ['get', 'post', 'put', 'patch', 'delete'] as const;
+  for (const [path, item] of Object.entries(api.paths ?? {})) {
+    assert.ok(item, path);
+    const expected = methods.filter((method) => item[method] !== undefined);
+    const url = path.replace(/\{[^}]+\}/g, '1');
+    for (const method of methods) {
+      const response = await host.inject({
+        method: 'OPTIONS',
+        url,
+        headers: {
+          host: headers.host,
+          origin: 'app://plysmith',
+          'access-control-request-method': method.toUpperCase(),
+          'access-control-request-headers':
+            'Authorization, Content-Type, Last-Event-ID, X-Plysmith-Correlation-Id',
+        },
+      });
+      assert.equal(
+        response.statusCode,
+        expected.includes(method) ? 204 : 403,
+        `${method.toUpperCase()} ${path}`,
+      );
+      if (expected.includes(method)) {
+        const allowed = String(response.headers['access-control-allow-methods'])
+          .split(',')
+          .map((value) => value.trim().toLowerCase())
+          .sort();
+        assert.deepEqual(allowed, [...expected].sort(), path);
+      }
+    }
+  }
+});
+
 test('preflight rejects invalid host, origin, method, header and unknown routes', async () => {
   const { host } = await buildReadOnlyFixture();
   const base = {
@@ -271,6 +318,10 @@ test('preflight rejects invalid host, origin, method, header and unknown routes'
     '/working-contexts/1/items/2/extra',
     '/working-contexts/1/references/extra',
     '/analysis/workspace/extra',
+    '/live/extra',
+    '/live/commands/extra',
+    '/live/games/extra',
+    '/configuration/live/extra',
     '/analysis/notes/1/extra',
     '/engine-providers/configurations/stockfish-local/extra',
     '/inventory/items/1/revision-edits/extra',

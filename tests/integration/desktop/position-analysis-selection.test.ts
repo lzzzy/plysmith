@@ -32,6 +32,8 @@ const providers = { providers: [
 const store = new PlysmithApplicationStore({
   getBootstrap: async () => { throw new Error('No host in panel fixture'); },
 });
+const verifiedState = { phase: 'ready', fairPlayBlocked: false, live: { fairPlayBlocked: false } };
+store.getSnapshot = () => verifiedState;
 const calls = [];
 const objectiveCalls = [];
 store.analyzePosition = (request) => {

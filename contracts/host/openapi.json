@@ -1766,56 +1766,86 @@
             "type": "string"
           },
           "work": {
-            "additionalProperties": false,
-            "properties": {
-              "scope": {
-                "$ref": "#/components/schemas/WorkScope"
-              },
-              "subject": {
-                "anyOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "kind": {
-                        "enum": [
-                          "position"
-                        ],
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "kind"
-                    ],
-                    "type": "object"
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "scope": {
+                    "$ref": "#/components/schemas/WorkScope"
                   },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "itemId": {
-                        "pattern": "^[1-9]\\d{0,15}$",
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": [
-                          "inventory_item"
+                  "subject": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "position"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind"
                         ],
-                        "type": "string"
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "itemId": {
+                            "pattern": "^[1-9]\\d{0,15}$",
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": [
+                              "inventory_item"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "itemId"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "kind",
-                      "itemId"
-                    ],
-                    "type": "object"
+                    ]
                   }
-                ]
+                },
+                "required": [
+                  "scope",
+                  "subject"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "live"
+                    ],
+                    "type": "string"
+                  },
+                  "ply": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "revision": {
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "revision",
+                  "ply"
+                ],
+                "type": "object"
               }
-            },
-            "required": [
-              "scope",
-              "subject"
-            ],
-            "type": "object"
+            ]
           }
         },
         "required": [
@@ -4310,6 +4340,9 @@
       "HostEvent": {
         "anyOf": [
           {
+            "$ref": "#/components/schemas/LiveChangedEvent"
+          },
+          {
             "$ref": "#/components/schemas/InventoryItemDeletedEvent"
           },
           {
@@ -6295,6 +6328,750 @@
         "required": [
           "contexts",
           "dataRevision"
+        ],
+        "type": "object"
+      },
+      "LiveChangedEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "correlationId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "eventId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "live.changed"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?Z$",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": false,
+            "properties": {
+              "fairPlayBlocked": {
+                "type": "boolean"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "revision",
+              "fairPlayBlocked"
+            ],
+            "type": "object"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "subscriptionRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "eventId",
+          "sequence",
+          "dataRevision",
+          "occurredAt",
+          "subscriptionRevision",
+          "correlationId",
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "LiveCommandBody": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "observe"
+                ],
+                "type": "string"
+              },
+              "url": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind",
+              "url"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "gameId": {
+                "pattern": "^[a-zA-Z0-9]{8}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "play"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind",
+              "gameId"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "select"
+                ],
+                "type": "string"
+              },
+              "ply": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind",
+              "ply"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "move"
+                ],
+                "type": "string"
+              },
+              "move": {
+                "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind",
+              "move"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "resign"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "abort"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "offer_draw"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "accept_draw"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "decline_draw"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "act"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind",
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "refresh"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "disconnect"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "expectedRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "discard"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "expectedRevision",
+              "kind"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "LiveProviderConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "configurationRevision": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "restartRequired": {
+            "type": "boolean"
+          },
+          "tokenConfigured": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "tokenConfigured",
+          "configurationRevision",
+          "restartRequired"
+        ],
+        "type": "object"
+      },
+      "LiveSaved": {
+        "additionalProperties": false,
+        "properties": {
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "itemId": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "revisionId": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "itemId",
+          "revisionId",
+          "dataRevision"
+        ],
+        "type": "object"
+      },
+      "LiveState": {
+        "additionalProperties": false,
+        "properties": {
+          "accountName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "connection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "unconfigured"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "disconnected"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "connecting"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "connected"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "reconnecting"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "failed"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "fairPlayBlocked": {
+            "type": "boolean"
+          },
+          "games": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "boardCompatible": {
+                  "type": "boolean"
+                },
+                "displayName": {
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "gameId": {
+                  "pattern": "^[a-zA-Z0-9]{8}$",
+                  "type": "string"
+                },
+                "opponentRating": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "playerSide": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "white"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "enum": [
+                        "black"
+                      ],
+                      "type": "string"
+                    }
+                  ]
+                },
+                "standard": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "gameId",
+                "displayName",
+                "playerSide",
+                "boardCompatible",
+                "standard"
+              ],
+              "type": "object"
+            },
+            "maxItems": 100,
+            "type": "array"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "problemCode": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "session": {
+            "additionalProperties": false,
+            "properties": {
+              "analysisRevision": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "black": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rating": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "blackClockMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "blackDrawOffer": {
+                "type": "boolean"
+              },
+              "clockUpdatedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "connected": {
+                "type": "boolean"
+              },
+              "current": {
+                "$ref": "#/components/schemas/ChessState"
+              },
+              "focus": {
+                "additionalProperties": false,
+                "properties": {
+                  "current": {
+                    "$ref": "#/components/schemas/ChessState"
+                  },
+                  "focusKey": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "moves": {
+                    "items": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    },
+                    "maxItems": 1000,
+                    "type": "array"
+                  },
+                  "root": {
+                    "$ref": "#/components/schemas/ChessState"
+                  }
+                },
+                "required": [
+                  "focusKey",
+                  "root",
+                  "moves",
+                  "current"
+                ],
+                "type": "object"
+              },
+              "gameId": {
+                "pattern": "^[a-zA-Z0-9]{8}$",
+                "type": "string"
+              },
+              "legalMoves": {
+                "items": {
+                  "$ref": "#/components/schemas/CanonicalMove"
+                },
+                "maxItems": 256,
+                "type": "array"
+              },
+              "outcome": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "white_win"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "black_win"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "draw"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "unfinished"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "pendingMove": {
+                "type": "boolean"
+              },
+              "playerSide": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "white"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "black"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "problemCode": {
+                "maxLength": 160,
+                "type": "string"
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "observe"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "play"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "root": {
+                "$ref": "#/components/schemas/ChessState"
+              },
+              "selectedPly": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "ongoing"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "finalizing"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "enum": [
+                      "ended"
+                    ],
+                    "type": "string"
+                  }
+                ]
+              },
+              "steps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "$ref": "#/components/schemas/ChessState"
+                    },
+                    "move": {
+                      "$ref": "#/components/schemas/CanonicalMove"
+                    }
+                  },
+                  "required": [
+                    "move",
+                    "after"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 1000,
+                "type": "array"
+              },
+              "white": {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "name": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rating": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "whiteClockMs": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "whiteDrawOffer": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "gameId",
+              "role",
+              "white",
+              "black",
+              "root",
+              "steps",
+              "selectedPly",
+              "current",
+              "analysisRevision",
+              "legalMoves",
+              "status",
+              "connected",
+              "outcome",
+              "pendingMove"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "revision",
+          "configured",
+          "online",
+          "connection",
+          "fairPlayBlocked",
+          "games"
         ],
         "type": "object"
       },
@@ -8479,6 +9256,79 @@
           "impacts",
           "noOp",
           "dataRevision"
+        ],
+        "type": "object"
+      },
+      "SaveLiveGameBody": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "folderId": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "languageTag": {
+            "anyOf": [
+              {
+                "enum": [
+                  "de-DE"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "en-GB"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "workingContextId": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "displayName",
+          "languageTag"
+        ],
+        "type": "object"
+      },
+      "SaveLiveProviderConfigurationBody": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedConfigurationRevision": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "token": {
+            "pattern": "^[A-Za-z0-9_-]{1,512}$",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token",
+          "expectedConfigurationRevision"
         ],
         "type": "object"
       },
@@ -12050,56 +12900,86 @@
                     "type": "string"
                   },
                   "work": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "scope": {
-                        "$ref": "#/components/schemas/WorkScope"
-                      },
-                      "subject": {
-                        "anyOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "kind": {
-                                "enum": [
-                                  "position"
-                                ],
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "kind"
-                            ],
-                            "type": "object"
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "scope": {
+                            "$ref": "#/components/schemas/WorkScope"
                           },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "itemId": {
-                                "pattern": "^[1-9]\\d{0,15}$",
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": [
-                                  "inventory_item"
+                          "subject": {
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "enum": [
+                                      "position"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
                                 ],
-                                "type": "string"
+                                "type": "object"
+                              },
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "itemId": {
+                                    "pattern": "^[1-9]\\d{0,15}$",
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": [
+                                      "inventory_item"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "itemId"
+                                ],
+                                "type": "object"
                               }
-                            },
-                            "required": [
-                              "kind",
-                              "itemId"
-                            ],
-                            "type": "object"
+                            ]
                           }
-                        ]
+                        },
+                        "required": [
+                          "scope",
+                          "subject"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "live"
+                            ],
+                            "type": "string"
+                          },
+                          "ply": {
+                            "maximum": 1000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "revision": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "revision",
+                          "ply"
+                        ],
+                        "type": "object"
                       }
-                    },
-                    "required": [
-                      "scope",
-                      "subject"
-                    ],
-                    "type": "object"
+                    ]
                   }
                 },
                 "required": [
@@ -13247,6 +14127,251 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AnalysisWorkspace"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/configuration/live": {
+      "get": {
+        "operationId": "GetLiveProviderConfiguration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveProviderConfiguration"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      },
+      "put": {
+        "operationId": "SaveLiveProviderConfiguration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedConfigurationRevision": {
+                    "anyOf": [
+                      {
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "token": {
+                    "pattern": "^[A-Za-z0-9_-]{1,512}$",
+                    "type": "string",
+                    "writeOnly": true
+                  }
+                },
+                "required": [
+                  "token",
+                  "expectedConfigurationRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveProviderConfiguration"
                 }
               }
             },
@@ -17581,6 +18706,617 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SaveInventoryRevisionResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/live": {
+      "get": {
+        "operationId": "GetLiveState",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveState"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/live/commands": {
+      "post": {
+        "operationId": "LiveCommand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "observe"
+                        ],
+                        "type": "string"
+                      },
+                      "url": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind",
+                      "url"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "gameId": {
+                        "pattern": "^[a-zA-Z0-9]{8}$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "play"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind",
+                      "gameId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "select"
+                        ],
+                        "type": "string"
+                      },
+                      "ply": {
+                        "maximum": 1000,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind",
+                      "ply"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "move"
+                        ],
+                        "type": "string"
+                      },
+                      "move": {
+                        "pattern": "^[a-h][1-8][a-h][1-8][qrbn]?$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind",
+                      "move"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "action": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "resign"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "abort"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "offer_draw"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "accept_draw"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "enum": [
+                              "decline_draw"
+                            ],
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "act"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind",
+                      "action"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "refresh"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "disconnect"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "expectedRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "enum": [
+                          "discard"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "expectedRevision",
+                      "kind"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveState"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/live/games": {
+      "post": {
+        "operationId": "SaveLiveGame",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "displayName": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "folderId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "languageTag": {
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "de-DE"
+                        ],
+                        "type": "string"
+                      },
+                      {
+                        "enum": [
+                          "en-GB"
+                        ],
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "workingContextId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "displayName",
+                  "languageTag"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveSaved"
                 }
               }
             },

@@ -502,7 +502,7 @@ test('preserves an inventory continuation through game completion, reopening, an
     targetContextId: scope.contextId,
   });
   const recovered = await reopen();
-  assert.equal((await recovered.readStoreStatus()).schemaVersion, 9);
+  assert.equal((await recovered.readStoreStatus()).schemaVersion, 10);
   const game = await recovered.readAnalysisRecord({
     itemId: saved.itemId,
     revisionId: saved.revisionId,

@@ -1,6 +1,12 @@
 export { importLimits } from '../../../../contracts/host/index.ts';
 export {
   connectHost,
+  type LiveStateDto,
+  type LiveSavedDto,
+  type LiveCommandRequestDto,
+  type SaveLiveGameRequestDto,
+  type LiveProviderConfigurationDto,
+  type SaveLiveProviderConfigurationRequestDto,
   type RegisterImportInputRequestDto,
   type ImportInputDescriptorDto,
   type PrepareImportRequestDto,

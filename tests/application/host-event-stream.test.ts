@@ -34,6 +34,20 @@ test('delivers live preference events with monotonic ids and revisions', async (
   subscription.close();
 });
 
+test('live invalidations retain the current store revision without publishing account details', async () => {
+  const stream = makeStream({ dataRevision: 17 });
+  const subscription = stream.subscribe({
+    lastEventId: undefined,
+    signal: new AbortController().signal,
+  });
+  stream.publishLiveChange(3, true);
+  const event = await next(subscription);
+  assert.equal(event.kind, 'live.changed');
+  assert.equal(event.dataRevision, 17);
+  assert.deepEqual(event.payload, { revision: 3, fairPlayBlocked: true });
+  subscription.close();
+});
+
 test('replays buffered events after a known cursor', async () => {
   const stream = makeStream();
   stream.publish(languageChanged(1, 2));
@@ -248,6 +262,7 @@ test('projects analysis, inventory and workspace changes as compact refresh hint
 
 function makeStream(
   options: {
+    dataRevision?: number;
     replayCapacity?: number;
     subscriberQueueCapacity?: number;
   } = {},

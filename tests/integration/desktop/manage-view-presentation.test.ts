@@ -70,6 +70,7 @@ function item(
 function render(
   options: {
     selected?: boolean;
+    fairPlayBlocked?: boolean;
     member?: boolean;
     free?: boolean;
     ancestorMember?: boolean;
@@ -106,6 +107,7 @@ function render(
       createElement(ManageView, {
         state: {
           phase: 'ready',
+          fairPlayBlocked: options.fairPlayBlocked ?? false,
           scope: options.free
             ? { kind: 'free' }
             : { kind: 'context', contextId: 'context' },
@@ -310,6 +312,20 @@ test('context members and base inventory items retain the analysis action', () =
       ),
     );
   }
+});
+
+test('fair-play blocks knowledge and revision actions but retains inventory metadata management', () => {
+  const markup = render({
+    selected: true,
+    member: true,
+    fairPlayBlocked: true,
+  });
+  assert.match(markup, /Record child/);
+  assert.match(markup, /manage.removeFromContext|manage.deleteInventoryItem/);
+  assert.doesNotMatch(
+    markup,
+    /activity.analyze|inventory.rename|revisionImpact.review|manage.previewLoading/,
+  );
 });
 
 test('source-only ancestors have no selection button even when context members', () => {

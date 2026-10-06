@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { importSchemas } from './import-schemas.ts';
+import { liveSchemas } from './live-schemas.ts';
 
 import {
   ENGINE_PROVIDER_TIMEOUT_LIMITS,
@@ -1130,19 +1131,29 @@ const objectiveAnalysisBudget = Type.Union([
 
 export const AnalyzePositionBodySchema = Type.Object(
   {
-    work: Type.Object(
-      {
-        scope: Type.Ref(WorkScopeSchema),
-        subject: Type.Union([
-          Type.Object({ kind: Type.Literal('position') }, objectOptions),
-          Type.Object(
-            { kind: Type.Literal('inventory_item'), itemId: localId },
-            objectOptions,
-          ),
-        ]),
-      },
-      objectOptions,
-    ),
+    work: Type.Union([
+      Type.Object(
+        {
+          scope: Type.Ref(WorkScopeSchema),
+          subject: Type.Union([
+            Type.Object({ kind: Type.Literal('position') }, objectOptions),
+            Type.Object(
+              { kind: Type.Literal('inventory_item'), itemId: localId },
+              objectOptions,
+            ),
+          ]),
+        },
+        objectOptions,
+      ),
+      Type.Object(
+        {
+          kind: Type.Literal('live'),
+          revision: Type.Integer({ minimum: 0 }),
+          ply: Type.Integer({ minimum: 0, maximum: 1000 }),
+        },
+        objectOptions,
+      ),
+    ]),
     consumerId: Type.String({ minLength: 1, maxLength: 128 }),
     laneId: Type.String({ minLength: 1, maxLength: 128 }),
     providerInstanceId: identifier,
@@ -2663,8 +2674,21 @@ export const ReplayGapEventSchema = Type.Object(
   { ...objectOptions, $id: 'ReplayGapEvent' },
 );
 
+export const LiveChangedEventSchema = Type.Object(
+  {
+    ...eventMetadata,
+    kind: Type.Literal('live.changed'),
+    payload: Type.Object(
+      { revision, fairPlayBlocked: Type.Boolean() },
+      objectOptions,
+    ),
+  },
+  { ...objectOptions, $id: 'LiveChangedEvent' },
+);
+
 export const HostEventSchema = Type.Union(
   [
+    Type.Ref(LiveChangedEventSchema),
     Type.Ref(InventoryItemDeletedEventSchema),
     Type.Ref(WorkspaceContextDeletedEventSchema),
     Type.Ref(WorkspaceStartupUpdatedEventSchema),
@@ -2692,6 +2716,8 @@ export const EventHeadersSchema = Type.Object(
 );
 
 export const apiSchemas = [
+  ...liveSchemas,
+  LiveChangedEventSchema,
   ...importSchemas,
   InventoryOrganizationQuerySchema,
   InventoryOrganizationSchema,

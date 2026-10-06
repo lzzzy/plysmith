@@ -29,6 +29,7 @@ import {
   type PlysmithApplicationStore,
 } from './plysmith-application-store.ts';
 import type { UiLocale } from './messages.ts';
+import { LiveSettings } from './live-settings.tsx';
 import {
   type EngineConfigurationDraft,
   type EngineConfigurationField,
@@ -130,6 +131,7 @@ export function SettingsView({
       </section>
 
       <EngineSettings state={state} store={store} />
+      <LiveSettings state={state} store={store} />
 
       <section
         className={styles.settingsSection}

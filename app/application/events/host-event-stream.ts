@@ -34,6 +34,7 @@ import type {
 } from '../playout/index.ts';
 
 export type HostEvent =
+  | LiveChangedHostEvent
   | InventoryOrganizationChangedHostEvent
   | PreferenceUiLanguageChangedHostEvent
   | AnalysisScratchChangedHostEvent
@@ -51,6 +52,22 @@ export type HostEvent =
   | WorkspaceItemRemovedHostEvent
   | WorkspaceResumeUpdatedHostEvent
   | ReplayGapHostEvent;
+
+export interface LiveChangedHostEvent extends HostEventMetadata {
+  readonly kind: 'live.changed';
+  readonly payload: {
+    readonly revision: number;
+    readonly fairPlayBlocked: boolean;
+  };
+}
+
+interface LiveChanged {
+  readonly kind: 'live.changed';
+  readonly revision: number;
+  readonly fairPlayBlocked: boolean;
+  readonly occurredAt: string;
+  readonly dataRevision: number;
+}
 
 export interface InventoryOrganizationChangedHostEvent extends HostEventMetadata {
   readonly kind: 'inventory.organization-changed';
@@ -198,6 +215,7 @@ export interface HostEventSource {
 }
 
 export interface HostEventStreamOptions {
+  readonly dataRevision?: number;
   readonly replayCapacity?: number;
   readonly subscriberQueueCapacity?: number;
   readonly generation?: string;
@@ -232,6 +250,7 @@ export class HostEventStream
   #controlSequence = 0;
 
   constructor(options: HostEventStreamOptions = {}) {
+    this.#dataRevision = options.dataRevision ?? 0;
     this.#replayCapacity = positiveInteger(options.replayCapacity ?? 128);
     this.#subscriberQueueCapacity = positiveInteger(
       options.subscriberQueueCapacity ?? 128,
@@ -241,6 +260,17 @@ export class HostEventStream
     this.#correlationIdFactory = options.correlationIdFactory ?? randomUUID;
   }
 
+  publishLiveChange(revision: number, fairPlayBlocked: boolean): void {
+    this.publish({
+      kind: 'live.changed',
+      revision,
+      fairPlayBlocked,
+      occurredAt: this.#now(),
+      dataRevision: this.#dataRevision,
+    });
+  }
+
+  publish(event: LiveChanged): void;
   publish(event: UiLanguageChanged): void;
   publish(event: InventoryOrganizationChanged): void;
   publish(event: AnalysisScratchChanged): void;
@@ -254,6 +284,7 @@ export class HostEventStream
   publish(event: WorkspaceChanged): void;
   publish(
     event:
+      | LiveChanged
       | UiLanguageChanged
       | InventoryOrganizationChanged
       | AnalysisScratchChanged
@@ -377,6 +408,7 @@ export class HostEventStream
 }
 
 type PublishableEvent =
+  | LiveChanged
   | InventoryOrganizationChanged
   | InventoryItemDeleted
   | UiLanguageChanged
@@ -394,6 +426,15 @@ function toHostEvent(
   metadata: HostEventMetadata,
 ): Exclude<HostEvent, ReplayGapHostEvent> {
   switch (event.kind) {
+    case 'live.changed':
+      return Object.freeze({
+        ...metadata,
+        kind: event.kind,
+        payload: Object.freeze({
+          revision: event.revision,
+          fairPlayBlocked: event.fairPlayBlocked,
+        }),
+      });
     case 'inventory.organization-changed':
       return Object.freeze({
         ...metadata,

@@ -156,6 +156,31 @@ Der [Quellenkatalog](docs/import-sources.md) bietet Eröffnungen, Taktik,
 Endspiele und Meisterpartien zum Ausprobieren, mit direkten Downloadlinks
 und konkreten Hinweisen zum jeweiligen Material.
 
+## Live auf Lichess
+
+Unter **Einstellungen** richten Sie ein persönliches Lichess-API-Token mit
+`board:play` ein und starten Plysmith neu. Das Token wird nur lokal gespeichert
+und danach nicht mehr angezeigt. Ein Lichess-Passwort wird nicht benötigt.
+
+Stellen Sie den Schalter in **Live** auf **Online**. Standard ist **Offline**;
+die Wahl bleibt im Desktopprofil gespeichert. Online verbindet beim nächsten
+Start wieder, Offline schließt die Verbindungen ohne eine Partie zu beenden.
+Ohne Verbindung erkennt Plysmith keine Browserstarts; eine bereits bekannte
+Fair-Play-Sperre bleibt bis zur bestätigten Klärung erhalten.
+
+Starten Sie danach eigene Partien wie gewohnt im Lichess-Browser. Plysmith meldet den
+Start in **Live**; mit der Board API kompatible Standardschachpartien können
+Sie dort ohne Enginehilfe spielen. Während einer eigenen laufenden Partie ist
+Engine- und Analysehilfe in ganz Plysmith gesperrt, auch beim Browser-Spiel.
+
+Zum Zuschauen übergeben Sie die URL einer fremden Standardschachpartie.
+Plysmith zeichnet die ganze Zugfolge auf und bietet eigene Engines zur
+angezeigten Stellung. Lichess liefert Zuschauerupdates drei Züge verzögert.
+Nach dem Ende können Sie die vollständige Partie speichern oder verwerfen.
+Verlassen von Live beendet nur die lokale Aufnahme, nicht eine Onlinepartie.
+
+Einrichtung und Grenzen: [Lichess Live](docs/lichess-live.md).
+
 ## Schachengines einrichten
 
 Stockfish, Lc0 und Maia-Gewichte stammen von externen Projekten. Prüfen Sie

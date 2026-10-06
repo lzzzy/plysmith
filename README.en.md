@@ -141,6 +141,31 @@ The [source catalogue (German)](docs/import-sources.md) lists openings,
 tactics, endgames and master games to try, with direct download links and
 material-specific notes.
 
+## Lichess Live
+
+In **Settings**, enter a personal Lichess API token with `board:play`, then
+restart Plysmith. The token is stored locally and is never displayed again.
+No Lichess password is needed.
+
+In **Live**, switch to **Online**. The default is **Offline**; the choice is
+remembered in the desktop profile. Online reconnects on the next start; Offline
+closes connections without ending a game. Without a connection, Plysmith cannot
+detect browser game starts. A known Fair Play restriction remains until
+Lichess confirms it can be cleared.
+
+Start your games in the Lichess browser as usual. Plysmith reports the start
+in **Live**; Board API-compatible standard chess games can be played there
+without engines. While your own game is ongoing, engine and analysis assistance
+is blocked throughout Plysmith, including when you play in the browser.
+
+To watch a foreign standard chess game, paste its Lichess URL. Plysmith records
+the complete move history and offers local engines for the displayed position.
+Lichess spectator updates are delayed by three moves. After the game ends,
+save the complete game or discard it. Leaving Live only ends the local
+recording, not a game on Lichess.
+
+Setup and boundaries: [Lichess Live](docs/lichess-live.md) (German).
+
 ## Setting Up Chess Engines
 
 Stockfish, Lc0, and Maia weights come from separate projects. Check their

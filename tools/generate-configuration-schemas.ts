@@ -7,6 +7,7 @@ import {
   MaiaChessProviderConfigurationSchema,
   SqliteProviderConfigurationSchema,
   StockfishUciProviderConfigurationSchema,
+  LichessProviderConfigurationSchema,
 } from '../app/infrastructure/adapters/configuration/filesystem/configuration-schema.ts';
 
 const defaultOutputDirectory = path.resolve('configuration', 'schemas');
@@ -16,6 +17,11 @@ export async function generateConfigurationSchemas(
 ): Promise<void> {
   await mkdir(outputDirectory, { recursive: true });
   await Promise.all([
+    writeSchema(
+      outputDirectory,
+      'lichess-provider.schema.json',
+      LichessProviderConfigurationSchema,
+    ),
     writeSchema(
       outputDirectory,
       'plysmith.schema.json',

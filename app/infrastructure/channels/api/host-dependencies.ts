@@ -2,6 +2,11 @@ import type {
   GetUserPreferencesUseCase,
   SetUiLanguageUseCase,
 } from '../../../application/preferences/index.ts';
+import type { LiveService } from '../../../application/live/live-session.ts';
+import type {
+  GetLiveProviderConfiguration,
+  SaveLiveProviderConfiguration,
+} from '../../../application/live/live-provider-configuration.ts';
 import type {
   CreateDiagnosticReportUseCase,
   GetDiagnosticReportManifestUseCase,
@@ -79,6 +84,27 @@ import type {
 } from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
+  readonly live: Pick<
+    LiveService,
+    | 'getState'
+    | 'observe'
+    | 'play'
+    | 'select'
+    | 'move'
+    | 'act'
+    | 'refresh'
+    | 'disconnect'
+    | 'discard'
+    | 'save'
+  >;
+  readonly getLiveProviderConfiguration: Pick<
+    GetLiveProviderConfiguration,
+    'execute'
+  >;
+  readonly saveLiveProviderConfiguration: Pick<
+    SaveLiveProviderConfiguration,
+    'execute'
+  >;
   readonly registerImportInput: Pick<RegisterImportInput, 'execute'>;
   readonly prepareImport: Pick<PrepareImport, 'execute'>;
   readonly checkImportNames: Pick<CheckImportNames, 'execute'>;

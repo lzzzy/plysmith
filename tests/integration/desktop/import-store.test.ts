@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { inactiveLiveClient } from '../../unit/ui/live-client-fixture.ts';
 import {
   PlysmithHostClient,
   HostClientProblem,
@@ -93,6 +94,7 @@ async function fixture(
     token: 'import-test-token-000000000000000',
   };
   const reads = {
+    ...inactiveLiveClient,
     getSystemStatus: async () => {
       ++refreshes;
       return {
@@ -707,8 +709,8 @@ test('analysis retains its chosen imported branch across backward navigation and
   t.after(() => store.close());
   const selected = () => {
     const state = store.getSnapshot();
-    assert.ok(state.phase === 'ready' && state.analysis.record);
-    return state.analysis.record;
+    assert.ok(state.phase === 'ready' && state.analysis?.record);
+    return state.analysis?.record;
   };
   await store.openRecordAnchor('13');
   await store.openRecordAnchor('14');

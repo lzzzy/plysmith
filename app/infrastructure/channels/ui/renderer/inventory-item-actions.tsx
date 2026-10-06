@@ -55,11 +55,13 @@ export function InventoryItemActions({
       destructive,
     });
   }
-  if (pending)
-    add('resolve', 'revisionImpact.review', <ClipboardCheck size={16} />);
-  else if (contextId === undefined || member)
-    add('open', 'activity.analyze', <ArrowRight size={16} />);
-  if (!pending) add('rename', 'inventory.rename', <Pencil size={16} />);
+  if (!state.fairPlayBlocked) {
+    if (pending)
+      add('resolve', 'revisionImpact.review', <ClipboardCheck size={16} />);
+    else if (contextId === undefined || member)
+      add('open', 'activity.analyze', <ArrowRight size={16} />);
+    if (!pending) add('rename', 'inventory.rename', <Pencil size={16} />);
+  }
   if (contextId !== undefined) {
     if (member)
       add('remove', 'manage.removeFromContext', <Minus size={16} />, true);

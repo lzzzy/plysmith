@@ -1,5 +1,11 @@
 import {
   connectHost,
+  type LiveStateDto,
+  type LiveSavedDto,
+  type LiveCommandRequestDto,
+  type SaveLiveGameRequestDto,
+  type LiveProviderConfigurationDto,
+  type SaveLiveProviderConfigurationRequestDto,
   type RegisterImportInputRequestDto,
   type ImportInputDescriptorDto,
   type PrepareImportRequestDto,
@@ -130,6 +136,64 @@ export class RediscoveringHostClient {
     request: RegisterImportInputRequestDto,
   ): Promise<ImportInputDescriptorDto> {
     return (await this.#currentClient()).registerImportInput(request);
+  }
+
+  getLiveState(): Promise<LiveStateDto> {
+    return this.#read((client) => client.getLiveState());
+  }
+  async liveCommand(request: LiveCommandRequestDto): Promise<LiveStateDto> {
+    return (await this.#currentClient()).liveCommand(request);
+  }
+  async observeLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'observe' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return (await this.#currentClient()).observeLiveGame(request);
+  }
+  async playLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'play' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return (await this.#currentClient()).playLiveGame(request);
+  }
+  async selectLivePosition(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'select' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return (await this.#currentClient()).selectLivePosition(request);
+  }
+  async submitLiveMove(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'move' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return (await this.#currentClient()).submitLiveMove(request);
+  }
+  async actLiveGame(
+    request: Omit<Extract<LiveCommandRequestDto, { kind: 'act' }>, 'kind'>,
+  ): Promise<LiveStateDto> {
+    return (await this.#currentClient()).actLiveGame(request);
+  }
+  async refreshLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return (await this.#currentClient()).refreshLiveGame(request);
+  }
+  async disconnectLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return (await this.#currentClient()).disconnectLiveGame(request);
+  }
+  async discardLiveGame(request: {
+    readonly expectedRevision: number;
+  }): Promise<LiveStateDto> {
+    return (await this.#currentClient()).discardLiveGame(request);
+  }
+  async saveLiveGame(request: SaveLiveGameRequestDto): Promise<LiveSavedDto> {
+    return (await this.#currentClient()).saveLiveGame(request);
+  }
+  getLiveProviderConfiguration(): Promise<LiveProviderConfigurationDto> {
+    return this.#read((client) => client.getLiveProviderConfiguration());
+  }
+  async saveLiveProviderConfiguration(
+    request: SaveLiveProviderConfigurationRequestDto,
+  ): Promise<LiveProviderConfigurationDto> {
+    return (await this.#currentClient()).saveLiveProviderConfiguration(request);
   }
 
   async prepareImport(

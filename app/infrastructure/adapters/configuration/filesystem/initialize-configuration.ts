@@ -16,10 +16,13 @@ import { Value } from '@sinclair/typebox/value';
 
 import {
   EngineProviderConfigurationDocumentSchema,
+  LichessProviderConfigurationSchema,
   PlysmithConfigurationSchema,
   SqliteProviderConfigurationSchema,
   validateMinimalConfigurationSet,
 } from './configuration-schema.ts';
+import { LICHESS_PROVIDER_INSTANCE_ID } from '../../../../../contracts/host/live-provider-configuration.ts';
+import { parseLichessEnvironment } from './lichess-secret.ts';
 
 export interface InitializeConfigurationOptions {
   applicationHome: string;
@@ -182,7 +185,7 @@ async function activeSetIsValid(
     }
     documents.set(name, document);
   }
-  let valid = true;
+  let valid = !names.includes('.live-settings.lock');
   for (const [name, document] of documents) {
     assertDatabaseOutsideRemovalTargets(
       document,
@@ -205,6 +208,8 @@ async function activeSetIsValid(
       for (const enginePath of paths) {
         valid = (await availableFile(enginePath)) && valid;
       }
+    } else if (Value.Check(LichessProviderConfigurationSchema, document)) {
+      if (name !== `${LICHESS_PROVIDER_INSTANCE_ID}.json`) valid = false;
     } else {
       valid = false;
     }
@@ -229,16 +234,19 @@ async function activeSetIsValid(
     )
       valid = false;
   }
-  if (central.bindings.liveProviders.length > 0) valid = false;
-  if (await pathExists(envPath)) {
-    const source = await readFile(envPath, 'utf8');
-    // No technical environment keys are supported by the current runtime.
+  for (const id of central.bindings.liveProviders) {
     if (
-      source
-        .split(/\r?\n/u)
-        .some((line) => line.trim() !== '' && !line.trimStart().startsWith('#'))
+      id !== LICHESS_PROVIDER_INSTANCE_ID ||
+      !Value.Check(
+        LichessProviderConfigurationSchema,
+        documents.get(`${id}.json`),
+      )
     )
       valid = false;
+  }
+  if (await pathExists(envPath)) {
+    const source = await readFile(envPath, 'utf8');
+    if (parseLichessEnvironment(source) === undefined) valid = false;
   }
   return valid;
 }
@@ -352,6 +360,7 @@ function isInterruptedWriteFile(name: string): boolean {
   return (
     name === '.engine-settings.lock' ||
     name === '.diagnostic-settings.lock' ||
+    name === '.live-settings.lock' ||
     /^\.(?:plysmith|[a-z0-9][a-z0-9-]*\.json)-[1-9]\d*-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.tmp$/u.test(
       name,
     )
