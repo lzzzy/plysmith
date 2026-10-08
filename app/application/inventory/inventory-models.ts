@@ -13,7 +13,7 @@ import type {
 import type { InventoryRevisionMode } from '../../domain/inventory/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
-import type { AnalysisNoteScope } from '../analysis/analysis-models.ts';
+import type { AnalysisNoteScope } from '../analysis/public.ts';
 
 export interface InventorySearchItem {
   readonly folderId?: InventoryFolderId;

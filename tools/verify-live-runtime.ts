@@ -595,9 +595,7 @@ async function closeDesktop() {
   const child = owned.process();
   if (child.exitCode !== null || child.signalCode !== null) return;
   try {
-    await owned.evaluate(({ app: desktop }) => {
-      setTimeout(() => desktop.quit(), 0);
-    });
+    await owned.close();
     await expect
       .poll(() => child.exitCode !== null || child.signalCode !== null, {
         timeout: 15_000,
@@ -1217,6 +1215,209 @@ try {
     },
   );
   await step(
+    'Early own game abort cancels its dialog without a write, then confirms and discards',
+    async () => {
+      const gameId = 'abort001';
+      const inventoryCount = (await client.searchInventory({})).items.length;
+      await expect
+        .poll(async () => (await client.getLiveState()).session)
+        .toBeUndefined();
+      fake.add(gameId, true);
+      await nav('activity.live');
+      await button('live.play').click();
+      await expect
+        .poll(() => client.getLiveState())
+        .toMatchObject({
+          fairPlayBlocked: true,
+          session: { gameId, status: 'ongoing', connected: true, steps: [] },
+        });
+      await expect.poll(() => fake.gameQueues.get(gameId)?.size).toBe(1);
+      await button('live.abort').click();
+      const dialog = page!.getByRole('dialog', {
+        name: label('live.confirmAbort'),
+        exact: true,
+      });
+      await expect(dialog).toBeVisible();
+      await capture('live-abort-confirmation-de');
+      await dialog
+        .getByRole('button', { name: label('action.cancel'), exact: true })
+        .click();
+      await expect(dialog).toBeHidden();
+      assert.deepEqual(
+        fake.calls.filter(
+          (call) => call.gameId === gameId && call.operation === 'act',
+        ),
+        [],
+      );
+      const cancelled = await client.getLiveState();
+      assert.equal(cancelled.session?.status, 'ongoing');
+      assert.equal(cancelled.session?.connected, true);
+      assert.equal(cancelled.fairPlayBlocked, true);
+      assert.equal(fake.own.has(gameId), true);
+      assert.equal(fake.gameQueues.get(gameId)?.size, 1);
+      await button('live.abort').click();
+      await dialog
+        .getByRole('button', { name: label('live.abort'), exact: true })
+        .click();
+      await expect(dialog).toBeHidden();
+      await expect
+        .poll(() => client.getLiveState())
+        .toMatchObject({
+          fairPlayBlocked: false,
+          session: {
+            gameId,
+            status: 'ended',
+            outcome: 'unfinished',
+            connected: false,
+            steps: [],
+          },
+        });
+      assert.deepEqual(
+        fake.calls.filter(
+          (call) => call.gameId === gameId && call.operation === 'act',
+        ),
+        [{ operation: 'act', gameId, value: 'abort' }],
+      );
+      await expect.poll(() => fake.gameQueues.get(gameId)?.size).toBe(0);
+      assert.equal(fake.own.has(gameId), false);
+      assert.equal(fake.accountQueues.size, 1);
+      await expect(
+        page!.getByText(label('live.unfinished'), { exact: true }),
+      ).toBeVisible();
+      await expect(page!.getByRole('grid')).toHaveAttribute(
+        'aria-readonly',
+        'true',
+      );
+      await expect(
+        page!.getByText(label('live.fairPlay'), { exact: true }),
+      ).toHaveCount(0);
+      await capture('live-aborted-de');
+      await discard();
+      assert.equal(
+        (await client.searchInventory({})).items.length,
+        inventoryCount,
+      );
+      assert.equal((await client.getLiveState()).fairPlayBlocked, false);
+    },
+  );
+  await step(
+    'Opponent draw is accepted through the UI; verified final export unlocks and saves one half result',
+    async () => {
+      const gameId = 'draw0001';
+      const inventoryCount = (await client.searchInventory({})).items.length;
+      fake.add(gameId, true, ['e2e4', 'e7e5']);
+      await nav('activity.live');
+      await button('live.play').click();
+      await expect
+        .poll(() => client.getLiveState())
+        .toMatchObject({
+          fairPlayBlocked: true,
+          session: { gameId, status: 'ongoing', connected: true },
+        });
+      await expect.poll(() => fake.gameQueues.get(gameId)?.size).toBe(1);
+      const offered = { ...fake.games.get(gameId)!, blackDrawOffer: true };
+      fake.games.set(gameId, offered);
+      fake.emit(gameId, { kind: 'snapshot', game: offered });
+      await expect(button('live.accept_draw')).toBeEnabled();
+      const readsBeforeAccept = fake.calls.filter(
+        (call) => call.gameId === gameId && call.operation === 'readGame',
+      ).length;
+      fake.offline.add(gameId);
+      await button('live.accept_draw').click();
+      await expect
+        .poll(() => client.getLiveState())
+        .toMatchObject({
+          fairPlayBlocked: true,
+          games: [],
+          session: {
+            gameId,
+            status: 'finalizing',
+            problemCode: 'live.provider_unavailable',
+          },
+        });
+      assert.deepEqual(
+        fake.calls.filter(
+          (call) => call.gameId === gameId && call.operation === 'act',
+        ),
+        [{ operation: 'act', gameId, value: 'accept_draw' }],
+      );
+      assert.equal(fake.own.has(gameId), false);
+      await expect(button('live.save')).toHaveCount(0);
+      await expect(
+        page!.getByText(label('live.fairPlay'), { exact: true }).first(),
+      ).toBeVisible();
+      await capture('live-accepted-draw-awaiting-export-de');
+      // Exhaust the bounded retries before restoring the fake for the UI refresh.
+      await expect
+        .poll(
+          () =>
+            fake.calls.filter(
+              (call) => call.gameId === gameId && call.operation === 'readGame',
+            ).length,
+          { timeout: 15_000 },
+        )
+        .toBe(readsBeforeAccept + 4);
+      assert.equal((await client.getLiveState()).fairPlayBlocked, true);
+      fake.offline.delete(gameId);
+      await button('live.refresh').click();
+      await expect
+        .poll(() => client.getLiveState())
+        .toMatchObject({
+          fairPlayBlocked: false,
+          session: {
+            gameId,
+            status: 'ended',
+            outcome: 'draw',
+            connected: false,
+          },
+        });
+      await expect.poll(() => fake.gameQueues.get(gameId)?.size).toBe(0);
+      assert.equal(fake.accountQueues.size, 1);
+      await expect(
+        page!.getByText(label('live.draw'), { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page!.getByText(label('live.fairPlay'), { exact: true }),
+      ).toHaveCount(0);
+      await expect(page!.getByRole('grid')).toHaveAttribute(
+        'aria-readonly',
+        'true',
+      );
+      await page!
+        .getByLabel(label('live.name'), { exact: true })
+        .fill('Runtime saved drawn game');
+      await capture('live-accepted-draw-completed-de');
+      await button('live.save').click();
+      await expect
+        .poll(async () => (await client.searchInventory({})).items.length)
+        .toBe(inventoryCount + 1);
+      await expect
+        .poll(async () => (await client.getLiveState()).session)
+        .toBeUndefined();
+      const item = (await client.searchInventory({})).items.find(
+        (entry) => entry.displayName === 'Runtime saved drawn game',
+      );
+      assert.ok(item);
+      assert.equal(item.itemType, 'game');
+      const record = await client.getInventoryRevision(
+        item.itemId,
+        item.currentRevisionId,
+        { scopeKind: 'free' },
+      );
+      await writeFile(
+        path.join(artifacts, 'saved-draw-game.json'),
+        JSON.stringify(record, null, 2),
+      );
+      assert.ok(
+        JSON.stringify(record).includes(
+          JSON.stringify(
+            'Runtime User - Opponent\n1/2-1/2\nhttps://lichess.org/draw0001',
+          ),
+        ),
+      );
+    },
+  );
+  await step(
     'Saved ordinary game survives restart; all owned resources terminate',
     async () => {
       await closeDesktop();
@@ -1225,13 +1426,29 @@ try {
       assert.equal((await client.getLiveState()).connection, 'disconnected');
       await launch();
       const inventory = await client.searchInventory({});
-      assert.equal(inventory.items.length, 3);
-      assert.equal(inventory.items[0]!.displayName, 'Runtime saved live game');
+      assert.equal(inventory.items.length, 4);
+      assert.ok(
+        inventory.items.some(
+          (item) => item.displayName === 'Runtime saved live game',
+        ),
+      );
+      const drawnGame = inventory.items.find(
+        (item) => item.displayName === 'Runtime saved drawn game',
+      );
+      assert.ok(drawnGame);
       await nav('activity.live');
       await expect
         .poll(async () => (await client.getLiveState()).connection)
         .toBe('connected');
-      assert.equal((await client.getLiveState()).fairPlayBlocked, false);
+      await expect
+        .poll(async () => (await client.getLiveState()).fairPlayBlocked)
+        .toBe(false);
+      const drawnRecord = await client.getInventoryRevision(
+        drawnGame.itemId,
+        drawnGame.currentRevisionId,
+        { scopeKind: 'free' },
+      );
+      assert.ok(JSON.stringify(drawnRecord).includes('1/2-1/2'));
       const connection = page!.getByRole('switch', {
         name: label('live.connectionMode'),
       });

@@ -66,6 +66,9 @@ function ApplicationFrame({
   if (state.phase === 'loading') return <LoadingState />;
   if (state.phase === 'unavailable')
     return <UnavailableState onRetry={() => void store.start()} />;
+  const busy = state.busyCommand !== undefined;
+  const completionPending = state.pendingPlayoutCompletion !== undefined;
+  const navigationBlocked = busy || completionPending;
 
   return (
     <div className={styles.applicationFrame}>
@@ -84,24 +87,28 @@ function ApplicationFrame({
           <ActivityButton
             activity="manage"
             current={state.activity}
+            isDisabled={navigationBlocked}
             icon={<Blocks aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('manage')}
           />
           <ActivityButton
             activity="analyze"
             current={state.activity}
+            isDisabled={navigationBlocked}
             icon={<BarChart3 aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('analyze')}
           />
           <ActivityButton
             activity="playout"
             current={state.activity}
+            isDisabled={busy || (completionPending && state.fairPlayBlocked)}
             icon={<Activity aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('playout')}
           />
           <ActivityButton
             activity="live"
             current={state.activity}
+            isDisabled={busy}
             icon={<Radio aria-hidden="true" size={19} />}
             onPress={() => store.setActivity('live')}
           />
@@ -109,6 +116,7 @@ function ApplicationFrame({
         <Button
           className={`${styles.activityButton!} ${state.activity === 'settings' ? styles.activeActivity : ''}`}
           onPress={() => store.setActivity('settings')}
+          isDisabled={busy}
         >
           <Settings aria-hidden="true" size={19} />
           <FormattedMessage id="activity.settings" />
@@ -139,10 +147,7 @@ function ApplicationFrame({
                   : { kind: 'context', contextId: value.slice(8) },
               );
             }}
-            disabled={
-              state.busyCommand !== undefined ||
-              state.pendingPlayoutCompletion !== undefined
-            }
+            disabled={navigationBlocked}
           >
             <option value="free">
               {intl.formatMessage({ id: 'scope.free' })}
@@ -226,6 +231,7 @@ function ApplicationFrame({
 function ActivityButton({
   activity,
   current,
+  isDisabled,
   icon,
   onPress,
 }: {
@@ -234,6 +240,7 @@ function ActivityButton({
     'manage' | 'analyze' | 'playout' | 'live'
   >;
   readonly current: ActivityId;
+  readonly isDisabled: boolean;
   readonly icon: ReactNode;
   readonly onPress: () => void;
 }) {
@@ -241,6 +248,7 @@ function ActivityButton({
     <Button
       className={`${styles.activityButton!} ${current === activity ? styles.activeActivity : ''}`}
       onPress={onPress}
+      isDisabled={isDisabled}
     >
       {icon}
       <FormattedMessage id={`activity.${activity}`} />

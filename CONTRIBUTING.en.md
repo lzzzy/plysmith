@@ -3,7 +3,7 @@
 [Deutsch](CONTRIBUTING.md) | [English](CONTRIBUTING.en.md)
 
 Thank you for your interest. Bug reports, ideas, documentation corrections,
-translations, tests, and code are welcome. Plysmith is an early Windows alpha;
+translations, tests, and code are welcome. Plysmith is a Windows beta;
 a proposal does not promise inclusion in a particular release.
 
 ## Discussing changes
@@ -17,18 +17,8 @@ logs.
 
 ## Developing locally
 
-Development and installer builds are currently set up for Windows x64. You
-need Git and the Node.js and pnpm versions listed under `engines.node` and
-`packageManager` in `package.json`. After cloning the repository:
-
-```powershell
-pnpm install --frozen-lockfile
-pnpm exec install-electron
-```
-
-Electron downloads its desktop runtime only when `install-electron` is run.
-SQLite uses the bundled native modules, so Windows x64 development does not
-require a separate compiler.
+Prerequisites, cloning, installation, and both startup commands are described
+under [Running from Source](README.en.md#running-from-source) in the README.
 
 Script commands check dependencies but never install them automatically. After
 changes to the package files, run `pnpm install --frozen-lockfile` again if needed.
@@ -38,19 +28,7 @@ store may be the cause. Compare `pnpm config get storeDir` with `storeDir` in
 install command to keep using the previous store without changing global
 configuration. Do not include the version subdirectory, such as `v11`.
 
-Start the Host and Desktop in two separate terminals in the repository:
-
-```powershell
-pnpm dev:host
-```
-
-```powershell
-pnpm dev:desktop
-```
-
-Development and installed applications use separate data profiles. Stockfish
-and Maia are optional and are not bundled. Most code changes do not need an
-installer build.
+Most code changes do not need an installer build.
 
 ## Checking changes
 
@@ -67,8 +45,8 @@ Before opening a pull request, run:
 pnpm verify
 ```
 
-If needed, `pnpm build:alpha` builds the Windows installer and release files
-in `build/alpha-release/output`. An ordinary contribution does not need a
+If needed, `pnpm build:release` builds the Windows installer and release files
+in `build/release/output`. An ordinary contribution does not need a
 version tag or release build.
 
 ## Pull request

@@ -136,9 +136,7 @@ async function closeDesktop() {
   if (!owned) return;
   const process = owned.process();
   try {
-    await owned.evaluate(({ app }) => {
-      setTimeout(() => app.quit(), 0);
-    });
+    await owned.close();
     await expect
       .poll(() => process.exitCode !== null || process.signalCode !== null, {
         timeout: 30000,

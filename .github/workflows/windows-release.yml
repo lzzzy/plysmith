@@ -1,4 +1,4 @@
-name: Windows Alpha release candidate
+name: Windows release candidate
 
 on:
   pull_request:
@@ -7,6 +7,7 @@ on:
       - main
     tags:
       - 'v*-alpha.*'
+      - 'v*-beta.*'
 
 permissions:
   contents: read
@@ -44,26 +45,26 @@ jobs:
         run: pnpm verify
       - name: Build installer
         if: github.ref_type == 'tag'
-        run: pnpm build:alpha
+        run: pnpm build:release
       - name: Verify release candidate
         if: github.ref_type == 'tag'
-        run: node tools/verify-alpha-release-candidate.ts
+        run: node tools/verify-release-candidate.ts
       - name: Verify bundled Host
         if: github.ref_type == 'tag'
-        run: node tools/verify-alpha-release.ts
+        run: node tools/verify-release.ts
       - uses: actions/upload-artifact@v4
         if: github.ref_type == 'tag'
         with:
-          name: windows-alpha-release
+          name: windows-release
           if-no-files-found: error
           path: |
-            build/alpha-release/output/*.exe
-            build/alpha-release/output/LICENSE
-            build/alpha-release/output/THIRD_PARTY_NOTICES.txt
-            build/alpha-release/output/licenses.tar.gz
-            build/alpha-release/output/release-license-inventory.json
-            build/alpha-release/output/sbom.cdx.json
-            build/alpha-release/output/SHA256SUMS.txt
+            build/release/output/*.exe
+            build/release/output/LICENSE
+            build/release/output/THIRD_PARTY_NOTICES.txt
+            build/release/output/licenses.tar.gz
+            build/release/output/release-license-inventory.json
+            build/release/output/sbom.cdx.json
+            build/release/output/SHA256SUMS.txt
 
   draft:
     needs: build
@@ -77,16 +78,16 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: windows-alpha-release
-          path: build/alpha-release/output
+          name: windows-release
+          path: build/release/output
       - name: Verify downloaded assets
-        working-directory: build/alpha-release/output
+        working-directory: build/release/output
         run: sha256sum --check SHA256SUMS.txt
       - name: Create draft prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" build/alpha-release/output/* \
+          gh release create "$GITHUB_REF_NAME" build/release/output/* \
             --draft --prerelease --verify-tag \
-            --title "Plysmith $GITHUB_REF_NAME (Alpha)" \
-            --notes-file .github/ALPHA_RELEASE_NOTES.md
+            --title "Plysmith $GITHUB_REF_NAME" \
+            --notes-file .github/RELEASE_NOTES.md

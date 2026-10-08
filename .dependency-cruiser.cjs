@@ -11,7 +11,7 @@ module.exports = {
       name: 'domain-is-independent',
       severity: 'error',
       from: { path: '^app/domain' },
-      to: { path: '^app/(application|infrastructure|bootstrap)' },
+      to: { pathNot: '^app/domain/' },
     },
     {
       name: 'application-does-not-use-infrastructure',
@@ -32,6 +32,38 @@ module.exports = {
       to: {
         dependencyTypes: ['core'],
         pathNot: '^(react|react-dom)$',
+      },
+    },
+    {
+      name: 'renderer-has-no-server-packages',
+      severity: 'error',
+      from: { path: '^app/infrastructure/channels/ui/renderer/' },
+      to: {
+        path: '(^|/)node_modules/(?:electron|better-sqlite3|fastify|@fastify/[^/]+)(?:/|$)',
+      },
+    },
+    {
+      name: 'renderer-has-no-business-imports',
+      severity: 'error',
+      from: { path: '^app/infrastructure/channels/ui/renderer/' },
+      to: { path: '^app/(domain|application)/' },
+    },
+    {
+      name: 'product-does-not-import-tests',
+      severity: 'error',
+      from: { path: ['^app/', '^contracts/'] },
+      to: { path: '^tests/' },
+    },
+    {
+      name: 'contexts-use-public-entrypoints',
+      severity: 'error',
+      from: { path: '^app/(?:domain|application)/([^/]+)/' },
+      to: {
+        path: '^app/(?:domain|application)/(?:inventory|workspace|analysis|playout|live|identity)/',
+        pathNot: [
+          '^app/(?:domain|application)/$1/',
+          '^app/(?:domain|application)/[^/]+/(?:index|public)\\.ts$',
+        ],
       },
     },
     {

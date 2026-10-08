@@ -20,20 +20,20 @@ import { build as buildModule } from 'esbuild';
 import { productRelease } from '../contracts/host/index.ts';
 import { buildProductManifest } from './build-product-manifest.ts';
 import { buildReleaseInventory } from './release-inventory.ts';
-import { writeAlphaReleaseChecksums } from './release-assets.ts';
+import { writeReleaseChecksums } from './release-assets.ts';
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
 );
-const defaultReleaseRoot = path.join(repositoryRoot, 'build', 'alpha-release');
-const stagingParent = process.env.PLYSMITH_ALPHA_STAGING_PARENT;
+const defaultReleaseRoot = path.join(repositoryRoot, 'build', 'release');
+const stagingParent = process.env.PLYSMITH_RELEASE_STAGING_PARENT;
 if (stagingParent !== undefined && !path.isAbsolute(stagingParent)) {
-  throw new Error('The Alpha staging parent must be an absolute directory.');
+  throw new Error('The Release staging parent must be an absolute directory.');
 }
 const releaseRoot = stagingParent
-  ? await mkdtemp(path.join(stagingParent, 'plysmith-alpha-release-'))
+  ? await mkdtemp(path.join(stagingParent, 'plysmith-release-'))
   : defaultReleaseRoot;
 const outputRoot = path.join(releaseRoot, 'output');
 const appRoot = path.join(releaseRoot, 'app');
@@ -45,7 +45,7 @@ if (
   process.arch !== 'x64' ||
   process.versions.node.split('.')[0] !== '24'
 ) {
-  throw new Error('The Alpha release build requires Windows x64 and Node 24.');
+  throw new Error('The Release build requires Windows x64 and Node 24.');
 }
 if (
   stagingParent === undefined &&
@@ -226,7 +226,7 @@ const built = await buildInstaller({
       signAndEditExecutable: false,
     },
     nsis: {
-      include: path.join(repositoryRoot, 'tools', 'alpha-installer.nsh'),
+      include: path.join(repositoryRoot, 'tools', 'installer.nsh'),
       oneClick: true,
       perMachine: false,
       allowElevation: false,
@@ -256,7 +256,7 @@ await execFileAsync('tar.exe', ['-czf', 'licenses.tar.gz', 'licenses'], {
   cwd: outputRoot,
   timeout: 60_000,
 });
-await writeAlphaReleaseChecksums(outputRoot, productRelease);
+await writeReleaseChecksums(outputRoot, productRelease);
 if (stagingParent !== undefined) {
   const pending = path.join(defaultReleaseRoot, 'output-next');
   const previous = path.join(defaultReleaseRoot, 'output-previous');

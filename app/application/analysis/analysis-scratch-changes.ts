@@ -27,7 +27,11 @@ export function analysisScratchHasChanges(
     // Cursor navigation is not a change to the complete candidate line.
     return inventoryRevisionHasChanges({
       base,
-      scratch: { ...scratch, cursor: scratch.steps.length },
+      candidate: {
+        intent: scratch.intent,
+        root: scratch.root,
+        steps: scratch.steps,
+      },
     });
   } catch {
     return true;

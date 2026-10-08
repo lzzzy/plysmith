@@ -3,9 +3,9 @@ import type { WorkScope } from '../../domain/workspace/index.ts';
 import {
   analysisScratchNotFound,
   analysisScratchRevisionConflict,
-} from '../analysis/analysis-problems.ts';
-import type { ContextAnalysisReader } from '../analysis/analysis-ports.ts';
-import type { FreeAnalysisSession } from '../analysis/free-analysis-session.ts';
+  type ContextAnalysisReader,
+  type FreeAnalysisSession,
+} from '../analysis/public.ts';
 
 export async function readRevisionScratch(input: {
   readonly scope: WorkScope;

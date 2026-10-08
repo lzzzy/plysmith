@@ -127,6 +127,8 @@ export class DesktopHostConnectionMonitor {
       return;
     }
 
+    if (this.#closed) return;
+
     try {
       await this.#validateWithinTimeout(connection);
     } catch {

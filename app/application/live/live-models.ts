@@ -3,7 +3,7 @@ import type {
   ChessState,
   SideToMove,
 } from '../../domain/chess_graph/index.ts';
-import type { PositionAnalysisFocus } from '../analysis/position-analysis.ts';
+import type { PositionAnalysisFocus } from '../analysis/public.ts';
 import type { LiveOutcome, LiveOwnGame, LivePlayer } from './live-ports.ts';
 
 export interface LiveRecordedMove {

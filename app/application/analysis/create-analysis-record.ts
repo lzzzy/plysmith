@@ -1,8 +1,10 @@
 import { createAnalysisRecordDraft } from '../../domain/inventory/index.ts';
 import type { AnalysisScratch } from '../../domain/analysis/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
-import type { AnalysisRecordCreated } from '../inventory/inventory-models.ts';
-import type { InventoryChangedPublisher } from '../inventory/inventory-ports.ts';
+import type {
+  AnalysisRecordCreated,
+  InventoryChangedPublisher,
+} from '../inventory/public.ts';
 import type {
   WorkspaceChanged,
   WorkspaceChangedPublisher,
@@ -22,7 +24,7 @@ import {
   invalidAnalysisRecord,
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
-import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
+import { assertInventoryWorkAccess } from '../workspace/index.ts';
 
 export interface CreateAnalysisRecordUseCase {
   execute(
@@ -117,10 +119,18 @@ export class CreateAnalysisRecord implements CreateAnalysisRecordUseCase {
   ): Promise<CreateAnalysisRecordResult> {
     let draft;
     try {
+      if (scratch.intent.kind !== 'exploration') {
+        throw invalidAnalysisRecord();
+      }
       draft = createAnalysisRecordDraft({
         displayName: request.displayName,
         languageTag: request.languageTag,
-        scratch,
+        originMode: scratch.origin.kind,
+        root: scratch.root,
+        steps: scratch.steps.slice(0, scratch.cursor),
+        ...(scratch.noteDraft === undefined
+          ? {}
+          : { noteBody: scratch.noteDraft.body }),
       });
     } catch {
       throw invalidAnalysisRecord();

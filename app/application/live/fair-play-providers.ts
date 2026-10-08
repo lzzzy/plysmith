@@ -1,5 +1,5 @@
-import type { PositionAnalysisRegistry } from '../analysis/position-analysis.ts';
-import type { MovePolicyRegistry } from '../playout/playout-ports.ts';
+import type { PositionAnalysisRegistry } from '../analysis/public.ts';
+import type { MovePolicyRegistry } from '../playout/index.ts';
 import type { FairPlayGate } from './fair-play-gate.ts';
 
 export function fairPlayPositionAnalyses(

@@ -1,8 +1,8 @@
 import type {
   AnalysisScratchChangedPublisher,
   ContextAnalysisReader,
-} from '../analysis/analysis-ports.ts';
-import type { FreeAnalysisSession } from '../analysis/free-analysis-session.ts';
+  FreeAnalysisSession,
+} from '../analysis/public.ts';
 import type {
   InventoryClock,
   InventoryRevisionWriter,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { request as httpRequest } from 'node:http';
-import { beforeEach, describe, test, type TestContext } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import {
   SetUiLanguage,
   type UiLanguageChanged,
@@ -17,6 +17,7 @@ import {
   occurredAt,
   token,
 } from '../../contract/api/fixtures.ts';
+import { TestResources, testResources } from '../../fixtures/test-resources.ts';
 
 class TestSubscription
   implements HostEventSubscription, AsyncIterable<HostEvent>
@@ -122,25 +123,30 @@ class TestEventSource implements HostEventSource {
   }
 }
 
-async function startTestHost(t: TestContext) {
+async function startTestHost(resources: TestResources) {
   const fixture = createFixture();
   const source = new TestEventSource();
-  const host = await buildHost({
-    ...fixture.dependencies,
-    events: source,
-    setUiLanguage: new SetUiLanguage({
-      unitOfWork: fixture.store,
-      clock: { now: () => occurredAt },
-      events: source,
-    }),
-  });
-  t.after(() => host.close());
-  const url = await host.listen({ host: '127.0.0.1', port: 0 });
+  const host = await resources.acquire(
+    () =>
+      buildHost({
+        ...fixture.dependencies,
+        events: source,
+        setUiLanguage: new SetUiLanguage({
+          unitOfWork: fixture.store,
+          clock: { now: () => occurredAt },
+          events: source,
+        }),
+      }),
+    (host) => host.close(),
+  );
+  const url = await resources.run(() =>
+    host.listen({ host: '127.0.0.1', port: 0 }),
+  );
   const authorization = { authorization: `Bearer ${token}` };
 
   async function connect(lastEventId?: string) {
     const controller = new AbortController();
-    t.after(() => controller.abort());
+    resources.defer(() => controller.abort());
     const response = await fetch(`${url}/events`, {
       headers: {
         ...authorization,
@@ -199,7 +205,7 @@ describe('event stream loopback', { concurrency: false }, () => {
   beforeEach(
     async (t) => {
       assert.ok('after' in t, 'Loopback setup requires a test context.');
-      fixture = await startTestHost(t);
+      fixture = await startTestHost(testResources(t));
     },
     { timeout: 10000 },
   );
@@ -330,43 +336,72 @@ test(
   },
 );
 
-test(
-  'loopback: an otherwise valid Host header cannot name a different local port',
-  { timeout: 10000 },
-  async (t) => {
-    const { url, authorization } = await startTestHost(t);
-    const port = Number(new URL(url).port);
-    // fetch normalizes Host, so send this intentionally mismatched header with HTTP.
-    const response = await new Promise<{
-      status: number | undefined;
-      body: string;
-    }>((resolve, reject) => {
-      const request = httpRequest(
-        `${url}/status`,
-        {
-          headers: {
-            ...authorization,
-            host: `127.0.0.1:${port === 43210 ? 43211 : 43210}`,
+describe('loopback port authority', { concurrency: false }, (context) => {
+  const resources = new TestResources(context.signal);
+  after(() => resources.close());
+  let fixture: Awaited<ReturnType<typeof startTestHost>>;
+  before(
+    async () => {
+      fixture = await startTestHost(resources);
+    },
+    { timeout: 10000 },
+  );
+
+  test(
+    'loopback: an otherwise valid Host header cannot name a different local port',
+    { timeout: 10000 },
+    async (t) => {
+      const { url, authorization } = fixture;
+      const port = Number(new URL(url).port);
+      // fetch normalizes Host, so send this intentionally mismatched header with HTTP.
+      const response = await new Promise<{
+        status: number | undefined;
+        body: string;
+      }>((resolve, reject) => {
+        const request = httpRequest(
+          `${url}/status`,
+          {
+            signal: t.signal,
+            headers: {
+              ...authorization,
+              host: `127.0.0.1:${port === 43210 ? 43211 : 43210}`,
+            },
           },
-        },
-        (response) => {
-          const chunks: Buffer[] = [];
-          response.on('data', (chunk: Buffer) => {
-            chunks.push(chunk);
-          });
-          response.on('error', reject);
-          response.on('end', () =>
-            resolve({
-              status: response.statusCode,
-              body: Buffer.concat(chunks).toString(),
-            }),
-          );
-        },
+          (response) => {
+            const chunks: Buffer[] = [];
+            response.on('data', (chunk: Buffer) => {
+              chunks.push(chunk);
+            });
+            response.on('error', reject);
+            response.on('end', () =>
+              resolve({
+                status: response.statusCode,
+                body: Buffer.concat(chunks).toString(),
+              }),
+            );
+          },
+        );
+        request.on('error', reject);
+        request.end();
+      });
+      assert.equal(response.status, 403);
+      assert.equal(JSON.parse(response.body).code, 'host.invalid_host');
+    },
+  );
+
+  test(
+    'loopback: the matching authority still reaches the authenticated status route',
+    { timeout: 10000 },
+    async (t) => {
+      const response = await fetch(`${fixture.url}/status`, {
+        headers: fixture.authorization,
+        signal: t.signal,
+      });
+      assert.equal(response.status, 200);
+      assert.equal(
+        ((await response.json()) as { state: string }).state,
+        'ready',
       );
-      request.on('error', reject);
-      request.end();
-    });
-    assert.equal(response.status, 403);
-    assert.equal(JSON.parse(response.body).code, 'host.invalid_host');
-  },
-);
+    },
+  );
+});

@@ -472,9 +472,17 @@ function buildCandidate(
     displayName: base.displayName,
     ...(base.summary === undefined ? {} : { summary: base.summary }),
   };
+  const candidate = Object.freeze({
+    intent,
+    root: scratch.root,
+    steps: scratch.steps,
+  });
   let candidateSteps: readonly AnalysisScratchStep[];
   try {
-    candidateSteps = inventoryRevisionCandidateSteps({ base: line, scratch });
+    if (scratch.cursor !== scratch.steps.length) {
+      throw invalidInventoryRevision();
+    }
+    candidateSteps = inventoryRevisionCandidateSteps({ base: line, candidate });
   } catch {
     throw invalidInventoryRevision();
   }
@@ -563,7 +571,7 @@ function buildCandidate(
   const noOp =
     intent.mode === 'add_variation'
       ? addedSteps.length === 0
-      : !inventoryRevisionHasChanges({ base: line, scratch }) &&
+      : !inventoryRevisionHasChanges({ base: line, candidate }) &&
         removedOccurrences.size <= removedSteps.length;
   const dataRevision = readDataRevision(database);
   return Object.freeze({

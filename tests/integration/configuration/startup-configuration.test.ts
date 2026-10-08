@@ -18,7 +18,6 @@ import { initializeConfiguration } from '../../../app/infrastructure/adapters/co
 const defaultsDirectory = path.resolve('configuration/defaults');
 const interruptedWriteFiles = [
   '.engine-settings.lock',
-  '.diagnostic-settings.lock',
   '.stockfish-main.json-123-5ee173e3-625a-45d9-bafd-b321903cab17.tmp',
   '.plysmith.json-123-5ee173e3-625a-45d9-bafd-b321903cab17.tmp',
   '.plysmith-123-5ee173e3-625a-45d9-bafd-b321903cab17.tmp',
@@ -89,16 +88,13 @@ for (const invalid of [false, true]) {
 for (const unsafe of ['unknown', 'junction', 'hardlink', 'database'] as const) {
   test(`preserves all files when interrupted write cleanup encounters ${unsafe}`, async (context) => {
     const f = await fixture(context);
-    const retainedLock = path.join(
-      f.activeDirectory,
-      '.diagnostic-settings.lock',
-    );
+    const retainedLock = path.join(f.activeDirectory, '.engine-settings.lock');
     await writeFile(retainedLock, 'retain until every file is checked');
     const outside = path.join(f.root, 'outside');
     await mkdir(outside);
     const outsideFile = path.join(outside, 'keep.json');
     await writeFile(outsideFile, 'untouched');
-    const artifact = path.join(f.activeDirectory, interruptedWriteFiles[2]!);
+    const artifact = path.join(f.activeDirectory, interruptedWriteFiles[1]!);
     if (unsafe === 'unknown')
       await writeFile(
         path.join(f.activeDirectory, '.stockfish-main.json-123-not-a-uuid.tmp'),
@@ -111,7 +107,7 @@ for (const unsafe of ['unknown', 'junction', 'hardlink', 'database'] as const) {
       await f.put('sqlite-main.json', {
         schemaVersion: 99,
         sqlite: {
-          databasePath: 'configuration/active/.diagnostic-settings.lock',
+          databasePath: 'configuration/active/.engine-settings.lock',
         },
       });
     }

@@ -8,8 +8,8 @@ import type { ChessState } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import { workingContextNotFound } from '../workspace/index.ts';
-import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
-import { inventoryItemNotFound } from '../inventory/inventory-problems.ts';
+import { assertInventoryWorkAccess } from '../workspace/index.ts';
+import { inventoryItemNotFound } from '../inventory/public.ts';
 import type {
   AnalysisRecordView,
   AnalysisWorkspace,

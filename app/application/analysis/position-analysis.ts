@@ -5,12 +5,12 @@ import type {
 } from '../../domain/chess_graph/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
-import type { FairPlayGate } from '../live/fair-play-gate.ts';
+import type { FairPlayGate } from '../live/index.ts';
 import {
   requireInventoryWorkAccess,
   type InventoryWorkAccess,
   type InventoryWorkAccessReader,
-} from '../workspace/inventory-work-access.ts';
+} from '../workspace/index.ts';
 
 export type PositionAnalysisCapability =
   'objective_position_analysis' | 'human_policy_analysis';

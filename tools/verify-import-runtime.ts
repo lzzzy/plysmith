@@ -219,9 +219,7 @@ async function closeDesktop() {
   const child = owned.process();
   if (child.exitCode !== null || child.signalCode !== null) return;
   try {
-    await owned.evaluate(({ app: electronApp }) => {
-      setTimeout(() => electronApp.quit(), 0);
-    });
+    await owned.close();
     await expect
       .poll(() => child.exitCode !== null || child.signalCode !== null, {
         timeout: 30_000,

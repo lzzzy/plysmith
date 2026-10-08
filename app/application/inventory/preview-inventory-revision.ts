@@ -1,5 +1,7 @@
-import type { ContextAnalysisReader } from '../analysis/analysis-ports.ts';
-import type { FreeAnalysisSession } from '../analysis/free-analysis-session.ts';
+import type {
+  ContextAnalysisReader,
+  FreeAnalysisSession,
+} from '../analysis/public.ts';
 import type {
   InventoryRevisionPreview,
   PreviewInventoryRevisionRequest,

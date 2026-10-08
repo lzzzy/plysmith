@@ -377,6 +377,64 @@ test(
   },
 );
 
+for (const operation of ['draft', 'save', 'remove'] as const) {
+  test(`obsolete engine ${operation} reconciliation cannot release a restarted command`, async (t) => {
+    const read = Promise.withResolvers<{
+      providers: EngineProviderConfigurationDto[];
+    }>();
+    const entered = Promise.withResolvers<void>();
+    const preview =
+      Promise.withResolvers<EngineProviderConfigurationPreviewDto>();
+    let deferRead = false;
+    let deferPreview = false;
+    const store = createStore({
+      getEngineProviderConfigurations: async () => {
+        if (deferRead) {
+          deferRead = false;
+          entered.resolve();
+          return read.promise;
+        }
+        return { providers: [stockfish, maia] };
+      },
+      previewEngineProviderConfiguration: async () =>
+        deferPreview ? preview.promise : { valid: true, issues: [] },
+      saveEngineProviderConfiguration: async () => {
+        deferRead = true;
+        return stockfish;
+      },
+      removeEngineProviderConfiguration: async () => {
+        deferRead = true;
+        return stockfish;
+      },
+    });
+    t.after(() => store.close());
+    await store.start();
+    store.updateEngineConfigurationDraft('stockfish', {
+      displayName: 'Changed',
+    });
+    const saving =
+      operation === 'draft'
+        ? store.saveEngineConfigurationDraft('stockfish')
+        : operation === 'save'
+          ? store.saveEngineProviderConfiguration(stockfish, 'revision-1')
+          : store.removeEngineProviderConfiguration(stockfish);
+    await entered.promise;
+    await store.start();
+    deferPreview = true;
+    const current = store.previewEngineProviderConfiguration(stockfish);
+    assert.equal(ready(store).busyCommand, 'preview_engine_provider');
+    read.resolve({ providers: [stockfish, maia] });
+    const saved = await saving;
+    const busy = ready(store).busyCommand;
+    preview.resolve({ valid: true, issues: [] });
+    await current;
+
+    assert.equal(busy, 'preview_engine_provider');
+    assert.equal(saved, false);
+    assert.equal(ready(store).busyCommand, undefined);
+  });
+}
+
 function ready(store: PlysmithApplicationStore) {
   const state = store.getSnapshot();
   assert.equal(state.phase, 'ready');

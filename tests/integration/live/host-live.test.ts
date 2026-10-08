@@ -15,6 +15,7 @@ import type {
   LiveProviderPort,
 } from '../../../app/application/live/live-ports.ts';
 import { initializeConfiguration } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 
 class Events<T> {
   readonly pending: T[] = [];
@@ -106,31 +107,36 @@ class Provider implements LiveProviderPort {
 }
 
 async function setup(t: TestContext, provider = new Provider()) {
-  const applicationHome = await mkdtemp(
-    path.join(tmpdir(), 'plysmith-live-host-'),
+  const resources = testResources(t);
+  const applicationHome = await resources.acquire(
+    () => mkdtemp(path.join(tmpdir(), 'plysmith-live-host-')),
+    (directory) => rm(directory, { recursive: true, force: true }),
   );
+  resources.defer(() => {
+    assert.equal(provider.account.active, 0);
+    assert.equal(provider.game.active, 0);
+  });
   const defaultsDirectory = path.resolve('configuration', 'defaults');
-  await initializeConfiguration({ applicationHome, defaultsDirectory });
+  await resources.run(() =>
+    initializeConfiguration({ applicationHome, defaultsDirectory }),
+  );
   const options = {
     applicationHome,
     defaultsDirectory,
     hostToken: 'live-host-test',
     liveProvider: provider,
   };
-  let runtime = await composeHost(options);
-  t.after(async () => {
-    try {
-      await runtime.close();
-      assert.equal(provider.account.active, 0);
-      assert.equal(provider.game.active, 0);
-    } finally {
-      await rm(applicationHome, { recursive: true, force: true });
-    }
-  });
+  const startRuntime = () =>
+    resources.acquire(
+      () => composeHost(options),
+      (runtime) => runtime.close(),
+    );
+  let runtime = await startRuntime();
   runtime.markReady();
   let host = runtime.host;
   const headers = { host: '127.0.0.1', authorization: 'Bearer live-host-test' };
   const getState = async () => {
+    t.signal.throwIfAborted();
     const response = await host.inject({ url: '/live', headers });
     assert.equal(response.statusCode, 200, response.body);
     return response.json<LiveState>();
@@ -160,8 +166,8 @@ async function setup(t: TestContext, provider = new Provider()) {
     );
   };
   const restart = async () => {
-    await runtime.close();
-    runtime = await composeHost(options);
+    await resources.run(() => runtime.close());
+    runtime = await startRuntime();
     runtime.markReady();
     host = runtime.host;
     return host;

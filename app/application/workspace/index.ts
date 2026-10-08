@@ -1,4 +1,10 @@
 export {
+  assertInventoryWorkAccess,
+  requireInventoryWorkAccess,
+  type InventoryWorkAccess,
+  type InventoryWorkAccessReader,
+} from './inventory-work-access.ts';
+export {
   AddContextReference,
   type AddContextReferenceUseCase,
 } from './add-context-reference.ts';

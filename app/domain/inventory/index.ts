@@ -1,3 +1,4 @@
+export type { ChessTree } from './chess-tree.ts';
 export {
   InventoryFolderPolicyError,
   inventoryFolderNameKey,
@@ -19,7 +20,7 @@ export {
   inventoryRevisionCandidateSteps,
   inventoryRevisionHasChanges,
   planInventoryRevision,
-  promoteAnalysisExplorationToRevision,
+  type InventoryRevisionCandidate,
   type InventoryRevisionLine,
   type InventoryRevisionLineStep,
   type InventoryRevisionMode,

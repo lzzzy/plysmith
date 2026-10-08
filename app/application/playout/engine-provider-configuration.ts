@@ -1,5 +1,5 @@
 import { ApplicationProblem } from '../problems/application-problem.ts';
-import type { ObjectiveAnalysisBudget } from '../analysis/position-analysis.ts';
+import type { ObjectiveAnalysisBudget } from '../analysis/public.ts';
 
 interface EngineProviderConfigurationBase {
   readonly instanceId: string;

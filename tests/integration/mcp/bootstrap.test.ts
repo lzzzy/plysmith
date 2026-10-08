@@ -7,7 +7,6 @@ import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 import { parseApplicationHome } from '../../../app/bootstrap/mcp/main.ts';
 import type { PlayoutDto } from '../../../app/infrastructure/channels/host_client/index.ts';
@@ -19,6 +18,8 @@ import {
 } from '../../contract/mcp/helpers.ts';
 import { createHttpHostFixture } from './http-host-fixture.ts';
 import { createApplicationHostFixture } from './application-host-fixture.ts';
+import { TestStdioTransport } from '../../fixtures/stdio-transport.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 
 const entryPoint = fileURLToPath(
   new URL('../../../app/bootstrap/mcp/main.ts', import.meta.url),
@@ -27,8 +28,9 @@ const startupFailure =
   'Plysmith MCP could not attach. Start the matching Application Host and check application-home.';
 
 async function attach(t: TestContext, applicationHome: string) {
+  const resources = testResources(t);
   const client = new Client({ name: 'plysmith-stdio-test', version: '1.0.0' });
-  const transport = new StdioClientTransport({
+  const transport = new TestStdioTransport({
     command: process.execPath,
     args: [entryPoint, '--application-home', applicationHome],
     // Hosted Windows runners need the module path when launching PowerShell below MCP.
@@ -41,13 +43,13 @@ async function attach(t: TestContext, applicationHome: string) {
   transport.stderr?.on('data', (chunk: Buffer) => {
     stderr += chunk.toString();
   });
-  t.after(async () => {
-    await client.close();
-    await transport.close();
-  });
+  resources.defer(() => transport.close());
+  resources.defer(() => client.close());
   try {
-    await client.connect(transport);
-    await client.listTools();
+    await resources.run(() => client.connect(transport, { signal: t.signal }));
+    await resources.run(() =>
+      client.listTools(undefined, { signal: t.signal }),
+    );
   } catch (error) {
     throw new Error(
       `MCP attach failed: ${stderr.trim() || 'no child stderr'}`,

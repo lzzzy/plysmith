@@ -1004,6 +1004,108 @@ test('timeout export completes an own game and refresh recovers a failed final r
   assert.equal(f.service.getState().session, undefined);
 });
 
+test('a delayed ongoing export cannot erase terminal Board moves or permit an incomplete final save', async (t) => {
+  let stored: LiveFairPlayGuardState = { blocked: false };
+  const f = fixture(t, true, {
+    readLiveFairPlayGuard: async () => stored,
+    writeLiveFairPlayGuard: async (state) => {
+      stored = state;
+    },
+  });
+  await f.connect();
+  await f.service.play(id, f.revision);
+  const terminal: LiveGameSnapshot = {
+    ...game(['e4', 'e5', 'Nf3', 'Nc6'], true),
+    outcome: 'white_win',
+    whiteClockMs: 590000,
+    blackClockMs: 0,
+  };
+  f.snapshot = game(['e4', 'e5']);
+  f.gameEvents.push({ kind: 'snapshot', game: terminal });
+  f.account = { id: 'alice', name: 'Alice', games: [] };
+  f.accountEvents.push({ kind: 'game_finished', gameId: id });
+  await until(
+    () => f.providerCalls.filter((call) => call === 'readGame').length === 2,
+  );
+  await until(() => f.service.getState().games.length === 0);
+  const pending = f.service.getState().session!;
+  assert.equal(pending.status, 'finalizing');
+  assert.equal(pending.steps.length, 4);
+  assert.equal(pending.outcome, 'white_win');
+  assert.equal(pending.blackClockMs, 0);
+  assert.equal(pending.connected, false);
+  assert.equal(f.fairPlay.blocked, true);
+  assert.deepEqual(stored, { blocked: true, accountId: 'alice' });
+
+  f.snapshot = game(['e4', 'e5'], true);
+  await assert.rejects(f.service.refresh(f.revision), {
+    problemCode: 'live.protocol_error',
+  });
+  await assert.rejects(
+    f.service.save({
+      expectedRevision: f.revision,
+      displayName: 'Incomplete final export',
+      languageTag: 'en-GB',
+    }),
+    { problemCode: 'live.not_finished' },
+  );
+  assert.equal(f.saved.length, 0);
+  assert.equal(f.fairPlay.blocked, true);
+  assert.deepEqual(stored, { blocked: true, accountId: 'alice' });
+
+  f.snapshot = terminal;
+  await f.service.refresh(f.revision);
+  assert.equal(f.service.getState().session?.status, 'ended');
+  await until(() => !f.fairPlay.blocked);
+  assert.deepEqual(stored, { blocked: false });
+  await f.service.save({
+    expectedRevision: f.revision,
+    displayName: 'Complete final export',
+    languageTag: 'en-GB',
+  });
+  assert.equal(f.saved[0]?.steps.length, 4);
+  assert.equal(f.saved[0]?.outcome, 'white_win');
+});
+
+test('a stale observer refresh cannot reopen a session while its final export is pending', async (t) => {
+  const reads: ((snapshot: LiveGameSnapshot) => void)[] = [];
+  t.after(() => {
+    for (const resolve of reads) resolve(game(['e4', 'e5'], true));
+  });
+  const f = fixture(t);
+  await f.connect();
+  await f.service.observe(`https://lichess.org/${id}`, f.revision);
+  f.provider.readGame = () => new Promise((resolve) => reads.push(resolve));
+  const refresh = f.service.refresh(f.revision);
+  await until(() => reads.length === 1);
+  f.gameEvents.push({ kind: 'finished' });
+  await until(() => reads.length === 2);
+  assert.equal(f.service.getState().session?.status, 'finalizing');
+  reads[0]!(game());
+  await refresh;
+  assert.equal(f.service.getState().session?.status, 'finalizing');
+  reads[1]!(game(['e4', 'e5'], true));
+  f.provider.readGame = async () => game(['e4', 'e5'], true);
+  await f.service.refresh(f.revision);
+  assert.equal(f.service.getState().session?.status, 'ended');
+});
+
+test('refresh confirming the final export aborts an otherwise idle game stream', async (t) => {
+  const f = fixture(t);
+  await f.connect();
+  await f.service.observe(`https://lichess.org/${id}`, f.revision);
+  await until(() => f.streamSignals.length === 2);
+  const gameSignal = f.streamSignals[1]!;
+  f.snapshot = game(['e4', 'e5'], true);
+  await f.service.refresh(f.revision);
+  assert.equal(f.service.getState().session?.status, 'ended');
+  assert.equal(gameSignal.aborted, true);
+  assert.equal(
+    f.providerCalls.filter((call) => call === 'streamGame').length,
+    1,
+  );
+});
+
 test('only streamed clocks receive a stable host timestamp without invalidating analysis focus', async (t) => {
   const f = fixture(t);
   f.snapshot = { ...game(), whiteClockMs: 600000, blackClockMs: 590000 };

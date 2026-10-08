@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { closeHostResources } from './host-cleanup.ts';
 
 import { HostEventStream } from '../../application/events/index.ts';
 import {
@@ -798,13 +799,22 @@ export async function composeHost(
       eventCode: 'host.lifecycle.start_failed',
       status: 'failed',
     });
-    await live?.close();
-    await host?.close();
-    await importPreparations?.close();
-    await Promise.allSettled(engineRuntimes.map((runtime) => runtime.close()));
-    await persistence?.close();
-    await lease.release();
-    await diagnostics?.close();
+    const cleanupFailures = await closeHostResources({
+      live,
+      host,
+      importPreparations,
+      engineRuntimes,
+      persistence,
+      lease,
+      diagnostics,
+    });
+    if (cleanupFailures.length > 0) {
+      throw new AggregateError(
+        [error, ...cleanupFailures],
+        'Host startup failed and resource cleanup was incomplete.',
+        { cause: error },
+      );
+    }
     throw error;
   }
 }
@@ -862,38 +872,17 @@ async function closeComposedHost(input: {
     eventCode: 'host.lifecycle.stopping',
     status: 'stopping',
   });
-  await clearHostDiscovery(input.applicationHome, input.lease.ownerId);
-  const failures: unknown[] = [];
-  await input.live.close();
-  const processClosures = await Promise.allSettled([
-    Promise.resolve().then(() => input.host.close()),
-    ...input.engineRuntimes.map((runtime) => runtime.close()),
-  ]);
-  failures.push(
-    ...processClosures
-      .filter((result) => result.status === 'rejected')
-      .map((result) => result.reason),
-  );
-  for (const close of [
-    () => input.importPreparations.close(),
-    () => input.persistence.close(),
-    () => input.lease.release(),
-  ]) {
-    try {
-      await close();
-    } catch (error) {
-      failures.push(error);
-    }
-  }
-  input.diagnostics.write({
-    level: 'info',
-    eventCode: 'host.lifecycle.stopped',
-    status: 'stopped',
+  const failures = await closeHostResources({
+    ...input,
+    clearDiscovery: () =>
+      clearHostDiscovery(input.applicationHome, input.lease.ownerId),
+    beforeDiagnosticsClose: () => {
+      input.diagnostics.write({
+        level: 'info',
+        eventCode: 'host.lifecycle.stopped',
+        status: 'stopped',
+      });
+    },
   });
-  try {
-    await input.diagnostics.close();
-  } catch (error) {
-    failures.push(error);
-  }
   if (failures.length > 0) throw failures[0];
 }

@@ -1,17 +1,20 @@
-import type { AnalysisScratch } from '../../domain/analysis/index.ts';
+import {
+  replaceAnalysisScratchIntent,
+  type AnalysisScratch,
+} from '../../domain/analysis/index.ts';
 import type { WorkingContextId } from '../../domain/identity/index.ts';
 import {
   planInventoryRevision,
-  promoteAnalysisExplorationToRevision,
+  type InventoryRevisionPlan,
 } from '../../domain/inventory/index.ts';
-import type {
-  AnalysisClock,
-  AnalysisScratchChangedPublisher,
-  ContextAnalysisReader,
-  ContextAnalysisWriter,
-} from '../analysis/analysis-ports.ts';
-import { analysisScratchRevisionConflict } from '../analysis/analysis-problems.ts';
-import type { FreeAnalysisSession } from '../analysis/free-analysis-session.ts';
+import {
+  analysisScratchRevisionConflict,
+  type AnalysisClock,
+  type AnalysisScratchChangedPublisher,
+  type ContextAnalysisReader,
+  type ContextAnalysisWriter,
+  type FreeAnalysisSession,
+} from '../analysis/public.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import type {
   PromoteAnalysisToInventoryRevisionRequest,
@@ -102,7 +105,7 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
 
   async #promoteFree(
     request: PromoteAnalysisToInventoryRevisionRequest,
-    plan: Parameters<typeof promoteAnalysisExplorationToRevision>[0]['plan'],
+    plan: InventoryRevisionPlan,
   ): Promise<PromoteAnalysisToInventoryRevisionResult> {
     const promoted = await this.#freeSession.run((current) => {
       const scratch = promote(current, request, plan);
@@ -120,7 +123,7 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
   async #promoteContext(
     request: PromoteAnalysisToInventoryRevisionRequest,
     contextId: WorkingContextId,
-    plan: Parameters<typeof promoteAnalysisExplorationToRevision>[0]['plan'],
+    plan: InventoryRevisionPlan,
   ): Promise<PromoteAnalysisToInventoryRevisionResult> {
     const workspace =
       await this.#contextReader.readContextAnalysisWorkspace(contextId);
@@ -161,7 +164,7 @@ export class PromoteAnalysisToInventoryRevision implements PromoteAnalysisToInve
 function promote(
   current: AnalysisScratch | undefined,
   request: PromoteAnalysisToInventoryRevisionRequest,
-  plan: Parameters<typeof promoteAnalysisExplorationToRevision>[0]['plan'],
+  plan: InventoryRevisionPlan,
 ): AnalysisScratch {
   if (
     current?.scratchId !== request.expectedScratchId ||
@@ -172,8 +175,25 @@ function promote(
       current?.scratchRevision ?? null,
     );
   }
+  if (
+    current.intent.kind !== 'exploration' ||
+    (plan.mode !== 'truncate_after' &&
+      plan.mode !== 'extend' &&
+      plan.mode !== 'add_variation') ||
+    current.origin.kind !== 'inventory_anchor' ||
+    current.origin.itemId.value !== plan.intent.itemId.value ||
+    current.origin.revisionId.value !== plan.intent.baseRevisionId.value ||
+    current.origin.anchorId.value !== plan.cutAnchorId.value ||
+    current.root.fen !== plan.scratchRoot.fen ||
+    current.root.position.positionKey !==
+      plan.scratchRoot.position.positionKey ||
+    current.steps.length === 0 ||
+    current.cursor !== current.steps.length
+  ) {
+    throw invalidInventoryRevision();
+  }
   try {
-    return promoteAnalysisExplorationToRevision({ scratch: current, plan });
+    return replaceAnalysisScratchIntent(current, plan.intent);
   } catch {
     throw invalidInventoryRevision();
   }

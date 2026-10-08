@@ -205,3 +205,25 @@ test('desktop connection monitor times out hung validations and ignores their la
   );
   monitor.close();
 });
+
+test('closing during discovery prevents a late host validation from starting', async () => {
+  const discovery = Promise.withResolvers<HostConnection>();
+  let validations = 0;
+  const monitor = new DesktopHostConnectionMonitor({
+    discover: () => discovery.promise,
+    validate: async () => {
+      validations++;
+    },
+  });
+
+  const starting = monitor.start();
+  monitor.close();
+  discovery.resolve(firstConnection);
+  await starting;
+
+  assert.equal(validations, 0);
+  assert.deepEqual(monitor.getSnapshot(), {
+    kind: 'unavailable',
+    generation: 0,
+  });
+});

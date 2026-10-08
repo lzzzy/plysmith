@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { productRelease } from '../contracts/host/index.ts';
-import { verifyAlphaReleaseAssets } from './release-assets.ts';
+import { verifyReleaseAssets } from './release-assets.ts';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -58,12 +58,7 @@ if (process.env.GITHUB_ACTIONS === 'true' && dirty) {
   throw new Error('A release candidate must use a clean checkout.');
 }
 
-const outputRoot = path.join(
-  repositoryRoot,
-  'build',
-  'alpha-release',
-  'output',
-);
+const outputRoot = path.join(repositoryRoot, 'build', 'release', 'output');
 const inventory = JSON.parse(
   await readFile(
     path.join(outputRoot, 'release-license-inventory.json'),
@@ -77,7 +72,5 @@ if (
 ) {
   throw new Error('Release inventory does not match this source revision.');
 }
-await verifyAlphaReleaseAssets(outputRoot, productRelease);
-console.log(
-  `Alpha release candidate verified: ${productRelease} (${buildRevision})`,
-);
+await verifyReleaseAssets(outputRoot, productRelease);
+console.log(`Release candidate verified: ${productRelease} (${buildRevision})`);

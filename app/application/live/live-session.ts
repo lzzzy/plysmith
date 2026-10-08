@@ -1,5 +1,5 @@
 import type { ChessRulesPort } from '../chess_graph/index.ts';
-import type { PositionAnalysisFocus } from '../analysis/position-analysis.ts';
+import type { PositionAnalysisFocus } from '../analysis/public.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
 import type { FairPlayGate } from './fair-play-gate.ts';
 import {
@@ -686,6 +686,8 @@ export class LiveService {
   }
 
   #restartGame(): void {
+    this.#gameController?.abort();
+    this.#gameController = undefined;
     const session = this.#session;
     if (
       !session ||
@@ -694,7 +696,6 @@ export class LiveService {
       this.#guardFailed
     )
       return;
-    this.#gameController?.abort();
     const controller = new AbortController();
     this.#gameController = controller;
     this.#session = { ...session, connected: false };
@@ -832,7 +833,9 @@ export class LiveService {
     }
     const snapshot = await this.#provider().readGame(session.gameId, signal);
     if (signal.aborted || this.#session?.gameId !== session.gameId) return;
-    if (this.#session.status === 'ended' && snapshot.status !== 'ended') return;
+    // A delayed public export cannot roll back a terminal stream result or its moves.
+    if (this.#session.status !== 'ongoing' && snapshot.status !== 'ended')
+      return;
     const validated = this.#validated(snapshot, this.#session);
     if (
       snapshot.status === 'ended' &&

@@ -1,9 +1,9 @@
-import type { ContextAnalysisReader } from '../analysis/index.ts';
+import type { ContextAnalysisReader } from '../analysis/public.ts';
 import {
   assertInventoryWorkAccess,
   requireInventoryWorkAccess,
   type InventoryWorkAccessReader,
-} from '../workspace/inventory-work-access.ts';
+} from '../workspace/index.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import {
   appendPolicyPlayoutMove,

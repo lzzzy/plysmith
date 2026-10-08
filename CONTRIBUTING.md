@@ -3,8 +3,8 @@
 [Deutsch](CONTRIBUTING.md) | [English](CONTRIBUTING.en.md)
 
 Danke für Ihr Interesse. Fehlerberichte, Ideen, Korrekturen der Dokumentation,
-Übersetzungen, Tests und Code sind willkommen. Plysmith ist eine frühe
-Windows-Alpha; ein Vorschlag ist noch keine Zusage für eine bestimmte Release.
+Übersetzungen, Tests und Code sind willkommen. Plysmith ist eine
+Windows-Beta; ein Vorschlag ist noch keine Zusage für eine bestimmte Release.
 
 ## Austausch
 
@@ -17,19 +17,8 @@ keine Zugangsdaten, privaten Partien, Datenbanken oder unbearbeiteten Logs.
 
 ## Lokal entwickeln
 
-Die Entwicklung und der Installer-Build sind derzeit für Windows x64
-eingerichtet. Sie benötigen Git sowie die in `package.json` unter `engines.node`
-und `packageManager` angegebenen Versionen von Node.js und pnpm. Nach dem
-Klonen des Repositories:
-
-```powershell
-pnpm install --frozen-lockfile
-pnpm exec install-electron
-```
-
-Electron lädt seine Desktop-Runtime erst mit `install-electron` herunter.
-SQLite verwendet die mitgelieferten nativen Module; ein eigener Compiler ist
-für die Windows-x64-Entwicklung nicht nötig.
+Voraussetzungen, Klonen, Installation und die beiden Startbefehle stehen
+in der README unter [Aus Quellcode starten](README.md#aus-quellcode-starten).
 
 Die Skriptstarts prüfen die Abhängigkeiten, installieren aber nichts automatisch.
 Nach Änderungen an den Paketdateien kann erneut `pnpm install --frozen-lockfile`
@@ -41,19 +30,7 @@ sein. Vergleichen Sie `pnpm config get storeDir` mit `storeDir` in
 der globalen Konfiguration zu verwenden. Den Versionsunterordner wie `v11` nicht
 mit angeben.
 
-Starten Sie Host und Desktop in zwei getrennten Terminals im Repository:
-
-```powershell
-pnpm dev:host
-```
-
-```powershell
-pnpm dev:desktop
-```
-
-Entwicklung und installierte App verwenden getrennte Datenprofile. Stockfish
-und Maia sind optional und werden nicht mitgeliefert. Für die meisten
-Codeänderungen benötigen Sie keinen Installer-Build.
+Für die meisten Codeänderungen benötigen Sie keinen Installer-Build.
 
 ## Änderungen prüfen
 
@@ -71,7 +48,7 @@ pnpm verify
 ```
 
 Der Windows-Installer samt Release-Beigaben lässt sich bei Bedarf mit
-`pnpm build:alpha` unter `build/alpha-release/output` bauen. Eine normale
+`pnpm build:release` unter `build/release/output` bauen. Eine normale
 Beitragsänderung braucht keinen Versionstag und keinen Release-Build.
 
 ## Pull Request

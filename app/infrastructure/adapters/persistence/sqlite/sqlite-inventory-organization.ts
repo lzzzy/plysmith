@@ -484,8 +484,10 @@ export function checkInventoryNameAvailability(
   ) {
     const ending = ` (${suffix})`;
     suggestedDisplayName =
-      request.displayName.slice(0, maxLength - ending.length).trimEnd() +
-      ending;
+      request.displayName
+        .slice(0, maxLength - ending.length)
+        .replace(/[\uD800-\uDBFF]$/u, '')
+        .trimEnd() + ending;
   }
   return Object.freeze({
     displayName: request.displayName,

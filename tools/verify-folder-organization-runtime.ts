@@ -196,9 +196,7 @@ async function closeDesktop() {
   try {
     await Promise.race([
       (async () => {
-        await owned.evaluate(({ app }) => {
-          setTimeout(() => app.quit(), 0);
-        });
+        await owned.close();
         await expect
           .poll(() => child.exitCode !== null || child.signalCode !== null, {
             timeout: 30_000,

@@ -15,13 +15,17 @@ import {
 import { createMcpServer } from '../../../app/infrastructure/channels/mcp/index.ts';
 import { readHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
 import { createApplicationHostFixture } from './application-host-fixture.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 
 test(
   'native variations and scoped comments cross MCP, HTTP and SQLite atomically',
   { timeout: 60000 },
   async (t) => {
+    const resources = testResources(t);
     const fixture = await createApplicationHostFixture(t);
-    const discovery = await readHostDiscovery(fixture.applicationHome);
+    const discovery = await resources.run(() =>
+      readHostDiscovery(fixture.applicationHome),
+    );
     assert.ok(discovery);
     const host = await connectHost(discovery);
     const server = createMcpServer({
@@ -34,17 +38,21 @@ test(
     });
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
-    t.after(async () => {
-      await client.close();
-      await server.close();
-    });
+    resources.defer(() => server.close());
+    resources.defer(() => client.close());
+    await resources.run(() => server.connect(serverTransport));
+    await resources.run(() =>
+      client.connect(clientTransport, { signal: t.signal }),
+    );
     async function tool<T>(
       name: string,
       args: Record<string, unknown>,
     ): Promise<T> {
-      const result = await client.callTool({ name, arguments: args });
+      const result = await client.callTool(
+        { name, arguments: args },
+        undefined,
+        { signal: t.signal },
+      );
       assert.notEqual(result.isError, true, JSON.stringify(result));
       assert.ok(result.structuredContent);
       return result.structuredContent as T;

@@ -888,6 +888,7 @@ export class PlysmithApplicationStore {
     const live = this.#live;
     const state = this.#readyState();
     if (live?.session?.status !== 'ended' || state === undefined) return false;
+    const lifecycle = this.#lifecycle;
     const result = await this.#runCommand('live_command', (client) =>
       client.saveLiveGame({
         displayName,
@@ -901,6 +902,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     await this.refreshLiveState();
+    if (lifecycle !== this.#lifecycle) return false;
     this.#announcement = 'live.saved';
     this.#pendingLiveNavigation = undefined;
     this.#publishViewState();
@@ -932,18 +934,22 @@ export class PlysmithApplicationStore {
   ): Promise<LiveStateDto | undefined> {
     const revision = this.#live?.revision;
     if (revision === undefined) return undefined;
+    const lifecycle = this.#lifecycle;
     const result = await this.#runCommand(
       'live_command',
       (client) => action(client, revision),
       false,
     );
+    if (lifecycle !== this.#lifecycle) return undefined;
     if (result !== undefined) {
       this.#acceptLiveState(result);
       if (
         settleState &&
         (this.#livePending || this.#live?.revision !== result.revision)
-      )
+      ) {
         await this.refreshLiveState();
+        if (lifecycle !== this.#lifecycle) return undefined;
+      }
       this.#finishCommand();
     } else await this.refreshLiveState();
     return result;
@@ -1099,6 +1105,7 @@ export class PlysmithApplicationStore {
       return;
     }
     await this.refreshLiveState();
+    if (lifecycle !== this.#lifecycle) return;
     const live = this.#liveViewState().live;
     const reconnect =
       lifecycle === this.#lifecycle &&
@@ -1357,10 +1364,12 @@ export class PlysmithApplicationStore {
           );
           if (
             this.#revisionImpact !== undefined &&
-            !workspace?.pendingRevisionImpacts.some(
-              (impact) =>
-                impact.impactId === this.#revisionImpact?.impact.impactId,
-            )
+            (this.#revisionImpact.impact.dataRevision !==
+              status.persistence.dataRevision ||
+              !workspace?.pendingRevisionImpacts.some(
+                (impact) =>
+                  impact.impactId === this.#revisionImpact?.impact.impactId,
+              ))
           ) {
             this.#revisionImpact = undefined;
           }
@@ -1500,7 +1509,10 @@ export class PlysmithApplicationStore {
   setActivity(activity: ActivityId): void {
     if (
       this.#busyCommand !== undefined ||
-      this.#pendingPlayoutCompletion !== undefined
+      (this.#pendingPlayoutCompletion !== undefined &&
+        (activity === 'manage' ||
+          activity === 'analyze' ||
+          (activity === 'playout' && this.isFairPlayBlocked())))
     )
       return;
     if (
@@ -1517,7 +1529,11 @@ export class PlysmithApplicationStore {
     this.#publishViewState();
     void this.#persistStartup();
     if (returningToContextAnalysis) void this.refresh();
-    if (activity === 'playout' && !this.isFairPlayBlocked())
+    if (
+      activity === 'playout' &&
+      !this.isFairPlayBlocked() &&
+      this.#pendingPlayoutCompletion === undefined
+    )
       void this.#prepareDefaultPlayout();
   }
 
@@ -1890,17 +1906,23 @@ export class PlysmithApplicationStore {
       };
     }
     const pending = this.#pendingPlayoutCompletion;
+    const lifecycle = this.#lifecycle;
     const result = await this.#runCommand(
       'complete_playout',
       async (client) => {
         try {
           return await client.completePlayout(pending.request);
         } catch (error) {
-          if (hostErrorCode(error) !== 'host.unavailable') throw error;
+          if (
+            lifecycle !== this.#lifecycle ||
+            hostErrorCode(error) !== 'host.unavailable'
+          )
+            throw error;
           return client.completePlayout(pending.request);
         }
       },
     );
+    if (lifecycle !== this.#lifecycle) return false;
     if (result === undefined && this.#errorCode !== 'host.unavailable') {
       this.#pendingPlayoutCompletion = undefined;
       this.#publishViewState();
@@ -1946,8 +1968,7 @@ export class PlysmithApplicationStore {
     this.#completedPlayout = undefined;
     this.#completedPlayoutView = undefined;
     this.#publishViewState();
-    await this.refresh();
-    this.#finishCommand();
+    if (!(await this.#refreshAndFinishCommand())) return;
     await this.#persistStartup();
   }
 
@@ -2028,8 +2049,7 @@ export class PlysmithApplicationStore {
       readKey !== this.#readKey() ||
       result.dataRevision !== current.status.persistence.dataRevision
     ) {
-      await this.refresh();
-      this.#finishCommand();
+      await this.#refreshAndFinishCommand();
       return;
     }
     this.#inventoryPageCount++;
@@ -2057,8 +2077,7 @@ export class PlysmithApplicationStore {
       current === undefined ||
       result.dataRevision !== current.status.persistence.dataRevision
     ) {
-      await this.refresh();
-      this.#finishCommand();
+      await this.#refreshAndFinishCommand();
       return;
     }
     const known = new Set(
@@ -2320,8 +2339,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#analysisFocus = undefined;
-    await this.refresh();
-    this.#finishCommand();
+    if (!(await this.#refreshAndFinishCommand())) return false;
     await this.#persistStartup();
     return true;
   }
@@ -2369,8 +2387,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return;
     this.#analysisFocus = undefined;
-    await this.refresh();
-    this.#finishCommand();
+    await this.#refreshAndFinishCommand();
   }
 
   canWorkWithInventoryItem(itemId: string): boolean {
@@ -2828,6 +2845,7 @@ export class PlysmithApplicationStore {
             expectedCurrentRevisionId: action.preview.currentRevisionId,
             expectedDataRevision: action.preview.dataRevision,
           });
+          if (lifecycle !== this.#lifecycle) return removed;
           const boundItem =
             state.analysis?.record?.itemId ??
             (state.analysis?.scratch?.origin.kind === 'inventory_anchor'
@@ -2853,6 +2871,7 @@ export class PlysmithApplicationStore {
             action.contextId,
             confirmation,
           );
+          if (lifecycle !== this.#lifecycle) return removed;
           if (
             this.#scope.kind === 'context' &&
             this.#scope.contextId === action.contextId
@@ -2879,6 +2898,7 @@ export class PlysmithApplicationStore {
           action.itemId,
           confirmation,
         );
+        if (lifecycle !== this.#lifecycle) return removed;
         const boundItem =
           state.analysis?.record?.itemId ??
           (state.analysis?.scratch?.origin.kind === 'inventory_anchor'
@@ -2911,9 +2931,7 @@ export class PlysmithApplicationStore {
     this.#destructiveVersion++;
     this.#destructiveAction = undefined;
     this.#selectedInventoryItemId = null;
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   #persistStartup(): Promise<void> {
@@ -3147,9 +3165,7 @@ export class PlysmithApplicationStore {
     if (result === undefined) return false;
     this.#manageInventoryRevisionDraft = undefined;
     this.#announcement = 'inventory.revisionSaved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async discardManagedInventoryRevision(): Promise<boolean> {
@@ -3186,9 +3202,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#manageInventoryRevisionDraft = undefined;
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async applyMove(value: string): Promise<void> {
@@ -3487,8 +3501,7 @@ export class PlysmithApplicationStore {
       outcome.result.scratch,
       outcome.preview,
     );
-    await this.refresh();
-    this.#finishCommand();
+    await this.#refreshAndFinishCommand();
   }
 
   async moveAnalysisCursor(cursor: number): Promise<void> {
@@ -3609,9 +3622,7 @@ export class PlysmithApplicationStore {
         anchorId: scratch.origin.anchorId,
       });
     }
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async discardAnalysisScratchAndOpenInventoryItem(
@@ -3687,9 +3698,7 @@ export class PlysmithApplicationStore {
       anchorId: result.saved.currentAnchorId,
     });
     this.#announcement = 'inventory.revisionSaved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async openRevisionImpact(impactId: string): Promise<void> {
@@ -3743,9 +3752,7 @@ export class PlysmithApplicationStore {
     if (result === undefined) return false;
     this.#revisionImpact = undefined;
     this.#announcement = 'inventory.revisionImpactResolved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async createAnalysisRecord(
@@ -3828,9 +3835,7 @@ export class PlysmithApplicationStore {
     this.#announcement = includesNote
       ? 'analysis.savedWithNote'
       : 'analysis.saved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async createAnalysisNote(
@@ -3890,9 +3895,7 @@ export class PlysmithApplicationStore {
       anchorId: result.anchorId,
     });
     this.#announcement = 'analysis.noteSaved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async createPositionNote(
@@ -3925,9 +3928,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#announcement = 'analysis.positionNoteSaved';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async updateAnalysisNote(
@@ -3949,9 +3950,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#announcement = 'analysis.positionNoteUpdated';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async deleteAnalysisNote(
@@ -3971,9 +3970,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#announcement = 'analysis.positionNoteDeleted';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async createWorkingContext(
@@ -3994,9 +3991,7 @@ export class PlysmithApplicationStore {
     this.#selectedInventoryItemId = null;
     this.#analysisFocus = undefined;
     this.#announcement = 'context.created';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async updateWorkingContextMetadata(
@@ -4039,9 +4034,7 @@ export class PlysmithApplicationStore {
     this.#announcement = result.settings.restartRequired
       ? 'diagnostics.levelSavedPendingRestart'
       : 'diagnostics.levelActive';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async createDiagnosticReport(): Promise<boolean> {
@@ -4054,16 +4047,19 @@ export class PlysmithApplicationStore {
     ) {
       return false;
     }
+    const lifecycle = this.#lifecycle;
     let destinationPath: string | undefined;
     try {
       destinationPath = await chooseDestination(
         state.diagnosticReportManifest.suggestedFileName,
       );
     } catch {
-      this.#setReadyError('diagnostics.destination_unavailable');
+      if (lifecycle === this.#lifecycle)
+        this.#setReadyError('diagnostics.destination_unavailable');
       return false;
     }
-    if (destinationPath === undefined) return false;
+    if (lifecycle !== this.#lifecycle || destinationPath === undefined)
+      return false;
     const result = await this.#runCommand(
       'create_diagnostic_report',
       (client) =>
@@ -4180,9 +4176,7 @@ export class PlysmithApplicationStore {
     this.#committedReadVersion = ++this.#readVersion;
     this.#engineConfigurationDrafts.saved(key, provider);
     this.#announcement = 'engines.savedPendingRestart';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async saveEngineProviderConfiguration(
@@ -4200,9 +4194,7 @@ export class PlysmithApplicationStore {
     );
     if (result === undefined) return false;
     this.#announcement = 'engines.savedPendingRestart';
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   async removeEngineProviderConfiguration(
@@ -4219,9 +4211,7 @@ export class PlysmithApplicationStore {
     if (result === undefined) return false;
     this.#announcement = 'engines.removedPendingRestart';
     this.#engineConfigurationDrafts.removed(provider.instanceId);
-    await this.refresh();
-    this.#finishCommand();
-    return true;
+    return this.#refreshAndFinishCommand();
   }
 
   clearAnnouncement(): void {
@@ -4346,8 +4336,7 @@ export class PlysmithApplicationStore {
       outcome.result.scratch,
       outcome.preview,
     );
-    await this.refresh();
-    this.#finishCommand();
+    await this.#refreshAndFinishCommand();
   }
 
   async #startInventoryRevision(
@@ -4417,8 +4406,7 @@ export class PlysmithApplicationStore {
       outcome.result.scratch,
       outcome.preview,
     );
-    await this.refresh();
-    this.#finishCommand();
+    await this.#refreshAndFinishCommand();
   }
 
   async #startScratch(
@@ -4462,8 +4450,7 @@ export class PlysmithApplicationStore {
     this.#analysisFocus = undefined;
     this.#activity = 'analyze';
     this.#publishViewState();
-    await this.refresh();
-    this.#finishCommand();
+    if (!(await this.#refreshAndFinishCommand())) return false;
     await this.#persistStartup();
     return true;
   }
@@ -4935,6 +4922,14 @@ export class PlysmithApplicationStore {
       if (lifecycle === this.#lifecycle && (refreshAfter || !succeeded))
         this.#finishCommand();
     }
+  }
+
+  async #refreshAndFinishCommand(): Promise<boolean> {
+    const lifecycle = this.#lifecycle;
+    await this.refresh();
+    if (lifecycle !== this.#lifecycle) return false;
+    this.#finishCommand();
+    return true;
   }
 
   #finishCommand(): void {

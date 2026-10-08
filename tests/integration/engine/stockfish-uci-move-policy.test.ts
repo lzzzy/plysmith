@@ -248,8 +248,16 @@ for (const [mode, code] of [
   ['missing-option', 'capability_missing'],
 ] as const) {
   test(`maps Fake-UCI ${mode} to ${code}`, async (t) => {
+    let tracePath: string | undefined;
+    if (mode === 'timeout' || mode === 'chatter') {
+      const directory = await mkdtemp(
+        path.join(os.tmpdir(), 'plysmith-uci-search-timeout-'),
+      );
+      t.after(() => rm(directory, { recursive: true, force: true }));
+      tracePath = path.join(directory, 'uci.trace');
+    }
     await assert.rejects(
-      adapter(t, mode).chooseMove({
+      adapter(t, mode, tracePath).chooseMove({
         root: rules.initialState(),
         moves: [],
         current: rules.initialState(),
@@ -258,11 +266,23 @@ for (const [mode, code] of [
       (error) =>
         error instanceof MovePolicyProviderError && error.code === code,
     );
+    if (tracePath !== undefined) {
+      const trace = await readFile(tracePath, 'utf8');
+      assert.equal(
+        trace.match(/^go movetime 10$/gm)?.length,
+        1,
+        'The timeout must follow a search, not engine warmup.',
+      );
+    }
   });
 }
 
-function adapter(t: TestContext, mode: string): StockfishUciMovePolicyAdapter {
-  const configuration = stockfishConfiguration(mode);
+function adapter(
+  t: TestContext,
+  mode: string,
+  tracePath?: string,
+): StockfishUciMovePolicyAdapter {
+  const configuration = stockfishConfiguration(mode, tracePath);
   const runtime = createStockfishUciRuntime(
     configuration,
     new LineProcessSupervisor(),
@@ -271,12 +291,16 @@ function adapter(t: TestContext, mode: string): StockfishUciMovePolicyAdapter {
   return new StockfishUciMovePolicyAdapter(configuration, runtime);
 }
 
-function stockfishConfiguration(mode: string) {
+function stockfishConfiguration(mode: string, tracePath?: string) {
   return {
     instanceId: 'stockfish-test',
     displayName: 'Stockfish test',
     executablePath: process.execPath,
-    arguments: [fakeEngine, mode],
+    arguments: [
+      fakeEngine,
+      mode,
+      ...(tracePath === undefined ? [] : [tracePath]),
+    ],
     threads: 1,
     hashMb: 16,
     detailLevels: { fast: 500, thorough: 10, very_deep: 5_000 },

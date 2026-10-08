@@ -230,13 +230,13 @@ export function createAnalysisRecord(
   }
   if (
     request.sourceContextId !== undefined &&
-    request.targetContextId?.value !== request.sourceContextId.value &&
-    request.origin.kind === 'inventory_anchor'
+    request.targetContextId?.value !== request.sourceContextId.value
   ) {
     const resumeVersion = restoreSourceContextResume(
       database,
       request.sourceContextId,
       request.origin,
+      request.root,
       request.occurredAt,
     );
     resumeUpdates.push({
@@ -1142,18 +1142,19 @@ function analysisRecordOrigin(header: {
 function restoreSourceContextResume(
   database: Database.Database,
   contextId: WorkingContextId,
-  origin: Extract<
-    PersistAnalysisRecordRequest['origin'],
-    { readonly kind: 'inventory_anchor' }
-  >,
+  origin: PersistAnalysisRecordRequest['origin'],
+  root: ChessState,
   occurredAt: string,
 ): number {
-  const positionId = resolveAnchorPosition(
-    database,
-    origin.itemId.value,
-    origin.revisionId.value,
-    origin.anchorId.value,
-  );
+  const positionId =
+    origin.kind === 'inventory_anchor'
+      ? resolveAnchorPosition(
+          database,
+          origin.itemId.value,
+          origin.revisionId.value,
+          origin.anchorId.value,
+        )
+      : ensurePosition(database, root.position).value;
   if (positionId === undefined) throw invalidAnalysisRecord();
   const current = database
     .prepare(
@@ -1174,9 +1175,9 @@ function restoreSourceContextResume(
     )
     .run(
       resumeVersion,
-      origin.itemId.value,
-      origin.revisionId.value,
-      origin.anchorId.value,
+      origin.kind === 'inventory_anchor' ? origin.itemId.value : null,
+      origin.kind === 'inventory_anchor' ? origin.revisionId.value : null,
+      origin.kind === 'inventory_anchor' ? origin.anchorId.value : null,
       positionId,
       occurredAt,
       contextId.value,

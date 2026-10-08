@@ -5,17 +5,15 @@ import {
 } from '../../domain/analysis/index.ts';
 import { planInventoryRevision } from '../../domain/inventory/index.ts';
 import type { WorkingContextId } from '../../domain/identity/index.ts';
-import type {
-  AnalysisClock,
-  AnalysisScratchChangedPublisher,
-  ContextAnalysisReader,
-  ContextAnalysisWriter,
-} from '../analysis/analysis-ports.ts';
 import {
   analysisScratchRevisionConflict,
   chessRulesProblem,
-} from '../analysis/analysis-problems.ts';
-import type { FreeAnalysisSession } from '../analysis/free-analysis-session.ts';
+  type AnalysisClock,
+  type AnalysisScratchChangedPublisher,
+  type ContextAnalysisReader,
+  type ContextAnalysisWriter,
+  type FreeAnalysisSession,
+} from '../analysis/public.ts';
 import type { ChessRulesPort } from '../chess_graph/index.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import type {

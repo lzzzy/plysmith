@@ -1,10 +1,4 @@
-import type {
-  AnalysisScratch,
-  AnalysisScratchIntent,
-  AnalysisScratchStep,
-} from '../analysis/index.ts';
-import { replaceAnalysisScratchIntent } from '../analysis/index.ts';
-import type { ChessState } from '../chess_graph/index.ts';
+import type { AppliedMove, ChessState } from '../chess_graph/index.ts';
 import type {
   AnchorId,
   InventoryItemId,
@@ -14,7 +8,7 @@ import type {
 export type InventoryRevisionMode =
   'extend' | 'truncate_after' | 'replace_move' | 'metadata' | 'add_variation';
 
-export interface InventoryRevisionLineStep extends AnalysisScratchStep {
+export interface InventoryRevisionLineStep extends AppliedMove {
   readonly anchorId: AnchorId;
 }
 
@@ -35,10 +29,22 @@ export interface InventoryRevisionPlan {
   readonly preservedSteps: readonly InventoryRevisionLineStep[];
   readonly removedSteps: readonly InventoryRevisionLineStep[];
   readonly scratchRoot: ChessState;
-  readonly intent: Extract<
-    AnalysisScratchIntent,
-    { readonly kind: 'inventory_revision' }
-  >;
+  readonly intent: {
+    readonly kind: 'inventory_revision';
+    readonly mode: InventoryRevisionMode;
+    readonly itemId: InventoryItemId;
+    readonly baseRevisionId: ItemRevisionId;
+    readonly cutAnchorId: AnchorId;
+    readonly returnAnchorId: AnchorId;
+    readonly displayName: string;
+    readonly summary?: string;
+  };
+}
+
+export interface InventoryRevisionCandidate {
+  readonly intent: InventoryRevisionPlan['intent'];
+  readonly root: ChessState;
+  readonly steps: readonly AppliedMove[];
 }
 
 export function planInventoryRevision(input: {
@@ -123,79 +129,49 @@ export function planInventoryRevision(input: {
 
 export function inventoryRevisionCandidateSteps(input: {
   readonly base: InventoryRevisionLine;
-  readonly scratch: AnalysisScratch;
-}): readonly AnalysisScratchStep[] {
+  readonly candidate: InventoryRevisionCandidate;
+}): readonly AppliedMove[] {
   if (
-    input.scratch.intent.kind !== 'inventory_revision' ||
-    input.scratch.intent.itemId.value !== input.base.itemId.value ||
-    input.scratch.intent.baseRevisionId.value !== input.base.revisionId.value
+    input.candidate.intent.kind !== 'inventory_revision' ||
+    input.candidate.intent.itemId.value !== input.base.itemId.value ||
+    input.candidate.intent.baseRevisionId.value !== input.base.revisionId.value
   ) {
     throw new Error('The analysis scratch is not a revision of this line.');
   }
   const preservedCount = lineAnchorIndex(
     input.base,
-    input.scratch.intent.cutAnchorId,
+    input.candidate.intent.cutAnchorId,
   );
   if (preservedCount === undefined) {
     throw new Error('The revision cut anchor is not part of the base line.');
   }
-  if (
-    stateAt(input.base, preservedCount).fen !== input.scratch.root.fen ||
-    input.scratch.cursor !== input.scratch.steps.length
-  ) {
+  if (stateAt(input.base, preservedCount).fen !== input.candidate.root.fen) {
     throw new Error('The revision scratch does not form a complete suffix.');
   }
   if (
-    input.scratch.intent.mode === 'replace_move' &&
-    input.scratch.steps.length === 0
+    input.candidate.intent.mode === 'replace_move' &&
+    input.candidate.steps.length === 0
   ) {
     throw new Error('Replacing a move requires a replacement move.');
   }
   if (
-    input.scratch.intent.mode === 'metadata' &&
-    input.scratch.steps.length > 0
+    input.candidate.intent.mode === 'metadata' &&
+    input.candidate.steps.length > 0
   ) {
     throw new Error('A metadata revision cannot change the move line.');
   }
   return Object.freeze([
     ...input.base.steps.slice(0, preservedCount),
-    ...input.scratch.steps,
+    ...input.candidate.steps,
   ]);
-}
-
-export function promoteAnalysisExplorationToRevision(input: {
-  readonly scratch: AnalysisScratch;
-  readonly plan: InventoryRevisionPlan;
-}): AnalysisScratch {
-  const { scratch, plan } = input;
-  if (
-    scratch.intent.kind !== 'exploration' ||
-    (plan.mode !== 'truncate_after' &&
-      plan.mode !== 'extend' &&
-      plan.mode !== 'add_variation') ||
-    scratch.origin.kind !== 'inventory_anchor' ||
-    scratch.origin.itemId.value !== plan.intent.itemId.value ||
-    scratch.origin.revisionId.value !== plan.intent.baseRevisionId.value ||
-    scratch.origin.anchorId.value !== plan.cutAnchorId.value ||
-    scratch.root.fen !== plan.scratchRoot.fen ||
-    scratch.root.position.positionKey !==
-      plan.scratchRoot.position.positionKey ||
-    scratch.steps.length === 0 ||
-    scratch.cursor !== scratch.steps.length
-  ) {
-    throw new Error(
-      'Only a complete exploration from the revision cut can be promoted.',
-    );
-  }
-  return replaceAnalysisScratchIntent(scratch, plan.intent);
 }
 
 export function inventoryRevisionHasChanges(input: {
   readonly base: InventoryRevisionLine;
-  readonly scratch: AnalysisScratch;
+  readonly candidate: InventoryRevisionCandidate;
 }): boolean {
   const steps = inventoryRevisionCandidateSteps(input);
-  const intent = input.scratch.intent;
+  const intent = input.candidate.intent;
   if (intent.kind !== 'inventory_revision') {
     throw new Error('An inventory revision intent is required.');
   }

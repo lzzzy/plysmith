@@ -1216,6 +1216,68 @@ test('native variation from a black-to-move FEN preserves move clocks and nested
 });
 
 for (const inContext of [false, true]) {
+  test(`revision preview and save reject a rewound candidate without writes (context: ${inContext})`, async (t) => {
+    const store = storeFixture(t);
+    const cases = useCases(store);
+    const first = await createFrenchLine(cases);
+    const context = inContext
+      ? await addIndependentContextUse(cases, first, 'Rewound revision')
+      : undefined;
+    const scope =
+      context === undefined
+        ? freeWorkScope()
+        : contextWorkScope(context.context.contextId);
+    const started = await cases.startRevision.execute({
+      scope,
+      itemId: first.itemId,
+      baseRevisionId: first.revisionId,
+      anchorId: first.steps.at(-1)!.anchorId,
+      mode: 'extend',
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      firstMove: { kind: 'notation', value: 'Nc3', locale: 'en-GB' },
+    });
+    const preview = await cases.previewRevision.execute({
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+    });
+    const rewound = await cases.update.execute({
+      scope,
+      expectedScratchId: started.scratch.scratchId,
+      expectedScratchRevision: started.scratch.scratchRevision,
+      action: { kind: 'move_cursor', cursor: 0 },
+    });
+    const expected = {
+      scope,
+      expectedScratchId: rewound.scratch!.scratchId,
+      expectedScratchRevision: rewound.scratch!.scratchRevision,
+    };
+    const before = inspectStore(store, (database) => database.serialize());
+    await assert.rejects(cases.previewRevision.execute(expected), {
+      problemCode: 'inventory.invalid_revision',
+    });
+    await assert.rejects(
+      cases.saveRevision.execute({
+        ...expected,
+        previewFingerprint: preview.previewFingerprint,
+      }),
+      { problemCode: 'inventory.invalid_revision' },
+    );
+    assert.deepEqual(
+      inspectStore(store, (database) => database.serialize()),
+      before,
+    );
+    const persisted =
+      context === undefined
+        ? await cases.freeSession.read()
+        : (await store.readContextAnalysisWorkspace(context.context.contextId))!
+            .scratch;
+    assert.deepEqual(persisted, rewound.scratch);
+    assert.equal(persisted!.cursor, 0);
+    assert.equal(persisted!.steps.length, 1);
+  });
+
   test(`promotes exploration explicitly to a native variation (context: ${inContext})`, async (t) => {
     const store = storeFixture(t);
     const cases = useCases(store);

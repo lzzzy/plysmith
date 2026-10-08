@@ -1,6 +1,8 @@
-import type { AnalysisScratchStep } from '../analysis/index.ts';
-import { type AnalysisScratch } from '../analysis/index.ts';
-import type { ChessState } from '../chess_graph/index.ts';
+import type {
+  AppliedMove,
+  CanonicalMove,
+  ChessState,
+} from '../chess_graph/index.ts';
 
 export interface AnalysisRecordDraft {
   readonly displayName: string;
@@ -8,40 +10,40 @@ export interface AnalysisRecordDraft {
   readonly originMode:
     'initial_position' | 'fen' | 'position_setup' | 'inventory_anchor';
   readonly root: ChessState;
-  readonly steps: readonly AnalysisScratchStep[];
-  readonly note?: AnalysisScratch['noteDraft'];
+  readonly steps: readonly AppliedMove[];
+  readonly note?: {
+    readonly body: string;
+    readonly moves: readonly CanonicalMove[];
+  };
 }
 
 export function createAnalysisRecordDraft(input: {
   readonly displayName: string;
   readonly languageTag: string;
-  readonly scratch: AnalysisScratch;
+  readonly originMode: AnalysisRecordDraft['originMode'];
+  readonly root: ChessState;
+  readonly steps: readonly AppliedMove[];
+  readonly noteBody?: string;
 }): AnalysisRecordDraft {
-  if (input.scratch.intent.kind !== 'exploration') {
-    throw new Error(
-      'An inventory revision scratch cannot create another item.',
-    );
-  }
   requireTrimmedText(input.displayName, 160, 'display name');
   if (!/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(input.languageTag)) {
     throw new Error('An analysis record requires a BCP-47 language tag.');
   }
-  const noteDraft = input.scratch.noteDraft;
-  if (noteDraft !== undefined) {
-    requireTrimmedText(noteDraft.body, 128_000, 'note');
+  if (input.noteBody !== undefined) {
+    requireTrimmedText(input.noteBody, 128_000, 'note');
   }
 
   return Object.freeze({
     displayName: input.displayName,
     languageTag: input.languageTag,
-    originMode: input.scratch.origin.kind,
-    root: input.scratch.root,
-    steps: Object.freeze(input.scratch.steps.slice(0, input.scratch.cursor)),
-    ...(noteDraft === undefined
+    originMode: input.originMode,
+    root: input.root,
+    steps: Object.freeze([...input.steps]),
+    ...(input.noteBody === undefined
       ? {}
       : {
           note: Object.freeze({
-            body: noteDraft.body,
+            body: input.noteBody,
             moves: Object.freeze([]),
           }),
         }),

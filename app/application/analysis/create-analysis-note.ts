@@ -23,7 +23,7 @@ import {
   invalidAnalysisNote,
 } from './analysis-problems.ts';
 import type { FreeAnalysisSession } from './free-analysis-session.ts';
-import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
+import { assertInventoryWorkAccess } from '../workspace/index.ts';
 import { validatePositionNoteInput } from './create-position-note.ts';
 
 export interface CreateAnalysisNoteUseCase {

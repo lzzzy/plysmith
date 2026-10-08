@@ -13,13 +13,14 @@ import {
   verifyProductManifest,
   ProductionHostStartupProblem,
 } from '../app/infrastructure/adapters/platform/windows/index.ts';
+import { snapshotPreservedFiles } from './verify-release-uninstall-guard.ts';
 
 const packaged = path.resolve(
   process.env.PLYSMITH_VERIFY_PACKAGE_ROOT ??
-    'build/alpha-release/packaged/Plysmith-win32-x64',
+    'build/release/packaged/Plysmith-win32-x64',
 );
 const installRoot = path.join(packaged, 'resources');
-const home = path.resolve('build/alpha-verification', `host-${randomUUID()}`);
+const home = path.resolve('build/release-verification', `host-${randomUUID()}`);
 await mkdir(home, { recursive: true });
 await verifyProductManifest(installRoot, '44.2.0');
 
@@ -36,7 +37,7 @@ for (const iteration of [1, 2]) {
     assert.equal(status.state, 'ready');
     if (iteration === 1) {
       const created = await client.createWorkingContext({
-        displayName: 'Alpha-Pruefung',
+        displayName: 'Release-Pruefung',
       });
       createdContextId = created.context.contextId;
       previousRevision = created.dataRevision;
@@ -51,7 +52,7 @@ for (const iteration of [1, 2]) {
       `Host start ${iteration}: ready; revision ${status.persistence.dataRevision}`,
     );
   } finally {
-    host.close();
+    await host.close();
     if (host.pid) await waitForExit(host.pid);
   }
 }
@@ -63,25 +64,32 @@ database
   )
   .run();
 database.close();
+const beforeBlockedStart = await snapshotPreservedFiles(home);
 await assert.rejects(
   startProductionHost({ applicationHome: home, installRoot }),
   (error: unknown) =>
     error instanceof ProductionHostStartupProblem &&
     error.code === 'incompatible_data',
 );
+assert.deepEqual(await snapshotPreservedFiles(home), beforeBlockedStart);
 const preserved = new Database(path.join(home, 'data', 'plysmith.db'), {
   readonly: true,
 });
-assert.equal(
-  (
-    preserved
-      .prepare('SELECT schema_version AS version FROM runtime_store_state')
-      .get() as { version: number }
-  ).version,
-  999,
+try {
+  assert.equal(
+    (
+      preserved
+        .prepare('SELECT schema_version AS version FROM runtime_store_state')
+        .get() as { version: number }
+    ).version,
+    999,
+  );
+} finally {
+  preserved.close();
+}
+console.log(
+  'Incompatible data: blocked; database and configuration bytes unchanged',
 );
-preserved.close();
-console.log('Incompatible data: blocked without mutation');
 console.log(`Isolated home: ${home}`);
 
 async function waitForHost(applicationHome: string) {

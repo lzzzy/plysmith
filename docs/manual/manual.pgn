@@ -1,0 +1,42 @@
+[Event "Grundstellung"]
+[Result "*"]
+
+{ Welche ersten Züge möchten Sie untersuchen? Eine Analyse kann mit der Ausgangsstellung beginnen. }
+*
+
+[Event "Italienische Eröffnung"]
+[Result "*"]
+[Opening "Italienische Partie"]
+[Annotator "Plysmith"]
+
+1. e4 { Weiß besetzt das Zentrum und öffnet Wege für Läufer und Dame. }
+e5 2. Nf3 Nc6 3. Bc4 Bc5
+(3... Nf6 4. d3 (4. Ng5 d5))
+4. O-O { Der König steht sicherer; der Turm kommt ins Spiel. }
+Nf6 5. d3 *
+
+[Event "Lehrpartie mit Matt"]
+[Result "1-0"]
+
+{ Konstruiertes Lehrbeispiel; keine historische oder tatsächlich gespielte Partie. Der frühe Damenausflug ist keine allgemeine Eröffnungsempfehlung. }
+1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0
+
+[Event "Opposition"]
+[Result "*"]
+[SetUp "1"]
+[FEN "8/2k5/8/8/2PK4/8/8/8 w - - 0 1"]
+
+{ Wie unterstützt der König den Bauern? Weiß ist am Zug. }
+*
+
+[Event "Eröffnungsskizze"]
+[Result "*"]
+
+{ Eine gespeicherte Skizze, die für diesen Übungsbestand nicht weiter benötigt wird. }
+1. e4 *
+
+[Event "Entwicklungsskizze"]
+[Result "*"]
+
+{ Diese gespeicherte Skizze überschneidet sich mit der italienischen Eröffnung. }
+1. e4 e5 2. Nf3 *

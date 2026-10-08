@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-08",
+  "release": "0.1.0-beta.1",
+  "scope": "Source verification and isolated Windows desktop acceptance before packaging and publication",
+  "status": "passed",
+  "sourceGate": {
+    "command": "pnpm verify",
+    "status": "passed",
+    "testsPassed": 1259,
+    "testsFailed": 0,
+    "testsSkipped": 0,
+    "testsCancelled": 0,
+    "testFiles": 123,
+    "checks": [
+      "Four TypeScript projects",
+      "ESLint",
+      "557-module/2547-dependency architecture graph",
+      "Browser-safe Host client",
+      "Generated artifacts",
+      "Full test suite",
+      "Desktop production build",
+      "Prettier"
+    ],
+    "localLog": "build/beta-final-verify.log"
+  },
+  "manual": {
+    "germanChapters": 9,
+    "englishChapters": 9,
+    "germanWords": 8781,
+    "checkedLocalLinks": 272,
+    "checkedHeadingAnchors": 20,
+    "distinctNativeScreenshots": 31,
+    "electronZoomFactor": 1,
+    "pgnSha256": "1aaf6f33db5c2b015cc1754b7006e0d42d5b7633896f7bfb02a9767de2fb1859",
+    "englishImages": "The English manual explicitly reuses the native German UI screenshots."
+  },
+  "nativeAcceptance": {
+    "platform": "Windows x64",
+    "manualRuns": [
+      "0185b819-dd6a-4995-81bc-d60969107a6a",
+      "e2a5855f-de5f-4884-a05c-c838e7804888"
+    ],
+    "manualActionsPerRun": 42,
+    "manualCapturesPerRun": 35,
+    "desktopStartsPerRun": 5,
+    "fullRestartsPerRun": 4,
+    "manualAssertions": "Both complete fresh runs passed without partial/resume flags or interaction retries; all owned Desktop processes exited with code 0.",
+    "manualCoverage": [
+      "Fixed six-entry PGN import and bulk deletion limited to the two disposable sketches",
+      "Actual Stockfish and Maia 1500/1800 configuration, restart, completed analysis and diagnostic report export",
+      "Immutable game, path-to-note, independent derived analysis, main-line extension/truncation/replacement, variations and direct board takeback",
+      "Actual Stockfish playout, pause/restart/resume, saved game and discarded second playout",
+      "Root-only opening library, independent source relationships and freely constructed starting position",
+      "Three working contexts with isolated notes and different drafts, context switches and restarts",
+      "Context inclusion/removal, folder-only versus content snapshots, later additions and global folder/item moves",
+      "Stale metadata and impact decisions rejected without partial writes",
+      "Use new version, preserve old version as an independent analysis with notes/draft, or remove only the local usage",
+      "Second revision, unaffected context copy, context deletion cancel/confirm and final restart",
+      "German and English Settings, Manage, Analysis and offline Live smoke"
+    ],
+    "additionalRuns": {
+      "live": { "run": "65ab5595-ae56-4522-ae55-5125f3e9016b", "steps": 9 },
+      "variations": {
+        "run": "4b9228ec-d76c-48e5-804e-267563b45d61",
+        "steps": 23
+      },
+      "formDrafts": {
+        "run": "87f009b9-1312-4c92-b001-8f135ac76400",
+        "steps": 3
+      },
+      "configurationRestart": {
+        "run": "5defc5d2-6108-4815-b0ce-5db3d111dc6a",
+        "steps": 4
+      },
+      "folderOrganization": {
+        "run": "de39e352-0889-4a21-89d2-79d80b9a93aa",
+        "steps": 14
+      },
+      "italianImport": {
+        "run": "0c5d7e51-b330-4aaa-9111-df91dda33b07",
+        "steps": 14
+      }
+    },
+    "observations": [
+      "Expected rapid-focus interruptions and context-membership rejections were logged; passing workflow assertions do not imply that every HTTP request succeeded.",
+      "The second manual run logged one background AnalyzePosition provider timeout after its final restart. Provider, focus and whether a transient UI error appeared are not established by the sanitized log. Later native analysis captures show Stockfish results again; no causal product-fix claim is made.",
+      "An earlier complete source run had three Stockfish fixture warmup timeouts. An unchanged read-phase probe subsequently passed all twelve tests. Timeout/chatter assertions were strengthened to require an actual search command; no deadlines were extended."
+    ],
+    "localEvidenceRoot": "build/verification"
+  },
+  "dependencyAudit": {
+    "productionVulnerabilities": 0,
+    "fullAudit": "One moderate advisory remains in an optional build-only sprintf-js dependency; no available published fixed version and no custom vendor patch.",
+    "localEvidence": "build/beta-production-dependency-audit.json"
+  },
+  "boundaries": [
+    "Native acceptance uses isolated application homes and real Host/Desktop processes; no user profiles, credentials or real online account actions.",
+    "Live uses deterministic official-API-shaped test responses, not a real remote game or an Internet timing guarantee.",
+    "Automated keyboard/pointer, axe and native screenshots do not substitute for physical touch, Narrator/NVDA or a full manual 400-percent zoom acceptance.",
+    "Only Windows x64 is supported; no actual Linux or macOS acceptance.",
+    "Signing, full Stable fuse hardening, migration, integrated backup/restore and complete upgrade rollback are not claimed.",
+    "The manual is versioned with the release source and linked from release notes; no separate offline manual bundle is claimed.",
+    "Installer, downloaded-asset and publication checks are subsequent independent gates, not implied by this source/native report."
+  ]
+}

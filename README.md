@@ -6,14 +6,11 @@ Plysmith ist eine lokale Open-Source-Schachwerkstatt für eigene Analysen und
 Partien. Sie können zum Beispiel eine Eröffnungsbibliothek aufbauen, ein
 Endspiel untersuchen und aus einer Stellung gegen eine Engine spielen.
 
-Für den Einstieg genügt **Gesamter Bestand**. Arbeitskontexte sind
-optional: Sie können damit mehrere Themen parallel bearbeiten und für ein
-Training passende Analysen und Partien aus dem gesamten Bestand
-zusammenstellen. Die Einträge bleiben im Bestand; der Arbeitskontext ist
-keine zweite Kopie.
+Das [deutsche Manual](docs/manual/README.md) führt mit einem kleinen,
+importierbaren Beispielbestand durch die Grundlagen und alle Bereiche der App.
 
-Dies ist eine frühe, wenig getestete Windows-Alpha. Rückmeldungen helfen,
-Plysmith zu verbessern. Spätere Alpha-Versionen können möglicherweise nicht
+Dies ist eine Windows-Beta zur Erprobung der Anwendung. Weitere Rückmeldungen
+helfen, Plysmith zu verbessern. Spätere Versionen können möglicherweise nicht
 alle bisherigen Daten und Einstellungen lesen. Eine integrierte Sicherung
 oder Wiederherstellung gibt es noch nicht.
 
@@ -36,197 +33,100 @@ verwenden. Ersetzen Sie den Pfad durch den Speicherort Ihrer Datei.
 Programm und Daten liegen getrennt. Eine frische Standardinstallation legt
 das Programm unter `%LOCALAPPDATA%\Programs\Plysmith` ab. Der Datenordner
 `%LOCALAPPDATA%\Plysmith` bleibt bei einer normalen Deinstallation erhalten.
-Sichern Sie wichtige Arbeit selbst: Schließen Sie Plysmith und kopieren Sie
-diesen Ordner an einen sicheren Ort. Eine spätere Alpha-Version garantiert
-noch keine Übernahme älterer Daten oder Konfigurationen.
+Wie Sie Ihre Arbeit sichern, beschreibt das Manual unter
+[Sprache und Daten](docs/manual/04-settings.md#sprache-und-daten).
 
-## Erste Schritte
-
-**Wechsel auf alpha.7:** Das Datenformat wurde geändert. Bestände aus alpha.6
+**Wechsel auf beta.1:** Das Datenformat wurde geändert. Bestände aus alpha.7 oder älter
 lassen sich nicht in dieser Version öffnen; eine Migration gibt es nicht.
 Schließen Sie Plysmith und sichern Sie vor der Aktualisierung den vollständigen
 Datenordner. Für einen neuen Bestand können Sie den bisherigen Datenordner
 an einen sicheren Ort verschieben. Beim nächsten Start wird ein neuer angelegt.
 Alte Daten werden weder automatisch gelöscht noch konvertiert.
 
-In **Verwalten** können Sie ohne Arbeitskontext eine neue Analyse aus der
-Grundstellung oder einer selbst aufgebauten Stellung beginnen. Analysen und
-Partien bleiben im gesamten Bestand sichtbar. Wenn Sie mehrere Vorhaben
-getrennt bearbeiten möchten, legen Sie Arbeitskontexte an und wählen dort
-die passenden Bestandseinträge aus. Ein Arbeitskontext muss nicht vorab
-eingerichtet werden.
+## Aus Quellcode starten
 
-Für eigene Analysen und die Verwaltung ist keine Schachengine nötig.
-Stockfish liefert objektive Stellungsbewertungen. Maia Chess ergänzt
-menschenähnliche Zugvorschläge und kann als Gegner beim Ausspielen dienen.
-Auch mit Stockfish können Sie ausspielen. Der Installer enthält weder
-Engines noch Modellgewichte.
+Für Entwickler ist kein Installer nötig. Sie benötigen **Windows x64**, Git,
+**Node.js 24.x** und **pnpm 11.19.0**. Maßgeblich sind `engines.node` und
+`packageManager` in [package.json](package.json). Falls pnpm noch nicht
+installiert ist, richten Sie es nach der Installation von Node.js ein:
 
-## Varianten und Kommentare
+```powershell
+npm install --global pnpm@11.19.0
+```
 
-Beim Analysieren sehen Sie zunächst den Hauptpfad. Über das Variantensymbol
-an einer Abzweigstelle klappen Sie Nebenvarianten auf. Untervarianten stehen
-innerhalb der jeweiligen Elternvariante. Ein Klick auf einen Zug zeigt die
-Stellung, ohne andere aufgeklappte Alternativen auszublenden.
+Klonen Sie das Repository und installieren Sie die Abhängigkeiten:
 
-Erkunden Sie eine Fortsetzung auf dem Brett. Am Ende des Analysepfads wählen Sie,
-wie Sie ihn ablegen möchten. **Als Variante speichern** ergänzt dieselbe Analyse
-im Gesamtbestand; die Hauptlinie bleibt erhalten. Optional übernehmen Sie die
-Zugfolge zugleich als frei bearbeitbaren Kommentar. Der Kommentar gilt allgemein
-oder nur im aktiven Arbeitskontext; die strukturelle Variante gilt immer im Bestand.
-Alternativ speichern Sie nur den Kommentar oder eine eigene benannte Analyse
-mit Bezug zum Ausgangspunkt. Die gespielte Zugfolge einer Partie bleibt unverändert.
+```powershell
+git clone https://github.com/lzzzy/plysmith.git
+cd plysmith
+pnpm install --frozen-lockfile
+pnpm exec install-electron
+```
 
-Eine Variante löschen Sie an ihrer Symbolzeile, den letzten Zug über die
-Zugrücknahme. Vor dem Speichern sehen Sie die Änderung und betroffene Notizen.
+`install-electron` lädt die Desktop-Runtime herunter. SQLite verwendet
+mitgelieferte native Module; ein eigener Compiler ist unter Windows x64
+nicht nötig.
 
-## Ordner und Arbeitskontexte
+Starten Sie zuerst den Host im Repositoryverzeichnis und lassen Sie das
+Terminal geöffnet:
 
-In **Verwalten > Ordner** können Sie Analysen und Partien in verschachtelten
-Ordnern ablegen. Ordner und Einträge lassen sich per Drag-and-drop
-neu einsortieren. Unter **Herkunft** bleiben die tatsächlichen Ableitungen
-zwischen Analysen und Partien sichtbar, unabhängig von ihrer Ablage.
-Plysmith merkt sich die gewählte Ansicht für den Gesamtbestand und jeden
-Arbeitskontext getrennt, auch nach einem Neustart.
+```powershell
+pnpm dev:host
+```
 
-Aktionen für Ordner und Einträge finden Sie an ihrer Zeile: als Symbole oder,
-bei wenig Platz, im Menü **…**. Rechts sehen Sie die Details und die
-Stellungsvorschau. Angekreuzte Einträge verschieben Sie gemeinsam per Auswahlaktion
-oder indem Sie einen davon in den gewünschten Ordner ziehen. Die Auswahlaktionen
-können mehrere Einträge auch in den aktuellen Arbeitskontext aufnehmen, daraus
-entfernen oder nach Bestätigung aus dem Bestand löschen. Bei einem Fehler bleiben
-die noch nicht erledigten Einträge ausgewählt.
-Das Plus nimmt Inhalte in einen Arbeitskontext auf, das Minus entfernt sie
-nur daraus. Der Mülleimer löscht aus dem Bestand.
+Sobald der Host bereit ist, öffnen Sie ein zweites Terminal im selben
+Repositoryverzeichnis und starten den Desktop:
 
-Einträge stehen in aufsteigender Erstellungsreihenfolge. Importierte Kapitel
-folgen ihrer Reihenfolge in der PGN-Datei; spätere Bearbeitungen oder
-Verschiebungen ändern diese Reihenfolge nicht.
+```powershell
+pnpm dev:desktop
+```
 
-Ein Arbeitskontext kann einen Ordner samt Unterordnern aufnehmen: nur als
-leere Ablageziele oder zusätzlich mit den derzeit darin liegenden Einträgen.
-Später hinzugefügte Einträge werden nicht automatisch aufgenommen. Im
-Arbeitskontext sehen Sie die passenden Ordner mit ihrem vollständigen Pfad.
-Die Ablage bleibt für alle Arbeitskontexte dieselbe.
+Der Desktop wird dabei gebaut und anschließend geöffnet. Beide Prozesse
+müssen während der Nutzung laufen. Schließen Sie zum Beenden den Desktop
+und stoppen Sie den Host mit `Ctrl+C`. Entwicklungsdaten liegen im Repository
+und sind vom Datenprofil einer installierten App getrennt.
 
-Das Löschen eines Bestandsordners samt Unterordnern erhält die Einträge;
-sie erscheinen danach unter **Nicht eingeordnet**. Entfernen Sie einen Ordner
-aus einem Arbeitskontext, entfallen dagegen dessen zugehörige Einträge und
-Arbeitsstände nur dort. Vor einem Verlust von Kontextnotizen oder Entwürfen
-fragt Plysmith nach. Die Einträge im Gesamtbestand bleiben erhalten.
+**Aktuell unterstützen wir nur Windows.** Bei Interesse aus der Community
+könnten wir mittelfristig auch weitere Plattformen wie Linux und macOS
+unterstützen. Dafür benötigen wir Mitwirkende, die Tests auf dem jeweiligen
+Zielbetriebssystem, die Reproduktion von Fehlern und die regelmäßige Prüfung
+neuer Versionen übernehmen. Uns stehen derzeit keine Geräte mit diesen
+Betriebssystemen zur Verfügung. Wer dabei mithelfen möchte, kann sich über
+[GitHub Issues](https://github.com/lzzzy/plysmith/issues/new/choose) melden.
 
-## PGN importieren
+Hinweise zu Abhängigkeitsproblemen, Tests und Beiträgen finden Sie in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-Unter **Verwalten > Import** wählen Sie eine lokale `.pgn`-Datei und bereiten
-eine Vorschau vor. Wählen Sie die gewünschten Einträge aus und entscheiden
-Sie, ob sie als **Analyse** oder **Partie** übernommen werden. Für ein
-Eröffnungsrepertoire eignet sich Analyse; ein PGN-Ergebnis bestimmt den Typ
-nicht automatisch. Importiert wird immer in den Gesamtbestand.
+## Erste Schritte
 
-Wählen Sie einen bestehenden oder neuen Zielordner und einen gemeinsamen
-Namenspräfix. Plysmith schlägt den Dateinamen vor: etwa Ordner
-`italian-game.pgn` und Präfix `italian-game.pgn - `. Danach können Sie die
-Einträge sichten, umbenennen, verschieben, löschen oder in Arbeitskontexten
-verwenden. **Nicht eingeordnet** importiert ohne Ordner.
+Beginnen Sie mit den [Grundlagen im Manual](docs/manual/README.md) und dem
+[Import des Beispielbestands](docs/manual/01-import.md). Der Übungsweg führt
+zunächst durch **Gesamter Bestand**; Arbeitskontexte kommen erst später hinzu.
+Zum Sichten und für eigene Untersuchungen benötigen Sie noch keine Engine.
 
-Die Vorschau zeigt Namenskonflikte, Warnungen und erhaltene Inhalte. Sie können
-Namen bearbeiten oder die angebotenen Namensvorschläge gemeinsam übernehmen.
-**Auswahl importieren** legt neue Einträge an; vorhandene Einträge werden
-nicht ersetzt oder zusammengeführt. Ein erneuter Import mit anderen Namen
-erzeugt weitere Einträge. Die Vorschau gilt nur für den aktuellen Import;
-Schließen oder ein Neustart verwirft sie, ohne den Bestand zu verändern.
+Für einzelne Aufgaben können Sie direkt weiterlesen:
 
-Hauptpfad und Nebenvarianten bleiben erhalten. Kommentartext und
-nützliche Angaben wie Spieler, Eröffnung oder Ergebnis werden als normale
-Notizen übernommen, die Sie bearbeiten und löschen können. Angaben an derselben
-Stellung stehen zusammen in einer Notiz. Nebenvarianten lassen sich in der
-Stellungsvorschau und beim Analysieren aufklappen.
-Sie können auch aus einer importierten Stellung ausspielen.
-Technische Angaben zu Brettmarkierungen, Bewertungen und Uhren sowie
-Bewertungszeichen werden nicht übernommen. Erklärungen des Autors bleiben
-unverändert erhalten.
-
-Unterstützt wird Standardschach-PGN bis 16 MiB und 1.000 Einträge, mit
-begrenzter Größe je Eintrag. UTF-8 ist die Vorgabe; für ältere Dateien bietet
-Plysmith bei Bedarf ISO-8859-1 als ausdrückliche Wiederholungswahl an. Nicht
-unterstützte Inhalte werden in der Vorschau benannt. Archive und Downloads
-von einer URL sind noch nicht enthalten.
-
-Der [Quellenkatalog](docs/import-sources.md) bietet Eröffnungen, Taktik,
-Endspiele und Meisterpartien zum Ausprobieren, mit direkten Downloadlinks
-und konkreten Hinweisen zum jeweiligen Material.
-
-## Live auf Lichess
-
-Unter **Einstellungen** richten Sie ein persönliches Lichess-API-Token mit
-`board:play` ein und starten Plysmith neu. Das Token wird nur lokal gespeichert
-und danach nicht mehr angezeigt. Ein Lichess-Passwort wird nicht benötigt.
-
-Stellen Sie den Schalter in **Live** auf **Online**. Standard ist **Offline**;
-die Wahl bleibt im Desktopprofil gespeichert. Online verbindet beim nächsten
-Start wieder, Offline schließt die Verbindungen ohne eine Partie zu beenden.
-Ohne Verbindung erkennt Plysmith keine Browserstarts; eine bereits bekannte
-Fair-Play-Sperre bleibt bis zur bestätigten Klärung erhalten.
-
-Starten Sie danach eigene Partien wie gewohnt im Lichess-Browser. Plysmith meldet den
-Start in **Live**; mit der Board API kompatible Standardschachpartien können
-Sie dort ohne Enginehilfe spielen. Während einer eigenen laufenden Partie ist
-Engine- und Analysehilfe in ganz Plysmith gesperrt, auch beim Browser-Spiel.
-
-Zum Zuschauen übergeben Sie die URL einer fremden Standardschachpartie.
-Plysmith zeichnet die ganze Zugfolge auf und bietet eigene Engines zur
-angezeigten Stellung. Lichess liefert Zuschauerupdates drei Züge verzögert.
-Nach dem Ende können Sie die vollständige Partie speichern oder verwerfen.
-Verlassen von Live beendet nur die lokale Aufnahme, nicht eine Onlinepartie.
-
-Einrichtung und Grenzen: [Lichess Live](docs/lichess-live.md).
+- [Bestand sichten und ordnen](docs/manual/02-inventory.md).
+- [Stellungen untersuchen, Notizen und Analysepfade speichern](docs/manual/03-analysis.md).
+- [Engines einrichten und ihre Bewertungen lesen](docs/manual/04-settings.md).
+- [Stellungen ausspielen](docs/manual/05-playout.md) oder [Live auf Lichess spielen und zuschauen](docs/manual/06-live.md).
+- [Eine Eröffnungsbibliothek aufbauen](docs/manual/07-opening-library.md) und [mit Arbeitskontexten parallel arbeiten](docs/manual/08-contexts.md).
 
 ## Schachengines einrichten
 
 Stockfish, Lc0 und Maia-Gewichte stammen von externen Projekten. Prüfen Sie
 Quelle, Lizenz und Systemanforderungen vor der Installation.
 
-1. **Stockfish:** Eine [offizielle Windows-Version](https://stockfishchess.org/download/)
-   herunterladen und in einen dauerhaften Ordner entpacken. Unter
-   **Einstellungen > Schachengine > Stockfish hinzufügen** bei **Programmdatei**
-   die entpackte `stockfish*.exe` auswählen. Anschließend die Konfiguration
-   prüfen und **Geänderte Konfiguration speichern** wählen.
-   Neue Konfigurationen schlagen 2 Threads und die Detaillevel **Schnell**
-   (500 ms), **Gründlich** (1.500 ms) und **Tief** (5.000 ms) vor. Die Zeiten
-   gelten für Analyse und Ausspielen; letzteres verwendet standardmäßig
-   **Gründlich**. Alle Werte können in der Konfiguration geändert werden.
-2. **Maia Chess:** Eine stabile
-   [Lc0-Windows-Version](https://github.com/LeelaChessZero/lc0/releases)
-   herunterladen und entpacken. Für Rechner ohne geeignete GPU gibt es
-   CPU-Pakete. Ein klassisches `maia-*.pb.gz`-Gewicht aus dem
-   [Ordner der Maia-Gewichte](https://github.com/CSSLab/maia-chess/tree/master/maia_weights)
-   herunterladen, aber nicht entpacken. Neuere Maia-Modellgenerationen
-   verwenden ein anderes Dateiformat. Unter **Einstellungen > Schachengine >
-   Maia Chess hinzufügen** bei **Programmdatei** `lc0.exe` und bei
-   **Maia-Gewichtedatei** die `.pb.gz`-Datei auswählen. Danach
-   **Geänderte Konfiguration speichern** wählen. Lc0 und Gewichtsdatei
-   werden gemeinsam benötigt; die Gewichtsdatei ist keine ausführbare Engine.
+Der Installer enthält weder Engines noch Modellgewichte. Bezugsquellen:
 
-Legen Sie Engine-Dateien außerhalb des Plysmith-Installationsordners an einem
-dauerhaften Ort ab. Verschieben Sie sie nicht, solange Plysmith sie verwendet.
-Falls ein Neustart angezeigt wird, schließen und öffnen Sie Plysmith erneut.
-Stockfish und Maia sind unabhängig und optional. Für verschiedene
-Maia-Spielstärken können Sie eigene Konfigurationen mit den jeweiligen
-Gewichtsdateien anlegen.
+- **Stockfish:** [Offizielle Windows-Versionen](https://stockfishchess.org/download/).
+- **Lc0 für Maia:** [Stabile Windows-Versionen](https://github.com/LeelaChessZero/lc0/releases), auch mit CPU-Paketen für Rechner ohne geeignete GPU.
+- **Maia-Modelle:** [Klassische Maia-Gewichte](https://github.com/CSSLab/maia-chess/tree/master/maia_weights) im Format `maia-*.pb.gz`. Neuere Modellgenerationen mit anderem Format sind dafür nicht geeignet.
 
-Beim Start wird die gesamte technische Konfiguration geprüft. Ist irgendein
-Teil ungültig oder nicht unterstützt, wird der komplette aktive Satz verworfen
-und wie beim Erststart aus aktuellen Standards neu erstellt. Es werden keine
-alten Werte übernommen, auch keine gültigen Teilkonfigurationen. Richten Sie
-die gewünschten Engines anschließend von Anfang an neu ein. Dafür gibt es
-keinen zusätzlichen Rücksetzungsbutton und keine Dateireparatur.
-
-Die Datenbank selbst wird nicht gelöscht. Die Standardkonfiguration öffnet
-wieder `data/plysmith.db`; sofern deren Datenformat zu dieser Version passt,
-ist der dort vorhandene Bestand samt Notizen, Kontexten und Arbeitsständen
-wieder verfügbar. Ein inkompatibler Bestand blockiert den Start und bleibt
-unangetastet. Ein manuell abweichender
-alter Datenbankpfad wird nicht übernommen; dessen Datei bleibt unangetastet.
+Die Einrichtung in Plysmith, die drei Stockfish-Detaillevel und das Lesen der
+Bewertungen erklärt [Einstellungen und Engines](docs/manual/04-settings.md).
+Was bei ungültiger Konfiguration geschieht, steht unter
+[Diagnose und Neueinrichtung](docs/manual/04-settings.md#diagnose-und-neueinrichtung).
 
 ## Fehler und Ideen melden
 
@@ -243,16 +143,11 @@ diese Angaben besonders nützlich:
 - Falls hilfreich, ein Screenshot und ein Diagnosebericht. Beides ist
   freiwillig; ein Startfehler lässt sich auch ohne Diagnosebericht melden.
 
-Einen lokalen Diagnosebericht können Sie unter **Einstellungen > Diagnose >
-Inhalt prüfen und Bericht erstellen** erzeugen und mit **Speicherort wählen**
-selbst ablegen. Plysmith lädt ihn nicht automatisch hoch. Bei einem
-wiederholbaren Fehler können Sie vorher unter **Einstellungen > Diagnose**
-das Diagnoselevel **Fehler** oder **Info** wählen, **Übernehmen** klicken,
-Plysmith neu starten und den Fehler erneut auslösen. Erst danach enthält
-der Bericht die zugehörigen technischen Ereignisse. Ein Bericht ohne diese
-Schritte kann trotzdem nützlich sein. Prüfen Sie vor dem Anhängen Screenshots
-und Bericht auf persönliche Inhalte und machen Sie private Angaben bei Bedarf
-unkenntlich. Veröffentlichen Sie in öffentlichen Issues keine Datenbank,
+Das Erstellen eines lokalen Diagnoseberichts beschreibt das Manual unter
+[Diagnose und Neueinrichtung](docs/manual/04-settings.md#diagnose-und-neueinrichtung).
+Prüfen Sie vor dem Anhängen Screenshots und Bericht auf persönliche Inhalte
+und machen Sie private Angaben bei Bedarf unkenntlich. Veröffentlichen Sie
+in öffentlichen Issues keine Datenbank,
 aktive Konfiguration, `.env`-Datei, private Partien, Notizen oder
 unbearbeiteten Logs. Ein Diagnosebericht ist kein Backup.
 

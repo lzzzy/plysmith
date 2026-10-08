@@ -6,6 +6,7 @@ import type { TestContext } from 'node:test';
 
 import { publishHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
 import { preferences, systemStatus } from '../../contract/mcp/helpers.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 
 export interface CapturedRequest {
   readonly method: string | undefined;
@@ -29,8 +30,10 @@ export async function createHttpHostFixture(
       | undefined;
   } = {},
 ) {
-  const applicationHome = await mkdtemp(
-    path.join(os.tmpdir(), 'plysmith-mcp-'),
+  const resources = testResources(t);
+  const applicationHome = await resources.acquire(
+    () => mkdtemp(path.join(os.tmpdir(), 'plysmith-mcp-')),
+    (directory) => rm(directory, { force: true, recursive: true }),
   );
   const token = 'mcp-integration-test-token-canary-12345';
   const requests: CapturedRequest[] = [];
@@ -47,7 +50,7 @@ export async function createHttpHostFixture(
   };
   const writeResult = { changed: true, preferences: changedPreferences };
   let preferenceDisconnects = options.preferenceDisconnects ?? 0;
-  let stopped = false;
+  let stopPromise: Promise<void> | undefined;
   // A transport fixture only: it does not compose or launch an Application Host.
   const httpServer = createServer(async (request, response) => {
     try {
@@ -98,22 +101,23 @@ export async function createHttpHostFixture(
       response.destroy();
     }
   });
-  const stopHost = async (): Promise<void> => {
-    if (stopped) return;
-    stopped = true;
+  const stopHost = (): Promise<void> => {
+    if (stopPromise !== undefined) return stopPromise;
+    if (!httpServer.listening) return Promise.resolve();
     httpServer.closeAllConnections();
-    await new Promise<void>((resolve, reject) => {
+    stopPromise = new Promise<void>((resolve, reject) => {
       httpServer.close((error) => (error ? reject(error) : resolve()));
     });
+    return stopPromise;
   };
-  t.after(async () => {
-    await stopHost();
-    await rm(applicationHome, { force: true, recursive: true });
-  });
-  await new Promise<void>((resolve, reject) => {
-    httpServer.once('error', reject);
-    httpServer.listen(0, '127.0.0.1', resolve);
-  });
+  resources.defer(stopHost);
+  await resources.run(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        httpServer.once('error', reject);
+        httpServer.listen(0, '127.0.0.1', resolve);
+      }),
+  );
   const address = httpServer.address();
   if (address === null || typeof address === 'string') {
     throw new Error('The test endpoint is unavailable.');
@@ -129,7 +133,7 @@ export async function createHttpHostFixture(
     token,
   };
   const discoveryPath = path.join(applicationHome, 'runtime', 'host.json');
-  await publishHostDiscovery(applicationHome, discovery);
+  await resources.run(() => publishHostDiscovery(applicationHome, discovery));
   return {
     applicationHome,
     discoveryPath,

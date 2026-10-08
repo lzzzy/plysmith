@@ -27,7 +27,7 @@ import type {
   PlayoutSourcePath,
 } from '../../domain/playout/index.ts';
 import type { MoveInput } from '../chess_graph/index.ts';
-import type { ChessTree } from '../../domain/inventory/chess-tree.ts';
+import type { ChessTree } from '../../domain/inventory/index.ts';
 
 export interface AnalysisContributionView {
   readonly contributionId: ContributionId;

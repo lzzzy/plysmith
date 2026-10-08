@@ -1,4 +1,4 @@
-import { validatePositionNoteInput } from '../analysis/index.ts';
+import { validatePositionNoteInput } from '../analysis/public.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
 import type { InventoryRevisionComment } from './inventory-models.ts';
 

@@ -331,6 +331,29 @@ test('rename and creation suggestions respect the shared inventory name limit', 
   );
 });
 
+test('inventory name suggestions retain complete Unicode characters at the length limit', (t) => {
+  const { database, item } = fixture(t);
+  const cases = [
+    [`${'A'.repeat(155)}\u{20000}XYZ`, 'A'.repeat(155)],
+    [`${'B'.repeat(154)}\u{20000}WXYZ`, `${'B'.repeat(154)}\u{20000}`],
+  ] as const;
+  for (const [name, shortened] of cases) {
+    item(name);
+    const suggestion = checkInventoryNameAvailability(database, {
+      displayName: name,
+    });
+    assert.equal(suggestion.available, false);
+    assert.equal(suggestion.suggestedDisplayName, `${shortened} (2)`);
+    item(suggestion.suggestedDisplayName);
+    assert.equal(
+      checkInventoryNameAvailability(database, {
+        displayName: name,
+      }).suggestedDisplayName,
+      `${shortened} (3)`,
+    );
+  }
+});
+
 test('folder include is a recursive snapshot with independent empty targets and implicit groups', (t) => {
   const { database, change, folder, item, context } = fixture(t);
   const parent = folder('Openings');
@@ -1065,63 +1088,89 @@ test('public persistence serializes competing writes and retains organization ac
   assert.deepEqual(await open().readInventoryOrganization({}), before);
 });
 
-test('schema seven fails fast without changing its data or migration history', (t) => {
-  const database = new Database(':memory:');
-  t.after(() => database.close());
-  database.pragma('foreign_keys = ON');
-  const files = [
-    '001-user-preferences',
-    '002-analysis-workspace',
-    '003-analysis-contributions',
-    '004-stable-analysis-scratch-identity',
-    '005-inventory-revisions',
-    '006-playout-drafts',
-    '007-game-source-path',
-  ];
-  for (const [index, file] of files.entries()) {
-    const sql = readFileSync(
-      new URL(
-        `../../../app/infrastructure/adapters/persistence/sqlite/migrations/${file}.sql`,
-        import.meta.url,
-      ),
-      'utf8',
-    );
-    database.exec(sql);
-    if (index === 0) {
-      database
-        .prepare(
-          "INSERT INTO runtime_store_state VALUES (1, 7, 3, 0, 'ready', ?)",
-        )
-        .run(timestamp);
-      database
-        .prepare("INSERT INTO preference_state VALUES (1, 'de-DE', 1, ?)")
-        .run(timestamp);
-    }
-    database
-      .prepare('INSERT INTO runtime_schema_migration VALUES (?, ?, ?)')
-      .run(
-        index + 1,
-        createHash('sha256').update(sql.replaceAll('\r\n', '\n')).digest(),
-        timestamp,
+for (const schemaVersion of [7, 9]) {
+  test(`schema ${schemaVersion} fails fast without changing its data or migration history`, (t) => {
+    const database = new Database(':memory:');
+    t.after(() => database.close());
+    database.pragma('foreign_keys = ON');
+    const files = [
+      '001-user-preferences',
+      '002-analysis-workspace',
+      '003-analysis-contributions',
+      '004-stable-analysis-scratch-identity',
+      '005-inventory-revisions',
+      '006-playout-drafts',
+      '007-game-source-path',
+      '008-inventory-folders',
+      '009-inventory-chess-tree',
+    ].slice(0, schemaVersion);
+    for (const [index, file] of files.entries()) {
+      const sql = readFileSync(
+        new URL(
+          `../../../app/infrastructure/adapters/persistence/sqlite/migrations/${file}.sql`,
+          import.meta.url,
+        ),
+        'utf8',
       );
-  }
-  assert.throws(() => migrateStore(database, false, timestamp), {
-    problemCode: 'persistence.incompatible_store',
-  });
-  assert.equal(readDataRevision(database), 3);
-  assert.equal(
-    (
+      database.exec(sql);
+      if (index === 0) {
+        database
+          .prepare(
+            "INSERT INTO runtime_store_state VALUES (1, ?, 3, 0, 'ready', ?)",
+          )
+          .run(schemaVersion, timestamp);
+        database
+          .prepare("INSERT INTO preference_state VALUES (1, 'de-DE', 1, ?)")
+          .run(timestamp);
+      }
       database
-        .prepare('SELECT schema_version AS version FROM runtime_store_state')
-        .get() as { version: number }
-    ).version,
-    7,
-  );
-  assert.equal(
-    database
-      .prepare("SELECT 1 FROM sqlite_master WHERE name = 'inventory_folder'")
-      .get(),
-    undefined,
-  );
-  assert.deepEqual(database.pragma('foreign_key_check'), []);
-});
+        .prepare('INSERT INTO runtime_schema_migration VALUES (?, ?, ?)')
+        .run(
+          index + 1,
+          createHash('sha256').update(sql.replaceAll('\r\n', '\n')).digest(),
+          timestamp,
+        );
+    }
+    if (schemaVersion === 9) {
+      createAnalysisRecord(database, {
+        displayName: 'Preserve the alpha analysis',
+        languageTag: 'en-GB',
+        origin: { kind: 'initial_position' },
+        root: rules.initialState(),
+        steps: [],
+        note: { body: 'Preserve the alpha note.', moves: [] },
+        noteScope: { kind: 'global' },
+        occurredAt: timestamp,
+      });
+    }
+    const before = database.serialize();
+    const dataRevision = readDataRevision(database);
+    assert.throws(
+      () => migrateStore(database, false, '2026-10-08T12:00:00.000Z'),
+      {
+        problemCode: 'persistence.incompatible_store',
+      },
+    );
+    assert.equal(database.inTransaction, false);
+    assert.deepEqual(database.serialize(), before);
+    assert.equal(readDataRevision(database), dataRevision);
+    assert.equal(
+      (
+        database
+          .prepare('SELECT schema_version AS version FROM runtime_store_state')
+          .get() as { version: number }
+      ).version,
+      schemaVersion,
+    );
+    if (schemaVersion === 7)
+      assert.equal(
+        database
+          .prepare(
+            "SELECT 1 FROM sqlite_master WHERE name = 'inventory_folder'",
+          )
+          .get(),
+        undefined,
+      );
+    assert.deepEqual(database.pragma('foreign_key_check'), []);
+  });
+}

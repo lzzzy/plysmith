@@ -10,14 +10,14 @@ import { _electron as electron } from '@playwright/test';
 import { readHostDiscovery } from '../app/infrastructure/adapters/platform/windows/index.ts';
 import { connectHost } from '../app/infrastructure/channels/host_client/index.ts';
 
-const releaseRoot = path.resolve('build/alpha-release');
+const releaseRoot = path.resolve('build/release');
 const packaged = path.join(releaseRoot, 'packaged', 'Plysmith-win32-x64');
 const home = path.resolve(
-  'build/alpha-verification',
+  'build/release-verification',
   `desktop-${randomUUID()}`,
 );
 const parallelHome = path.resolve(
-  'build/alpha-verification',
+  'build/release-verification',
   `desktop-parallel-${randomUUID()}`,
 );
 const executablePath =
@@ -71,13 +71,13 @@ for (const iteration of [1, 2]) {
     });
     const client = await connectHost(discovery, { origin: 'app://plysmith' });
     if (iteration === 1) {
-      await client.createWorkingContext({ displayName: 'Alpha-Pruefung' });
+      await client.createWorkingContext({ displayName: 'Release-Pruefung' });
     }
     const scopeSelector = window.getByRole('combobox', {
       name: /Arbeitskontext|Working context/,
     });
     const selected = await scopeSelector.selectOption(
-      { label: 'Alpha-Pruefung' },
+      { label: 'Release-Pruefung' },
       { timeout: 60_000 },
     );
     assert.equal(selected.length, 1);
@@ -119,18 +119,14 @@ for (const iteration of [1, 2]) {
           path.join(parallelHome, 'desktop', 'profile', 'session'),
         );
         assert.notEqual(parallelDiscovery.pid, discovery.pid);
-        await parallel.evaluate(({ app }) => {
-          setTimeout(() => app.quit(), 0);
-        });
+        await parallel.close();
         await waitForHostExit(parallelHome, parallelDiscovery.pid);
         console.log('Parallel desktop: separate profile and Host');
       } finally {
         await parallel.close();
       }
     }
-    await application.evaluate(({ app }) => {
-      setTimeout(() => app.quit(), 0);
-    });
+    await application.close();
     await waitForHostExit(home, discovery.pid);
   } finally {
     await application.close();

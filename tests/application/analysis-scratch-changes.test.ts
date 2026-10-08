@@ -118,3 +118,36 @@ test('revision changes compare the complete saved line and metadata, not scratch
     true,
   );
 });
+
+test('revision dirty checks compare the complete candidate even when its cursor is rewound', () => {
+  const plan = planInventoryRevision({
+    line: base,
+    mode: 'replace_move',
+    anchorId: base.steps[0]!.anchorId,
+  });
+  const scratch = startAnalysisScratch(
+    'unchanged-replacement',
+    root,
+    origin,
+    plan.intent,
+  );
+  const unchanged = appendAnalysisMove(scratch, applied.value);
+  assert.equal(analysisScratchHasChanges(unchanged, base), false);
+  assert.equal(
+    analysisScratchHasChanges(moveAnalysisCursor(unchanged, 0), base),
+    false,
+  );
+  const changed = rules.applyMove(root, [], {
+    kind: 'notation',
+    value: 'd4',
+    locale: 'en-GB',
+  });
+  if (!changed.ok) throw new Error('Expected a legal move.');
+  assert.equal(
+    analysisScratchHasChanges(
+      moveAnalysisCursor(appendAnalysisMove(scratch, changed.value), 0),
+      base,
+    ),
+    true,
+  );
+});

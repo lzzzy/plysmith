@@ -1,0 +1,70 @@
+{
+  "scope": "German user manual, fixed PGN, native screenshots and source-grounded practice workflows",
+  "historicalScope": "Manual authoring before beta closeout; its no-product-change and no-release boundaries apply to that earlier work only.",
+  "subsequentBetaVerification": "beta-2026-10-08.json",
+  "date": "2026-10-08",
+  "status": "passed",
+  "entryPoint": "docs/manual/README.md",
+  "chapters": 9,
+  "words": 8738,
+  "checkedLinks": 111,
+  "distinctNativeScreenshots": 31,
+  "electronZoomFactor": 1,
+  "practiceViewport": { "width": 1600, "height": 1100 },
+  "pgnSha256": "1aaf6f33db5c2b015cc1754b7006e0d42d5b7633896f7bfb02a9767de2fb1859",
+  "readmeReconciliation": {
+    "rootEntryPoints": ["README.md", "README.en.md"],
+    "checkedDocuments": 11,
+    "checkedLocalLinks": 154,
+    "checkedHeadingAnchors": 15,
+    "checkedIncomingRootLinks": 10,
+    "englishManualLinks": "German chapters explicitly identified; no nonexistent translation linked"
+  },
+  "developmentQuickstart": {
+    "entryPoints": [
+      "README.md#aus-quellcode-starten",
+      "README.en.md#running-from-source"
+    ],
+    "commandsCheckedPerLanguage": 7,
+    "focusedTestsPassed": 3,
+    "unsupportedPlatformProbe": "Simulated linux and darwin rejected with host.lease_unavailable before filesystem or subprocess access",
+    "scope": "Documentation and existing startup contracts; no fresh install or actual Linux/macOS runtime claimed"
+  },
+  "checks": [
+    "Previously agreed introduction wording preserved; chapter navigation and targeted installation backlink appended",
+    "All local links, chapter navigation, image dimensions and PGN hash checked",
+    "Markdown formatting and tracked diff whitespace checked",
+    "German practice chapters written with Astra and independently reviewed against current source",
+    "Real UI import into isolated profiles with explicit teaching-game type",
+    "Real local Stockfish and Maia 1500/1800 configuration, save and application restart",
+    "Completed Stockfish evaluations and both Maia policy meters before final engine capture",
+    "Bulk deletion preview limited to two disposable sketches",
+    "Own derived analysis extended, shortened, given a variation, variation removed and mainline replaced",
+    "Four imported core move sequences and positions preserved",
+    "Real Stockfish playout saved; second real playout discarded",
+    "Actual context-only note and two-context pending revision with three-choice review",
+    "Reader follow-up: last remaining anchored exploration move discards its path; board destination-to-origin takeback checked against current source; links and formatting rechecked",
+    "German and English root READMEs reconciled with the manual: operating instructions maintained in the manual, installation and external engine sources in root README; reporting guidance cross-linked",
+    "Both root READMEs and all manual chapters checked for local link targets and heading anchors; incoming repository and issue-template links to root READMEs checked",
+    "Bounded Astra reconciliation review completed; lost source-file budget caveat restored qualitatively in the import chapter without exposing internal numeric budgets",
+    "Developer quickstart added in both root languages and CONTRIBUTING cross-linked; pinned Node/pnpm versions, clone URL, installation and two-terminal startup commands checked against current source; Windows-only startup boundary tested without starting a runtime"
+  ],
+  "localEvidence": {
+    "directory": "build/verification/manual",
+    "readmeLinkVerifier": "build/verification/manual/validate-readme-links.mjs",
+    "developmentQuickstartVerifier": "build/verification/manual/validate-development-readme.mjs",
+    "foundationRun": "7af4c3bc-1cb8-4892-a80e-8663596265e0",
+    "practiceProfileRun": "2c78a846-ec6b-4800-a9b3-e051bd3ca3b8",
+    "practiceContinuation": "2e08707e-4154-4f07-a35e-5a11fd47a306",
+    "completedRevisionCapture": "0ed27f0c-bbfb-4975-ade5-1e84053a3824",
+    "completedEngineCapture": "0bc63759-cdc3-4347-9a16-6e992c6c68c8",
+    "note": "Practice was resumed in its existing isolated profile after automation-selector corrections; no data reset or synthetic screenshots. Owned processes and agents closed."
+  },
+  "boundaries": [
+    "No product code or persisted schema changed; no product full-suite claim",
+    "No user profile, credentials or live account actions used",
+    "Live online workflows checked against source; screenshots limited to actual unconfigured/offline setup",
+    "German manual and editorial decisions accepted by the user after the takeback clarification; English translation is the next step",
+    "No release, commit or push"
+  ]
+}

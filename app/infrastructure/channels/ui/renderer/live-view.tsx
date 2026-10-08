@@ -249,7 +249,7 @@ function LiveSession({
     activeMove.current?.scrollIntoView({ block: 'nearest' });
   }, [session.selectedPly]);
   const engine =
-    state.live?.fairPlayBlocked === false &&
+    !state.fairPlayBlocked &&
     session.focus !== undefined &&
     (session.role === 'observe' || session.status === 'ended') ? (
       <PositionAnalysisPanel
@@ -379,6 +379,7 @@ function LiveSession({
             </div>
             <div
               className={styles.moveList}
+              role="region"
               tabIndex={0}
               aria-label={intl.formatMessage({ id: 'playout.moves' })}
             >

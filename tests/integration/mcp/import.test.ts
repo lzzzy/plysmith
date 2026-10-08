@@ -24,6 +24,7 @@ import { createMcpServer } from '../../../app/infrastructure/channels/mcp/index.
 import { readHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
 import { assertToolData } from '../../contract/mcp/helpers.ts';
 import { createApplicationHostFixture } from './application-host-fixture.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 
 async function tool<T extends Record<string, unknown>>(
   client: Client,
@@ -42,8 +43,11 @@ test(
   'session import crosses real MCP, HTTP and SQLite and publishes the ordinary inventory event',
   { timeout: 60000 },
   async (t) => {
+    const resources = testResources(t);
     const fixture = await createApplicationHostFixture(t);
-    const discovery = await readHostDiscovery(fixture.applicationHome);
+    const discovery = await resources.run(() =>
+      readHostDiscovery(fixture.applicationHome),
+    );
     assert.ok(discovery);
     const host = await connectHost(discovery);
     const server = createMcpServer({
@@ -56,6 +60,8 @@ test(
     });
     const [clientTransport, serverTransport] =
       InMemoryTransport.createLinkedPair();
+    resources.defer(() => server.close());
+    resources.defer(() => client.close());
     const events: HostEvent[] = [];
     const failures: string[] = [];
     const subscription = new HostEventClient(discovery, {
@@ -69,6 +75,7 @@ test(
         failures.push('replay gap');
       },
     });
+    resources.defer(() => subscription.close());
     const inputLocator = path.join(fixture.applicationHome, 'chapters.pgn');
     const bytes = Buffer.from(
       Array.from(
@@ -86,9 +93,12 @@ test(
     }));
     try {
       await writeFile(inputLocator, bytes);
-      await server.connect(serverTransport);
-      await client.connect(clientTransport);
+      await resources.run(() => server.connect(serverTransport));
+      await resources.run(() =>
+        client.connect(clientTransport, { signal: t.signal }),
+      );
       await subscription.ready;
+      t.signal.throwIfAborted();
       await t.test(
         'prepare returns a complete preview without inventory changes',
         async () => {
@@ -298,9 +308,7 @@ test(
       assert.deepEqual(failures, []);
       await assert.rejects(stat(fixture.providerTracePath), { code: 'ENOENT' });
     } finally {
-      subscription.close();
-      await client.close();
-      await server.close();
+      await resources.close();
     }
   },
 );

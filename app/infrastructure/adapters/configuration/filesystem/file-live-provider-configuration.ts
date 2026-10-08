@@ -59,12 +59,8 @@ export class FileLiveProviderConfigurationRepository implements LiveProviderConf
     let recoveryRequired = false;
     try {
       await assertDirectory(this.#active);
-      // Exclude both existing central-document writers for the entire publication.
-      for (const name of [
-        '.engine-settings.lock',
-        '.diagnostic-settings.lock',
-        '.live-settings.lock',
-      ]) {
+      // Share the central-document writer lock and retain Live's recovery marker.
+      for (const name of ['.engine-settings.lock', '.live-settings.lock']) {
         const filePath = path.join(this.#active, name);
         try {
           locks.push({

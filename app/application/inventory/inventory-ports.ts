@@ -6,7 +6,7 @@ import type {
   RevisionImpactId,
 } from '../../domain/identity/index.ts';
 import type { WorkScope } from '../../domain/workspace/index.ts';
-import type { AnalysisRecordView } from '../analysis/analysis-models.ts';
+import type { AnalysisRecordView } from '../analysis/public.ts';
 import type {
   AnalysisRecordCreated,
   DeleteInventoryItemRequest,

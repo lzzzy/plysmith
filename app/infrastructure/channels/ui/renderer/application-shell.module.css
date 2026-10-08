@@ -59,7 +59,7 @@
   font-weight: 650;
 }
 
-.activityButton[data-hovered] {
+.activityButton[data-hovered]:not([data-disabled]) {
   color: #ffffff;
   background: #303640;
 }
@@ -69,10 +69,15 @@
   outline-offset: 1px;
 }
 
-.activityButton.activeActivity {
+.activityButton.activeActivity:not([data-disabled]) {
   color: #ffffff;
   background: #35404d;
   border-color: #4c5968;
+}
+
+.activityButton[data-disabled] {
+  color: #6f7782;
+  cursor: default;
 }
 
 .disabledActivity[data-disabled] {

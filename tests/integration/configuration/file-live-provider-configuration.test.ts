@@ -149,7 +149,7 @@ test('stale revisions and overlapping configuration writers cannot overwrite sec
     }),
     { problemCode: 'configuration.live_conflict' },
   );
-  for (const lock of ['.engine-settings.lock', '.diagnostic-settings.lock']) {
+  for (const lock of ['.engine-settings.lock', '.live-settings.lock']) {
     const lockPath = path.join(f.activeDirectory, lock);
     await writeFile(lockPath, 'existing writer');
     await assert.rejects(

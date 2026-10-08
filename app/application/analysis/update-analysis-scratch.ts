@@ -15,7 +15,7 @@ import type { ChessRulesPort } from '../chess_graph/index.ts';
 import { ApplicationProblem } from '../problems/application-problem.ts';
 import type { StoreStatusReader } from '../system/index.ts';
 import { workingContextNotFound } from '../workspace/index.ts';
-import { assertInventoryWorkAccess } from '../workspace/inventory-work-access.ts';
+import { assertInventoryWorkAccess } from '../workspace/index.ts';
 import type {
   AnalysisRecordView,
   UpdateAnalysisScratchAction,

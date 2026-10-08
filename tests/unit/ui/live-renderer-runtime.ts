@@ -4,6 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
 
 test('live renderer keeps credentials ephemeral and own-game navigation locked', async () => {
   const bundle = await build({
@@ -29,11 +30,14 @@ Object.assign(state.live, { accountName: 'Runtime_User_12345678' });
 let engineCalls = 0;
 let finishSave;
 const store = { start: async () => {}, close() {}, saveLiveProviderConfiguration: token => { calls.push({ length: token.length }); return new Promise(resolve => { finishSave = resolve; }); }, getSnapshot: () => state, subscribe: () => () => {}, selectLivePosition: ply => { calls.push({ ply }); return Promise.resolve(); } };
+Object.assign(store, { checkInventoryName: async displayName => ({ displayName, available: true, suggestedDisplayName: displayName, dataRevision: 0 }) });
 Object.assign(store, { getPositionAnalysisObjectiveProvider: () => 'stockfish', getPositionAnalysisBudget: () => 'fast', getPositionAnalysisHumanSelection: () => [], getPositionAnalysisSort: () => 'stockfish', analyzePosition: async () => { engineCalls++; return { kind: 'failed' }; } });
-function render() { root.render(<IntlProvider locale="en-GB" messages={messages['en-GB']}>{mode === 'settings' ? <LiveSettings state={state} store={store} /> : mode === 'live' ? <LiveView state={state} store={store} /> : mode === 'shell' ? <PlysmithApplication store={store} /> : null}</IntlProvider>); }
+function render() { root.render(<IntlProvider locale={state.preferences.uiLocale} messages={messages[state.preferences.uiLocale]}>{mode === 'settings' ? <LiveSettings state={state} store={store} /> : mode === 'live' ? <LiveView state={state} store={store} /> : mode === 'shell' ? <PlysmithApplication store={store} /> : null}</IntlProvider>); }
 window.audit = { show(value) { mode = value; render(); }, locked(activity) { state = { ...state, activity, contexts: { contexts: [] }, fairPlayBlocked: true, live: { ...state.live, fairPlayBlocked: true } }; mode = 'shell'; render(); }, observe() { state = { ...state, fairPlayBlocked: false, live: { ...state.live, fairPlayBlocked: false, session: { ...session, role: 'observe' } } }; render(); }, finish(value) { finishSave(value); }, calls };
 Object.assign(window.audit, { connection(online) { state = { ...state, live: { ...state.live, online, connection: online ? 'failed' : 'disconnected', session: { ...state.live.session, connected: false } } }; render(); } });
 Object.assign(window.audit, { ratings(white, black) { state = { ...state, live: { ...state.live, session: { ...state.live.session, white: { name: 'White', ...(white === undefined ? {} : { rating: white }) }, black: { name: 'Black', ...(black === undefined ? {} : { rating: black }) } } } }; render(); } });
+Object.assign(window.audit, { verifying(blocked) { state = { ...state, fairPlayBlocked: blocked }; render(); } });
+Object.assign(window.audit, { completed(locale, empty) { mode = 'live'; state = { ...state, preferences: { uiLocale: locale }, fairPlayBlocked: false, live: { ...state.live, fairPlayBlocked: false, session: { ...session, status: 'ended', connected: false, outcome: empty ? 'unfinished' : 'draw', steps: empty ? [] : session.steps, selectedPly: empty ? 0 : 1 } } }; render(); } });
 Object.assign(window.audit, { engine() { state = { ...state, analysisProviders: { providers: [{ instanceId: 'stockfish', displayName: 'Stockfish', capability: 'objective_position_analysis', status: 'available' }] }, live: { ...state.live, session: { ...state.live.session, analysisRevision: 1, focus: { focusKey: 'position-1', root: chess, current: chess, moves: [] } } } }; render(); }, clock() { state = { ...state, live: { ...state.live, revision: state.live.revision + 1, session: { ...state.live.session, whiteClockMs: 20000 } } }; render(); }, gate(blocked) { state = { ...state, fairPlayBlocked: blocked, live: { ...state.live, fairPlayBlocked: blocked } }; render(); }, engineCalls: () => engineCalls });
 render();
 `,
@@ -193,13 +197,21 @@ render();
     await expect(analysis).toBeVisible();
     await expect(page.getByText('0:20', { exact: true })).toBeVisible();
     assert.equal(await page.evaluate('window.audit.engineCalls()'), 1);
+    await page.evaluate('window.audit.verifying(true)');
+    await expect(analysis).toBeHidden();
+    assert.equal(await page.evaluate('window.audit.engineCalls()'), 1);
+    await page.evaluate('window.audit.verifying(false)');
+    await expect(analysis).toBeVisible();
+    await expect
+      .poll(() => page.evaluate('window.audit.engineCalls()'))
+      .toBe(2);
     await page.evaluate('window.audit.gate(true)');
     await expect(analysis).toBeHidden();
     await page.evaluate('window.audit.gate(false)');
     await expect(analysis).toBeVisible();
     await expect
       .poll(() => page.evaluate('window.audit.engineCalls()'))
-      .toBe(2);
+      .toBe(3);
     for (const activity of ['analyze', 'playout']) {
       await page.evaluate(`window.audit.locked('${activity}')`);
       await expect(
@@ -210,6 +222,43 @@ render();
       await expect(page.getByRole('grid')).toHaveCount(0);
       await expect(page.getByRole('main')).toHaveCount(0);
     }
+    const accessibilityFailures = [];
+    for (const locale of ['de-DE', 'en-GB']) {
+      for (const empty of [true, false]) {
+        await page.evaluate(`window.audit.completed('${locale}', ${empty})`);
+        const list = page.getByLabel(
+          locale === 'de-DE' ? 'Zugfolge' : 'Moves',
+          {
+            exact: true,
+          },
+        );
+        await expect(list).toHaveCount(1);
+        await expect(list).toHaveAttribute('tabindex', '0');
+        await list.focus();
+        await page.keyboard.press('Shift+Tab');
+        await page.keyboard.press('Tab');
+        await expect(list).toBeFocused();
+        await expect(list.getByRole('button')).toHaveCount(empty ? 0 : 1);
+        if (!empty)
+          await expect(list.getByRole('button')).toHaveAttribute(
+            'aria-current',
+            'step',
+          );
+        const { violations } = await new AxeBuilder({ page })
+          .setLegacyMode()
+          .include('main')
+          .analyze();
+        assert.equal(await list.getAttribute('role'), 'region');
+        for (const violation of violations)
+          accessibilityFailures.push({
+            locale,
+            empty,
+            rule: violation.id,
+            nodes: violation.nodes.map((node) => node.html),
+          });
+      }
+    }
+    assert.deepEqual(accessibilityFailures, []);
     assert.deepEqual(errors, []);
   } finally {
     await browser.close();

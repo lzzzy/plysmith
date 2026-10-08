@@ -529,6 +529,116 @@ test('navigates inner record anchors independently from every referencing contex
   }
 });
 
+for (const target of ['inventory', 'other_context'] as const) {
+  for (const withMove of [false, true]) {
+    test(`saves an independent context analysis outside its source context (${target}, move: ${withMove})`, async (t) => {
+      const fixture = storeFixture(t);
+      const store = fixture.open();
+      const workspace = workspaceUseCases(store);
+      const source = await workspace.create.execute({ displayName: 'Source' });
+      const destination =
+        target === 'other_context'
+          ? await workspace.create.execute({ displayName: 'Destination' })
+          : undefined;
+      const scope = contextWorkScope(source.context.contextId);
+      const analysis = analysisUseCases(store);
+      const started = await analysis.update.execute({
+        scope,
+        expectedScratchId: null,
+        expectedScratchRevision: null,
+        action: {
+          kind: 'start',
+          origin: { kind: 'initial_position' },
+          ...(withMove
+            ? { firstMove: { kind: 'coordinates' as const, value: 'e2e4' } }
+            : {}),
+        },
+      });
+      assert.ok(started.scratch);
+      const noted = withMove
+        ? await analysis.update.execute({
+            scope,
+            expectedScratchId: started.scratch.scratchId,
+            expectedScratchRevision: started.scratch.scratchRevision,
+            action: {
+              kind: 'prepare_note',
+              body: 'Keep this independent note.',
+            },
+          })
+        : started;
+      assert.ok(noted.scratch);
+      const before = await store.readStoreStatus();
+      const saved = await analysis.create.execute({
+        scope,
+        expectedScratchId: noted.scratch.scratchId,
+        expectedScratchRevision: noted.scratch.scratchRevision,
+        displayName: 'Independent analysis',
+        languageTag: 'en-GB',
+        ...(destination === undefined
+          ? {}
+          : { targetContextId: destination.context.contextId }),
+      });
+      assert.equal(saved.dataRevision, before.dataRevision + 1);
+      assert.equal(
+        saved.resumeUpdates.find(
+          (update) => update.contextId.value === source.context.contextId.value,
+        )?.resumeVersion,
+        noted.resumeVersion! + 1,
+      );
+
+      await store.close();
+      const reopened = fixture.open();
+      const sourceWorkspace = await reopened.readWorkingContextWorkspace(
+        source.context.contextId,
+      );
+      assert.deepEqual(sourceWorkspace?.members, []);
+      assert.equal(sourceWorkspace?.analysisResume?.itemId, undefined);
+      assert.equal(sourceWorkspace?.analysisResume?.scratchId, undefined);
+      assert.equal(
+        (await reopened.readContextAnalysisWorkspace(source.context.contextId))
+          ?.scratch,
+        undefined,
+      );
+      const record = await reopened.readAnalysisRecord({
+        itemId: saved.itemId,
+        revisionId: saved.revisionId,
+        anchorId: saved.rootAnchorId,
+      });
+      assert.ok(record);
+      assert.equal(record.steps.length, withMove ? 1 : 0);
+      assert.deepEqual(
+        record.contributions.map((note) => ({
+          body: note.body,
+          scopeKind: note.scopeKind,
+        })),
+        withMove
+          ? [{ body: 'Keep this independent note.', scopeKind: 'global' }]
+          : [],
+      );
+      if (destination !== undefined) {
+        const targetWorkspace = await reopened.readWorkingContextWorkspace(
+          destination.context.contextId,
+        );
+        assert.deepEqual(
+          targetWorkspace?.members.map((member) => member.itemId),
+          [saved.itemId],
+        );
+        assert.deepEqual(targetWorkspace?.analysisResume?.itemId, saved.itemId);
+      }
+      const database = new Database(fixture.databasePath, { readonly: true });
+      try {
+        assert.deepEqual(database.pragma('foreign_key_check'), []);
+        assert.equal(
+          database.pragma('integrity_check', { simple: true }),
+          'ok',
+        );
+      } finally {
+        database.close();
+      }
+    });
+  }
+}
+
 test('an inventory-only record is referenced only by an explicit later command', async (t) => {
   const fixture = storeFixture(t);
   const store = fixture.open();

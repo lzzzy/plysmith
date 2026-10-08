@@ -32,7 +32,8 @@ export class FileDiagnosticSettingsRepository implements DiagnosticSettingsRepos
       'active',
     );
     this.#filePath = path.join(activeDirectory, 'plysmith.json');
-    this.#lockPath = path.join(activeDirectory, '.diagnostic-settings.lock');
+    // Engine and Live writers use this existing lock for the same central document.
+    this.#lockPath = path.join(activeDirectory, '.engine-settings.lock');
   }
 
   async read(): Promise<ConfiguredDiagnosticSettings> {

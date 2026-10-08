@@ -946,6 +946,71 @@ test('a newer startup releases only the obsolete command lock', async () => {
   }
 });
 
+test('a successful note write awaiting authoritative refresh cannot release a restarted command', async () => {
+  const refresh = Promise.withResolvers<UserPreferencesDto>();
+  const refreshEntered = Promise.withResolvers<void>();
+  type Result = Awaited<ReturnType<PlysmithApplicationClient['setUiLanguage']>>;
+  const newCommand = Promise.withResolvers<Result>();
+  const result: Result = { changed: true, preferences: preferences() };
+  let deferRefresh = false;
+  let writes = 0;
+  const store = createReadyStore(
+    createClient({
+      getUserPreferences: async () => {
+        if (deferRefresh) {
+          deferRefresh = false;
+          refreshEntered.resolve();
+          return refresh.promise;
+        }
+        return preferences();
+      },
+      createPositionNote: async (request) => {
+        writes++;
+        // Only the authoritative follow-up read waits; the write has succeeded.
+        deferRefresh = true;
+        return {
+          contributionId: '21',
+          itemId: request.itemId,
+          anchorId: request.anchorId,
+          contributionVersion: 1,
+          dataRevision: 0,
+        };
+      },
+      setUiLanguage: async () => newCommand.promise,
+    }),
+  );
+  let saving: Promise<boolean> | undefined;
+  let current: Promise<void> | undefined;
+  try {
+    await store.start();
+    saving = store.createPositionNote(
+      { itemId: '11', revisionId: '12', anchorId: '13' },
+      'Saved before the refresh',
+      'global',
+    );
+    await refreshEntered.promise;
+    assert.equal(writes, 1);
+    assert.equal(readyStore(store).busyCommand, 'create_position_note');
+    assert.equal(readyStore(store).refreshing, true);
+
+    await store.start();
+    current = store.setUiLanguage('en-GB');
+    assert.equal(readyStore(store).busyCommand, 'set_language');
+    refresh.resolve(preferences());
+    assert.equal(await saving, false);
+    assert.equal(readyStore(store).busyCommand, 'set_language');
+    newCommand.resolve(result);
+    await current;
+    assert.equal(readyStore(store).busyCommand, undefined);
+  } finally {
+    refresh.resolve(preferences());
+    newCommand.resolve(result);
+    await saving;
+    await current;
+    store.close();
+  }
+});
+
 test('position analysis uses a stable desktop consumer without taking the global command lock', async () => {
   const consumerIds: string[] = [];
   let releaseAnalysis: (() => void) | undefined;
@@ -1681,6 +1746,53 @@ test('a saved playout keeps its board and move list visible until it is opened a
   store.close();
 });
 
+test('completion does not retry an obsolete write or clear a restarted pending receipt', async (t) => {
+  const first =
+    Promise.withResolvers<
+      Awaited<ReturnType<PlysmithApplicationClient['completePlayout']>>
+    >();
+  const second =
+    Promise.withResolvers<
+      Awaited<ReturnType<PlysmithApplicationClient['completePlayout']>>
+    >();
+  let writes = 0;
+  const store = createReadyStore(
+    createClient({
+      getPlayout: async () =>
+        playout(3, 0, [{ actor: 'user', san: 'e4' }], 'stopped'),
+      completePlayout: async () => {
+        writes++;
+        if (writes === 1) return first.promise;
+        if (writes === 2) return second.promise;
+        throw workAccessProblem('host.unavailable');
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  const obsolete = store.completePlayout('Original game', false);
+  await store.start();
+  const current = store.completePlayout('Original game', false);
+  const pending = readyStore(store).pendingPlayoutCompletion;
+  assert.ok(pending);
+  first.reject(workAccessProblem('host.unavailable'));
+  const obsoleteResult = await obsolete;
+  const retained = readyStore(store).pendingPlayoutCompletion;
+  const writeCount = writes;
+  second.resolve({
+    itemId: '51',
+    revisionId: '52',
+    rootAnchorId: '53',
+    outcome: { kind: 'unfinished' },
+    outcomeSource: 'manual',
+    dataRevision: 0,
+  });
+  assert.equal(await current, true);
+  assert.equal(obsoleteResult, false);
+  assert.equal(writeCount, 2);
+  assert.deepEqual(retained, pending);
+});
+
 for (const failedResponses of [1, 2]) {
   test(`completion keeps one committed game and the full request after ${failedResponses} lost responses`, async (t) => {
     const view = playout(3, 0, [{ actor: 'user', san: 'e4' }], 'stopped');
@@ -1770,6 +1882,149 @@ for (const failedResponses of [1, 2]) {
     });
     assert.deepEqual(readyStore(store).completedPlayoutView, view);
     assert.equal(readyStore(store).pendingPlayoutCompletion, undefined);
+  });
+}
+
+for (const safety of ['fair play', 'unverified live state'] as const) {
+  test(`pending completion recovers through live and settings after ${safety} without another commit`, async (t) => {
+    const view = playout(3, 0, [{ actor: 'user', san: 'e4' }], 'stopped');
+    let current: PlayoutDto | null = view;
+    let live = await inactiveLiveClient.getLiveState();
+    let liveReadFails = false;
+    let commits = 0;
+    let initialPositionReads = 0;
+    const requests: Parameters<
+      PlysmithApplicationClient['completePlayout']
+    >[0][] = [];
+    const response =
+      Promise.withResolvers<
+        Awaited<ReturnType<PlysmithApplicationClient['completePlayout']>>
+      >();
+    const store = createReadyStore(
+      contextWorkClient(
+        () => 0,
+        () => ['11'],
+        {
+          getLiveState: async () => {
+            if (liveReadFails) throw new Error('offline');
+            return live;
+          },
+          getAnalysisWorkspace: async (request) => {
+            if (request.mode === 'initial_position') initialPositionReads++;
+            return analysis();
+          },
+          getPlayout: async () => current,
+          completePlayout: async (request) => {
+            requests.push(structuredClone(request));
+            if (commits === 0) {
+              commits++;
+              current = null;
+            } else assert.deepEqual(request, requests[0]);
+            if (requests.length <= 2)
+              throw workAccessProblem('host.unavailable');
+            return response.promise;
+          },
+        },
+      ),
+    );
+    t.after(() => store.close());
+    await store.start();
+    await store.setScope({ kind: 'context', contextId: '7' });
+    store.setActivity('playout');
+    assert.equal(
+      await store.completePlayout('Original game', true, 'draw'),
+      false,
+    );
+    const pending = readyStore(store).pendingPlayoutCompletion;
+    assert.ok(pending);
+    assert.equal(requests.length, 2);
+    liveReadFails = safety === 'unverified live state';
+    if (!liveReadFails) live = { ...live, revision: 2, fairPlayBlocked: true };
+    await store.refreshLiveState();
+    assert.equal(readyStore(store).fairPlayBlocked, true);
+    if (liveReadFails)
+      assert.equal(readyStore(store).live?.fairPlayBlocked, false);
+
+    for (const activity of ['live', 'settings'] as const) {
+      store.setActivity(activity);
+      assert.equal(readyStore(store).activity, activity);
+      assert.equal(readyStore(store).pendingPlayoutCompletion, pending);
+    }
+    for (const activity of ['manage', 'analyze', 'playout'] as const) {
+      store.setActivity(activity);
+      assert.equal(readyStore(store).activity, 'settings');
+    }
+    await store.setScope({ kind: 'free' });
+    assert.deepEqual(readyStore(store).scope, {
+      kind: 'context',
+      contextId: '7',
+    });
+    assert.deepEqual(await store.analyzePosition(engineWorkRequest('11')), {
+      kind: 'cancelled',
+    });
+    assert.equal(requests.length, 2);
+
+    liveReadFails = false;
+    live = { ...live, revision: 3, fairPlayBlocked: false };
+    await store.refreshLiveState();
+    await store.refresh();
+    assert.equal(readyStore(store).fairPlayBlocked, false);
+    store.setActivity('playout');
+    assert.equal(readyStore(store).activity, 'playout');
+    assert.equal(readyStore(store).pendingPlayoutCompletion, pending);
+    assert.equal(initialPositionReads, 0);
+    assert.equal(readyStore(store).playoutStart, undefined);
+    assert.equal(requests.length, 2);
+
+    const completing = store.completePlayout(
+      'Changed title',
+      false,
+      'black_win',
+    );
+    assert.equal(readyStore(store).busyCommand, 'complete_playout');
+    for (const activity of [
+      'manage',
+      'analyze',
+      'playout',
+      'live',
+      'settings',
+    ] as const) {
+      store.setActivity(activity);
+      assert.equal(readyStore(store).activity, 'playout');
+    }
+    await store.setScope({ kind: 'free' });
+    assert.deepEqual(readyStore(store).scope, {
+      kind: 'context',
+      contextId: '7',
+    });
+    assert.equal(await store.completePlayout('Duplicate', false), false);
+    assert.equal(readyStore(store).pendingPlayoutCompletion, pending);
+    assert.equal(requests.length, 3);
+    response.resolve({
+      itemId: '51',
+      revisionId: '52',
+      rootAnchorId: '53',
+      contextReferenceId: '54',
+      outcome: { kind: 'draw' },
+      outcomeSource: 'manual',
+      dataRevision: 0,
+    });
+    assert.equal(await completing, true);
+    assert.equal(commits, 1);
+    for (const request of requests) assert.deepEqual(request, pending.request);
+    assert.equal(readyStore(store).pendingPlayoutCompletion, undefined);
+    assert.equal(
+      readyStore(store).completedPlayout?.displayName,
+      'Original game',
+    );
+    assert.equal(readyStore(store).completedPlayout?.itemId, '51');
+    assert.deepEqual(readyStore(store).completedPlayoutView, view);
+    for (const activity of ['manage', 'analyze'] as const) {
+      store.setActivity(activity);
+      assert.equal(readyStore(store).activity, activity);
+    }
+    await store.setScope({ kind: 'free' });
+    assert.deepEqual(readyStore(store).scope, { kind: 'free' });
   });
 }
 
@@ -2887,6 +3142,52 @@ test('an old committed deletion response cannot retain its confirmation in the r
   assert.equal(readyStore(store).destructiveAction, undefined);
 });
 
+test('an obsolete deletion receipt cannot leave a restarted client context', async (t) => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const previous = lifecycleFixture();
+  const replacement = lifecycleFixture();
+  const remove = previous.client.deleteWorkingContext;
+  previous.client.deleteWorkingContext = async (contextId, confirmation) => {
+    const receipt = await remove(contextId, confirmation);
+    entered.resolve();
+    await release.promise;
+    return receipt;
+  };
+  let client = previous.client;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+  });
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.prepareContextDeletion('7');
+  const deleting = store.confirmDestructiveAction();
+  await entered.promise;
+  store.close();
+  client = replacement.client;
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  release.resolve();
+  assert.equal(await deleting, false);
+  store.clearAnnouncement();
+
+  assert.deepEqual(readyStore(store).scope, {
+    kind: 'context',
+    contextId: '7',
+  });
+  assert.equal(readyStore(store).startupNotice, undefined);
+  assert.equal(replacement.backend.contextExists, true);
+});
+
 test('language command is sent once and reconciled through authoritative reads', async () => {
   let dataRevision = 0;
   let currentPreferences = preferences();
@@ -2966,6 +3267,39 @@ test('diagnostic level is written once and exposes the pending Plysmith restart'
   );
   store.close();
 });
+
+for (const outcome of ['selected', 'failed'] as const) {
+  test(`obsolete diagnostic destination ${outcome} cannot write or alter a restarted store`, async (t) => {
+    const destination = Promise.withResolvers<string | undefined>();
+    let writes = 0;
+    const client = createClient({
+      createDiagnosticReport: async () => {
+        writes++;
+        throw workAccessProblem('host.unavailable');
+      },
+    });
+    const store = new PlysmithApplicationStore({
+      getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+      createClient: () => client,
+      createEventSubscription: () => ({
+        ready: Promise.resolve(),
+        close: () => undefined,
+      }),
+      chooseDiagnosticReportDestination: () => destination.promise,
+    });
+    t.after(() => store.close());
+    await store.start();
+    const reporting = store.createDiagnosticReport();
+    await store.start();
+    if (outcome === 'selected') destination.resolve('C:/fake/report.json.gz');
+    else destination.reject(new Error('Obsolete picker failed'));
+
+    assert.equal(await reporting, false);
+    assert.equal(writes, 0);
+    assert.equal(readyStore(store).errorCode, undefined);
+    assert.equal(readyStore(store).busyCommand, undefined);
+  });
+}
 
 test('diagnostic report requires a chosen destination and sends one write', async () => {
   const requests: unknown[] = [];
@@ -6878,6 +7212,141 @@ test('an open context impact is discoverable, loaded with both revisions and res
   store.close();
 });
 
+test('management presentation invalidates an outdated context impact before keeping a copy', async (t) => {
+  let dataRevision = 0;
+  let pending = true;
+  let resolutions = 0;
+  const client = contextWorkClient(
+    () => dataRevision,
+    () => ['11'],
+    {
+      getPendingRevisionImpact: async () => ({
+        dataRevision,
+        useTargetLoss: { ...emptyUsage(), activeNoteCount: 1 },
+        removeFromContextLoss: { ...emptyUsage(), referenceCount: 1 },
+        impactId: '21',
+        contextId: '7',
+        contextName: 'Context',
+        itemId: '11',
+        pinnedRevisionId: '12',
+        targetRevisionId: '14',
+        targetAnchorId: '15',
+        impactVersion: 1,
+        referenceCount: 1,
+        contributionCount: 1,
+        managementResumeAffected: true,
+        analysisResumeAffected: false,
+        createdAt: '2026-09-14T12:00:00.000Z',
+        updatedAt: '2026-09-14T12:00:00.000Z',
+      }),
+      getInventoryRevision: async (_itemId, revisionId) => ({
+        ...savedAnalysis().record!,
+        revisionId,
+        currentRevisionId: '14',
+        revisionNumber: revisionId === '12' ? 1 : 2,
+        historical: revisionId === '12',
+      }),
+      resolvePendingRevisionImpact: async (_impactId, request) => {
+        resolutions++;
+        assert.equal(request.expectedDataRevision, dataRevision);
+        assert.equal(request.expectedImpactVersion, 1);
+        assert.deepEqual(request.resolution, {
+          kind: 'keep_copy',
+          displayName: 'Kept analysis',
+        });
+        pending = false;
+        return {
+          impactId: '21',
+          contextId: '7',
+          itemId: '11',
+          resolution: request.resolution.kind,
+          contextItemId: '31',
+          contextRevisionId: '32',
+          dataRevision,
+        };
+      },
+    },
+  );
+  const readContext = client.getWorkingContextWorkspace;
+  client.getWorkingContextWorkspace = async (contextId) => ({
+    ...(await readContext(contextId)),
+    pendingRevisionImpacts: pending
+      ? [
+          {
+            impactId: '21',
+            itemId: '11',
+            pinnedRevisionId: '12',
+            targetRevisionId: '14',
+            impactVersion: 1,
+            entryCount: 1,
+            updatedAt: '2026-09-14T12:00:00.000Z',
+          },
+        ]
+      : [],
+  });
+  const savePresentation = client.setManagementPresentation;
+  client.setManagementPresentation = async (request) => {
+    const result = await savePresentation(request);
+    return { ...result, dataRevision: ++dataRevision };
+  };
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.openRevisionImpact('21');
+  const opened = readyStore(store).revisionImpact;
+  assert.equal(opened?.impact.dataRevision, 0);
+  await store.refresh();
+  assert.equal(readyStore(store).revisionImpact, opened);
+
+  await store.setInventoryPresentation('origins');
+  assert.equal(readyStore(store).status.persistence.dataRevision, 1);
+  assert.equal(readyStore(store).revisionImpact, undefined);
+  assert.equal(resolutions, 0);
+
+  // ManageView reloads the still-selected impact after invalidation.
+  await store.openRevisionImpact('21');
+  const current = readyStore(store).revisionImpact;
+  assert.equal(current?.impact.dataRevision, 1);
+  await store.setInventoryPresentation('origins');
+  assert.equal(dataRevision, 1);
+  assert.equal(readyStore(store).revisionImpact, current);
+
+  await store.setInventoryPresentation('folders');
+  assert.equal(dataRevision, 2);
+  assert.equal(readyStore(store).revisionImpact, undefined);
+  assert.equal(
+    await store.resolveRevisionImpact({
+      expectedDataRevision: current!.impact.dataRevision,
+      expectedImpactVersion: current!.impact.impactVersion,
+      resolution: { kind: 'keep_copy', displayName: 'Kept analysis' },
+    }),
+    false,
+  );
+  assert.equal(resolutions, 0);
+
+  await store.openRevisionImpact('21');
+  assert.equal(readyStore(store).revisionImpact?.impact.dataRevision, 2);
+  dataRevision++;
+  await store.refresh();
+  assert.equal(readyStore(store).revisionImpact, undefined);
+  assert.equal(resolutions, 0);
+
+  await store.openRevisionImpact('21');
+  const refreshed = readyStore(store).revisionImpact;
+  assert.equal(refreshed?.impact.dataRevision, 3);
+  assert.equal(
+    await store.resolveRevisionImpact({
+      expectedDataRevision: refreshed!.impact.dataRevision,
+      expectedImpactVersion: refreshed!.impact.impactVersion,
+      resolution: { kind: 'keep_copy', displayName: 'Kept analysis' },
+    }),
+    true,
+  );
+  assert.equal(resolutions, 1);
+  assert.equal(readyStore(store).revisionImpact, undefined);
+});
+
 test('explicit management deselection survives stale refresh and a repeated context click', async () => {
   const item: SearchInventoryResultDto['items'][number] = {
     lifecycle: 'active' as const,
@@ -8094,6 +8563,141 @@ for (const destination of ['activity', 'observe', 'play'] as const) {
     assert.equal(readyStore(store).pendingLiveNavigation, undefined);
   });
 }
+
+test('closing during the initial Live read cannot restart the store', async (t) => {
+  const entered = Promise.withResolvers<void>();
+  const reading = Promise.withResolvers<LiveStateDto>();
+  let bootstraps = 0;
+  let reads = 0;
+  const client = createClient({
+    getLiveState: async () => {
+      if (reads++ === 0) {
+        entered.resolve();
+        return reading.promise;
+      }
+      return inactiveLiveClient.getLiveState();
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => {
+      bootstraps++;
+      return { kind: 'ready', generation: 1, connection };
+    },
+    createClient: () => client,
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+  });
+  t.after(() => store.close());
+  const starting = store.start();
+  await entered.promise;
+  store.close();
+  reading.resolve(await inactiveLiveClient.getLiveState());
+  await starting;
+
+  assert.equal(bootstraps, 1);
+  assert.equal(reads, 1);
+});
+
+test('live discard reconciliation cannot continue an obsolete navigation after restart', async (t) => {
+  const pending = Promise.withResolvers<LiveStateDto>();
+  const entered = Promise.withResolvers<void>();
+  let reads = 0;
+  let onChange: (event: HostEvent) => void = () =>
+    assert.fail('not subscribed');
+  const idle = {
+    ...(await inactiveLiveClient.getLiveState()),
+    revision: 3,
+  };
+  const observations: string[] = [];
+  const client = createClient({
+    getLiveState: async () => {
+      reads++;
+      if (reads === 1) return liveFixture(1, 'observe');
+      if (reads === 3) {
+        entered.resolve();
+        return pending.promise;
+      }
+      return idle;
+    },
+    discardLiveGame: async () => {
+      onChange({
+        kind: 'live.changed',
+        eventId: 'discard-3',
+        sequence: 1,
+        dataRevision: 0,
+        occurredAt: '2026-10-08T10:00:00.000Z',
+        subscriptionRevision: 1,
+        correlationId: 'live',
+        payload: { revision: 3, fairPlayBlocked: false },
+      });
+      return { ...idle, revision: 2 };
+    },
+    observeLiveGame: async ({ url }) => {
+      observations.push(url);
+      return liveFixture(4, 'observe');
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: (_connection, change) => {
+      onChange = change;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  await store.observeLiveGame('https://lichess.org/ijklmnop');
+  const confirming = store.confirmLiveNavigation();
+  await entered.promise;
+  await store.start();
+  pending.resolve(idle);
+  await confirming;
+  assert.deepEqual(observations, []);
+  assert.equal(readyStore(store).live?.session, undefined);
+});
+
+test('live save reconciliation cannot clear a new recording decision after restart', async (t) => {
+  const pending = Promise.withResolvers<LiveStateDto>();
+  const entered = Promise.withResolvers<void>();
+  let deferRead = false;
+  const observed = liveFixture(5, 'observe');
+  let live: LiveStateDto = {
+    ...observed,
+    session: { ...observed.session!, status: 'ended', outcome: 'draw' },
+  };
+  const store = createReadyStore(
+    createClient({
+      getLiveState: async () => {
+        if (deferRead) {
+          deferRead = false;
+          entered.resolve();
+          return pending.promise;
+        }
+        return live;
+      },
+      saveLiveGame: async () => {
+        deferRead = true;
+        return { itemId: 9, revisionId: 10, dataRevision: 0 };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  const saving = store.saveLiveGame('Recorded game');
+  await entered.promise;
+  live = liveFixture(1, 'observe');
+  await store.start();
+  store.discardLiveGame();
+  pending.resolve(await inactiveLiveClient.getLiveState());
+  assert.equal(await saving, false);
+  assert.deepEqual(readyStore(store).pendingLiveNavigation, {
+    kind: 'discard',
+  });
+  assert.notEqual(readyStore(store).announcement, 'live.saved');
+});
 
 function createReadyStore(client: PlysmithApplicationClient) {
   return new PlysmithApplicationStore({

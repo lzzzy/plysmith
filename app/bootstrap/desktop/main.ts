@@ -102,7 +102,7 @@ runDesktop(selectDesktopArguments(process.argv)).catch((error: unknown) => {
             already_running:
               'Ein anderer Host verwendet bereits diesen Datenbestand.',
             incompatible_data:
-              'Der vorhandene Datenbestand ist mit dieser Alpha-Version nicht kompatibel. Er wurde nicht veraendert.',
+              'Der vorhandene Datenbestand ist mit dieser Version nicht kompatibel. Er wurde nicht veraendert.',
             invalid_configuration: 'Die lokale Konfiguration ist ungueltig.',
             startup_failed: 'Der lokale Host konnte nicht gestartet werden.',
             timeout: 'Der lokale Host hat nicht rechtzeitig geantwortet.',

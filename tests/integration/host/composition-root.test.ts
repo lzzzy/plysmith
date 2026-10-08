@@ -5,11 +5,13 @@ import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 
 import { composeHost } from '../../../app/bootstrap/host/composition-root.ts';
+import { testResources } from '../../fixtures/test-resources.ts';
 import {
   formatHostStartupFailure,
   parseHostPaths,
 } from '../../../app/bootstrap/host/main.ts';
 import { initializeConfiguration } from '../../../app/infrastructure/adapters/configuration/filesystem/index.ts';
+import { publishHostDiscovery } from '../../../app/infrastructure/adapters/platform/windows/index.ts';
 
 const defaultsDirectory = path.resolve('configuration', 'defaults');
 const hostToken = 'composition-root-test-token';
@@ -381,6 +383,56 @@ test('composition root wires the real store and use cases without listening', as
   } finally {
     await runtime.close();
   }
+});
+
+test('invalid discovery cannot prevent listener, store and owner cleanup', async (context) => {
+  const resources = testResources(context);
+  const applicationHome = await resources.acquire(
+    () => mkdtemp(path.join(os.tmpdir(), 'plysmith-cleanup-')),
+    (directory) => rm(directory, { recursive: true, force: true }),
+  );
+  const options = {
+    applicationHome,
+    defaultsDirectory: path.resolve('configuration', 'defaults'),
+    hostToken: 'composition-root-cleanup-test-token-12345',
+  };
+  const runtime = await resources.acquire(
+    () => composeHost(options),
+    async (host) => {
+      try {
+        await host.close();
+      } catch (error) {
+        assert.ok(error instanceof Error && 'code' in error);
+        assert.equal(error.code, 'host.discovery_invalid');
+      }
+    },
+  );
+  const endpoint = await resources.run(() =>
+    runtime.host.listen({ host: '127.0.0.1', port: 0 }),
+  );
+  await resources.run(() =>
+    publishHostDiscovery(applicationHome, {
+      ownerId: runtime.ownerId,
+      pid: process.pid,
+      endpoint: new URL(endpoint).toString(),
+      productRelease: runtime.productRelease,
+      contractFingerprint: runtime.contractFingerprint,
+      token: runtime.hostToken,
+    }),
+  );
+  const discoveryPath = path.join(applicationHome, 'runtime', 'host.json');
+  await writeFile(discoveryPath, '{', 'utf8');
+  const closing = runtime.close();
+  assert.equal(runtime.close(), closing);
+  await assert.rejects(closing, { code: 'host.discovery_invalid' });
+  assert.equal(runtime.host.server.listening, false);
+  await rm(discoveryPath);
+  const replacement = await resources.acquire(
+    () => composeHost(options),
+    (host) => host.close(),
+  );
+  assert.notEqual(replacement.ownerId, runtime.ownerId);
+  await replacement.close();
 });
 
 test('failed composition releases the owner lease for a corrected restart', async (context) => {

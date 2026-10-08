@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const checksumFileName = 'SHA256SUMS.txt';
 
-export function alphaReleaseAssetNames(version: string): string[] {
+export function releaseAssetNames(version: string): string[] {
   return [
     'LICENSE',
     `Plysmith-${version}-win-x64-Setup.exe`,
@@ -16,7 +16,7 @@ export function alphaReleaseAssetNames(version: string): string[] {
   ].sort();
 }
 
-export async function writeAlphaReleaseChecksums(
+export async function writeReleaseChecksums(
   outputRoot: string,
   version: string,
 ): Promise<void> {
@@ -24,17 +24,17 @@ export async function writeAlphaReleaseChecksums(
   await writeFile(path.join(outputRoot, checksumFileName), lines);
 }
 
-export async function verifyAlphaReleaseAssets(
+export async function verifyReleaseAssets(
   outputRoot: string,
   version: string,
 ): Promise<void> {
-  const expectedNames = [...alphaReleaseAssetNames(version), checksumFileName];
+  const expectedNames = [...releaseAssetNames(version), checksumFileName];
   const actualNames = (await readdir(outputRoot, { withFileTypes: true }))
     .filter((entry) => entry.isFile())
     .map((entry) => entry.name)
     .sort();
   if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames.sort())) {
-    throw new Error('Alpha release files are incomplete or unexpected.');
+    throw new Error('Release files are incomplete or unexpected.');
   }
   const expectedChecksums = await checksumLines(outputRoot, version);
   const actualChecksums = await readFile(
@@ -42,7 +42,7 @@ export async function verifyAlphaReleaseAssets(
     'utf8',
   );
   if (actualChecksums !== expectedChecksums) {
-    throw new Error('Alpha release checksums do not match the assets.');
+    throw new Error('Release checksums do not match the assets.');
   }
 }
 
@@ -51,7 +51,7 @@ async function checksumLines(
   version: string,
 ): Promise<string> {
   const lines: string[] = [];
-  for (const name of alphaReleaseAssetNames(version)) {
+  for (const name of releaseAssetNames(version)) {
     const hash = createHash('sha256');
     for await (const chunk of createReadStream(path.join(outputRoot, name))) {
       hash.update(chunk);
