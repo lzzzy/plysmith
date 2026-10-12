@@ -11,6 +11,7 @@ import {
   type LiveProviderPort,
 } from './live-ports.ts';
 import type {
+  LiveDiagnosticEvent,
   LiveFairPlayGuard,
   LiveRecordedMove,
   LiveRecordWriter,
@@ -27,6 +28,7 @@ interface Dependencies {
   readonly fairPlay: FairPlayGate;
   readonly now: () => string;
   readonly onChange: () => void;
+  readonly onDiagnostic?: (event: LiveDiagnosticEvent) => void;
   readonly guard?: LiveFairPlayGuard;
 }
 type Session = Omit<
@@ -556,6 +558,7 @@ export class LiveService {
 
   async #monitorAccount(signal: AbortSignal): Promise<void> {
     for (let attempt = 0; attempt < 4 && !signal.aborted; attempt++) {
+      this.#diagnose({ kind: 'account_stream', status: 'starting', attempt });
       let retryDelay = 1000 * 2 ** attempt;
       const stream = new AbortController();
       const combined = AbortSignal.any([signal, stream.signal]);
@@ -594,6 +597,11 @@ export class LiveService {
       })();
       try {
         await handshake;
+        this.#diagnose({
+          kind: 'account_stream',
+          status: 'available',
+          attempt,
+        });
         const account = await this.#provider().readAccount(combined);
         if (signal.aborted) return;
         if (streamFailure) throw streamFailure;
@@ -620,6 +628,12 @@ export class LiveService {
         this.#writeController?.abort();
         this.#connection = attempt === 3 ? 'failed' : 'reconnecting';
         this.#problemCode = failure(error).problemCode;
+        this.#diagnose({
+          kind: 'account_stream',
+          status: 'failed',
+          attempt,
+          problemCode: this.#problemCode,
+        });
         if (this.#problemCode === 'live.rate_limited') retryDelay = 60_000;
         this.#setBlocked(true);
         this.#changed();
@@ -628,6 +642,7 @@ export class LiveService {
         stream.abort();
         await consume;
       }
+      this.#diagnose({ kind: 'account_stream', status: 'stopped', attempt });
       if (attempt < 3) await pause(retryDelay, signal);
     }
   }
@@ -708,6 +723,8 @@ export class LiveService {
       let retryDelay = 1000 * 2 ** attempt;
       const session = this.#session;
       if (!session || session.status === 'ended') return;
+      this.#diagnose({ kind: 'game_stream', status: 'starting', attempt });
+      let received = false;
       try {
         for await (const event of this.#provider().streamGame(
           session.gameId,
@@ -715,10 +732,19 @@ export class LiveService {
           signal,
         )) {
           if (signal.aborted) return;
+          if (!received) {
+            received = true;
+            this.#diagnose({
+              kind: 'game_stream',
+              status: 'available',
+              attempt,
+            });
+          }
           await this.#gameEvent(event, signal);
           if (this.#session?.status === 'ended') return;
         }
         if (!signal.aborted) {
+          this.#diagnose({ kind: 'game_stream', status: 'stopped', attempt });
           this.#session = { ...this.#requireSession(), connected: false };
           this.#changed();
           await this.#resync(signal, this.#session?.status === 'finalizing');
@@ -727,6 +753,12 @@ export class LiveService {
         throw problem('live.provider_unavailable');
       } catch (error) {
         if (signal.aborted) return;
+        this.#diagnose({
+          kind: 'game_stream',
+          status: 'failed',
+          attempt,
+          problemCode: failure(error).problemCode,
+        });
         this.#writeController?.abort();
         if (failure(error).problemCode === 'live.rate_limited')
           retryDelay = 60_000;
@@ -743,6 +775,12 @@ export class LiveService {
   }
 
   async #gameEvent(event: LiveGameEvent, signal: AbortSignal): Promise<void> {
+    this.#diagnose({
+      kind: 'game_received',
+      status: 'succeeded',
+      operation: event.kind,
+      ...(event.kind === 'snapshot' ? { ply: event.game.moves.length } : {}),
+    });
     const session = this.#requireSession();
     if (session.status === 'ended') return;
     if (event.kind === 'snapshot' && event.game.status === 'ended') {
@@ -833,6 +871,12 @@ export class LiveService {
     }
     const snapshot = await this.#provider().readGame(session.gameId, signal);
     if (signal.aborted || this.#session?.gameId !== session.gameId) return;
+    this.#diagnose({
+      kind: 'game_received',
+      status: 'succeeded',
+      operation: 'resync',
+      ply: snapshot.moves.length,
+    });
     // A delayed public export cannot roll back a terminal stream result or its moves.
     if (this.#session.status !== 'ongoing' && snapshot.status !== 'ended')
       return;
@@ -931,6 +975,24 @@ export class LiveService {
       this.#analysisRevision++;
     }
     this.#revision++;
-    if (!this.#lifetime.signal.aborted) this.#deps.onChange();
+    if (!this.#lifetime.signal.aborted) {
+      this.#deps.onChange();
+      this.#diagnose({
+        kind: 'changed',
+        status: 'succeeded',
+        liveRevision: this.#revision,
+        ...(session === undefined
+          ? {}
+          : { ply: session.steps.length, selectedPly: session.selectedPly }),
+      });
+    }
+  }
+
+  #diagnose(event: LiveDiagnosticEvent): void {
+    try {
+      this.#deps.onDiagnostic?.(Object.freeze(event));
+    } catch {
+      // Diagnostics must not interrupt streams, recording or fair-play updates.
+    }
   }
 }

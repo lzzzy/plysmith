@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-09",
+  "scope": "Content-free Live synchronization diagnostics without changing connection, retry, recording or fair-play behavior",
+  "incident": {
+    "observed": "One opponent update was not shown during an own Dev game; a later browser move made the application catch up",
+    "cause": "Unconfirmed: the existing Debug log did not trace individual provider updates or Live revision acceptance",
+    "behaviorFixClaimed": false
+  },
+  "events": {
+    "host": [
+      "host.live.account_stream",
+      "host.live.game_stream",
+      "host.live.game_received",
+      "host.live.changed"
+    ],
+    "desktop": [
+      "renderer.live.changed",
+      "renderer.live.read",
+      "renderer.live.state"
+    ],
+    "safeCounters": ["liveRevision", "ply", "selectedPly", "attempt"],
+    "routineLevel": "debug",
+    "failureLevel": "info",
+    "gameStreamAvailableMeaning": "First game event received, not a separate HTTP handshake assertion",
+    "report": "Counters retained; external identifiers and content remain excluded"
+  },
+  "regressions": {
+    "focusedLiveDesktopAndPrivacy": {
+      "tests": 284,
+      "passed": 284,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMilliseconds": 4360.1994
+    },
+    "adjacentHostProviderAndContracts": {
+      "tests": 70,
+      "passed": 70,
+      "failed": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "durationMilliseconds": 269053.5782
+    },
+    "newTests": 10,
+    "coverage": [
+      "Account and game retries, complete history reception and published revision",
+      "Own and observed EOF completion and saving with a throwing diagnostic callback",
+      "Renderer event receipt, superseded reads, stale revisions, read failure and safe recovery",
+      "Throwing renderer diagnostic sink cannot alter acceptance or fair-play safety",
+      "Closed IPC, raw log and redacted report allowlists reject content and invalid counters",
+      "Real isolated Host composition writes the trace with an in-memory provider",
+      "Existing Live recording, provider transport, clocks, privacy, API, MCP and event contracts"
+    ]
+  },
+  "sourceGates": {
+    "typecheckAllFourProjects": "passed",
+    "finalTestsTypecheckAfterHostTest": "passed",
+    "lint": "passed",
+    "boundaries": "passed: 557 modules, 2548 dependencies",
+    "browserHostClient": "passed",
+    "generatedContracts": "passed",
+    "desktopBuild": "passed: 3489 modules, index-DPgRnQOR.js",
+    "format": "passed",
+    "diffCheck": "passed"
+  },
+  "limits": [
+    "No real-account reproduction, full-suite or native UI acceptance claim",
+    "No names, tokens, URLs, external game IDs, moves, FEN or provider error text in the trace",
+    "No extra reads, retry policy, polling, clock ticks or visible UI messaging",
+    "No real credentials, account actions, manual user process restart or user data changes",
+    "No schema migration, product version change, commit, push or release"
+  ]
+}

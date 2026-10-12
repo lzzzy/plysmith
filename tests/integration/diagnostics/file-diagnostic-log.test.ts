@@ -65,6 +65,54 @@ test('writes bounded structured events without serializing unknown content', asy
   assert.doesNotMatch(line, /private/);
 });
 
+test('live trace persists only safe counters and drops all upstream content', async (context) => {
+  const applicationHome = await createApplicationHome(context);
+  const log = new FileDiagnosticLog({
+    applicationHome,
+    component: 'host',
+    productRelease: '0.0.0',
+    level: 'debug',
+  });
+  const event = {
+    level: 'debug',
+    eventCode: 'host.live.changed',
+    status: 'succeeded',
+    liveRevision: 12,
+    ply: 3,
+    selectedPly: 0,
+    attempt: 1,
+    gameId: 'private-canary',
+    name: 'private-canary',
+    token: 'private-canary',
+    moves: ['private-canary'],
+    fen: 'private-canary',
+    url: 'private-canary',
+  } as DiagnosticEventInput;
+  log.write(event);
+  log.write({
+    ...event,
+    liveRevision: -1,
+    ply: 0.5,
+    selectedPly: NaN,
+    attempt: Number.MAX_SAFE_INTEGER + 1,
+  });
+  await log.close();
+  const files = await readdir(path.join(applicationHome, 'diagnostics'));
+  const source = await readFile(
+    path.join(applicationHome, 'diagnostics', files[0]!),
+    'utf8',
+  );
+  const lines = source
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  for (const key of ['liveRevision', 'ply', 'selectedPly', 'attempt']) {
+    assert.equal(lines[0]![key], event[key as keyof DiagnosticEventInput]);
+    assert.equal(lines[1]![key], undefined);
+  }
+  assert.doesNotMatch(source, /private-canary|gameId|name|token|moves|fen|url/);
+});
+
 test('respects off and severity thresholds', async (context) => {
   const applicationHome = await createApplicationHome(context);
   const off = new FileDiagnosticLog({

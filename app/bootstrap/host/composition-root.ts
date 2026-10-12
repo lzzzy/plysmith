@@ -42,6 +42,7 @@ import {
   PublishImport,
   DiscardImport,
   CancelImportPreparation,
+  InventoryTransferService,
 } from '../../application/inventory/index.ts';
 import {
   GetUserPreferences,
@@ -91,7 +92,11 @@ import {
 } from '../../application/workspace/index.ts';
 import { ChessJsRulesAdapter } from '../../infrastructure/adapters/chess_rules/chess_js/index.ts';
 import { LocalFileSourceAcquisition } from '../../infrastructure/adapters/content/local/local-file-source-acquisition.ts';
-import { PgnContentFormatAdapter } from '../../infrastructure/adapters/content/pgn/index.ts';
+import {
+  PgnContentFormatAdapter,
+  PgnInventoryTransferCodec,
+} from '../../infrastructure/adapters/content/pgn/index.ts';
+import { FileInventoryBackup } from '../../infrastructure/adapters/content/local/file-inventory-backup.ts';
 import {
   ConfiguredMovePolicyRegistry,
   ConfiguredPositionAnalysisRegistry,
@@ -178,6 +183,7 @@ export async function composeHost(
   let host: FastifyInstance | undefined;
   let diagnostics: FileDiagnosticLog | undefined;
   let importPreparations: ActiveImportPreviews | undefined;
+  let inventoryTransfer: InventoryTransferService | undefined;
   let live: LiveService | undefined;
   const engineRuntimes: UciEngineRuntime[] = [];
 
@@ -199,8 +205,10 @@ export async function composeHost(
       eventCode: 'host.lifecycle.starting',
       status: 'starting',
     });
+    const rules = new ChessJsRulesAdapter();
     persistence = new SqlitePersistenceAdapter({
       databasePath: configuration.persistence.databasePath,
+      chessRules: rules,
       ...(options.now === undefined ? {} : { now: options.now }),
     });
 
@@ -254,7 +262,6 @@ export async function composeHost(
       clock,
       events: eventStream,
     });
-    const rules = new ChessJsRulesAdapter();
     const fairPlay = new FairPlayGate();
     const liveConfigurations = new FileLiveProviderConfigurationRepository(
       options.applicationHome,
@@ -313,6 +320,12 @@ export async function composeHost(
           eventStream.publishLiveChange(state.revision, state.fairPlayBlocked);
         }
       },
+      onDiagnostic: ({ kind, ...event }) =>
+        diagnostics?.write({
+          ...event,
+          level: event.status === 'failed' ? 'info' : 'debug',
+          eventCode: `host.live.${kind}`,
+        }),
     });
     await live.initialize();
     const importSource = new LocalFileSourceAcquisition();
@@ -328,6 +341,38 @@ export async function composeHost(
       clock,
       events: eventStream,
     };
+    const activeImports = importPreparations;
+    const activeLive = live;
+    inventoryTransfer = new InventoryTransferService({
+      repository: persistence,
+      codec: new PgnInventoryTransferCodec(rules),
+      files: new FileInventoryBackup({
+        protectedRoots: [
+          options.applicationHome,
+          path.resolve(options.defaultsDirectory, '..', '..'),
+        ],
+      }),
+      clock,
+      runtimeBlockers: () => {
+        const blocked: string[] = [];
+        if (activeImports.hasActiveTransfers()) blocked.push('import_active');
+        const current = activeLive.getState();
+        if (
+          current.session !== undefined ||
+          current.games.length > 0 ||
+          current.fairPlayBlocked
+        )
+          blocked.push('live_active');
+        return blocked;
+      },
+      changed: (dataRevision, occurredAt) =>
+        eventStream.publish({
+          kind: 'inventory.organization-changed',
+          dataRevision,
+          occurredAt,
+          itemIds: [],
+        }),
+    });
     const engineProviderConfigurations =
       new FileEngineProviderConfigurationRepository(options.applicationHome);
     type RuntimeBinding =
@@ -693,6 +738,7 @@ export async function composeHost(
     const correlationIdFactory = options.correlationIdFactory ?? randomUUID;
 
     host = await buildHost({
+      inventoryTransfer,
       live,
       getLiveProviderConfiguration,
       saveLiveProviderConfiguration,
@@ -782,6 +828,7 @@ export async function composeHost(
 
     live.start();
     return createComposedHost({
+      inventoryTransfer,
       live,
       applicationHome: options.applicationHome,
       lease,
@@ -800,6 +847,7 @@ export async function composeHost(
       status: 'failed',
     });
     const cleanupFailures = await closeHostResources({
+      inventoryTransfer,
       live,
       host,
       importPreparations,
@@ -820,6 +868,7 @@ export async function composeHost(
 }
 
 function createComposedHost(input: {
+  readonly inventoryTransfer: InventoryTransferService;
   readonly live: LiveService;
   readonly applicationHome: string;
   readonly lease: HostOwnerLease;
@@ -856,6 +905,7 @@ function createComposedHost(input: {
 }
 
 async function closeComposedHost(input: {
+  readonly inventoryTransfer: InventoryTransferService;
   readonly live: LiveService;
   readonly applicationHome: string;
   readonly lease: HostOwnerLease;

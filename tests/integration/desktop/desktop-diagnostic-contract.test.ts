@@ -63,6 +63,38 @@ test('rejects unknown event codes, fields and user content', () => {
   }
 });
 
+test('live diagnostics accept only safe integer counters and no upstream content', () => {
+  const candidate = {
+    level: 'debug',
+    eventCode: 'renderer.live.state',
+    status: 'succeeded',
+    liveRevision: 12,
+    ply: 3,
+    selectedPly: 0,
+    attempt: 1,
+  };
+  assert.deepEqual(parseRendererDiagnosticEvent(candidate), candidate);
+  for (const key of ['liveRevision', 'ply', 'selectedPly', 'attempt']) {
+    for (const value of [
+      -1,
+      1.5,
+      Infinity,
+      NaN,
+      Number.MAX_SAFE_INTEGER + 1,
+      '3',
+    ])
+      assert.equal(
+        parseRendererDiagnosticEvent({ ...candidate, [key]: value }),
+        undefined,
+      );
+  }
+  for (const key of ['gameId', 'name', 'token', 'moves', 'fen', 'url'])
+    assert.equal(
+      parseRendererDiagnosticEvent({ ...candidate, [key]: 'private-canary' }),
+      undefined,
+    );
+});
+
 test('accepts only the bounded diagnostic report filename shape', () => {
   assert.equal(
     parseDiagnosticReportSuggestedFileName(

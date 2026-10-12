@@ -21,6 +21,7 @@ import { registerAnalysisRoutes } from './analysis-routes.ts';
 import { registerInventoryRoutes } from './inventory-routes.ts';
 import { registerInventoryOrganizationRoutes } from './inventory-organization-routes.ts';
 import { registerImportRoutes } from './import-routes.ts';
+import { registerPgnTransferRoutes } from './pgn-transfer-routes.ts';
 import { registerWorkspaceRoutes } from './workspace-routes.ts';
 import { registerPlayoutRoutes } from './playout-routes.ts';
 import { registerEngineProviderRoutes } from './engine-provider-routes.ts';
@@ -174,6 +175,7 @@ export function registerUseCaseRoutes(
   registerInventoryRoutes(api, dependencies);
   registerInventoryOrganizationRoutes(api, dependencies);
   registerImportRoutes(api, dependencies);
+  registerPgnTransferRoutes(api, dependencies);
   registerWorkspaceRoutes(api, dependencies);
   registerPlayoutRoutes(api, dependencies);
   registerEngineProviderRoutes(api, dependencies);

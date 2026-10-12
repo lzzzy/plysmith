@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
@@ -173,6 +173,8 @@ async function setup(t: TestContext, provider = new Provider()) {
     return host;
   };
   return {
+    applicationHome,
+    close: () => runtime.close(),
     host,
     headers,
     getState,
@@ -183,6 +185,85 @@ async function setup(t: TestContext, provider = new Provider()) {
     provider,
   };
 }
+
+test('host composition writes a content-free live stream and published revision trace only when logging is enabled', async (t) => {
+  const f = await setup(t);
+  const settings = await f.host.inject({
+    url: '/diagnostics/settings',
+    headers: f.headers,
+  });
+  const enabled = await f.host.inject({
+    method: 'PUT',
+    url: '/diagnostics/settings/log-level',
+    headers: f.headers,
+    payload: {
+      level: 'debug',
+      expectedConfigurationRevision: settings.json().configurationRevision,
+    },
+  });
+  assert.equal(enabled.statusCode, 200, enabled.body);
+  await f.restart();
+  await f.connect();
+  const observed = await f.command({
+    kind: 'observe',
+    url: 'https://lichess.org/Abcd1234',
+  });
+  assert.equal(observed.statusCode, 200, observed.body);
+  f.provider.game.push({
+    kind: 'snapshot',
+    game: {
+      ...f.provider.snapshot,
+      moves: [
+        ...f.provider.snapshot.moves,
+        { kind: 'coordinates', value: 'g1f3' },
+      ],
+    },
+  });
+  const state = await f.waitFor((state) => state.session?.steps.length === 3);
+  await f.close();
+  const directory = path.join(f.applicationHome, 'diagnostics');
+  const events: Record<string, unknown>[] = [];
+  for (const file of await readdir(directory)) {
+    const source = await readFile(path.join(directory, file), 'utf8');
+    for (const line of source.trim().split('\n')) {
+      const event = JSON.parse(line) as Record<string, unknown>;
+      if (String(event.eventCode).startsWith('host.live.')) events.push(event);
+    }
+  }
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'host.live.account_stream' &&
+        event.status === 'available',
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'host.live.game_stream' &&
+        event.status === 'available',
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'host.live.game_received' && event.ply === 3,
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'host.live.changed' &&
+        event.liveRevision === state.revision &&
+        event.ply === 3 &&
+        event.selectedPly === 3,
+    ),
+  );
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /live-host-test|Abcd1234|Tester|White|Black|e2e4|g1f3|fen|moves/,
+  );
+});
 
 test('configured host is idle and analysis remains available until a valid explicit refresh connects', async (t) => {
   const { host, headers, getState, command, connect, provider } =

@@ -71,6 +71,33 @@
   border-bottom: 1px solid #d9dde4;
 }
 
+.backupContent {
+  margin-top: 20px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.backupContent button {
+  max-width: 100%;
+  white-space: normal;
+}
+.backupCounts {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+}
+.backupCounts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.backupCounts dt {
+  overflow-wrap: anywhere;
+}
+.backupCounts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .sectionHeading {
   display: flex;
   align-items: flex-start;
@@ -521,6 +548,11 @@
   margin: 6px 0 0;
   color: #68717d;
   font-size: 12px;
+}
+
+.backupPreviewContent {
+  min-width: 0;
+  padding: 18px 24px;
 }
 
 .iconButton {

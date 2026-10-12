@@ -11,6 +11,7 @@ import {
   type LiveProviderPort,
 } from '../../../app/application/live/live-ports.ts';
 import type {
+  LiveDiagnosticEvent,
   LiveFairPlayGuard,
   LiveFairPlayGuardState,
   LiveRecordWriter,
@@ -72,7 +73,12 @@ async function until(predicate: () => boolean): Promise<void> {
   }
   assert.fail('Live state did not settle');
 }
-function fixture(t: TestContext, playing = false, guard?: LiveFairPlayGuard) {
+function fixture(
+  t: TestContext,
+  playing = false,
+  guard?: LiveFairPlayGuard,
+  onDiagnostic?: (event: LiveDiagnosticEvent) => void,
+) {
   const accountEvents = new Feed<LiveAccountEvent>();
   const gameEvents = new Feed<LiveGameEvent>();
   let snapshot = game();
@@ -130,6 +136,7 @@ function fixture(t: TestContext, playing = false, guard?: LiveFairPlayGuard) {
     },
     now: () => now,
     onChange: () => undefined,
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
   });
   t.after(() => service.close());
   service.start();
@@ -166,6 +173,143 @@ function fixture(t: TestContext, playing = false, guard?: LiveFairPlayGuard) {
       return service.getState().revision;
     },
   };
+}
+
+test('live diagnostics trace game retry, received history and published revision without content', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const events: LiveDiagnosticEvent[] = [];
+  const f = fixture(t, true, undefined, (event) => events.push(event));
+  await f.connect();
+  let attempts = 0;
+  f.provider.streamGame = async function* (_id, _role, signal) {
+    if (++attempts === 1) throw new Error('private-upstream-canary');
+    yield* f.gameEvents.stream(signal);
+  };
+  await f.service.play(id, f.revision);
+  await until(() =>
+    events.some(
+      (event) => event.kind === 'game_stream' && event.status === 'failed',
+    ),
+  );
+  assert.equal(f.service.getState().session?.connected, false);
+  t.mock.timers.tick(1000);
+  await until(() => attempts === 2);
+  f.gameEvents.push({ kind: 'snapshot', game: game(['e4', 'e5', 'Nf3']) });
+  await until(() => f.service.getState().session?.steps.length === 3);
+  assert.equal(f.service.getState().session?.connected, true);
+  assert.deepEqual(
+    events.filter((event) => event.kind === 'game_stream'),
+    [
+      { kind: 'game_stream', status: 'starting', attempt: 0 },
+      {
+        kind: 'game_stream',
+        status: 'failed',
+        attempt: 0,
+        problemCode: 'live.provider_unavailable',
+      },
+      { kind: 'game_stream', status: 'starting', attempt: 1 },
+      { kind: 'game_stream', status: 'available', attempt: 1 },
+    ],
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.kind === 'account_stream' && event.status === 'available',
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.kind === 'game_received' &&
+        event.operation === 'snapshot' &&
+        event.ply === 3,
+    ),
+  );
+  assert.deepEqual(events.at(-1), {
+    kind: 'changed',
+    status: 'succeeded',
+    liveRevision: f.revision,
+    ply: 3,
+    selectedPly: 3,
+  });
+  assert.ok(events.every(Object.isFrozen));
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /private-upstream-canary|AbCd1234|Alice|Bob|Nf3|fen|moves/,
+  );
+});
+
+test('live diagnostics trace account retry without weakening fair-play safety', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const events: LiveDiagnosticEvent[] = [];
+  const f = fixture(t, false, undefined, (event) => events.push(event));
+  let attempts = 0;
+  f.provider.streamAccount = async function* (signal) {
+    if (++attempts === 1)
+      throw new LiveProviderError('live.provider_unavailable');
+    yield { kind: 'connected' };
+    yield* f.accountEvents.stream(signal);
+  };
+  await f.service.refresh(f.revision);
+  await until(() => f.service.getState().connection === 'reconnecting');
+  assert.equal(f.service.getState().fairPlayBlocked, true);
+  t.mock.timers.tick(1000);
+  await f.ready();
+  assert.equal(f.service.getState().fairPlayBlocked, false);
+  assert.deepEqual(
+    events.filter((event) => event.kind === 'account_stream'),
+    [
+      { kind: 'account_stream', status: 'starting', attempt: 0 },
+      {
+        kind: 'account_stream',
+        status: 'failed',
+        attempt: 0,
+        problemCode: 'live.provider_unavailable',
+      },
+      { kind: 'account_stream', status: 'stopped', attempt: 0 },
+      { kind: 'account_stream', status: 'starting', attempt: 1 },
+      { kind: 'account_stream', status: 'available', attempt: 1 },
+    ],
+  );
+});
+
+for (const playing of [false, true]) {
+  test(`throwing live diagnostics do not interrupt ${playing ? 'own' : 'observed'} recording, EOF completion or saving`, async (t) => {
+    const events: LiveDiagnosticEvent[] = [];
+    const f = fixture(t, playing, undefined, (event) => {
+      events.push(event);
+      throw new Error('diagnostic sink unavailable');
+    });
+    await f.connect();
+    f.provider.streamGame = async function* () {
+      yield { kind: 'snapshot', game: game(['e4', 'e5', 'Nf3']) };
+      f.snapshot = game(['e4', 'e5', 'Nf3'], true);
+    };
+    if (playing) await f.service.play(id, f.revision);
+    else await f.service.observe(`https://lichess.org/${id}`, f.revision);
+    await until(() => f.service.getState().session?.status === 'ended');
+    assert.equal(f.service.getState().fairPlayBlocked, false);
+    assert.ok(
+      events.some(
+        (event) => event.kind === 'game_stream' && event.status === 'stopped',
+      ),
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.kind === 'game_received' &&
+          event.operation === 'resync' &&
+          event.ply === 3,
+      ),
+    );
+    await f.service.save({
+      expectedRevision: f.revision,
+      displayName: 'Recorded game',
+      languageTag: 'en-GB',
+    });
+    assert.equal(f.saved[0]?.steps.length, 3);
+    assert.equal(f.saved[0]?.outcome, 'draw');
+  });
 }
 
 test('configured startup stays disconnected and analysable without any provider reads or streams until explicit refresh', async (t) => {

@@ -2,6 +2,16 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, isAbsolute } from 'node:path';
 import Database from 'better-sqlite3';
 import type { ImportRepository } from '../../../../application/inventory/import-ports.ts';
+import type { InventoryTransferRepository } from '../../../../application/inventory/pgn-transfer-ports.ts';
+import type { ChessRulesPort } from '../../../../application/chess_graph/index.ts';
+import {
+  invalidTransfer,
+  readPgnTransferSnapshot,
+} from './sqlite-pgn-transfer-snapshot.ts';
+import {
+  inspectFreshRestoreTarget,
+  restorePgnTransfer,
+} from './sqlite-pgn-transfer-restore.ts';
 import * as imports from './sqlite-import.ts';
 import type {
   LiveFairPlayGuardState,
@@ -153,10 +163,12 @@ const readPreferencesSql = `
 export interface SqlitePersistenceOptions {
   readonly databasePath: string;
   readonly now?: () => string;
+  readonly chessRules?: ChessRulesPort;
 }
 
 export class SqlitePersistenceAdapter
   implements
+    InventoryTransferRepository,
     ImportRepository,
     UserPreferencesReader,
     PreferencesUnitOfWork,
@@ -185,12 +197,14 @@ export class SqlitePersistenceAdapter
 {
   readonly #databasePath: string;
   readonly #writer: Database.Database;
+  readonly #chessRules: ChessRulesPort | undefined;
   #tail: Promise<void> = Promise.resolve();
   #closing = false;
   #closePromise: Promise<void> | undefined;
   #inWork = false;
 
   constructor(options: SqlitePersistenceOptions) {
+    this.#chessRules = options.chessRules;
     if (!isAbsolute(options.databasePath)) {
       throw new SqlitePersistenceProblem('persistence.startup_failed');
     }
@@ -218,6 +232,33 @@ export class SqlitePersistenceAdapter
 
   async readUserPreferences(): Promise<UserPreferences> {
     return this.#readSnapshot((reader) => readPreferences(reader));
+  }
+
+  async readPgnTransferSnapshot(checkBudget: () => void) {
+    return this.#readSnapshot((reader) =>
+      readPgnTransferSnapshot(reader, checkBudget),
+    );
+  }
+
+  async inspectFreshRestoreTarget() {
+    return this.#readSnapshot((reader) => inspectFreshRestoreTarget(reader));
+  }
+
+  restorePgnTransfer(
+    ...args: Parameters<InventoryTransferRepository['restorePgnTransfer']>
+  ) {
+    return this.#enqueueWrite(() => {
+      try {
+        return restorePgnTransfer(this.#writer, ...args, this.#chessRules);
+      } catch (error) {
+        if (
+          error instanceof ApplicationProblem &&
+          error.problemCode.startsWith('inventory_transfer.')
+        )
+          throw error;
+        throw invalidTransfer();
+      }
+    });
   }
 
   async checkImportNames(

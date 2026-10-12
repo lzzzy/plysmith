@@ -10,9 +10,27 @@ Under **Settings > Language**, choose **Deutsch** or **English** and click **App
 
 [![Language and other settings in Plysmith](screenshots/settings-general.png)](screenshots/settings-general.png)
 
-A standard installation keeps your personal data folder at `%LOCALAPPDATA%\Plysmith`, separate from the program. Settings currently offers no choice of a different data path. To make a backup, close Plysmith and copy the entire data folder to a safe location. A diagnostic report does not replace this backup.
+A standard installation keeps your personal data folder at `%LOCALAPPDATA%\Plysmith`, separate from the program. Settings currently offers no choice of a different data path. A diagnostic report does not replace a data backup.
 
 Under **Local system**, you can see whether the **Data store** is connected. **Technical details** includes the release, which you can include when reporting a problem.
+
+## Data backup
+
+Under **Settings > Data backup**, back up the entire saved inventory: analyses, games, folders, required provenance and general notes. Working contexts, ongoing drafts, context notes, engines and settings are not included.
+
+1. Choose **Back up inventory**.
+2. In the file dialog, choose a destination folder and a new `.pgn` file name. Existing files are never overwritten.
+3. Wait for the confirmation showing the file name and content counts. Keep the file in a safe location.
+
+[![Backup of the imported manual inventory showing its contents](screenshots/settings-backup.png)](screenshots/settings-backup.png)
+
+**Choose backup** requires a fresh, empty destination inventory, without working contexts or drafts. Empty visible lists alone are not sufficient. Finish active imports, playouts and live recordings as well. Plysmith never deletes or merges existing content to make room for a restore.
+
+After selecting a file, Plysmith checks the complete backup. Check the counts in **Review restore**, then explicitly confirm **Restore inventory**. You can cancel during checking and in the preview. Cancellation is disabled during final publication. The preview expires after ten minutes; select the file again afterwards. If the connection fails, check the current inventory before starting another attempt.
+
+[![Manual inventory restore before confirmation](screenshots/settings-restore.png)](screenshots/settings-restore.png)
+
+A Plysmith backup does not belong in the normal PGN import under **Manage**; that workflow directs you to **Data backup**. The file contains ordinary PGN moves plus additional Plysmith data. Editing it in another program can prevent a complete restore.
 
 ## Setting up Stockfish
 

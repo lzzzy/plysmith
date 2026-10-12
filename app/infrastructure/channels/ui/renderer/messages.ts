@@ -1,9 +1,11 @@
 import { importMessages } from './import-messages.ts';
+import { inventoryBackupMessages } from './inventory-backup-messages.ts';
 import { liveMessages } from './live-messages.ts';
 
 export const messages = {
   'de-DE': {
     ...importMessages['de-DE'],
+    ...inventoryBackupMessages['de-DE'],
     ...liveMessages['de-DE'],
     'manage.actionsFor': 'Aktionen für „{name}“',
     'manage.selectionActions': 'Aktionen für die Auswahl',
@@ -651,6 +653,7 @@ export const messages = {
   },
   'en-GB': {
     ...importMessages['en-GB'],
+    ...inventoryBackupMessages['en-GB'],
     ...liveMessages['en-GB'],
     'manage.actionsFor': 'Actions for “{name}”',
     'manage.selectionActions': 'Actions for selection',

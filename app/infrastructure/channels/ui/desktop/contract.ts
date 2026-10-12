@@ -8,6 +8,8 @@ export const desktopDiagnosticReportDestinationChannel =
 export const desktopEngineExecutableChannel = 'plysmith:engine-executable';
 export const desktopEngineWeightsChannel = 'plysmith:engine-weights';
 export const desktopPgnImportFileChannel = 'plysmith:pgn-import-file';
+export const desktopPgnBackupDestinationChannel =
+  'plysmith:pgn-backup-destination';
 
 const rendererEventCodes = new Set([
   'renderer.lifecycle.starting',
@@ -20,6 +22,9 @@ const rendererEventCodes = new Set([
   'renderer.events.reconnected',
   'renderer.events.invalid',
   'renderer.analysis.navigation_requested',
+  'renderer.live.changed',
+  'renderer.live.read',
+  'renderer.live.state',
   'client.request.completed',
   'client.request.failed',
 ] satisfies readonly DiagnosticEventInput['eventCode'][]);
@@ -36,6 +41,9 @@ export type RendererDiagnosticEvent = DiagnosticEventInput & {
     | 'renderer.events.reconnected'
     | 'renderer.events.invalid'
     | 'renderer.analysis.navigation_requested'
+    | 'renderer.live.changed'
+    | 'renderer.live.read'
+    | 'renderer.live.state'
     | 'client.request.completed'
     | 'client.request.failed';
 };
@@ -59,7 +67,19 @@ export interface PlysmithDesktopApi {
   chooseEngineExecutable(): Promise<string | undefined>;
   chooseEngineWeights(): Promise<string | undefined>;
   chooseImportFile(): Promise<string | undefined>;
+  chooseBackupDestination(
+    suggestedFileName: string,
+  ): Promise<string | undefined>;
   recordDiagnostic(event: RendererDiagnosticEvent): void;
+}
+
+export function parseBackupSuggestedFileName(
+  candidate: unknown,
+): string | undefined {
+  return typeof candidate === 'string' &&
+    /^plysmith-backup-\d{8}-\d{6}\.pgn$/.test(candidate)
+    ? candidate
+    : undefined;
 }
 
 export function parseDiagnosticReportSuggestedFileName(
@@ -91,6 +111,10 @@ export function parseRendererDiagnosticEvent(
     'dataRevision',
     'readVersion',
     'generation',
+    'liveRevision',
+    'ply',
+    'selectedPly',
+    'attempt',
     'itemId',
     'revisionId',
     'anchorId',
@@ -114,6 +138,10 @@ export function parseRendererDiagnosticEvent(
     !isOptionalNumber(candidate.dataRevision) ||
     !isOptionalNumber(candidate.readVersion) ||
     !isOptionalNumber(candidate.generation) ||
+    !isOptionalCounter(candidate.liveRevision) ||
+    !isOptionalCounter(candidate.ply) ||
+    !isOptionalCounter(candidate.selectedPly) ||
+    !isOptionalCounter(candidate.attempt) ||
     !isOptionalLocalId(candidate.itemId) ||
     !isOptionalLocalId(candidate.revisionId) ||
     !isOptionalLocalId(candidate.anchorId) ||
@@ -134,6 +162,10 @@ export function parseRendererDiagnosticEvent(
     ...copyDefined(candidate, 'dataRevision'),
     ...copyDefined(candidate, 'readVersion'),
     ...copyDefined(candidate, 'generation'),
+    ...copyDefined(candidate, 'liveRevision'),
+    ...copyDefined(candidate, 'ply'),
+    ...copyDefined(candidate, 'selectedPly'),
+    ...copyDefined(candidate, 'attempt'),
     ...copyDefined(candidate, 'itemId'),
     ...copyDefined(candidate, 'revisionId'),
     ...copyDefined(candidate, 'anchorId'),
@@ -171,6 +203,13 @@ function isOptionalNumber(value: unknown): boolean {
   return (
     value === undefined ||
     (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+  );
+}
+
+function isOptionalCounter(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
   );
 }
 

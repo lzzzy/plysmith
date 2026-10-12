@@ -85,6 +85,71 @@ test('diagnostic report reconstructs only closed safe event fields', async (t) =
   assert.doesNotMatch(JSON.stringify(restored), /secret-canary|123/);
 });
 
+test('diagnostic report preserves the live trace counters but redacts identities and invalid counters', async (t) => {
+  const { home } = await fixture(t);
+  const diagnostics = path.join(home, 'diagnostics');
+  await mkdir(diagnostics, { recursive: true });
+  const events = [
+    'host.live.account_stream',
+    'host.live.game_stream',
+    'host.live.game_received',
+    'host.live.changed',
+    'renderer.live.changed',
+    'renderer.live.read',
+    'renderer.live.state',
+  ].map((eventCode) => ({
+    timestamp,
+    level: 'debug',
+    eventCode,
+    component: eventCode.startsWith('host.') ? 'host' : 'desktop',
+    status: 'succeeded',
+    liveRevision: 12,
+    ply: 3,
+    selectedPly: 0,
+    attempt: 1,
+    name: 'private-canary',
+    gameId: 'private-canary',
+    token: 'private-canary',
+    moves: ['private-canary'],
+    fen: 'private-canary',
+    url: 'private-canary',
+  }));
+  await writeFile(
+    path.join(diagnostics, 'host-20261009-run-0.ndjson'),
+    [
+      ...events,
+      {
+        ...events[0],
+        liveRevision: -1,
+        ply: 1.5,
+        selectedPly: '3',
+        attempt: Number.MAX_SAFE_INTEGER + 1,
+      },
+    ]
+      .map((event) => JSON.stringify(event))
+      .join('\n'),
+  );
+  const adapter = new FileDiagnosticReport({ applicationHome: home });
+  const report = await adapter.readRedactedEvents({
+    maximumSourceBytes: 1_000_000,
+    maximumEvents: 100,
+  });
+  assert.equal(report.events.length, 8);
+  for (const [index, event] of report.events.entries()) {
+    for (const key of [
+      'liveRevision',
+      'ply',
+      'selectedPly',
+      'attempt',
+    ] as const)
+      assert.equal(event[key], index === 7 ? undefined : events[index]![key]);
+  }
+  assert.doesNotMatch(
+    JSON.stringify(report),
+    /private-canary|gameId|name|token|moves|fen|url/,
+  );
+});
+
 test('diagnostic report refuses protected and existing targets', async (t) => {
   const { home, output } = await fixture(t);
   const adapter = new FileDiagnosticReport({ applicationHome: home });

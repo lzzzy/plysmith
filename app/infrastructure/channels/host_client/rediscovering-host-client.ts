@@ -138,6 +138,28 @@ export class RediscoveringHostClient {
     return (await this.#currentClient()).registerImportInput(request);
   }
 
+  async getInventoryBackupStatus() {
+    return this.#read((client) => client.getInventoryBackupStatus());
+  }
+  async createInventoryBackup(
+    request: Parameters<PlysmithHostClient['createInventoryBackup']>[0],
+  ) {
+    return (await this.#currentClient()).createInventoryBackup(request);
+  }
+  async prepareInventoryRestore(
+    request: Parameters<PlysmithHostClient['prepareInventoryRestore']>[0],
+  ) {
+    return (await this.#currentClient()).prepareInventoryRestore(request);
+  }
+  async restoreInventory(
+    request: Parameters<PlysmithHostClient['restoreInventory']>[0],
+  ) {
+    return (await this.#currentClient()).restoreInventory(request);
+  }
+  async cancelInventoryRestore(restoreId: string) {
+    return (await this.#currentClient()).cancelInventoryRestore(restoreId);
+  }
+
   getLiveState(): Promise<LiveStateDto> {
     return this.#read((client) => client.getLiveState());
   }

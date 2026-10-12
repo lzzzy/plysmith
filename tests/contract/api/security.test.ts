@@ -248,7 +248,9 @@ test('every documented operation has an exact browser preflight grant', async ()
   for (const [path, item] of Object.entries(api.paths ?? {})) {
     assert.ok(item, path);
     const expected = methods.filter((method) => item[method] !== undefined);
-    const url = path.replace(/\{[^}]+\}/g, '1');
+    const url = path
+      .replace('{restoreId}', 'dddebc91-561d-4f1c-a5ab-920249ce49e9')
+      .replace(/\{[^}]+\}/g, '1');
     for (const method of methods) {
       const response = await host.inject({
         method: 'OPTIONS',

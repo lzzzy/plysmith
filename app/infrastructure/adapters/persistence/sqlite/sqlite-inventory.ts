@@ -139,7 +139,7 @@ function inventorySql(withTextQuery: boolean, byId = false): string {
                ON search_document_fts.rowid = document.search_document_id`
           : ''
       }
-     WHERE ${byId ? "i.lifecycle <> 'tombstone'" : "i.lifecycle = 'active'"}
+     WHERE ${byId ? '1 = 1' : "i.lifecycle = 'active'"}
        AND i.current_revision_id IS NOT NULL
        ${withTextQuery ? 'AND search_document_fts MATCH ?' : ''}
        AND (? IS NULL OR EXISTS (

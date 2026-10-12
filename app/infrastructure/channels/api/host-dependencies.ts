@@ -1,3 +1,4 @@
+import type { InventoryTransferService } from '../../../application/inventory/inventory-transfer.ts';
 import type {
   GetUserPreferencesUseCase,
   SetUiLanguageUseCase,
@@ -84,6 +85,14 @@ import type {
 } from '../../../application/playout/index.ts';
 
 export interface HostDependencies {
+  readonly inventoryTransfer: Pick<
+    InventoryTransferService,
+    | 'getStatus'
+    | 'createBackup'
+    | 'prepareRestore'
+    | 'restore'
+    | 'cancelRestore'
+  >;
   readonly live: Pick<
     LiveService,
     | 'getState'

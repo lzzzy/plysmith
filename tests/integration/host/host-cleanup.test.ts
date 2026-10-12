@@ -119,6 +119,36 @@ test('host cleanup waits for all producers before releasing persistence', async 
   assert.deepEqual(calls, ['store', 'lease']);
 });
 
+test('host cleanup cancels backup preparation before waiting for HTTP and store close', async () => {
+  const request = Promise.withResolvers<void>();
+  const calls: string[] = [];
+  const result = await closeHostResources({
+    live: undefined,
+    host: { close: () => request.promise },
+    engineRuntimes: [],
+    importPreparations: undefined,
+    inventoryTransfer: {
+      close() {
+        calls.push('transfer');
+        request.resolve();
+      },
+    },
+    persistence: {
+      close() {
+        calls.push('store');
+      },
+    },
+    lease: {
+      async release() {
+        calls.push('lease');
+      },
+    },
+    diagnostics: undefined,
+  });
+  assert.deepEqual(result, []);
+  assert.deepEqual(calls, ['transfer', 'store', 'lease']);
+});
+
 test('partial startup cleanup survives synchronous closer and diagnostic failures', async () => {
   const failures = [new Error('store'), new Error('diagnostic event')];
   const calls: string[] = [];

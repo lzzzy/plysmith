@@ -8,9 +8,27 @@ Unter **Einstellungen > Sprache** wählen Sie **Deutsch** oder **English** und k
 
 [![Sprache und weitere Einstellungen in Plysmith](screenshots/settings-general.png)](screenshots/settings-general.png)
 
-Der persönliche Datenordner einer Standardinstallation liegt unter `%LOCALAPPDATA%\Plysmith`, getrennt vom Programm. In den Einstellungen gibt es derzeit keine Auswahl für einen anderen Datenpfad. Für eine Sicherung schließen Sie Plysmith und kopieren den gesamten Datenordner an einen sicheren Ort. Ein Diagnosebericht ersetzt diese Sicherung nicht.
+Der persönliche Datenordner einer Standardinstallation liegt unter `%LOCALAPPDATA%\Plysmith`, getrennt vom Programm. In den Einstellungen gibt es derzeit keine Auswahl für einen anderen Datenpfad. Ein Diagnosebericht ersetzt keine Datensicherung.
 
 Unter **Lokales System** sehen Sie, ob der **Datenspeicher** verbunden ist. **Technische Details** enthält unter anderem das Release, das Sie bei einer Fehlermeldung angeben können.
+
+## Datensicherung
+
+Unter **Einstellungen > Datensicherung** sichern Sie den gesamten gespeicherten Bestand: Analysen, Partien, Ordner, notwendige Herkunft und allgemeine Notizen. Arbeitskontexte, laufende Entwürfe, kontextbezogene Notizen, Engines und Einstellungen sind nicht enthalten.
+
+1. Wählen Sie **Bestand sichern**.
+2. Wählen Sie im Dateidialog einen Zielordner und einen neuen `.pgn`-Dateinamen. Bestehende Dateien werden nicht überschrieben.
+3. Warten Sie auf die Bestätigung mit Dateiname und Inhaltszahlen. Bewahren Sie die Datei an einem sicheren Ort auf.
+
+[![Datensicherung des importierten Manualbestands mit Inhaltszahlen](screenshots/settings-backup.png)](screenshots/settings-backup.png)
+
+Für **Sicherung auswählen** muss der Zielbestand frisch und leer sein, auch ohne Arbeitskontexte oder Entwürfe. Sichtbar leere Listen allein genügen nicht. Beenden Sie außerdem laufende Imports, Ausspielen und Liveaufnahmen. Plysmith löscht oder vereinigt keine vorhandenen Inhalte, um Platz für eine Sicherung zu schaffen.
+
+Nach der Dateiauswahl wird die Sicherung vollständig geprüft. Kontrollieren Sie die Inhaltszahlen in **Wiederherstellung prüfen** und bestätigen Sie erst dann **Bestand wiederherstellen**. Während der Prüfung und in der Vorschau können Sie abbrechen. Während der abschließenden Wiederherstellung ist Abbruch gesperrt. Die Vorschau läuft nach zehn Minuten ab; wählen Sie die Datei dann erneut. Bei einem Verbindungsausfall prüfen Sie zuerst den aktuellen Bestand, bevor Sie einen neuen Versuch beginnen.
+
+[![Wiederherstellung des Manualbestands vor der Bestätigung](screenshots/settings-restore.png)](screenshots/settings-restore.png)
+
+Eine Plysmith-Sicherung gehört nicht in den normalen PGN-Import unter **Verwalten**; dieser verweist auf **Datensicherung**. Die Datei enthält gewöhnliche PGN-Züge und zusätzliche Plysmith-Daten. Bearbeitungen in anderen Programmen können die vollständige Wiederherstellbarkeit verlieren.
 
 ## Stockfish einrichten
 

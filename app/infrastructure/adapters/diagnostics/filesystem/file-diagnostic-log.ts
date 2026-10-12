@@ -232,6 +232,10 @@ function safeOptionalFields(event: DiagnosticEventInput): object {
     ...safeNumber('dataRevision', event.dataRevision),
     ...safeNumber('readVersion', event.readVersion),
     ...safeNumber('generation', event.generation),
+    ...safeCounter('liveRevision', event.liveRevision),
+    ...safeCounter('ply', event.ply),
+    ...safeCounter('selectedPly', event.selectedPly),
+    ...safeCounter('attempt', event.attempt),
     ...safeLocalId('itemId', event.itemId),
     ...safeLocalId('revisionId', event.revisionId),
     ...safeLocalId('anchorId', event.anchorId),
@@ -244,6 +248,12 @@ function safeOptionalFields(event: DiagnosticEventInput): object {
 
 function safeNumber(name: string, value: number | undefined): object {
   return value !== undefined && Number.isFinite(value) && value >= 0
+    ? { [name]: value }
+    : {};
+}
+
+function safeCounter(name: string, value: number | undefined): object {
+  return value !== undefined && Number.isSafeInteger(value) && value >= 0
     ? { [name]: value }
     : {};
 }

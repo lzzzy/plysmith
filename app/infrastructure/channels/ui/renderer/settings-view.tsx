@@ -30,6 +30,7 @@ import {
 } from './plysmith-application-store.ts';
 import type { UiLocale } from './messages.ts';
 import { LiveSettings } from './live-settings.tsx';
+import { InventoryBackupSettings } from './inventory-backup-settings.tsx';
 import {
   type EngineConfigurationDraft,
   type EngineConfigurationField,
@@ -130,6 +131,7 @@ export function SettingsView({
         </div>
       </section>
 
+      <InventoryBackupSettings state={state} store={store} />
       <EngineSettings state={state} store={store} />
       <LiveSettings state={state} store={store} />
 

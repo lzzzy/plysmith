@@ -20,6 +20,13 @@ export async function generateHostContract(
     },
   };
   const host = await buildHost({
+    inventoryTransfer: {
+      getStatus: unavailableUseCase.execute,
+      createBackup: unavailableUseCase.execute,
+      prepareRestore: unavailableUseCase.execute,
+      restore: unavailableUseCase.execute,
+      cancelRestore: unavailableUseCase.execute,
+    },
     live: {
       getState: () => ({
         revision: 0,

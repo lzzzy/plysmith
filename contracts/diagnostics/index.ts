@@ -11,6 +11,10 @@ export const diagnosticEventCodes = [
   'host.lifecycle.stopping',
   'host.lifecycle.stopped',
   'host.request.completed',
+  'host.live.account_stream',
+  'host.live.game_stream',
+  'host.live.game_received',
+  'host.live.changed',
   'desktop.lifecycle.starting',
   'desktop.lifecycle.ready',
   'desktop.lifecycle.start_failed',
@@ -28,6 +32,9 @@ export const diagnosticEventCodes = [
   'renderer.events.reconnected',
   'renderer.events.invalid',
   'renderer.analysis.navigation_requested',
+  'renderer.live.changed',
+  'renderer.live.read',
+  'renderer.live.state',
   'client.request.completed',
   'client.request.failed',
 ] as const;
@@ -60,6 +67,10 @@ export interface DiagnosticEventInput {
   readonly dataRevision?: number;
   readonly readVersion?: number;
   readonly generation?: number;
+  readonly liveRevision?: number;
+  readonly ply?: number;
+  readonly selectedPly?: number;
+  readonly attempt?: number;
   readonly itemId?: string;
   readonly revisionId?: string;
   readonly anchorId?: string;

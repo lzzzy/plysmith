@@ -8,6 +8,7 @@ interface HostCleanupResources {
   readonly host: Closeable | undefined;
   readonly engineRuntimes: readonly Closeable[];
   readonly importPreparations: Closeable | undefined;
+  readonly inventoryTransfer?: Closeable | undefined;
   readonly persistence: Closeable | undefined;
   readonly lease: { release(): Promise<void> };
   readonly diagnostics: Closeable | undefined;
@@ -35,6 +36,7 @@ export async function closeHostResources(
       attempt(() => runtime.close()),
     ),
     attempt(() => resources.importPreparations?.close()),
+    attempt(() => resources.inventoryTransfer?.close()),
   ]);
   await attempt(() => resources.persistence?.close());
   await attempt(() => resources.lease.release());

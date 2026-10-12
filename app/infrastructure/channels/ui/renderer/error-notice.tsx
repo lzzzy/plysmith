@@ -17,6 +17,11 @@ export function ErrorNotice({
 }
 
 function errorMessageId(errorCode: string): string {
+  if (
+    errorCode.startsWith('inventory_transfer.') ||
+    errorCode === 'backup.localDrafts'
+  )
+    return errorCode;
   if (errorCode === 'live.stale_state') return 'error.revision';
   if (errorCode === 'live.illegal_move') return 'error.illegalMove';
   if (errorCode === 'live.not_playable') return 'live.browserOnly';

@@ -1,6 +1,15 @@
 export { importLimits } from '../../../../contracts/host/index.ts';
 export {
   connectHost,
+  type InventoryBackupStatusDto,
+  type InventoryBackupCountsDto,
+  type InventoryBackupCreatedDto,
+  type InventoryRestorePreviewDto,
+  type InventoryRestoredDto,
+  type CreateInventoryBackupRequestDto,
+  type PrepareInventoryRestoreRequestDto,
+  type RestoreInventoryRequestDto,
+  type CancelInventoryRestoreResultDto,
   type LiveStateDto,
   type LiveSavedDto,
   type LiveCommandRequestDto,

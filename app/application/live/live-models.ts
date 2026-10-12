@@ -11,6 +11,18 @@ export interface LiveRecordedMove {
   readonly after: ChessState;
 }
 
+export interface LiveDiagnosticEvent {
+  readonly kind: 'account_stream' | 'game_stream' | 'game_received' | 'changed';
+  readonly status:
+    'starting' | 'available' | 'failed' | 'stopped' | 'succeeded';
+  readonly operation?: 'snapshot' | 'position' | 'finished' | 'resync';
+  readonly attempt?: number;
+  readonly problemCode?: string;
+  readonly liveRevision?: number;
+  readonly ply?: number;
+  readonly selectedPly?: number;
+}
+
 export interface LiveSessionView {
   readonly analysisRevision: number;
   readonly gameId: string;

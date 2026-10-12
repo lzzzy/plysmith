@@ -33,6 +33,10 @@ const methodsByPath: Readonly<Record<string, readonly string[]>> = {
   '/engine-providers/configurations': ['GET'],
   '/engine-providers/configuration-preview': ['POST'],
   '/inventory': ['GET'],
+  '/inventory/backup-status': ['GET'],
+  '/inventory/backups': ['POST'],
+  '/inventory/restores/preview': ['POST'],
+  '/inventory/restores/publish': ['POST'],
   '/inventory/import-inputs': ['POST'],
   '/inventory/imports/preview': ['POST'],
   '/inventory/imports/cancel-preparation': ['POST'],
@@ -70,6 +74,12 @@ function allowedMethodsFor(requestUrl: string): readonly string[] | undefined {
   }
   const staticMethods = methodsByPath[pathname];
   if (staticMethods !== undefined) return staticMethods;
+  if (
+    /^\/inventory\/restores\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      pathname,
+    )
+  )
+    return ['DELETE'];
   if (/^\/analysis\/notes\/[^/]+$/.test(pathname)) return ['PATCH', 'DELETE'];
   if (/^\/engine-providers\/configurations\/[^/]+$/.test(pathname))
     return ['PUT', 'DELETE'];

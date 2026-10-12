@@ -29,6 +29,7 @@ import {
   type PlysmithApplicationClient,
 } from '../../../app/infrastructure/channels/ui/renderer/plysmith-application-store.ts';
 import { chessTreePath } from '../../../app/infrastructure/channels/ui/renderer/chess-tree-presentation.ts';
+import type { RendererDiagnosticEvent } from '../../../app/infrastructure/channels/ui/desktop/contract.ts';
 
 const connection: HostConnection = {
   endpoint: 'http://127.0.0.1:43121/',
@@ -8404,6 +8405,161 @@ for (const changedFocus of [false, true]) {
   });
 }
 
+test('live diagnostics distinguish event receipt, superseded reads, stale states and failures without content', async (t) => {
+  const events: RendererDiagnosticEvent[] = [];
+  const pending: ReturnType<typeof Promise.withResolvers<LiveStateDto>>[] = [];
+  let live = liveFixture(1, 'observe');
+  let defer = false;
+  let fails = false;
+  let onChange: (event: HostEvent) => void = () =>
+    assert.fail('not subscribed');
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () =>
+      createClient({
+        getLiveState: async () => {
+          if (fails) throw new Error('private-error-canary');
+          if (!defer) return live;
+          const reading = Promise.withResolvers<LiveStateDto>();
+          pending.push(reading);
+          return reading.promise;
+        },
+      }),
+    createEventSubscription: (_connection, change) => {
+      onChange = change;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+    recordDiagnostic: (event) => events.push(event),
+  });
+  t.after(() => store.close());
+  await store.start();
+  events.length = 0;
+  defer = true;
+  for (const revision of [2, 3])
+    onChange({
+      kind: 'live.changed',
+      eventId: `live-${revision}`,
+      sequence: revision,
+      dataRevision: 0,
+      occurredAt: '2026-10-09T10:00:00.000Z',
+      subscriptionRevision: 1,
+      correlationId: 'live',
+      payload: { revision, fairPlayBlocked: false },
+    });
+  assert.equal(pending.length, 2);
+  pending[0]!.resolve(liveFixture(2, 'observe'));
+  pending[1]!.resolve(liveFixture(3, 'observe'));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readyStore(store).live?.revision, 3);
+  assert.deepEqual(
+    events
+      .filter((event) => event.eventCode === 'renderer.live.changed')
+      .map((event) => event.liveRevision),
+    [2, 3],
+  );
+  const reads = events.filter(
+    (event) => event.eventCode === 'renderer.live.read',
+  );
+  const starts = reads.filter((event) => event.status === 'starting');
+  assert.equal(starts.length, 2);
+  assert.ok(
+    reads.some(
+      (event) =>
+        event.status === 'discarded' &&
+        event.operation === 'superseded_read' &&
+        event.liveRevision === 2 &&
+        event.readVersion === starts[0]!.readVersion,
+    ),
+  );
+  assert.ok(
+    reads.some(
+      (event) =>
+        event.status === 'succeeded' &&
+        event.liveRevision === 3 &&
+        event.readVersion === starts[1]!.readVersion,
+    ),
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'renderer.live.state' &&
+        event.status === 'succeeded' &&
+        event.liveRevision === 3 &&
+        event.ply === 0 &&
+        event.selectedPly === 0,
+    ),
+  );
+  defer = false;
+  live = liveFixture(2, 'observe');
+  await store.refreshLiveState(false);
+  assert.equal(readyStore(store).live?.revision, 3);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'renderer.live.state' &&
+        event.status === 'discarded' &&
+        event.operation === 'stale_revision' &&
+        event.liveRevision === 2,
+    ),
+  );
+  fails = true;
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.ok(
+    events.some(
+      (event) =>
+        event.eventCode === 'renderer.live.read' &&
+        event.status === 'failed' &&
+        event.problemCode === 'live.provider_unavailable',
+    ),
+  );
+  fails = false;
+  live = liveFixture(4, 'observe');
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).live?.revision, 4);
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /private-error-canary|abcdefgh|White|Black|fen|moves|token/,
+  );
+});
+
+test('throwing renderer diagnostic sink cannot prevent live state acceptance or fail-closed recovery', async (t) => {
+  let live = liveFixture(1, 'observe');
+  let fails = false;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () =>
+      createClient({
+        getLiveState: async () => {
+          if (fails) throw new Error('offline');
+          return live;
+        },
+      }),
+    createEventSubscription: () => ({
+      ready: Promise.resolve(),
+      close: () => undefined,
+    }),
+    recordDiagnostic: () => {
+      throw new Error('diagnostic sink unavailable');
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(readyStore(store).live?.revision, 1);
+  live = liveFixture(2, 'observe');
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).live?.revision, 2);
+  fails = true;
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  fails = false;
+  live = liveFixture(3, 'observe');
+  await store.refreshLiveState();
+  assert.equal(readyStore(store).live?.revision, 3);
+  assert.equal(readyStore(store).fairPlayBlocked, false);
+});
+
 test('live guard hints preserve safe panels but never release a newer blocked or unknown state', async (t) => {
   const pending: {
     resolve: (state: LiveStateDto) => void;
@@ -8697,6 +8853,400 @@ test('live save reconciliation cannot clear a new recording decision after resta
     kind: 'discard',
   });
   assert.notEqual(readyStore(store).announcement, 'live.saved');
+});
+
+test('backup status is read only for settings and file cancellation writes nothing', async (t) => {
+  let reads = 0;
+  const client = createClient({
+    getInventoryBackupStatus: async () => {
+      reads++;
+      return {
+        canRestore: true,
+        blockerCodes: [],
+        suggestedFileName: 'plysmith-backup-20261012-120000.pgn',
+      };
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseBackupDestination: async () => undefined,
+  });
+  t.after(() => store.close());
+  await store.start();
+  await store.refresh();
+  assert.equal(reads, 0);
+  store.setActivity('settings');
+  await store.refreshInventoryBackupStatus();
+  assert.ok(reads > 0);
+  await store.createInventoryBackup();
+  assert.equal(readyStore(store).inventoryTransfer?.phase, 'idle');
+  assert.equal(readyStore(store).inventoryTransfer?.created, undefined);
+});
+
+test('restore cancellation invalidates a late preview and never publishes', async (t) => {
+  const pending =
+    Promise.withResolvers<
+      Awaited<ReturnType<PlysmithApplicationClient['prepareInventoryRestore']>>
+    >();
+  const entered = Promise.withResolvers<string>();
+  const cancelled: string[] = [];
+  const client = createClient({
+    prepareInventoryRestore: async ({ restoreId }) => {
+      entered.resolve(restoreId);
+      return pending.promise;
+    },
+    cancelInventoryRestore: async (id) => {
+      cancelled.push(id);
+      return { cancelled: true };
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseImportFile: async () => 'C:/backup.pgn',
+  });
+  t.after(() => store.close());
+  await store.start();
+  store.setActivity('settings');
+  const preparing = store.prepareInventoryRestore();
+  const restoreId = await entered.promise;
+  await store.cancelInventoryRestore();
+  pending.resolve({
+    restoreId,
+    fingerprint: 'a'.repeat(64),
+    counts: {
+      analyses: 1,
+      games: 0,
+      folders: 0,
+      provenanceRecords: 0,
+      contributions: 0,
+    },
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  });
+  await preparing;
+  assert.equal(readyStore(store).inventoryTransfer?.phase, 'idle');
+  assert.equal(readyStore(store).inventoryTransfer?.preview, undefined);
+  assert.deepEqual(cancelled, [restoreId, restoreId]);
+  await store.restoreInventory();
+});
+
+test('cancelled restore refreshes a busy target after the old preparation settles', async (t) => {
+  const pending =
+    Promise.withResolvers<
+      Awaited<ReturnType<PlysmithApplicationClient['prepareInventoryRestore']>>
+    >();
+  const entered = Promise.withResolvers<void>();
+  let preparingInHost = false;
+  const client = createClient({
+    getInventoryBackupStatus: async () => ({
+      canRestore: !preparingInHost,
+      blockerCodes: preparingInHost ? ['transfer_busy'] : [],
+      suggestedFileName: 'backup.pgn',
+    }),
+    prepareInventoryRestore: async () => {
+      preparingInHost = true;
+      entered.resolve();
+      return pending.promise;
+    },
+    cancelInventoryRestore: async () => ({ cancelled: true }),
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseImportFile: async () => 'C:/backup.pgn',
+  });
+  t.after(() => store.close());
+  await store.start();
+  store.setActivity('settings');
+  const preparing = store.prepareInventoryRestore();
+  await entered.promise;
+  await store.cancelInventoryRestore();
+  assert.equal(readyStore(store).inventoryTransfer?.status?.canRestore, false);
+  preparingInHost = false;
+  pending.reject(new Error('cancelled preparation settled'));
+  await preparing;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(readyStore(store).inventoryTransfer?.phase, 'idle');
+  assert.equal(readyStore(store).inventoryTransfer?.status?.canRestore, true);
+  assert.equal(readyStore(store).inventoryTransfer?.errorCode, undefined);
+});
+
+for (const newer of ['transfer', 'generation'] as const) {
+  test(`late cancelled restore status cannot replace a newer ${newer}`, async (t) => {
+    const pending =
+      Promise.withResolvers<
+        Awaited<
+          ReturnType<PlysmithApplicationClient['prepareInventoryRestore']>
+        >
+      >();
+    const entered = Promise.withResolvers<void>();
+    const statusEntered = Promise.withResolvers<void>();
+    const lateStatus =
+      Promise.withResolvers<
+        Awaited<
+          ReturnType<PlysmithApplicationClient['getInventoryBackupStatus']>
+        >
+      >();
+    let holdStatus = false;
+    let generation = 1;
+    const fresh = {
+      canRestore: true,
+      blockerCodes: [],
+      suggestedFileName: 'backup.pgn',
+    };
+    const client = createClient({
+      getInventoryBackupStatus: async () => {
+        if (holdStatus) {
+          holdStatus = false;
+          statusEntered.resolve();
+          return lateStatus.promise;
+        }
+        return fresh;
+      },
+      prepareInventoryRestore: async () => {
+        entered.resolve();
+        return pending.promise;
+      },
+      cancelInventoryRestore: async () => ({ cancelled: true }),
+    });
+    const store = new PlysmithApplicationStore({
+      getBootstrap: async () => ({ kind: 'ready', generation, connection }),
+      createClient: () => client,
+      createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+      chooseImportFile: async () => 'C:/backup.pgn',
+      chooseBackupDestination: async () => undefined,
+    });
+    t.after(() => store.close());
+    await store.start();
+    store.setActivity('settings');
+    const preparing = store.prepareInventoryRestore();
+    await entered.promise;
+    await store.cancelInventoryRestore();
+    holdStatus = true;
+    pending.reject(new Error('cancelled preparation settled'));
+    await preparing;
+    await statusEntered.promise;
+    if (newer === 'generation') {
+      generation++;
+      await store.start();
+      store.setActivity('settings');
+      await store.refreshInventoryBackupStatus();
+    } else await store.createInventoryBackup();
+    assert.equal(readyStore(store).inventoryTransfer?.status?.canRestore, true);
+    lateStatus.resolve({
+      ...fresh,
+      canRestore: false,
+      blockerCodes: ['transfer_busy'],
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(readyStore(store).inventoryTransfer?.status?.canRestore, true);
+  });
+}
+
+test('restore requires preview confirmation and binds exactly its fingerprint', async (t) => {
+  const counts = {
+    analyses: 1,
+    games: 0,
+    folders: 0,
+    provenanceRecords: 1,
+    contributions: 2,
+  };
+  let expectedId = '';
+  let published = 0;
+  const client = createClient({
+    prepareInventoryRestore: async ({ restoreId }) => {
+      expectedId = restoreId;
+      return {
+        restoreId,
+        fingerprint: 'b'.repeat(64),
+        counts,
+        expiresAt: '2099-01-01T00:00:00.000Z',
+      };
+    },
+    restoreInventory: async (request) => {
+      published++;
+      assert.deepEqual(request, {
+        restoreId: expectedId,
+        acceptedFingerprint: 'b'.repeat(64),
+      });
+      return { counts, dataRevision: 1, noOp: false };
+    },
+    cancelInventoryRestore: async () => ({ cancelled: false }),
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseImportFile: async () => 'C:/backup.pgn',
+  });
+  t.after(() => store.close());
+  await store.start();
+  store.setActivity('settings');
+  await store.restoreInventory();
+  assert.equal(published, 0);
+  await store.prepareInventoryRestore();
+  assert.equal(readyStore(store).inventoryTransfer?.phase, 'prepared');
+  assert.equal(published, 0);
+  await store.restoreInventory();
+  assert.equal(published, 1);
+  assert.equal(readyStore(store).inventoryTransfer?.restored?.dataRevision, 1);
+  await store.restoreInventory();
+  assert.equal(published, 1);
+});
+
+test('host generation change prevents a late save dialog from writing', async (t) => {
+  const selected = Promise.withResolvers<string | undefined>();
+  const opened = Promise.withResolvers<void>();
+  const client = createClient();
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseBackupDestination: async () => {
+      opened.resolve();
+      return selected.promise;
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  const saving = store.createInventoryBackup();
+  await opened.promise;
+  await store.start();
+  selected.resolve('C:/backup.pgn');
+  await saving;
+  assert.equal(readyStore(store).inventoryTransfer?.phase, 'idle');
+});
+
+test('restore preserves local content forms and refuses opening a file', async (t) => {
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => createClient(),
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseImportFile: async () =>
+      assert.fail('No file dialog with local drafts'),
+  });
+  t.after(() => store.close());
+  await store.start();
+  const draft = {
+    title: 'Unsaved title',
+    noteBody: 'Keep me',
+    destination: 'inventory' as const,
+    noteScope: 'global' as const,
+    open: true,
+  };
+  store.setAnalysisRecordForm({ kind: 'free' }, 'scratch-test', draft);
+  await store.prepareInventoryRestore();
+  assert.equal(
+    readyStore(store).inventoryTransfer?.errorCode,
+    'backup.localDrafts',
+  );
+  assert.deepEqual(
+    store.getAnalysisRecordForm({ kind: 'free' }, 'scratch-test'),
+    draft,
+  );
+  store.setAnalysisRecordForm({ kind: 'free' }, 'scratch-test', undefined);
+  assert.equal(store.hasInventoryRestoreDrafts(), false);
+});
+
+test('uncertain restore publication refreshes inventory and never retries the command', async (t) => {
+  let writes = 0;
+  let reads = 0;
+  const client = createClient({
+    getSystemStatus: async () => {
+      reads++;
+      return status();
+    },
+    prepareInventoryRestore: async ({ restoreId }) => ({
+      restoreId,
+      fingerprint: 'c'.repeat(64),
+      counts: {
+        analyses: 0,
+        games: 0,
+        folders: 0,
+        provenanceRecords: 0,
+        contributions: 0,
+      },
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    }),
+    restoreInventory: async () => {
+      writes++;
+      throw new HostClientProblem({
+        type: 'about:blank',
+        title: 'Unavailable',
+        status: 503,
+        detail: '',
+        instance: 'test',
+        code: 'host.unavailable',
+        correlationId: 'test',
+        retryable: false,
+        parameters: {},
+      });
+    },
+    cancelInventoryRestore: async () => ({ cancelled: false }),
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: () => ({ ready: Promise.resolve(), close() {} }),
+    chooseImportFile: async () => 'C:/backup.pgn',
+  });
+  t.after(() => store.close());
+  await store.start();
+  await store.prepareInventoryRestore();
+  const before = reads;
+  await store.restoreInventory();
+  assert.ok(reads > before);
+  assert.equal(
+    readyStore(store).inventoryTransfer?.errorCode,
+    'host.unavailable',
+  );
+  assert.equal(readyStore(store).inventoryTransfer?.preview, undefined);
+  await store.restoreInventory();
+  assert.equal(writes, 1);
+});
+
+test('backup status reacts to events and reconnects only while settings is open', async (t) => {
+  let reads = 0;
+  let changed: (event: HostEvent) => void = () =>
+    assert.fail('Missing subscription');
+  let reconnect: () => void = () => assert.fail('Missing subscription');
+  const client = createClient({
+    getInventoryBackupStatus: async () => {
+      reads++;
+      return {
+        canRestore: true,
+        blockerCodes: [],
+        suggestedFileName: 'plysmith-backup-20261012-120000.pgn',
+      };
+    },
+  });
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => client,
+    createEventSubscription: (_connection, onChange, onReconnect) => {
+      changed = onChange;
+      reconnect = onReconnect;
+      return { ready: Promise.resolve(), close() {} };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  reconnect();
+  assert.equal(reads, 0);
+  store.setActivity('settings');
+  const opened = reads;
+  changed(playoutChangedEvent(1, 0));
+  assert.equal(reads, opened + 1);
+  reconnect();
+  assert.equal(reads, opened + 2);
+  store.setActivity('manage');
+  const closed = reads;
+  reconnect();
+  assert.equal(reads, closed);
 });
 
 function createReadyStore(client: PlysmithApplicationClient) {

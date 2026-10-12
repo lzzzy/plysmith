@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { importSchemas } from './import-schemas.ts';
+import { pgnTransferSchemas } from './pgn-transfer-schemas.ts';
 import { liveSchemas } from './live-schemas.ts';
 
 import {
@@ -2719,6 +2720,7 @@ export const apiSchemas = [
   ...liveSchemas,
   LiveChangedEventSchema,
   ...importSchemas,
+  ...pgnTransferSchemas,
   InventoryOrganizationQuerySchema,
   InventoryOrganizationSchema,
   ChangeInventoryOrganizationBodySchema,

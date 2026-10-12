@@ -11,7 +11,8 @@ the concepts and all areas of the app using a small, importable example inventor
 
 This is a Windows beta for trying the application. Your feedback helps improve
 Plysmith. Later versions may not read all previous data and settings.
-There is no built-in backup or restore feature yet.
+The current source tree adds [PGN backup and restore](docs/manual/04-settings.en.md#data-backup)
+for the saved inventory; this feature is not included in beta.1 yet.
 
 ## Installation
 
@@ -31,7 +32,8 @@ path with the location of your downloaded file.
 Program files and data are separate. A fresh default installation puts the
 program in `%LOCALAPPDATA%\Programs\Plysmith`. The data folder
 `%LOCALAPPDATA%\Plysmith` remains after a normal uninstall. Back up important
-work as described in [Language and data](docs/manual/04-settings.en.md#language-and-data).
+work as described in [Data backup](docs/manual/04-settings.en.md#data-backup).
+For older versions without this feature, copy the complete data folder while the app is closed.
 
 **Upgrading to beta.1:** The data format has changed. This version cannot open
 inventory created by alpha.7 or earlier, and there is no migration. Close Plysmith and

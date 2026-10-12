@@ -32,3 +32,6 @@
 /diagnostics/
 /runtime/
 /desktop/
+
+# Local Codex configuration
+/.codex/

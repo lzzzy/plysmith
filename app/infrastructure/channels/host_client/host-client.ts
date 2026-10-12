@@ -19,6 +19,23 @@ import {
 
 export type RegisterImportInputRequestDto =
   components['schemas']['RegisterImportInputBody'];
+export type InventoryBackupStatusDto =
+  components['schemas']['InventoryBackupStatus'];
+export type InventoryBackupCountsDto =
+  components['schemas']['InventoryBackupCounts'];
+export type InventoryBackupCreatedDto =
+  components['schemas']['InventoryBackupCreated'];
+export type InventoryRestorePreviewDto =
+  components['schemas']['InventoryRestorePreview'];
+export type InventoryRestoredDto = components['schemas']['InventoryRestored'];
+export type CreateInventoryBackupRequestDto =
+  components['schemas']['CreateInventoryBackupBody'];
+export type PrepareInventoryRestoreRequestDto =
+  components['schemas']['PrepareInventoryRestoreBody'];
+export type RestoreInventoryRequestDto =
+  components['schemas']['RestoreInventoryBody'];
+export type CancelInventoryRestoreResultDto =
+  components['schemas']['CancelInventoryRestoreResult'];
 export type LiveStateDto = components['schemas']['LiveState'];
 export type LiveSavedDto = components['schemas']['LiveSaved'];
 export type LiveCommandRequestDto = components['schemas']['LiveCommandBody'];
@@ -318,6 +335,71 @@ export class PlysmithHostClient {
         body: request,
       });
       return unwrap(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async getInventoryBackupStatus(): Promise<InventoryBackupStatusDto> {
+    try {
+      const result = await this.#client.GET('/inventory/backup-status');
+      return unwrap<InventoryBackupStatusDto>(
+        result.data as unknown as InventoryBackupStatusDto | undefined,
+        result.error,
+      );
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async createInventoryBackup(
+    request: CreateInventoryBackupRequestDto,
+  ): Promise<InventoryBackupCreatedDto> {
+    try {
+      const result = await this.#client.POST('/inventory/backups', {
+        body: request,
+      });
+      return unwrap<InventoryBackupCreatedDto>(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async prepareInventoryRestore(
+    request: PrepareInventoryRestoreRequestDto,
+  ): Promise<InventoryRestorePreviewDto> {
+    try {
+      const result = await this.#client.POST('/inventory/restores/preview', {
+        body: request,
+      });
+      return unwrap<InventoryRestorePreviewDto>(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async restoreInventory(
+    request: RestoreInventoryRequestDto,
+  ): Promise<InventoryRestoredDto> {
+    try {
+      const result = await this.#client.POST('/inventory/restores/publish', {
+        body: request,
+      });
+      return unwrap<InventoryRestoredDto>(result.data, result.error);
+    } catch (error) {
+      throw normalizeClientError(error);
+    }
+  }
+
+  async cancelInventoryRestore(
+    restoreId: string,
+  ): Promise<CancelInventoryRestoreResultDto> {
+    try {
+      const result = await this.#client.DELETE(
+        '/inventory/restores/{restoreId}',
+        { params: { path: { restoreId } } },
+      );
+      return unwrap<CancelInventoryRestoreResultDto>(result.data, result.error);
     } catch (error) {
       throw normalizeClientError(error);
     }

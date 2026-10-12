@@ -1884,6 +1884,31 @@
         ],
         "type": "object"
       },
+      "CancelInventoryRestoreParams": {
+        "additionalProperties": false,
+        "properties": {
+          "restoreId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoreId"
+        ],
+        "type": "object"
+      },
+      "CancelInventoryRestoreResult": {
+        "additionalProperties": false,
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "type": "object"
+      },
       "CanonicalMove": {
         "additionalProperties": false,
         "properties": {
@@ -3519,6 +3544,27 @@
         ],
         "type": "object"
       },
+      "CreateInventoryBackupBody": {
+        "additionalProperties": false,
+        "properties": {
+          "destinationPath": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "formatVersion": {
+            "enum": [
+              1
+            ],
+            "type": "number"
+          }
+        },
+        "required": [
+          "destinationPath",
+          "formatVersion"
+        ],
+        "type": "object"
+      },
       "CreatePositionNoteBody": {
         "additionalProperties": false,
         "properties": {
@@ -5070,6 +5116,142 @@
         ],
         "type": "object"
       },
+      "InventoryBackupCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "analyses": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "contributions": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "folders": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "games": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "provenanceRecords": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "analyses",
+          "games",
+          "folders",
+          "provenanceRecords",
+          "contributions"
+        ],
+        "type": "object"
+      },
+      "InventoryBackupCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/InventoryBackupCounts"
+          },
+          "fileName": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "snapshotDataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fileName",
+          "counts",
+          "bytes",
+          "snapshotDataRevision"
+        ],
+        "type": "object"
+      },
+      "InventoryBackupStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "blockerCodes": {
+            "items": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "stored_content"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "workspace_state"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "live_session"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "import_active"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "live_active"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "playout_active"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "transfer_busy"
+                  ],
+                  "type": "string"
+                }
+              ]
+            },
+            "maxItems": 32,
+            "type": "array"
+          },
+          "canRestore": {
+            "type": "boolean"
+          },
+          "suggestedFileName": {
+            "pattern": "^plysmith-backup-[0-9]{8}-[0-9]{6}\\.pgn$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "canRestore",
+          "blockerCodes",
+          "suggestedFileName"
+        ],
+        "type": "object"
+      },
       "InventoryItemCreatedEvent": {
         "additionalProperties": false,
         "properties": {
@@ -5606,6 +5788,55 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "InventoryRestored": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/InventoryBackupCounts"
+          },
+          "dataRevision": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "noOp": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "counts",
+          "dataRevision",
+          "noOp"
+        ],
+        "type": "object"
+      },
+      "InventoryRestorePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/InventoryBackupCounts"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "restoreId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoreId",
+          "fingerprint",
+          "counts",
+          "expiresAt"
+        ],
         "type": "object"
       },
       "InventoryRevisionComment": {
@@ -8608,6 +8839,25 @@
         ],
         "type": "object"
       },
+      "PrepareInventoryRestoreBody": {
+        "additionalProperties": false,
+        "properties": {
+          "inputLocator": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string"
+          },
+          "restoreId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoreId",
+          "inputLocator"
+        ],
+        "type": "object"
+      },
       "PreviewEngineProviderConfigurationBody": {
         "$ref": "#/components/schemas/EngineProviderConfigurationInput"
       },
@@ -9121,6 +9371,24 @@
           "itemId",
           "resolution",
           "dataRevision"
+        ],
+        "type": "object"
+      },
+      "RestoreInventoryBody": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptedFingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          },
+          "restoreId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "restoreId",
+          "acceptedFingerprint"
         ],
         "type": "object"
       },
@@ -15900,6 +16168,248 @@
         }
       }
     },
+    "/inventory/backup-status": {
+      "get": {
+        "operationId": "GetInventoryBackupStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryBackupStatus"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/backups": {
+      "post": {
+        "operationId": "CreateInventoryBackup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "destinationPath": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "formatVersion": {
+                    "enum": [
+                      1
+                    ],
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "destinationPath",
+                  "formatVersion"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryBackupCreated"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
     "/inventory/import-inputs": {
       "post": {
         "operationId": "RegisterImportInput",
@@ -18417,6 +18927,389 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ContextFolderRemovalPreview"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/restores/{restoreId}": {
+      "delete": {
+        "operationId": "CancelInventoryRestore",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "restoreId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelInventoryRestoreResult"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/restores/preview": {
+      "post": {
+        "operationId": "PrepareInventoryRestore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "inputLocator": {
+                    "maxLength": 4096,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "restoreId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "restoreId",
+                  "inputLocator"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRestorePreview"
+                }
+              }
+            },
+            "description": "Default Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "406": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "A safe, stable Plysmith problem."
+          }
+        }
+      }
+    },
+    "/inventory/restores/publish": {
+      "post": {
+        "operationId": "RestoreInventory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "acceptedFingerprint": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "restoreId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "restoreId",
+                  "acceptedFingerprint"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryRestored"
                 }
               }
             },

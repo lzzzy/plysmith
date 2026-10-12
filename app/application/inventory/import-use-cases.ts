@@ -68,6 +68,15 @@ export class ActiveImportPreviews {
   readonly #publishing = new Set<Promise<ImportPublished>>();
   #closing = false;
 
+  hasActiveTransfers(): boolean {
+    this.#prune();
+    return (
+      this.#preparing.size > 0 ||
+      this.#previews.size > 0 ||
+      this.#publishing.size > 0
+    );
+  }
+
   constructor(dependencies: {
     readonly source: SourceAcquisitionPort;
     readonly formats: ContentFormatRegistry | readonly ContentFormatPort[];

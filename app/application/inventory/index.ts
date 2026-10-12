@@ -139,3 +139,18 @@ export {
   DiscardImport,
 } from './import-use-cases.ts';
 export { normalizeInventoryRevisionComment } from './inventory-revision-comment.ts';
+export {
+  InventoryTransferService,
+  inventoryTransferProblem,
+} from './inventory-transfer.ts';
+export type {
+  InventoryBackupCounts,
+  InventoryBackupCreated,
+  InventoryBackupStatus,
+  InventoryRestored,
+  InventoryRestorePreview,
+} from './inventory-backup-models.ts';
+export type {
+  InventoryBackupFilePort,
+  PgnTransferCodecPort,
+} from './inventory-backup-ports.ts';

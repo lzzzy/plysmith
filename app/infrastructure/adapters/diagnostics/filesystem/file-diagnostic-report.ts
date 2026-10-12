@@ -249,6 +249,10 @@ function redactedEvent(line: string): RedactedDiagnosticEvent | undefined {
     ...safeNumber(candidate, 'dataRevision'),
     ...safeNumber(candidate, 'readVersion'),
     ...safeNumber(candidate, 'generation'),
+    ...safeCounter(candidate, 'liveRevision'),
+    ...safeCounter(candidate, 'ply'),
+    ...safeCounter(candidate, 'selectedPly'),
+    ...safeCounter(candidate, 'attempt'),
   });
 }
 
@@ -280,6 +284,16 @@ function safeNumber(
 ): Record<string, number> {
   const value = source[key];
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? { [key]: value }
+    : {};
+}
+
+function safeCounter(
+  source: Record<string, unknown>,
+  key: string,
+): Record<string, number> {
+  const value = source[key];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? { [key]: value }
     : {};
 }

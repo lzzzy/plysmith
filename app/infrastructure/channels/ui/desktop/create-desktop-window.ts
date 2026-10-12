@@ -17,6 +17,8 @@ import {
   desktopEngineExecutableChannel,
   desktopEngineWeightsChannel,
   desktopPgnImportFileChannel,
+  desktopPgnBackupDestinationChannel,
+  parseBackupSuggestedFileName,
   parseDiagnosticReportSuggestedFileName,
   parseRendererDiagnosticEvent,
   type DesktopBootstrap,
@@ -154,16 +156,56 @@ export async function createDesktopWindow(
     desktopPgnImportFileChannel,
     async (event: IpcMainInvokeEvent) => {
       if (!isTrustedRendererSender(event, window)) return undefined;
+      const generation = hostConnections.getSnapshot().generation;
+      const senderUrl = event.senderFrame?.url;
+      if (
+        senderUrl === undefined ||
+        Number(new URL(senderUrl).searchParams.get('generation')) !== generation
+      )
+        return undefined;
       const result = await dialog.showOpenDialog(window, {
         title: 'PGN import',
         properties: ['openFile'],
         filters: [{ name: 'PGN', extensions: ['pgn'] }],
       });
-      if (!isTrustedRendererSender(event, window)) return undefined;
+      if (
+        !isTrustedRendererSender(event, window) ||
+        generation !== hostConnections.getSnapshot().generation ||
+        senderUrl !== event.senderFrame?.url
+      )
+        return undefined;
       return result.canceled ? undefined : result.filePaths[0];
     },
   );
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  ipcMain.handle(
+    desktopPgnBackupDestinationChannel,
+    async (event: IpcMainInvokeEvent, candidate: unknown) => {
+      if (!isTrustedRendererSender(event, window)) return undefined;
+      const suggestedFileName = parseBackupSuggestedFileName(candidate);
+      if (suggestedFileName === undefined) return undefined;
+      const generation = hostConnections.getSnapshot().generation;
+      const senderUrl = event.senderFrame?.url;
+      if (
+        senderUrl === undefined ||
+        Number(new URL(senderUrl).searchParams.get('generation')) !== generation
+      )
+        return undefined;
+      const result = await dialog.showSaveDialog(window, {
+        title: 'Plysmith PGN backup',
+        defaultPath: suggestedFileName,
+        filters: [{ name: 'PGN', extensions: ['pgn'] }],
+        properties: ['showOverwriteConfirmation', 'dontAddToRecent'],
+      });
+      if (
+        !isTrustedRendererSender(event, window) ||
+        generation !== hostConnections.getSnapshot().generation ||
+        senderUrl !== event.senderFrame?.url
+      )
+        return undefined;
+      return result.canceled ? undefined : result.filePath;
+    },
+  );
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.on('will-attach-webview', (event) =>
     event.preventDefault(),
@@ -212,6 +254,7 @@ export async function createDesktopWindow(
     ipcMain.removeHandler(desktopEngineExecutableChannel);
     ipcMain.removeHandler(desktopEngineWeightsChannel);
     ipcMain.removeHandler(desktopPgnImportFileChannel);
+    ipcMain.removeHandler(desktopPgnBackupDestinationChannel);
     ipcMain.removeListener(desktopDiagnosticsChannel, diagnosticHandler);
     void session.defaultSession.protocol.unhandle('app');
   });
@@ -233,6 +276,7 @@ function isTrustedRendererSender(
 ): boolean {
   const senderFrame = event.senderFrame;
   return (
+    !window.isDestroyed() &&
     senderFrame !== null &&
     event.sender === window.webContents &&
     senderFrame === window.webContents.mainFrame &&

@@ -12,8 +12,9 @@ import type {
 } from '../../../../application/inventory/import-models.ts';
 import { importProblem } from '../../../../application/inventory/import-problems.ts';
 import { IMPORT_LIMITS } from '../../../../application/inventory/import-limits.ts';
+import { inventoryTransferProblem } from '../../../../application/inventory/inventory-transfer.ts';
+import { containsPgnTransferMarker } from '../pgn/index.ts';
 
-const maximumInputBytes = IMPORT_LIMITS.maxInputBytes;
 const maximumRegisteredInputs = 16;
 const inputLifetimeMs = 30 * 60 * 1000;
 
@@ -28,7 +29,19 @@ interface RegisteredInput {
 
 export class LocalFileSourceAcquisition implements SourceAcquisitionPort {
   readonly #inputs = new Map<string, RegisteredInput>();
+  readonly #purpose: 'content_import' | 'inventory_backup';
+  readonly #maximumInputBytes: number;
   #registrations = 0;
+
+  constructor(
+    options: { readonly purpose?: 'content_import' | 'inventory_backup' } = {},
+  ) {
+    this.#purpose = options.purpose ?? 'content_import';
+    this.#maximumInputBytes =
+      this.#purpose === 'inventory_backup'
+        ? 64 * 1024 * 1024
+        : IMPORT_LIMITS.maxInputBytes;
+  }
 
   async registerLocalFile(
     inputLocator: string,
@@ -50,7 +63,18 @@ export class LocalFileSourceAcquisition implements SourceAcquisitionPort {
       }
       if (!details.isFile()) throw importProblem('input_not_found');
       if (details.size === 0) throw importProblem('format_not_recognized');
-      if (details.size > maximumInputBytes)
+      if (this.#purpose === 'content_import') {
+        const file = await open(locator, 'r');
+        try {
+          const prefix = Buffer.alloc(16 * 1024);
+          const { bytesRead } = await file.read(prefix, 0, prefix.length, 0);
+          if (containsPgnTransferMarker(prefix.subarray(0, bytesRead)))
+            throw inventoryTransferProblem('restore_required');
+        } finally {
+          await file.close();
+        }
+      }
+      if (details.size > this.#maximumInputBytes)
         throw importProblem('input_too_large');
       const inputHandle = randomUUID();
       this.#inputs.set(inputHandle, {
@@ -98,6 +122,7 @@ export class LocalFileSourceAcquisition implements SourceAcquisitionPort {
       throw importProblem('input_changed');
     }
     let closed = false;
+    const maximumInputBytes = this.#maximumInputBytes;
     const close = async () => {
       if (!closed) {
         closed = true;

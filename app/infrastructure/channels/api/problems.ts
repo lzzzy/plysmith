@@ -10,6 +10,66 @@ export const problemUriBase =
   'https://github.com/lzzzy/plysmith/blob/main/docs/problems/';
 
 const catalog = {
+  'inventory_transfer.invalid_backup': [
+    400,
+    'Invalid backup',
+    'Select an intact Plysmith backup.',
+  ],
+  'inventory_transfer.unsupported_version': [
+    415,
+    'Unsupported backup version',
+    'This backup version is not supported.',
+  ],
+  'inventory_transfer.restore_required': [
+    409,
+    'Backup requires restore',
+    'Open Settings / Data backup to restore this file into a fresh empty inventory.',
+  ],
+  'inventory_transfer.target_not_empty': [
+    409,
+    'Restore target is not empty',
+    'Restore requires a fresh empty inventory, without contexts or drafts.',
+  ],
+  'inventory_transfer.transfer_busy': [
+    409,
+    'Transfer busy',
+    'Finish the active transfer or recording before restoring.',
+  ],
+  'inventory_transfer.stale_preview': [
+    409,
+    'Restore preview expired',
+    'Select the backup again and review the new preview.',
+  ],
+  'inventory_transfer.resource_exhausted': [
+    413,
+    'Backup limit exceeded',
+    'The backup exceeds a supported size or complexity limit.',
+  ],
+  'inventory_transfer.destination_exists': [
+    409,
+    'Destination exists',
+    'Choose a new file name. Existing files are never overwritten.',
+  ],
+  'inventory_transfer.file_write_failed': [
+    503,
+    'Backup write failed',
+    'The backup could not be written. Choose an accessible destination.',
+  ],
+  'inventory_transfer.file_read_failed': [
+    400,
+    'Backup read failed',
+    'Select an accessible backup file.',
+  ],
+  'inventory_transfer.interrupted': [
+    409,
+    'Transfer interrupted',
+    'Start the transfer again.',
+  ],
+  'inventory_transfer.invalid_request': [
+    400,
+    'Invalid transfer request',
+    'Select the backup or destination again.',
+  ],
   'configuration.live_invalid': [
     400,
     'Invalid live configuration',
@@ -701,7 +761,8 @@ export function installProblemHandling(
     }
     if (error instanceof ApplicationProblem) {
       if (
-        (error.problemCode.startsWith('import.') ||
+        (error.problemCode.startsWith('inventory_transfer.') ||
+          error.problemCode.startsWith('import.') ||
           error.problemCode.startsWith('live.') ||
           error.problemCode.startsWith('configuration.live_')) &&
         Object.hasOwn(catalog, error.problemCode)

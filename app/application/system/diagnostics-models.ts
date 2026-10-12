@@ -75,6 +75,10 @@ export interface RedactedDiagnosticEvent {
   readonly dataRevision?: number;
   readonly readVersion?: number;
   readonly generation?: number;
+  readonly liveRevision?: number;
+  readonly ply?: number;
+  readonly selectedPly?: number;
+  readonly attempt?: number;
 }
 
 export interface RedactedDiagnosticEvents {

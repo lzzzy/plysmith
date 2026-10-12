@@ -1,0 +1,124 @@
+{
+  "date": "2026-10-12",
+  "scope": "Whole saved inventory PGN backup and atomic fresh restore, without domain model or SQLite schema changes",
+  "releaseState": "Implemented and verified, not released",
+  "inventoryScope": "Current visible inventory plus required recursive provenance; no unrelated history, contexts, drafts, configuration or secrets",
+  "fullSourceTests": {
+    "tests": 1357,
+    "passed": 1357,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "phases": [
+      { "files": 44, "tests": 325, "durationMilliseconds": 106711.3952 },
+      { "files": 85, "tests": 1032, "durationMilliseconds": 732777.4564 }
+    ],
+    "initialCombinedCommand": "pnpm verify: types, lint, boundaries, browser client, generation, all tests and build passed; final format stage found two new files",
+    "followup": "Those files were formatted; final individual source gates repeated. The last functional source edit was dialog layout, checked by dedicated browser and native tests."
+  },
+  "focusedRegressions": {
+    "codecAndSqlite": {
+      "passed": 51,
+      "failed": 0,
+      "newInheritedSourcePathCases": 13
+    },
+    "applicationTransfer": { "passed": 10, "failed": 0 },
+    "fileWriter": { "passed": 11, "failed": 0 },
+    "rendererCancellation": { "passed": 4, "failed": 0 },
+    "rendererKeyboardAndLayout": {
+      "passed": 6,
+      "failed": 0,
+      "locales": ["de-DE", "en-GB"],
+      "viewportWidths": [1280, 900, 390]
+    },
+    "coverage": [
+      "Exact full tree, shared identities, four anchor kinds, note continuations, text boundaries and reader order",
+      "Current and historical explicit origins, invisible deleted ancestors and irrelevant history exclusion",
+      "Inherited SourcePath, extra exploration before playout, initial-position origin with advanced game root",
+      "Another legal route to the same final FEN is not accepted as the required provenance prefix",
+      "Freshness, concurrent writes, every restore checkpoint, search/revision failure and complete rollback",
+      "Preview fingerprint, expiry, early cancellation, full early-cancel cache, late cleanup and renderer generations",
+      "Partial ENOSPC, file close failure, competing destination and successful commit despite temp cleanup failure",
+      "Protected paths, strict file acquisition, own backup detection before ordinary import loss or size rejection",
+      "Existing import, context, playout, Live, engine, API, MCP, security and diagnostics regressions"
+    ]
+  },
+  "measuredCodecCase": {
+    "moveNodes": 4096,
+    "originalTextCodeUnits": 2048000,
+    "outputBytes": 5044462,
+    "encodeAndDecodeMilliseconds": 5142,
+    "maximumEventLoopGapMilliseconds": 66,
+    "allowedEventLoopGapMilliseconds": 1000,
+    "checkpoints": 9549,
+    "claim": "Measured representative large tree and text case, not every simultaneous format maximum"
+  },
+  "nativeDesktop": {
+    "command": "node tools/verify-inventory-transfer-runtime.ts",
+    "result": "passed, exit 0",
+    "temporaryArtifactDirectory": "plysmith-transfer-runtime-X32X67",
+    "fixture": "docs/manual/manual.pgn",
+    "records": 6,
+    "analyses": 5,
+    "games": 1,
+    "folders": 1,
+    "contributions": 8,
+    "backupBytes": 11975,
+    "byteIdenticalReexport": true,
+    "configurationHashesPreserved": true,
+    "rendererExceptions": [],
+    "axeViolations": [],
+    "horizontalOverflow": false,
+    "ownedProcessesStopped": true,
+    "steps": [
+      "Ordinary manual PGN import; real trusted save IPC; occupied restore target refused",
+      "Fresh target after desktop startup; real open IPC, complete preview and explicit restore confirmation",
+      "Configuration unchanged; deterministic full re-export byte identical",
+      "Physical Host/Desktop restart; EN at 1280, 900 and 390 pixels, DE preview at 390 pixels",
+      "Restored RAV navigation, global note, derived root-only analysis and mainline revision saved",
+      "Game variant edit refused; note, derived origin and mainline retained after another Host restart"
+    ],
+    "harnessCorrections": "Settings selector and complete revision/anchor query contract corrected before final successful run",
+    "manualScreenshots": [
+      "docs/manual/screenshots/settings-backup.png",
+      "docs/manual/screenshots/settings-restore.png"
+    ]
+  },
+  "independentReader": {
+    "reader": "python-chess 1.11.2",
+    "dependency": "Opt-in isolated verification dependency, not an app or CI requirement",
+    "specialMoveFixture": {
+      "records": 6,
+      "ravNodes": 20,
+      "representations": 2,
+      "result": "passed"
+    },
+    "actualDesktopBackup": {
+      "records": 6,
+      "ravNodes": 24,
+      "representations": ["original", "Plysmith metadata removed", "CRLF"],
+      "result": "passed: tree, sibling order, legal UCI/SAN, FEN counters and result"
+    }
+  },
+  "sourceGates": {
+    "typecheckAllFourProjects": "passed on final stand",
+    "lint": "passed on final stand",
+    "boundaries": "passed: 586 modules, 2718 dependencies",
+    "browserHostClient": "passed",
+    "generatedContract": "passed",
+    "desktopBuild": "passed including final dialog layout",
+    "format": "passed on final stand; additional documentation formatting passed",
+    "domainAndMigrationDiff": "empty for tracked and untracked domain/migration paths; git diff --check passed"
+  },
+  "review": {
+    "model": "gpt-6-astra",
+    "scope": "Shared reader/codec, snapshot and atomic restore, fidelity, inherited SourcePath and service/renderer cancellation",
+    "result": "No remaining concrete P1/P2 in bounded final recheck; large gates owned by parent"
+  },
+  "limitations": [
+    "Native picker responses were stubbed inside the owned Electron process; no human picker or installer acceptance claimed",
+    "No actual user data, installation, Lichess account or engine configuration was changed",
+    "No every-maximum benchmark or compatibility claim for every external PGN GUI",
+    "No migration, rescue of unreadable old stores, merge, partial package, context/draft or configuration backup"
+  ]
+}

@@ -25,6 +25,8 @@ async function renderPlysmithApplication() {
       window.plysmithDesktop.chooseEngineExecutable(),
     chooseEngineWeights: () => window.plysmithDesktop.chooseEngineWeights(),
     chooseImportFile: () => window.plysmithDesktop.chooseImportFile(),
+    chooseBackupDestination: (name) =>
+      window.plysmithDesktop.chooseBackupDestination(name),
     recordDiagnostic: (event) => window.plysmithDesktop.recordDiagnostic(event),
   });
 

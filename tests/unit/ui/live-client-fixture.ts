@@ -5,6 +5,11 @@ const unexpected = async (): Promise<never> =>
   assert.fail('Unexpected live operation');
 export const inactiveLiveClient: Pick<
   PlysmithApplicationClient,
+  | 'getInventoryBackupStatus'
+  | 'createInventoryBackup'
+  | 'prepareInventoryRestore'
+  | 'restoreInventory'
+  | 'cancelInventoryRestore'
   | 'getLiveState'
   | 'getLiveProviderConfiguration'
   | 'observeLiveGame'
@@ -18,6 +23,15 @@ export const inactiveLiveClient: Pick<
   | 'saveLiveGame'
   | 'saveLiveProviderConfiguration'
 > = {
+  getInventoryBackupStatus: async () => ({
+    canRestore: true,
+    blockerCodes: [],
+    suggestedFileName: 'plysmith-backup-20261012-120000.pgn',
+  }),
+  createInventoryBackup: unexpected,
+  prepareInventoryRestore: unexpected,
+  restoreInventory: unexpected,
+  cancelInventoryRestore: unexpected,
   getLiveState: async () => ({
     revision: 0,
     configured: false,

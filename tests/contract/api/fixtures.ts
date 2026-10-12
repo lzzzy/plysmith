@@ -32,6 +32,13 @@ export function createFixture() {
     },
   };
   const dependencies: HostDependencies = {
+    inventoryTransfer: {
+      getStatus: unavailableUseCase.execute,
+      createBackup: unavailableUseCase.execute,
+      prepareRestore: unavailableUseCase.execute,
+      restore: unavailableUseCase.execute,
+      cancelRestore: unavailableUseCase.execute,
+    },
     live: {
       getState: () => ({
         revision: 0,

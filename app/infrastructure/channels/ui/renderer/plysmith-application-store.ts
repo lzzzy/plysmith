@@ -104,6 +104,30 @@ import {
 } from './engine-configuration-drafts.ts';
 
 export type ActivityId = 'manage' | 'analyze' | 'playout' | 'settings' | 'live';
+export interface InventoryTransferState {
+  readonly phase:
+    | 'idle'
+    | 'choosing_backup'
+    | 'creating'
+    | 'choosing_restore'
+    | 'preparing'
+    | 'prepared'
+    | 'publishing'
+    | 'cancelling';
+  readonly status?: Awaited<
+    ReturnType<PlysmithHostClient['getInventoryBackupStatus']>
+  >;
+  readonly preview?: Awaited<
+    ReturnType<PlysmithHostClient['prepareInventoryRestore']>
+  >;
+  readonly created?: Awaited<
+    ReturnType<PlysmithHostClient['createInventoryBackup']>
+  >;
+  readonly restored?: Awaited<
+    ReturnType<PlysmithHostClient['restoreInventory']>
+  >;
+  readonly errorCode?: string;
+}
 export type LiveNavigation =
   | { readonly kind: 'activity'; readonly activity: ActivityId }
   | { readonly kind: 'scope'; readonly scope: WorkScope }
@@ -150,6 +174,7 @@ type ObjectiveBudget = Extract<
   { kind: 'objective' }
 >['budget'];
 export type ApplicationCommand =
+  | 'inventory_transfer'
   | 'live_command'
   | 'save_live_provider'
   | 'import_command'
@@ -202,6 +227,11 @@ export type ApplicationCommand =
 
 export interface PlysmithApplicationClient extends Pick<
   PlysmithHostClient,
+  | 'getInventoryBackupStatus'
+  | 'createInventoryBackup'
+  | 'prepareInventoryRestore'
+  | 'restoreInventory'
+  | 'cancelInventoryRestore'
   | 'registerImportInput'
   | 'prepareImport'
   | 'cancelImportPreparation'
@@ -400,6 +430,9 @@ export interface PlysmithApplicationStoreOptions {
   readonly chooseEngineExecutable?: () => Promise<string | undefined>;
   readonly chooseEngineWeights?: () => Promise<string | undefined>;
   readonly chooseImportFile?: () => Promise<string | undefined>;
+  readonly chooseBackupDestination?: (
+    suggestedFileName: string,
+  ) => Promise<string | undefined>;
   readonly recordDiagnostic?: (event: RendererDiagnosticEvent) => void;
   readonly createClient?: (
     connection: HostConnection,
@@ -547,6 +580,7 @@ export type PlysmithApplicationState =
       readonly fairPlayBlocked: boolean;
       readonly pendingLiveNavigation?: LiveNavigation;
       readonly importSession?: ImportSession;
+      readonly inventoryTransfer?: InventoryTransferState;
       readonly status: SystemStatusDto;
       readonly preferences: UserPreferencesDto;
       readonly diagnostics: DiagnosticSettingsDto;
@@ -601,6 +635,11 @@ export class PlysmithApplicationStore {
   #client: PlysmithApplicationClient | undefined;
   #events: HostEventSubscription | undefined;
   #lifecycle = 0;
+  #inventoryTransfer: InventoryTransferState = { phase: 'idle' };
+  #transferVersion = 0;
+  #backupStatusVersion = 0;
+  #restoreRequest:
+    { restoreId: string; client: PlysmithApplicationClient } | undefined;
   #startupRestored = false;
   #readVersion = 0;
   #committedReadVersion = 0;
@@ -728,15 +767,47 @@ export class PlysmithApplicationStore {
     if (client === undefined) return Promise.resolve();
     const lifecycle = this.#lifecycle;
     const version = ++this.#liveReadVersion;
+    this.#diagnose({
+      level: 'debug',
+      eventCode: 'renderer.live.read',
+      status: 'starting',
+      readVersion: version,
+    });
     this.#livePending = verifyFairPlay || this.#livePending;
     this.#publishViewState();
     const reading = (async () => {
       try {
         const live = await client.getLiveState();
-        if (lifecycle !== this.#lifecycle || version !== this.#liveReadVersion)
+        if (
+          lifecycle !== this.#lifecycle ||
+          version !== this.#liveReadVersion
+        ) {
+          this.#diagnose({
+            level: 'debug',
+            eventCode: 'renderer.live.read',
+            status: 'discarded',
+            operation: 'superseded_read',
+            readVersion: version,
+            liveRevision: live.revision,
+          });
           return;
+        }
+        this.#diagnose({
+          level: 'debug',
+          eventCode: 'renderer.live.read',
+          status: 'succeeded',
+          readVersion: version,
+          liveRevision: live.revision,
+        });
         this.#acceptLiveState(live);
       } catch {
+        this.#diagnose({
+          level: 'info',
+          eventCode: 'renderer.live.read',
+          status: 'failed',
+          readVersion: version,
+          problemCode: 'live.provider_unavailable',
+        });
         if (
           lifecycle === this.#lifecycle &&
           version === this.#liveReadVersion
@@ -755,8 +826,16 @@ export class PlysmithApplicationStore {
     if (
       live.revision < this.#liveMinimumRevision ||
       live.revision < (this.#live?.revision ?? -1)
-    )
+    ) {
+      this.#diagnose({
+        level: 'debug',
+        eventCode: 'renderer.live.state',
+        status: 'discarded',
+        operation: 'stale_revision',
+        liveRevision: live.revision,
+      });
       return;
+    }
     if (live.fairPlayBlocked && this.#live?.fairPlayBlocked !== true)
       this.#liveSafetyVersion++;
     this.#live = live;
@@ -764,6 +843,18 @@ export class PlysmithApplicationStore {
     if (this.#errorCode === 'live.provider_unavailable')
       this.#errorCode = undefined;
     this.#publishViewState();
+    this.#diagnose({
+      level: 'debug',
+      eventCode: 'renderer.live.state',
+      status: 'succeeded',
+      liveRevision: live.revision,
+      ...(live.session === undefined
+        ? {}
+        : {
+            ply: live.session.steps.length,
+            selectedPly: live.session.selectedPly,
+          }),
+    });
     if (
       this.#state.phase === 'ready' &&
       !live.fairPlayBlocked &&
@@ -1010,6 +1101,7 @@ export class PlysmithApplicationStore {
   }
 
   async start(): Promise<void> {
+    this.#resetInventoryTransfer();
     this.#live = undefined;
     this.#livePending = true;
     this.#liveMinimumRevision = 0;
@@ -1068,6 +1160,7 @@ export class PlysmithApplicationStore {
       () => {
         void this.refreshLiveState();
         void this.refresh();
+        void this.refreshInventoryBackupStatus();
       },
       () => this.#setReadyError('host.invalid_event'),
     );
@@ -1378,6 +1471,7 @@ export class PlysmithApplicationStore {
               phase: 'ready',
               ...this.#liveViewState(),
               importSession: this.#importSession,
+              inventoryTransfer: this.#inventoryTransfer,
               status,
               preferences,
               diagnostics,
@@ -1525,6 +1619,7 @@ export class PlysmithApplicationStore {
     const returningToContextAnalysis =
       activity === 'analyze' && this.#activity !== 'analyze';
     this.#activity = activity;
+    if (activity === 'settings') void this.refreshInventoryBackupStatus();
     if (returningToContextAnalysis) this.#analysisFocus = undefined;
     this.#publishViewState();
     void this.#persistStartup();
@@ -4220,6 +4315,7 @@ export class PlysmithApplicationStore {
   }
 
   close(): void {
+    this.#resetInventoryTransfer();
     this.#liveReadVersion += 1;
     this.#livePending = true;
     this.#live = undefined;
@@ -4662,7 +4758,298 @@ export class PlysmithApplicationStore {
     });
   }
 
+  async refreshInventoryBackupStatus(
+    expectedTransferVersion?: number,
+  ): Promise<void> {
+    const client = this.#client;
+    if (client === undefined || this.#activity !== 'settings') return;
+    const lifecycle = this.#lifecycle;
+    const version = ++this.#backupStatusVersion;
+    try {
+      const status = await client.getInventoryBackupStatus();
+      if (
+        client !== this.#client ||
+        lifecycle !== this.#lifecycle ||
+        version !== this.#backupStatusVersion ||
+        (expectedTransferVersion !== undefined &&
+          expectedTransferVersion !== this.#transferVersion)
+      )
+        return;
+      this.#inventoryTransfer = { ...this.#inventoryTransfer, status };
+    } catch (error) {
+      if (
+        client !== this.#client ||
+        lifecycle !== this.#lifecycle ||
+        version !== this.#backupStatusVersion ||
+        (expectedTransferVersion !== undefined &&
+          expectedTransferVersion !== this.#transferVersion)
+      )
+        return;
+      const { status: _status, ...transfer } = this.#inventoryTransfer;
+      void _status;
+      this.#inventoryTransfer = {
+        ...transfer,
+        errorCode: hostErrorCode(error),
+      };
+    }
+    this.#publishViewState();
+  }
+
+  hasInventoryRestoreDrafts(): boolean {
+    return (
+      [...this.#analysisNoteForms.values()].some((forms) =>
+        [...forms.values()].some((form) => form.body.trim() !== ''),
+      ) ||
+      [...this.#analysisRecordForms.values()].some(
+        (form) => form.title.trim() !== '' || form.noteBody.trim() !== '',
+      ) ||
+      [...this.#pathNoteFormDrafts.values()].some(
+        (form) => form.body.trim() !== '',
+      ) ||
+      [...this.#variationCommentDrafts.values()].some(
+        (form) => form.body.trim() !== '',
+      ) ||
+      this.#manageInventoryRevisionDraft !== undefined ||
+      this.#playoutCompletionForms.size > 0
+    );
+  }
+
+  async createInventoryBackup(): Promise<void> {
+    const client = this.#client;
+    const choose = this.#options.chooseBackupDestination;
+    if (
+      client === undefined ||
+      choose === undefined ||
+      this.#busyCommand !== undefined ||
+      this.#inventoryTransfer.phase !== 'idle'
+    )
+      return;
+    const lifecycle = this.#lifecycle;
+    const version = ++this.#transferVersion;
+    const current = () =>
+      lifecycle === this.#lifecycle &&
+      version === this.#transferVersion &&
+      client === this.#client;
+    this.#inventoryTransfer = { phase: 'choosing_backup' };
+    this.#busyCommand = 'inventory_transfer';
+    this.#publishViewState();
+    try {
+      const status = await client.getInventoryBackupStatus();
+      if (!current()) return;
+      const destinationPath = await choose(status.suggestedFileName);
+      if (!current()) return;
+      if (destinationPath === undefined) {
+        this.#inventoryTransfer = { phase: 'idle', status };
+        return;
+      }
+      this.#inventoryTransfer = { phase: 'creating', status };
+      this.#publishViewState();
+      const created = await client.createInventoryBackup({
+        destinationPath,
+        formatVersion: 1,
+      });
+      if (current())
+        this.#inventoryTransfer = { phase: 'idle', status, created };
+    } catch (error) {
+      if (current())
+        this.#inventoryTransfer = {
+          phase: 'idle',
+          errorCode: hostErrorCode(error),
+        };
+    } finally {
+      if (current()) {
+        this.#finishCommand();
+        void this.refreshInventoryBackupStatus();
+      }
+    }
+  }
+
+  async prepareInventoryRestore(): Promise<void> {
+    const client = this.#client;
+    const choose = this.#options.chooseImportFile;
+    if (
+      client === undefined ||
+      choose === undefined ||
+      this.#busyCommand !== undefined ||
+      this.#inventoryTransfer.phase !== 'idle'
+    )
+      return;
+    if (this.hasInventoryRestoreDrafts()) {
+      this.#inventoryTransfer = {
+        ...this.#inventoryTransfer,
+        errorCode: 'backup.localDrafts',
+      };
+      this.#publishViewState();
+      return;
+    }
+    const lifecycle = this.#lifecycle;
+    const version = ++this.#transferVersion;
+    const current = () =>
+      lifecycle === this.#lifecycle &&
+      version === this.#transferVersion &&
+      client === this.#client;
+    this.#inventoryTransfer = { phase: 'choosing_restore' };
+    this.#busyCommand = 'inventory_transfer';
+    this.#publishViewState();
+    try {
+      const status = await client.getInventoryBackupStatus();
+      if (!current()) return;
+      if (!status.canRestore) {
+        this.#inventoryTransfer = { phase: 'idle', status };
+        return;
+      }
+      const inputLocator = await choose();
+      if (!current()) return;
+      if (inputLocator === undefined) {
+        this.#inventoryTransfer = { phase: 'idle', status };
+        return;
+      }
+      const restoreId = crypto.randomUUID();
+      this.#restoreRequest = { restoreId, client };
+      this.#inventoryTransfer = { phase: 'preparing', status };
+      this.#publishViewState();
+      const preview = await client.prepareInventoryRestore({
+        restoreId,
+        inputLocator,
+      });
+      if (!current()) {
+        await client.cancelInventoryRestore(restoreId).catch(() => undefined);
+        return;
+      }
+      if (preview.restoreId !== restoreId)
+        throw new Error('Restore identity mismatch');
+      this.#inventoryTransfer = { phase: 'prepared', status, preview };
+    } catch (error) {
+      if (current()) {
+        const request = this.#restoreRequest;
+        this.#restoreRequest = undefined;
+        if (request !== undefined)
+          void request.client
+            .cancelInventoryRestore(request.restoreId)
+            .catch(() => undefined);
+        this.#inventoryTransfer = {
+          phase: 'idle',
+          errorCode: hostErrorCode(error),
+        };
+      }
+    } finally {
+      if (current()) {
+        this.#finishCommand();
+        void this.refreshInventoryBackupStatus();
+      } else if (
+        client === this.#client &&
+        lifecycle === this.#lifecycle &&
+        this.#inventoryTransfer.phase === 'idle' &&
+        this.#busyCommand === undefined
+      ) {
+        // DELETE may acknowledge before the cancelled preparation releases the host slot.
+        void this.refreshInventoryBackupStatus(this.#transferVersion);
+      }
+    }
+  }
+
+  async cancelInventoryRestore(): Promise<void> {
+    if (
+      this.#inventoryTransfer.phase === 'publishing' ||
+      this.#inventoryTransfer.phase === 'creating' ||
+      this.#inventoryTransfer.phase === 'cancelling'
+    )
+      return;
+    const request = this.#restoreRequest;
+    this.#restoreRequest = undefined;
+    const version = ++this.#transferVersion;
+    this.#inventoryTransfer = { phase: 'cancelling' };
+    this.#busyCommand = 'inventory_transfer';
+    this.#publishViewState();
+    let errorCode: string | undefined;
+    try {
+      if (request !== undefined)
+        await request.client.cancelInventoryRestore(request.restoreId);
+    } catch (error) {
+      errorCode = hostErrorCode(error);
+    }
+    if (version !== this.#transferVersion) return;
+    this.#inventoryTransfer = {
+      phase: 'idle',
+      ...(errorCode === undefined ? {} : { errorCode }),
+    };
+    this.#finishCommand();
+    await this.refreshInventoryBackupStatus();
+  }
+
+  async restoreInventory(): Promise<void> {
+    const client = this.#client;
+    const preview = this.#inventoryTransfer.preview;
+    if (
+      client === undefined ||
+      this.#inventoryTransfer.phase !== 'prepared' ||
+      preview === undefined ||
+      this.#busyCommand !== undefined
+    )
+      return;
+    if (this.hasInventoryRestoreDrafts()) {
+      this.#inventoryTransfer = {
+        ...this.#inventoryTransfer,
+        errorCode: 'backup.localDrafts',
+      };
+      this.#publishViewState();
+      return;
+    }
+    const lifecycle = this.#lifecycle;
+    const version = ++this.#transferVersion;
+    const current = () =>
+      lifecycle === this.#lifecycle &&
+      version === this.#transferVersion &&
+      client === this.#client;
+    this.#inventoryTransfer = {
+      ...this.#inventoryTransfer,
+      phase: 'publishing',
+    };
+    this.#busyCommand = 'inventory_transfer';
+    this.#publishViewState();
+    try {
+      const restored = await client.restoreInventory({
+        restoreId: preview.restoreId,
+        acceptedFingerprint: preview.fingerprint,
+      });
+      if (current()) this.#inventoryTransfer = { phase: 'idle', restored };
+    } catch (error) {
+      if (current())
+        this.#inventoryTransfer = {
+          phase: 'idle',
+          errorCode: hostErrorCode(error),
+        };
+    } finally {
+      if (current()) {
+        this.#restoreRequest = undefined;
+        await client
+          .cancelInventoryRestore(preview.restoreId)
+          .catch(() => undefined);
+        if (current()) {
+          await this.refresh();
+          if (current()) {
+            this.#finishCommand();
+            await this.refreshInventoryBackupStatus();
+          }
+        }
+      }
+    }
+  }
+
+  #resetInventoryTransfer(): void {
+    const request = this.#restoreRequest;
+    this.#restoreRequest = undefined;
+    this.#transferVersion++;
+    this.#backupStatusVersion++;
+    this.#inventoryTransfer = { phase: 'idle' };
+    if (request !== undefined)
+      void request.client
+        .cancelInventoryRestore(request.restoreId)
+        .catch(() => undefined);
+  }
+
   async openImport(): Promise<void> {
+    if (this.#inventoryTransfer.phase !== 'idle') return;
     if (this.#importSession.open) return;
     this.#importSession = { open: true };
     this.#publishViewState();
@@ -5018,7 +5405,22 @@ export class PlysmithApplicationStore {
   }
 
   #handleHostEvent(event: HostEvent): void {
+    if (
+      this.#activity === 'settings' &&
+      (event.kind.startsWith('inventory.') ||
+        event.kind.startsWith('workspace.') ||
+        event.kind.startsWith('playout.') ||
+        event.kind === 'live.changed' ||
+        event.kind === 'host.replay-gap')
+    )
+      void this.refreshInventoryBackupStatus();
     if (event.kind === 'live.changed') {
+      this.#diagnose({
+        level: 'debug',
+        eventCode: 'renderer.live.changed',
+        status: 'succeeded',
+        liveRevision: event.payload.revision,
+      });
       if (
         event.payload.revision > (this.#live?.revision ?? -1) &&
         event.payload.revision >= this.#liveMinimumRevision
@@ -5239,6 +5641,7 @@ export class PlysmithApplicationStore {
         phase: 'ready',
         ...this.#liveViewState(),
         importSession: this.#importSession,
+        inventoryTransfer: this.#inventoryTransfer,
         status: state.status,
         preferences: state.preferences,
         diagnostics: state.diagnostics,
