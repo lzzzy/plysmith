@@ -63,6 +63,10 @@
   margin-inline-start: auto;
   color: #a52c34;
 }
+.preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .move {
   min-height: 32px;
   padding: 5px 8px;

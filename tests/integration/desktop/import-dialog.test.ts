@@ -328,7 +328,7 @@ test('namespaced import problems remain specific and localized', () => {
   );
 });
 
-test('variants start collapsed with icon-only localized toggles and the main line visible', () => {
+test('variants start collapsed with localized first-move previews and the main line visible', () => {
   const record = {
     itemId: '1',
     revisionId: '2',
@@ -376,17 +376,114 @@ test('variants start collapsed with icon-only localized toggles and the main lin
   assert.doesNotMatch(de, /<select|Fortsetzung wählen/);
   assert.match(de, /1\. e4/);
   assert.match(de, /aria-label="Variante ausklappen: 1\. Sf3"/);
+  assert.match(de, /data-tree-preview[^>]*>1\. Sf3<\/span>/);
   assert.ok(
     de.indexOf('data-tree-anchor="11"') < de.indexOf('data-tree-line="12"'),
   );
   assert.doesNotMatch(de, /Quellkommentare|Quellannotationen|NAG|disabled/);
   const en = renderTree('en-GB', '10', true);
   assert.match(en, /aria-label="Expand variation: 1\. Nf3"/);
+  assert.match(en, /data-tree-preview[^>]*>1\. Nf3<\/span>/);
   assert.match(en, /<button[^>]*disabled/);
   assert.doesNotMatch(
     renderTree('en-GB', '11', false),
     /data-tree-anchor="12"|Branch point|>Variation/,
   );
+});
+
+test('collapsed previews contain exactly the first half-move for either side and locale', () => {
+  for (const side of ['white', 'black'] as const) {
+    for (const locale of ['de-DE', 'en-GB'] as const) {
+      const state = (sideToMove: string, fullmoveNumber: number) => ({
+        position: { sideToMove },
+        playState: { fullmoveNumber },
+      });
+      const record = {
+        itemId: 'preview',
+        revisionId: '1',
+        rootAnchorId: 'root',
+        root: state(side, 9),
+        steps: [],
+        tree: {
+          nodes: [
+            {
+              nodeIndex: 0,
+              parentNodeIndex: null,
+              siblingOrder: 0,
+              anchorId: 'main',
+              move: { san: 'a3' },
+              after: state('black', 9),
+            },
+            {
+              nodeIndex: 1,
+              parentNodeIndex: null,
+              siblingOrder: 1,
+              anchorId: 'branch',
+              move: { san: 'Nxf6+' },
+              after: state(
+                side === 'white' ? 'black' : 'white',
+                side === 'white' ? 9 : 10,
+              ),
+            },
+            {
+              nodeIndex: 2,
+              parentNodeIndex: 1,
+              siblingOrder: 0,
+              anchorId: 'reply',
+              move: { san: 'Qxf6' },
+              after: state(side, 10),
+            },
+          ],
+        },
+      };
+      const renderBranch = (draft = false) =>
+        renderToStaticMarkup(
+          createElement(
+            IntlProvider,
+            { locale, messages: messages[locale] },
+            createElement(ChessTreeMoveList, {
+              record,
+              anchorId: 'branch',
+              disabled: false,
+              onSelect: () => {},
+              ...(draft
+                ? {
+                    draft: {
+                      anchorId: 'reply',
+                      content: createElement('li', null, 'Draft'),
+                    },
+                  }
+                : {}),
+            }),
+          ),
+        );
+      const closed = renderBranch();
+      const previews = [
+        ...closed.matchAll(/<span[^>]*data-tree-preview[^>]*>(.*?)<\/span>/g),
+      ];
+      assert.deepEqual(
+        previews.map((match) => match[1]),
+        [
+          `9${side === 'white' ? '.' : '...'} ${locale === 'de-DE' ? 'S' : 'N'}xf6+`,
+        ],
+      );
+      assert.doesNotMatch(
+        closed,
+        /data-tree-anchor="branch"|data-tree-anchor="reply"|[QD]xf6/,
+      );
+      const forcedOpen = renderBranch(true);
+      assert.doesNotMatch(forcedOpen, /data-tree-preview/);
+      assert.equal(
+        (forcedOpen.match(/data-tree-anchor="branch"/g) ?? []).length,
+        1,
+      );
+      assert.equal(
+        (forcedOpen.match(/data-tree-anchor="reply"/g) ?? []).length,
+        1,
+      );
+      assert.match(forcedOpen, /aria-expanded="true" disabled/);
+    }
+  }
 });
 
 test('a sole remaining variation stays selectable without promoting it to the main line', () => {
@@ -505,6 +602,12 @@ test('inline branches interrupt the owning line and compact pairs preserve every
     ['0', '1', '4', '5', '2', '3'],
   );
   assert.equal((markup.match(/data-test-draft/g) ?? []).length, 1);
+  assert.deepEqual(
+    [...markup.matchAll(/<span[^>]*data-tree-preview[^>]*>(.*?)<\/span>/g)].map(
+      (match) => match[1],
+    ),
+    ['2. Nc3'],
+  );
   assert.ok(
     markup.indexOf('data-test-draft') > markup.indexOf('data-tree-line="6"'),
   );

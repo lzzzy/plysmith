@@ -107,10 +107,18 @@ export function formatMoveSequence(
   locale: UiLocale,
 ): string {
   return steps
-    .map(
-      (step) =>
-        `${step.before.playState.fullmoveNumber}${step.before.position.sideToMove === 'black' ? '...' : '.'} ${localizeSan(step.move.san, locale)}`,
-    )
+    .map((step, index) => {
+      const previous = steps[index - 1];
+      const pairedBlack =
+        step.before.position.sideToMove === 'black' &&
+        previous?.before.position.sideToMove === 'white' &&
+        previous.before.playState.fullmoveNumber ===
+          step.before.playState.fullmoveNumber;
+      const number = pairedBlack
+        ? ''
+        : `${step.before.playState.fullmoveNumber}${step.before.position.sideToMove === 'black' ? '...' : '.'} `;
+      return number + localizeSan(step.move.san, locale);
+    })
     .join(' ');
 }
 

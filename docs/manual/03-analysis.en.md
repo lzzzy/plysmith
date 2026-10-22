@@ -10,7 +10,7 @@ The board is on the left and the move sequence on the right. Click **3.Bc4**. Th
 
 [![Saved Italian move sequence with main line, variations and a note](screenshots/saved-line.png)](screenshots/saved-line.png)
 
-Expand the **3...Nf6** variation using its branching icon and select its first move. You can now follow that continuation. Within it, **4.Ng5** is a further alternative to **4.d3**. Expand that branch too if you want to view it. Click **3...Bc5** in the main line to return to the main sequence.
+A collapsed variation shows its first half-move beside the branching icon. Expand the **3...Nf6** variation and select its first move. The preview disappears from the header, and the full continuation appears below it. You can now follow that continuation. Within it, **4.Ng5** is a further alternative to **4.d3**. Expand that branch too if you want to view it. Click **3...Bc5** in the main line to return to the main sequence.
 
 The arrows follow the selected line; they do not simply move down through all visible variations. Expanding and collapsing only changes the display. **Flip board** changes the viewing direction without changing the position or move sequence.
 

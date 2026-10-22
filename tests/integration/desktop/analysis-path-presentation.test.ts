@@ -60,6 +60,107 @@ const step = (
   ),
 });
 
+test('move sequence groups consecutive half-moves into conventional localized notation', () => {
+  const steps = [
+    step('b4', 'white', 55),
+    step('axb4', 'black', 55),
+    step('axb4', 'white', 56),
+    step('Bxb4', 'black', 56),
+    step('c5', 'white', 57),
+    step('Bxc5', 'black', 57),
+    step('Rf5', 'white', 58),
+    step('Kd2', 'black', 58),
+    step('Rd5+', 'white', 59),
+  ];
+  const original = structuredClone(steps);
+  assert.equal(
+    formatMoveSequence(steps, 'de-DE'),
+    '55. b4 axb4 56. axb4 Lxb4 57. c5 Lxc5 58. Tf5 Kd2 59. Td5+',
+  );
+  assert.equal(
+    formatMoveSequence(steps, 'en-GB'),
+    '55. b4 axb4 56. axb4 Bxb4 57. c5 Bxc5 58. Rf5 Kd2 59. Rd5+',
+  );
+  assert.deepEqual(steps, original);
+});
+
+test('move sequence retains the number of a black start before grouping later pairs', () => {
+  const steps = [
+    step('axb4', 'black', 55),
+    step('axb4', 'white', 56),
+    step('Bxb4', 'black', 56),
+    step('c5', 'white', 57),
+  ];
+  assert.equal(
+    formatMoveSequence(steps, 'de-DE'),
+    '55... axb4 56. axb4 Lxb4 57. c5',
+  );
+  assert.equal(
+    formatMoveSequence(steps, 'en-GB'),
+    '55... axb4 56. axb4 Bxb4 57. c5',
+  );
+});
+
+test('move sequence preserves promotions, checks, castling and an incomplete final move', () => {
+  const steps = [
+    step('a8=Q+', 'white', 42),
+    step('Rxe1#', 'black', 42),
+    step('O-O', 'white', 43),
+    step('O-O-O', 'black', 43),
+    step('Nxf6+', 'white', 44),
+  ];
+  assert.equal(
+    formatMoveSequence(steps, 'de-DE'),
+    '42. a8=D+ Txe1# 43. O-O O-O-O 44. Sxf6+',
+  );
+  assert.equal(
+    formatMoveSequence(steps, 'en-GB'),
+    '42. a8=Q+ Rxe1# 43. O-O O-O-O 44. Nxf6+',
+  );
+});
+
+test('move sequence handles empty and one-half-move paths without invented moves', () => {
+  for (const locale of ['de-DE', 'en-GB'] as const) {
+    assert.equal(formatMoveSequence([], locale), '');
+    assert.equal(
+      formatMoveSequence([step('Kh1', 'white', 9)], locale),
+      '9. Kh1',
+    );
+    assert.equal(
+      formatMoveSequence([step('Kh8', 'black', 9)], locale),
+      '9... Kh8',
+    );
+  }
+});
+
+test('move sequence does not combine unrelated half-moves with different move numbers', () => {
+  assert.equal(
+    formatMoveSequence(
+      [step('b4', 'white', 55), step('Kc3', 'black', 59)],
+      'de-DE',
+    ),
+    '55. b4 59... Kc3',
+  );
+  assert.equal(
+    formatMoveSequence(
+      [step('Kc3', 'black', 59), step('Kb4', 'black', 60)],
+      'de-DE',
+    ),
+    '59... Kc3 60... Kb4',
+  );
+});
+
+test('path note text only formats the selected scratch prefix', () => {
+  const steps = [
+    step('e4', 'white', 1),
+    step('e5', 'black', 1),
+    step('Nf3', 'white', 2),
+  ];
+  assert.equal(formatMoveSequence(steps.slice(0, 1), 'de-DE'), '1. e4');
+  assert.equal(formatMoveSequence(steps.slice(0, 2), 'de-DE'), '1. e4 e5');
+  assert.equal(formatMoveSequence(steps, 'de-DE'), '1. e4 e5 2. Sf3');
+});
+
 test('whole-tree projection visits nested alternatives once without merging equal positions', () => {
   const node = (
     nodeIndex: number,

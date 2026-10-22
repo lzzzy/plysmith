@@ -8,7 +8,7 @@ Links steht das Brett, rechts die Zugfolge. Klicken Sie auf **3.Lc4**. Das Brett
 
 [![Gespeicherte italienische Zugfolge mit Hauptlinie, Varianten und einer Notiz](screenshots/saved-line.png)](screenshots/saved-line.png)
 
-Klappen Sie die Variante **3…Sf6** am Verzweigungssymbol auf und wählen Sie ihren ersten Zug. Sie können nun dieser Fortsetzung folgen. Innerhalb der Variante gibt es mit **4.Sg5** eine weitere Alternative zu **4.d3**. Klappen Sie auch diese Verzweigung auf, wenn Sie sie ansehen möchten. Durch einen Klick auf **3…Lc5** in der Hauptlinie kehren Sie zum Hauptverlauf zurück.
+Eine zugeklappte Variante zeigt neben dem Verzweigungssymbol ihren ersten Halbzug. Klappen Sie die Variante **3…Sf6** auf und wählen Sie ihren ersten Zug. Die Vorschau im Kopf verschwindet; die vollständige Fortsetzung steht nun darunter. Sie können nun dieser Fortsetzung folgen. Innerhalb der Variante gibt es mit **4.Sg5** eine weitere Alternative zu **4.d3**. Klappen Sie auch diese Verzweigung auf, wenn Sie sie ansehen möchten. Durch einen Klick auf **3…Lc5** in der Hauptlinie kehren Sie zum Hauptverlauf zurück.
 
 Die Pfeile folgen dem gewählten Verlauf; sie gehen nicht einfach von oben nach unten durch alle sichtbaren Varianten. Das Ein- und Ausklappen verändert nur die Darstellung. **Brett drehen** wechselt die Blickrichtung, ohne Stellung oder Zugfolge zu verändern.
 

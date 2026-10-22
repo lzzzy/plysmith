@@ -35,6 +35,7 @@ const applicationHome = path.join(artifacts, 'home');
 const free = { kind: 'free' } as const;
 const draftsOnly = process.argv.includes('--drafts-only');
 const manualOnly = process.argv.includes('--manual-only');
+const noteNotationOnly = process.argv.includes('--note-notation-only');
 const configurationRestartOnly = process.argv.includes(
   '--configuration-restart-only',
 );
@@ -287,6 +288,186 @@ async function shot(name: string) {
     [],
   );
   assert.deepEqual(errors, []);
+}
+
+async function verifyNoteNotation() {
+  const inputPath = path.join(artifacts, 'note-notation.pgn');
+  await writeFile(
+    inputPath,
+    ['white', 'black']
+      .map(
+        (side) =>
+          `[Event "Notation ${side}"]\n[SetUp "1"]\n[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR ${side === 'white' ? 'w' : 'b'} KQkq - 0 55"]\n[Result "*"]\n\n{55. e4 55... e5}\n${side === 'white' ? '55. e4 e5' : '55... e5 56. e4'} *\n`,
+      )
+      .join('\n'),
+  );
+  const input = await client.registerImportInput({ inputLocator: inputPath });
+  const preview = await client.prepareImport({
+    inputHandle: input.inputHandle,
+    languageTag: locale,
+  });
+  assert.equal(preview.candidates.length, 2);
+  await client.publishImport({
+    previewId: preview.previewId,
+    candidates: preview.candidates.map((candidate, index) => ({
+      sourceOrder: candidate.sourceOrder,
+      displayName: `Notation ${index === 0 ? 'white' : 'black'}`,
+      itemType: index === 0 ? 'game' : 'analysis',
+    })),
+    folder: { kind: 'unfiled' },
+    confirmWarnings: true,
+  });
+  for (const side of ['white', 'black'] as const) {
+    await step(
+      `continuous ${side}-start notation survives note saving and restart`,
+      async () => {
+        if (side === 'black') {
+          await client.setUiLanguage({
+            uiLocale: 'en-GB',
+            expectedRevision: (await client.getUserPreferences())
+              .preferenceRevision,
+          });
+          locale = 'en-GB';
+        }
+        const item = (await client.searchInventory({})).items.find(
+          (item) => item.displayName === `Notation ${side}`,
+        )!;
+        record = await client.getInventoryRevision(
+          item.itemId,
+          item.currentRevisionId,
+          { scopeKind: 'free' },
+        );
+        const before = structuredClone(record);
+        const contextId =
+          side === 'black'
+            ? (
+                await client.createWorkingContext({
+                  displayName: 'Notation context',
+                })
+              ).context.contextId
+            : undefined;
+        if (contextId)
+          await client.addContextReference(contextId, {
+            itemId: record.itemId,
+            anchorId: record.rootAnchorId,
+          });
+        const expected =
+          side === 'white'
+            ? '55. d4 d5 56. Sf3 Sc6 57. Lf4'
+            : '55... d5 56. d4 Nf6';
+        await launch();
+        if (contextId)
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('context:' + contextId);
+        await open();
+        for (const [from, to] of side === 'white'
+          ? [
+              ['d2', 'd4'],
+              ['d7', 'd5'],
+              ['g1', 'f3'],
+              ['b8', 'c6'],
+              ['c1', 'f4'],
+            ]
+          : [
+              ['d7', 'd5'],
+              ['d2', 'd4'],
+              ['g8', 'f6'],
+              ['g1', 'f3'],
+            ]) {
+          await move(from!, to!);
+        }
+        if (side === 'black')
+          await page
+            .getByRole('button', {
+              name: label('analysis.previousMove'),
+              exact: true,
+            })
+            .click();
+        await reviewPath();
+        await page
+          .getByRole('button', {
+            name: label('analysis.prepareNote'),
+            exact: true,
+          })
+          .click();
+        const field = page.getByLabel(label('analysis.pathNoteComment'));
+        await expect(field).toHaveValue(expected);
+        if (contextId) {
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('free');
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('context:' + contextId);
+          await expect(field).toHaveValue(expected);
+        }
+        await page.setViewportSize({ width: 390, height: 844 });
+        await shot(`note-notation-${side}-${locale}-small`);
+        await page
+          .getByRole('button', {
+            name: label('analysis.saveNoteEdit'),
+            exact: true,
+          })
+          .click();
+        const readScoped = () =>
+          client.getInventoryRevision(
+            record.itemId,
+            record.revisionId,
+            contextId
+              ? { scopeKind: 'context', contextId }
+              : { scopeKind: 'free' },
+          );
+        await expect
+          .poll(async () =>
+            (await readScoped()).contributions.some(
+              (note) =>
+                note.body === expected &&
+                note.anchorId === record.rootAnchorId &&
+                note.moves.length === 0,
+            ),
+          )
+          .toBe(true);
+        await closeDesktop();
+        await host!.close();
+        host = undefined;
+        await startHost();
+        const saved = await readScoped();
+        assert.equal(
+          (await client.searchInventory({})).items.find(
+            (item) => item.itemId === record.itemId,
+          )!.currentRevisionId,
+          before.revisionId,
+        );
+        assert.equal(saved.revisionId, before.revisionId);
+        assert.deepEqual(saved.steps, before.steps);
+        assert.deepEqual(saved.tree, before.tree);
+        assert.ok(
+          saved.contributions.some(
+            (note) => note.body === expected && note.moves.length === 0,
+          ),
+        );
+        for (const old of before.contributions)
+          assert.ok(
+            saved.contributions.some(
+              (note) =>
+                note.contributionId === old.contributionId &&
+                note.body === old.body,
+            ),
+          );
+        if (contextId)
+          assert.equal(
+            (await read()).contributions.some((note) => note.body === expected),
+            false,
+          );
+        await launch();
+        await open();
+        await expect(page.getByText(expected, { exact: true })).toBeVisible();
+        await shot(`note-notation-${side}-${locale}-restarted`);
+        await closeDesktop();
+      },
+    );
+  }
 }
 
 async function verifyFormDrafts() {
@@ -2212,7 +2393,8 @@ async function verifyConfigurationRestart() {
 }
 try {
   await startHost();
-  if (draftsOnly) await verifyFormDrafts();
+  if (noteNotationOnly) await verifyNoteNotation();
+  else if (draftsOnly) await verifyFormDrafts();
   else await verifyVariations();
 } finally {
   await closeDesktop();

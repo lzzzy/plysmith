@@ -133,6 +133,11 @@ function ChessTreeList({
             >
               <GitBranch size={16} aria-hidden="true" />
             </button>
+            {closed && (
+              <span className={styles.preview} data-tree-preview>
+                {startLabel}
+              </span>
+            )}
             {onRemoveVariation && (
               <button
                 type="button"

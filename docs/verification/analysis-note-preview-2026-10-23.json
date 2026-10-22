@@ -1,0 +1,107 @@
+{
+  "date": "2026-10-23",
+  "scope": "Conventional localized path-note notation and exactly one first-half-move preview for collapsed variations",
+  "baselineCommit": "34a5fb476cc3931e42f5dd1fd9a2956e7773ac2f",
+  "releaseState": "Verified source changes, no new release",
+  "modelOrSchemaChanges": false,
+  "existingNoteRewrites": false,
+  "fullSourceVerification": {
+    "command": "NODE_OPTIONS=--max-old-space-size=768 pnpm run verify",
+    "exitCode": 0,
+    "tests": 1364,
+    "passed": 1364,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "phases": [
+      { "files": 44, "tests": 325, "durationMilliseconds": 163678.4171 },
+      { "files": 85, "tests": 1039, "durationMilliseconds": 647548.7501 }
+    ],
+    "otherGates": [
+      "All four TypeScript projects",
+      "ESLint",
+      "Architecture boundaries: 587 modules, 2724 dependencies",
+      "Host-client browser compatibility",
+      "Generated contracts and configuration schemas",
+      "Desktop production build",
+      "Prettier"
+    ]
+  },
+  "focusedRegressions": {
+    "formatter": {
+      "file": "tests/integration/desktop/analysis-path-presentation.test.ts",
+      "passed": 17,
+      "newTests": 6,
+      "beforeFix": "Four of the six new tests failed with repeated black move numbers",
+      "coverage": [
+        "White and black starts in German and English",
+        "Promotions, checks, castling and incomplete final move pairs",
+        "Empty and one-half-move paths, discontinuous input, no input mutation",
+        "Selected path prefix"
+      ]
+    },
+    "markup": {
+      "file": "tests/integration/desktop/import-dialog.test.ts",
+      "passed": 11
+    },
+    "browser": {
+      "command": "node --max-old-space-size=512 --test --test-concurrency=1 tests/integration/desktop/chess-tree-preview-runtime.ts",
+      "passed": 5,
+      "failed": 0,
+      "locales": ["de-DE", "en-GB"],
+      "viewportWidths": [1280, 390, 240],
+      "coverage": [
+        "Exactly one localized half-move for either starting side",
+        "No header preview while expanded and no duplicate move buttons",
+        "Keyboard toggles, nested branches and draft-forced ancestor expansion",
+        "Inert preview, move selection, deletion and existing disabled behavior",
+        "Custom full rows and no overlapping heading elements or horizontal overflow"
+      ]
+    }
+  },
+  "nativeDesktop": {
+    "noteNotation": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --note-notation-only",
+      "exitCode": 0,
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "screenshots": 4,
+      "artifactDirectory": "build/verification/variations/5fa97d03-7cfc-4a45-a565-0dddae58f43e",
+      "coverage": [
+        "Real board moves from an imported game and analysis with fullmove number 55",
+        "German white-start game and English black-start context analysis",
+        "A rewound cursor excludes the unselected final move from note text",
+        "Context switch retains the draft and a context-only note remains absent from free scope",
+        "Save and Host/Desktop restart retain the note as ordinary editable text",
+        "Current head revision, stored tree and all existing note bodies remain unchanged",
+        "1600px and 390px viewports, no horizontal overflow or automated axe violations"
+      ]
+    },
+    "existingVariationWorkflow": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts",
+      "exitCode": 0,
+      "passedSteps": 23,
+      "rendererErrors": 0,
+      "screenshots": 24,
+      "artifactDirectory": "build/verification/variations/a8ec7065-abbc-4822-a82c-c556bcf2c86f",
+      "coverage": [
+        "Actual Stockfish, board interaction and optional editable variation comments",
+        "Main-line and variation navigation, takeback and persisted provenance",
+        "Nested draft placement and Manage preview navigation",
+        "Global and context-only notes, area and context changes, external revision refresh",
+        "Nested and collapsed branch deletion preserves the main line and siblings",
+        "Host/Desktop restart, playout draft retention and responsive settings"
+      ]
+    }
+  },
+  "review": {
+    "reviewer": "Astra",
+    "openP1OrP2Findings": 0,
+    "followup": "Both suggested P3 test improvements were added: actual UI cursor rewind and current inventory head verification"
+  },
+  "limits": [
+    "All native processes, PGN inputs and profiles were isolated; no real user data or configuration was changed",
+    "Heavy verification ran serially with bounded Node heaps",
+    "No installer, human screen-reader, new release or remote CI acceptance is claimed"
+  ]
+}
