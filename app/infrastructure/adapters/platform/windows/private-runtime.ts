@@ -6,6 +6,9 @@ import {
   type HostLifecycleProblemCode,
 } from './host-lifecycle-problem.ts';
 
+// Cold PowerShell/.NET startup can exceed 15 seconds on a loaded Windows host.
+const windowsRuntimeTimeoutMs = 60_000;
+
 // Windows PowerShell exposes the native ACL/FileShare APIs absent from Node's fs.
 // Paths and data travel on stdin, never through PowerShell source interpolation.
 export async function withPrivateWindowsRuntime(
@@ -171,7 +174,7 @@ try {
         '-EncodedCommand',
         Buffer.from(script, 'utf16le').toString('base64'),
       ],
-      { windowsHide: true, timeout: 15_000, maxBuffer: 4096 },
+      { windowsHide: true, timeout: windowsRuntimeTimeoutMs, maxBuffer: 4096 },
       (error, stdout, stderr) => {
         if (error) {
           const reportedCode = stdout.trim();
@@ -181,9 +184,12 @@ try {
               ? reportedCode
               : 'host.lease_unavailable';
           const problem = new HostLifecycleProblem(code);
-          problem.cause = new Error(
-            stderr.trim() || `Windows runtime helper failed (${error.code}).`,
-          );
+          const failure =
+            error.killed && error.code === null && error.signal === 'SIGTERM'
+              ? `Windows runtime helper timed out after ${windowsRuntimeTimeoutMs}ms.`
+              : `Windows runtime helper failed (code ${error.code}, signal ${error.signal ?? 'none'}).`;
+          const detail = stderr.trim();
+          problem.cause = new Error(detail ? `${failure} ${detail}` : failure);
           reject(problem);
         } else {
           resolve(stdout);

@@ -1,0 +1,73 @@
+{
+  "date": "2026-10-23",
+  "scope": "Bounded Windows runtime helper cold starts and Node 24 GitHub Action runtime",
+  "baselineCommit": "dc77f5f3707aff33ef326dca1ded244158561120",
+  "originalFailure": {
+    "run": "https://github.com/lzzzy/plysmith/actions/runs/39873911126",
+    "test": "composition root wires the real store and use cases without listening",
+    "problem": "host.lease_unavailable",
+    "observation": "The Windows helper exited with code null after the previous 15000ms budget; the exact cause of the runner delay is unconfirmed",
+    "unrelatedWarning": "actions/setup-node@v4 used a deprecated Node 20 Action runtime; the application already ran on Node 24"
+  },
+  "changes": {
+    "helperTimeoutMilliseconds": 60000,
+    "diagnostics": "Distinguish deadline expiry from output-budget errors, exit codes and external termination without echoing the raw command or stdin",
+    "setupNodeAction": "actions/setup-node@v6",
+    "applicationNodeMajor": 24,
+    "unchanged": [
+      "Private ACL, current-owner and reparse-point checks",
+      "Atomic owner lease and Windows file-sharing guard",
+      "Hidden PowerShell invocation and JSON data on stdin",
+      "4096-byte output buffer and existing public problem codes",
+      "No additional retries, CI-only behavior or test skips",
+      "Domain models, persistence schemas and user configuration"
+    ]
+  },
+  "regressions": {
+    "file": "tests/integration/platform/private-runtime.test.ts",
+    "beforeFix": { "passed": 4, "failed": 3 },
+    "afterFix": { "passed": 7, "failed": 0 },
+    "coverage": [
+      "One 20-second cold start succeeds within the fixed budget and release remains idempotent",
+      "The 60-second deadline still fails closed with a specific cause even when stderr exists",
+      "Existing public error codes and early stdin closure retain their behavior without retries",
+      "ACL rejection, output-budget failure and external termination stay distinct",
+      "Trusted executable path, encoded script, hidden window and stdin-only data remain enforced"
+    ]
+  },
+  "focusedWindowsVerification": {
+    "command": "node --max-old-space-size=512 --test --test-concurrency=1 tests/integration/host/composition-root.test.ts tests/integration/platform/host-lifecycle.test.ts tests/integration/platform/private-runtime.test.ts",
+    "passed": 28,
+    "failed": 0,
+    "skipped": 0,
+    "durationMilliseconds": 90629.7824,
+    "coverage": "Real Host composition, cleanup, lease ownership, concurrent recovery, ACL denial and repair, reparse protection, discovery and the deterministic helper regressions"
+  },
+  "fullSourceVerification": {
+    "command": "NODE_OPTIONS=--max-old-space-size=768 pnpm run verify",
+    "exitCode": 0,
+    "tests": 1371,
+    "passed": 1371,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "phases": [
+      { "files": 44, "tests": 325, "durationMilliseconds": 98008.2219 },
+      { "files": 86, "tests": 1046, "durationMilliseconds": 454906.4168 }
+    ],
+    "otherGates": [
+      "All four TypeScript projects",
+      "ESLint",
+      "Architecture boundaries: 589 modules, 2731 dependencies",
+      "Host-client browser compatibility",
+      "Generated contracts and configuration schemas",
+      "Desktop production build",
+      "Prettier"
+    ]
+  },
+  "limits": [
+    "Heavy verification ran serially after the user rebooted, with bounded Node heaps",
+    "No real user profile, configuration, database or online game was modified",
+    "This report records local source verification, not a new release, installer acceptance or remote CI result"
+  ]
+}
