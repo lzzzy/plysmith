@@ -11,9 +11,9 @@ importierbaren Beispielbestand durch die Grundlagen und alle Bereiche der App.
 
 Dies ist eine Windows-Beta zur Erprobung der Anwendung. Weitere Rückmeldungen
 helfen, Plysmith zu verbessern. Spätere Versionen können möglicherweise nicht
-alle bisherigen Daten und Einstellungen lesen. Der aktuelle Quellcodestand
-ergänzt eine [PGN-Datensicherung und Wiederherstellung](docs/manual/04-settings.md#datensicherung)
-des gespeicherten Bestands; diese Funktion ist noch nicht in beta.1 enthalten.
+alle bisherigen Daten und Einstellungen lesen. Ab beta.2 gibt es eine
+[PGN-Datensicherung und Wiederherstellung](docs/manual/04-settings.md#datensicherung)
+des gespeicherten Bestands.
 
 ## Installieren
 
@@ -38,8 +38,9 @@ Wie Sie Ihre Arbeit sichern, beschreibt das Manual unter
 [Datensicherung](docs/manual/04-settings.md#datensicherung). Für ältere Versionen
 ohne diese Funktion sichern Sie den vollständigen Datenordner bei geschlossener App.
 
-**Wechsel auf beta.1:** Das Datenformat wurde geändert. Bestände aus alpha.7 oder älter
-lassen sich nicht in dieser Version öffnen; eine Migration gibt es nicht.
+**Vor dem Wechsel:** Das Datenformat ist gegenüber beta.1 unverändert.
+Bestände aus alpha.7 oder älter lassen sich weiterhin nicht öffnen;
+eine Migration gibt es nicht.
 Schließen Sie Plysmith und sichern Sie vor der Aktualisierung den vollständigen
 Datenordner. Für einen neuen Bestand können Sie den bisherigen Datenordner
 an einen sicheren Ort verschieben. Beim nächsten Start wird ein neuer angelegt.

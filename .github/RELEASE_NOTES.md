@@ -1,8 +1,32 @@
-# Plysmith 0.1.0-beta.1
+# Plysmith 0.1.0-beta.2
 
 ## Deutsch
 
-### Neu seit alpha.7
+### Neu seit beta.1
+
+- **PGN-Datensicherung und Wiederherstellung:** Unter **Einstellungen >
+  Datensicherung** den gesamten gespeicherten Bestand mit Partien, Analysen,
+  Ordnern, notwendigen Herkunftsbeziehungen und allgemeinen Notizen sichern.
+  Die Sicherung lässt sich nach vollständiger Prüfung in einen frischen,
+  leeren Bestand wiederherstellen. Die Datei enthält gewöhnliche PGN-Züge
+  und zusätzliche Plysmith-Daten in Kommentaren; Kontexte, Entwürfe,
+  kontextbezogene Notizen und Einstellungen sind nicht enthalten.
+- **Lesbarere Pfadnotizen:** Bei der Übernahme eines Analysepfads in eine
+  Notiz werden zusammengehörige Halbzüge in der üblichen Zugnotation
+  zusammengefasst. Bereits gespeicherte Notizen bleiben unverändert.
+- **Kompakte Zweigvorschau:** Zugeklappte Varianten zeigen neben dem
+  Verzweigungssymbol genau ihren ersten Halbzug. Beim Aufklappen erscheint
+  dieser wieder im Zugverlauf, ohne doppelte Anzeige in der Kopfzeile.
+- **Robusterer Windows-Start:** Der private Laufzeithelfer erhält bei einem
+  langsamen Kaltstart mehr Zeit. Ein tatsächlicher Timeout ist in der
+  technischen Diagnose von anderen Prozessfehlern unterscheidbar;
+  Zugriffsrechte und Instanzsperren bleiben unverändert.
+- Die optionale technische Live-Protokollierung hilft, verzögerte oder
+  ausgebliebene Aktualisierungen nachzuvollziehen, ohne Tokens, Spielernamen
+  oder Partieinhalte zu protokollieren. Das Manual beschreibt jetzt auch
+  Datensicherung und Wiederherstellung mit echten Screenshots.
+
+### Bereits in beta.1 ergänzt
 
 - **Live mit Lichess:** Im Browser eine normale Schachpartie starten, in
   Plysmith übernehmen und ohne Enginehilfe spielen. Zum Zuschauen eine
@@ -52,8 +76,13 @@ Arbeitskontexte unterstützen die parallele Arbeit an Ihrem kuratierten Bestand.
 
 ### Vor dem Wechsel
 
+**Gegenüber beta.1 ist das Datenformat unverändert.** Bestehende beta.1-Bestände
+können weiterverwendet werden. Schließen Sie Plysmith vor der Aktualisierung
+und sichern Sie wichtige Arbeit. In beta.1 ohne integrierte Datensicherung
+kopieren Sie dazu den vollständigen Datenordner bei geschlossener App.
+
 **Datenformatbruch gegenüber alpha.7 und älter:** Frühere Bestände lassen sich
-in beta.1 nicht öffnen. Es gibt keine Migration. Schließen Sie Plysmith und
+weiterhin nicht öffnen. Es gibt keine Migration. Schließen Sie Plysmith und
 sichern Sie vor der Aktualisierung den vollständigen Datenordner
 `%LOCALAPPDATA%\Plysmith`. Für einen neuen Bestand verschieben Sie den
 bisherigen Ordner an einen sicheren Ort. Plysmith legt beim nächsten Start
@@ -84,18 +113,44 @@ Lokale Live-Aufnahmen werden nach einem Neustart von Plysmith nicht
 wiederhergestellt. Speichern Sie abgeschlossene Partien vor dem Schließen.
 Der gemerkte Online-/Offline-Modus stellt keine Aufnahme wieder her.
 
-Eine integrierte Sicherung, Wiederherstellung oder Migration gibt es noch
-nicht. Sichern Sie wichtige Arbeit selbst. Spätere Vorabversionen können
-erneut ein anderes Datenformat benötigen.
+Die integrierte Datensicherung überträgt den gespeicherten Bestand, nicht
+die vollständige Arbeitsumgebung. Sie ist kein Backup von Arbeitskontexten,
+laufenden Entwürfen, kontextbezogenen Notizen, Engines oder Einstellungen.
+Wiederherstellung ist nur in einen frischen, leeren Bestand möglich;
+vorhandene Inhalte werden weder zusammengeführt noch überschrieben.
+Eine Datenbankmigration gibt es nicht. Spätere Vorabversionen können erneut
+ein anderes Datenformat benötigen.
 
-[Installation und Projektüberblick](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.1/README.md),
-[deutsches Manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.1/docs/manual/README.md)
+[Installation und Projektüberblick](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/README.md),
+[deutsches Manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/docs/manual/README.md)
 und [Fehler melden](https://github.com/lzzzy/plysmith/issues/new/choose).
 SBOM, Lizenzinventar, Notices und Lizenzarchiv liegen den Release-Dateien bei.
 
 ## English
 
-### New Since alpha.7
+### New Since beta.1
+
+- **PGN backup and restore:** Under **Settings > Data backup**, save the
+  entire stored inventory, including games, analyses, folders, necessary
+  origin relationships and general notes. After full validation, restore
+  the backup into a fresh, empty inventory. The file contains ordinary PGN
+  moves with additional Plysmith data in comments; working contexts, drafts,
+  context-specific notes and settings are not included.
+- **More readable path notes:** When copying an analysis path into a note,
+  matching half-moves are grouped using conventional move notation.
+  Previously saved notes remain unchanged.
+- **Compact branch preview:** Collapsed variations show exactly their
+  first half-move next to the branch icon. Expanding a variation places
+  that move back in the move list, without duplicating it in the heading.
+- **More resilient Windows startup:** The private runtime helper allows
+  more time for a slow cold start. Technical diagnostics distinguish an
+  actual timeout from other process failures; access permissions and
+  instance locks remain unchanged.
+- Optional technical Live logging helps investigate delayed or missing
+  updates without recording tokens, player names or game content. The
+  manual now covers backup and restore with real screenshots.
+
+### Previously Added in beta.1
 
 - **Live with Lichess:** Start a standard chess game in your browser, open it
   in Plysmith and play without engine assistance. To watch, open a game using
@@ -145,8 +200,13 @@ Working contexts support parallel work on your curated inventory.
 
 ### Before Upgrading
 
-**Data-format break from alpha.7 and earlier:** beta.1 cannot open earlier
-inventories. There is no migration. Close Plysmith and back up the complete
+**The data format is unchanged from beta.1.** Existing beta.1 inventories
+can still be used. Close Plysmith before upgrading and back up important
+work. In beta.1, which has no integrated backup, copy the complete data
+folder while the app is closed.
+
+**Data-format break from alpha.7 and earlier:** Earlier inventories still
+cannot be opened. There is no migration. Close Plysmith and back up the complete
 data folder `%LOCALAPPDATA%\Plysmith` before upgrading. To start a new
 inventory, move the previous folder to a safe location. Plysmith creates a
 new one on the next startup. Incompatible data is never automatically deleted
@@ -175,10 +235,13 @@ Local live recordings are not restored after restarting Plysmith. Save
 completed games before closing the app. The remembered online/offline mode
 does not restore a recording.
 
-There is no built-in backup, restore or migration yet. Back up important
-work yourself. Later prereleases may require another data format.
+Integrated backup transfers the stored inventory, not the complete working
+environment. It does not back up working contexts, active drafts,
+context-specific notes, engines or settings. Restore requires a fresh,
+empty inventory; existing contents are neither merged nor overwritten.
+There is no database migration. Later prereleases may require another data format.
 
-[Installation and project overview](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.1/README.en.md),
-[English manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.1/docs/manual/README.en.md)
+[Installation and project overview](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/README.en.md),
+[English manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/docs/manual/README.en.md)
 and [reporting bugs](https://github.com/lzzzy/plysmith/issues/new/choose).
 The SBOM, license inventory, notices and license archive accompany the release files.
