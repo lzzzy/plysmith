@@ -17,7 +17,10 @@ export const liveMessages = {
     'live.connection.failed': 'Lichess nicht erreichbar',
     'live.fairPlay':
       'Analysehilfe ist während einer eigenen Onlinepartie gesperrt.',
-    'live.verifying': 'Lichess-Spielstatus wird geprüft.',
+    'live.assistanceBlocked':
+      'Analysehilfe ist durch den Fair-Play-Schutz gesperrt.',
+    'live.verifying':
+      'Der Lichess-Spielstatus ist nicht bestätigt. Analysehilfe bleibt gesperrt, bis Lichess wieder verbunden und der Spielstatus bestätigt ist.',
     'live.clockSnapshot': 'Zuletzt übermittelte Restzeit',
     'live.clockEstimate': 'Geschätzte Restzeit',
     'live.ongoing': 'Partie läuft',
@@ -87,7 +90,10 @@ export const liveMessages = {
     'live.connection.reconnecting': 'Reconnecting',
     'live.connection.failed': 'Lichess unavailable',
     'live.fairPlay': 'Analysis assistance is disabled during your online game.',
-    'live.verifying': 'Checking Lichess game status.',
+    'live.assistanceBlocked':
+      'Analysis assistance is disabled by fair-play protection.',
+    'live.verifying':
+      'Lichess game status is unconfirmed. Analysis assistance remains disabled until Lichess is connected and the game status is confirmed.',
     'live.clockSnapshot': 'Last reported time remaining',
     'live.clockEstimate': 'Estimated time remaining',
     'live.ongoing': 'Game in progress',

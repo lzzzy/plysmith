@@ -24,6 +24,8 @@ Nicht jede Lichess-Partie kann über die Board API gespielt werden. Wenn Plysmit
 
 Während einer eigenen laufenden Onlinepartie ist Analysehilfe in ganz Plysmith gesperrt, auch wenn Sie die Partie im Browser spielen. Das betrifft auch Maia und lokale Enginepartien. Offline zu gehen oder Plysmith neu zu starten hebt eine bereits festgestellte Sperre nicht auf; Plysmith muss das Ende bei Lichess bestätigen können.
 
+Auch wenn der Spielstatus nach einem Verbindungsabbruch ungeklärt ist, bleibt die Analysehilfe vorsichtshalber gesperrt. Solange **Online** gewählt ist, versucht Plysmith die Verbindung mit wachsenden Pausen erneut herzustellen. Nach einer erfolgreichen Prüfung ohne laufende eigene Partie wird die Analyse wieder freigegeben.
+
 Die Uhr zählt zwischen den Zeitmeldungen lokal weiter und wird mit neuen Meldungen korrigiert. **Geschätzte Restzeit** kennzeichnet diese Anzeige. Bei unterbrochener Verbindung sehen Sie die **Zuletzt übermittelte Restzeit**. Entscheidend für eine Zeitüberschreitung ist das von Lichess bestätigte Ergebnis, nicht allein eine lokal angezeigte Null.
 
 Mit **Aufgeben** können Sie die Partie nach Bestätigung beenden. **Remis anbieten**, **Remis annehmen** und **Remis ablehnen** stehen passend zum Partiestand zur Verfügung. Ganz am Anfang kann **Partie abbrechen** angeboten werden. Ein Zurückblättern ist während Ihrer eigenen laufenden Partie nicht möglich.

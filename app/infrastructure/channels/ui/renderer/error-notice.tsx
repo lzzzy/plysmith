@@ -42,7 +42,7 @@ function errorMessageId(errorCode: string): string {
     return 'live.error.game';
   if (errorCode.startsWith('configuration.live_'))
     return 'live.error.configuration';
-  if (errorCode === 'live.fair_play_blocked') return 'live.fairPlay';
+  if (errorCode === 'live.fair_play_blocked') return 'live.assistanceBlocked';
   if (errorCode.startsWith('live.')) return 'live.error.unavailable';
   if (errorCode === 'inventory.display_name_conflict')
     return 'error.inventoryNameConflict';

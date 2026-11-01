@@ -557,9 +557,10 @@ export class LiveService {
   }
 
   async #monitorAccount(signal: AbortSignal): Promise<void> {
-    for (let attempt = 0; attempt < 4 && !signal.aborted; attempt++) {
+    let attempt = 0;
+    while (!signal.aborted) {
       this.#diagnose({ kind: 'account_stream', status: 'starting', attempt });
-      let retryDelay = 1000 * 2 ** attempt;
+      let retryDelay: number | undefined;
       const stream = new AbortController();
       const combined = AbortSignal.any([signal, stream.signal]);
       const buffered: LiveAccountEvent[] = [];
@@ -620,21 +621,24 @@ export class LiveService {
         for (const event of buffered) this.#accountEvent(event);
         this.#updateGate();
         this.#changed();
+        attempt = 0;
         await consume;
         if (signal.aborted) return;
         throw streamFailure ?? problem('live.provider_unavailable');
       } catch (error) {
         if (signal.aborted) return;
         this.#writeController?.abort();
-        this.#connection = attempt === 3 ? 'failed' : 'reconnecting';
         this.#problemCode = failure(error).problemCode;
+        if (this.#problemCode === 'live.provider_unavailable')
+          retryDelay = Math.min(1000 * 2 ** attempt, 60_000);
+        else if (this.#problemCode === 'live.rate_limited') retryDelay = 60_000;
+        this.#connection = retryDelay === undefined ? 'failed' : 'reconnecting';
         this.#diagnose({
           kind: 'account_stream',
           status: 'failed',
           attempt,
           problemCode: this.#problemCode,
         });
-        if (this.#problemCode === 'live.rate_limited') retryDelay = 60_000;
         this.#setBlocked(true);
         this.#changed();
       } finally {
@@ -643,7 +647,9 @@ export class LiveService {
         await consume;
       }
       this.#diagnose({ kind: 'account_stream', status: 'stopped', attempt });
-      if (attempt < 3) await pause(retryDelay, signal);
+      if (retryDelay === undefined) return;
+      await pause(retryDelay, signal);
+      attempt = Math.min(attempt + 1, 6);
     }
   }
 

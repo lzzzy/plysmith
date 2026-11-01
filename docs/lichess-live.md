@@ -28,6 +28,19 @@ Eine bereits gespeicherte Fair-Play-Sperre bleibt bis zur bestätigten Klärung
 erhalten. Ohne Desktop bleibt ein neu gestarteter Host zunächst offline;
 API-/MCP-Clients können über den ausdrücklichen Live-Refresh verbinden.
 
+Bei vorübergehenden Verbindungsfehlern läuft die Kontoüberwachung im gewählten
+Online-Modus weiter: Die Wartezeit steigt von einer Sekunde auf höchstens eine
+Minute. Eine erfolgreiche Streamverbindung mit vollständiger Kontoprüfung setzt
+diese Wartezeit zurück. Bei Rate-Limits wartet Plysmith mindestens eine Minute;
+abgelehnte Zugangsdaten, widersprüchliche Kontodaten oder ungültige Protokolldaten
+erfordern eine bewusste erneute Prüfung. Offline und Beenden stoppen auch noch
+wartende Verbindungsversuche.
+
+Ein ungeklärter Spielstatus hält den Fair-Play-Schutz aufrecht, auch wenn zuletzt
+keine Partie bekannt war. Die Oberfläche unterscheidet diesen Zustand von einer
+bestätigten laufenden eigenen Partie. Erst die erfolgreiche Kontoprüfung kann
+die Sperre freigeben; Offline oder ein bloßer Transportaufbau reichen nicht.
+
 Ein fehlendes oder abgelehntes Token ist ein Verbindungsproblem, keine
 automatische Löschung des Datenbestands. Syntaktisch inkompatible technische
 Konfigurationen folgen weiterhin dem vollständigen Neueinrichtungsvertrag.

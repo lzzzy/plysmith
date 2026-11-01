@@ -69,6 +69,15 @@ function ApplicationFrame({
   const busy = state.busyCommand !== undefined;
   const completionPending = state.pendingPlayoutCompletion !== undefined;
   const navigationBlocked = busy || completionPending;
+  const live = state.live;
+  const confirmedOwnGame =
+    live?.fairPlayBlocked &&
+    live.online &&
+    live.connection === 'connected' &&
+    (live.games.length > 0 ||
+      (live.session?.role === 'play' &&
+        live.session.status === 'ongoing' &&
+        live.session.connected));
 
   return (
     <div className={styles.applicationFrame}>
@@ -203,9 +212,7 @@ function ApplicationFrame({
         {state.fairPlayBlocked && (
           <section className={styles.errorNotice} role="status">
             <FormattedMessage
-              id={
-                state.live?.fairPlayBlocked ? 'live.fairPlay' : 'live.verifying'
-              }
+              id={confirmedOwnGame ? 'live.fairPlay' : 'live.verifying'}
             />
           </section>
         )}

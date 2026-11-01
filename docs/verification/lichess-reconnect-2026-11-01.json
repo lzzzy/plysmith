@@ -1,0 +1,78 @@
+{
+  "date": "2026-11-01",
+  "baseCommit": "6fc0a84933941dfa729d02090a2185ae1540d394",
+  "status": "passed",
+  "scope": "Account reconnect and truthful fair-play notices, preserving host protection",
+  "changes": [
+    "Continue transient account reconnects while online with capped exponential backoff",
+    "Reset backoff after the stream and full account snapshot are verified",
+    "Retain a minute cooldown for rate limiting and stop on terminal failures",
+    "Keep durable protection through offline, restart, cancellation and uncertain status",
+    "Distinguish confirmed own play from unconfirmed status in German and English",
+    "Avoid asserting an ongoing game in generic blocked-command errors",
+    "Update German and English manual and technical live documentation"
+  ],
+  "verification": {
+    "focusedTests": {
+      "passed": 388,
+      "failed": 0,
+      "skipped": 0,
+      "concurrency": 1,
+      "testHeapLimitMiB": 256,
+      "scope": [
+        "Live service and fair-play use cases",
+        "Live API, host client and MCP contracts",
+        "Lichess transport, SQLite recording and composed host",
+        "Live provider configuration",
+        "Desktop store, context changes, navigation and pending reads",
+        "Position analysis selection, workspace presentation and live clocks"
+      ]
+    },
+    "presentationTests": {
+      "passed": 44,
+      "failed": 0,
+      "skipped": 0,
+      "locales": ["de-DE", "en-GB"],
+      "file": "tests/integration/desktop/application-locale.test.ts"
+    },
+    "totalDistinctTestsPassed": 432,
+    "newBackendRegressions": 8,
+    "newPresentationCases": 30,
+    "redBeforeFix": 4,
+    "typecheck": {
+      "node": "passed",
+      "renderer": "passed",
+      "tests": "passed",
+      "tools": "passed",
+      "testsAndToolsHeapLimitMiB": 1024,
+      "prior512MiBTestHeapExceeded": true,
+      "systemOutOfMemoryProven": false,
+      "computerRestartRequiredOrPerformed": false
+    },
+    "lint": "passed",
+    "architectureBoundaries": "passed",
+    "browserHostClient": "passed",
+    "generatedContracts": "passed",
+    "desktopBuild": "passed",
+    "sourceFormat": "passed",
+    "documentationFormat": "passed",
+    "finalDiff": "passed"
+  },
+  "review": {
+    "model": "gpt-6-astra",
+    "scope": "UI implementation and independent review of account-monitor protection, races and cancellation",
+    "concreteNewBackendRegressionsFound": 0
+  },
+  "unchanged": [
+    "Domain model and persistence schema",
+    "Live DTOs and configuration formats",
+    "Host fair-play gate and provider wrappers",
+    "Own-game write confirmation and game recording rules"
+  ],
+  "limits": [
+    "Focused regression verification, not a new full repository test run",
+    "No real Lichess game played by automation",
+    "No new native screenshot acceptance",
+    "No commit, push or release in this task"
+  ]
+}

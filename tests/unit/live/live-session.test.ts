@@ -393,6 +393,243 @@ test('restart retains a stored blocked guard without provider contact until expl
   assert.doesNotThrow(() => f.fairPlay.assertAllowed());
 });
 
+test('account monitoring recovers after a long outage with capped backoff and keeps the durable guard until proof', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let stored: LiveFairPlayGuardState = { blocked: false };
+  const f = fixture(t, false, {
+    readLiveFairPlayGuard: async () => stored,
+    writeLiveFairPlayGuard: async (state) => {
+      stored = state;
+    },
+  });
+  await f.connect();
+  let attempts = 0;
+  let available = false;
+  f.provider.streamAccount = async function* (signal) {
+    attempts++;
+    if (!available) throw new LiveProviderError('live.provider_unavailable');
+    yield { kind: 'connected' };
+    yield* f.accountEvents.stream(signal);
+  };
+  await f.service.refresh(f.revision);
+  await until(
+    () => f.service.getState().problemCode === 'live.provider_unavailable',
+  );
+  for (const delay of [1000, 2000, 4000, 8000, 16000, 32000, 60000, 60000]) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const before = attempts;
+    assert.equal(f.service.getState().connection, 'reconnecting');
+    assert.equal(f.service.getState().games.length, 0);
+    assert.equal(f.fairPlay.blocked, true);
+    assert.equal(stored.blocked, true);
+    t.mock.timers.tick(delay - 1);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, before);
+    t.mock.timers.tick(1);
+    await until(() => attempts === before + 1);
+  }
+  available = true;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(60000);
+  await until(
+    () =>
+      f.service.getState().connection === 'connected' && !f.fairPlay.blocked,
+  );
+  assert.equal(attempts, 10);
+  assert.deepEqual(stored, { blocked: false });
+});
+
+test('successful account proofs reset retry delay across repeated stream interruptions', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(t);
+  let attempts = 0;
+  let drop: () => void = () => assert.fail('No connected stream');
+  f.provider.streamAccount = async function* (signal) {
+    attempts++;
+    yield { kind: 'connected' };
+    await new Promise<void>((resolve) => {
+      drop = resolve;
+      signal.addEventListener('abort', () => resolve(), { once: true });
+      if (signal.aborted) resolve();
+    });
+  };
+  await f.connect();
+  for (let index = 0; index < 6; index++) {
+    assert.equal(attempts, index + 1);
+    assert.equal(f.fairPlay.blocked, false);
+    drop();
+    await until(
+      () => f.service.getState().problemCode === 'live.provider_unavailable',
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(f.fairPlay.blocked, true);
+    t.mock.timers.tick(999);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, index + 1);
+    t.mock.timers.tick(1);
+    await until(
+      () =>
+        attempts === index + 2 &&
+        f.service.getState().connection === 'connected',
+    );
+    assert.equal(f.fairPlay.blocked, false);
+  }
+});
+
+test('offline and close cancel a pending account retry without releasing its durable guard', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let stored: LiveFairPlayGuardState = { blocked: false };
+  const f = fixture(t, false, {
+    readLiveFairPlayGuard: async () => stored,
+    writeLiveFairPlayGuard: async (state) => {
+      stored = state;
+    },
+  });
+  let attempts = 0;
+  f.provider.streamAccount = async function* () {
+    attempts++;
+    throw new LiveProviderError('live.provider_unavailable');
+    yield { kind: 'connected' };
+  };
+  await f.service.refresh(f.revision);
+  await until(
+    () => f.service.getState().problemCode === 'live.provider_unavailable',
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  await f.service.disconnect(f.revision);
+  t.mock.timers.tick(600000);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 1);
+  assert.equal(stored.blocked, true);
+  assert.equal(f.fairPlay.blocked, true);
+  await f.service.refresh(f.revision);
+  await until(() => attempts === 2);
+  await f.service.close();
+  t.mock.timers.tick(600000);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 2);
+  assert.equal(stored.blocked, true);
+});
+
+for (const code of [
+  'live.authentication_failed',
+  'live.protocol_error',
+] as const) {
+  test(`terminal account failure ${code} does not retry or release assistance`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const f = fixture(t);
+    let attempts = 0;
+    f.provider.readAccount = async () => {
+      attempts++;
+      throw new LiveProviderError(code);
+    };
+    await f.service.refresh(f.revision);
+    await until(() => f.service.getState().connection === 'failed');
+    assert.equal(f.service.getState().problemCode, code);
+    assert.equal(f.fairPlay.blocked, true);
+    t.mock.timers.tick(600000);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, 1);
+  });
+}
+
+test('account recovery replays a buffered game start before an empty snapshot can release assistance', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let stored: LiveFairPlayGuardState = { blocked: false };
+  const writes: boolean[] = [];
+  const f = fixture(t, false, {
+    readLiveFairPlayGuard: async () => stored,
+    writeLiveFairPlayGuard: async (state) => {
+      stored = state;
+      writes.push(state.blocked);
+    },
+  });
+  let attempts = 0;
+  f.provider.streamAccount = async function* (signal) {
+    if (++attempts === 1)
+      throw new LiveProviderError('live.provider_unavailable');
+    yield { kind: 'connected' };
+    yield* f.accountEvents.stream(signal);
+  };
+  let resolveAccount: ((account: LiveAccount) => void) | undefined;
+  f.provider.readAccount = () =>
+    new Promise((resolve) => {
+      resolveAccount = resolve;
+    });
+  await f.service.refresh(f.revision);
+  await until(
+    () => f.service.getState().problemCode === 'live.provider_unavailable',
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(1000);
+  await until(() => resolveAccount !== undefined);
+  f.accountEvents.push({ kind: 'game_started', game: own });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  resolveAccount!({ id: 'alice', name: 'Alice', games: [] });
+  await until(() => f.service.getState().connection === 'connected');
+  assert.equal(f.service.getState().games.length, 1);
+  assert.equal(f.fairPlay.blocked, true);
+  assert.equal(stored.blocked, true);
+  assert.ok(writes.length > 0 && writes.every(Boolean));
+  assert.throws(() => f.fairPlay.assertAllowed(), {
+    problemCode: 'live.fair_play_blocked',
+  });
+  f.accountEvents.push({ kind: 'game_finished', gameId: own.gameId });
+  await until(() => !f.fairPlay.blocked);
+});
+
+test('rate limiting continues beyond four attempts and retains the full minute cooldown', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(t);
+  let attempts = 0;
+  let available = false;
+  f.provider.streamAccount = async function* (signal) {
+    attempts++;
+    if (!available) throw new LiveProviderError('live.rate_limited');
+    yield { kind: 'connected' };
+    yield* f.accountEvents.stream(signal);
+  };
+  await f.service.refresh(f.revision);
+  await until(() => f.service.getState().problemCode === 'live.rate_limited');
+  for (let index = 0; index < 5; index++) {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(59_999);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(attempts, index + 1);
+    assert.equal(f.fairPlay.blocked, true);
+    if (index === 4) available = true;
+    t.mock.timers.tick(1);
+    await until(() => attempts === index + 2);
+  }
+  await until(() => f.service.getState().connection === 'connected');
+  assert.equal(f.fairPlay.blocked, false);
+});
+
+test('an account proof arriving after offline cannot release the guard or resume retries', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture(t);
+  await f.service.initialize();
+  let resolveAccount: ((account: LiveAccount) => void) | undefined;
+  f.provider.readAccount = () =>
+    new Promise((resolve) => {
+      resolveAccount = resolve;
+    });
+  await f.service.refresh(f.revision);
+  await until(() => resolveAccount !== undefined);
+  await f.service.disconnect(f.revision);
+  resolveAccount!({ id: 'spectator', name: 'User', games: [] });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(600000);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(f.service.getState().online, false);
+  assert.equal(f.service.getState().connection, 'disconnected');
+  assert.equal(f.fairPlay.blocked, true);
+  assert.equal(
+    f.providerCalls.filter((call) => call === 'streamAccount').length,
+    1,
+  );
+});
+
 test('a failed first explicit connection fails closed after an analysable idle startup', async (t) => {
   const f = fixture(t);
   await f.service.initialize();

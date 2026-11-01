@@ -26,6 +26,8 @@ Not every Lichess game can be played through the Board API. If Plysmith reports 
 
 During your own ongoing online game, analysis assistance is disabled throughout Plysmith, even if you play the game in the browser. This also affects Maia and local engine games. Going offline or restarting Plysmith does not lift a restriction already detected; Plysmith must be able to confirm with Lichess that the game has ended.
 
+Analysis assistance also stays disabled when a connection loss leaves the game status unconfirmed. While **Online** is selected, Plysmith keeps trying to reconnect with increasing pauses. Once it successfully confirms that you have no ongoing game, analysis becomes available again.
+
 The clock counts down locally between time updates and is corrected by new updates. **Estimated time remaining** identifies this display. When disconnected, you see **Last reported time remaining**. A timeout is determined by the result confirmed by Lichess, not solely by a locally displayed zero.
 
 **Resign** ends the game after confirmation. **Offer draw**, **Accept draw** and **Decline draw** are available as appropriate for the game state. **Abort game** may be offered at the very beginning. You cannot browse backwards during your own ongoing game.
