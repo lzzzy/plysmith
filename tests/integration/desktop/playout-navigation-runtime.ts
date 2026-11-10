@@ -60,6 +60,7 @@ const root = createRoot(document.getElementById('root'));
 let locale = 'en-GB', generation = 0, calls = [];
 let state;
 const store = {
+  checkInventoryName: async () => undefined,
   getPlayoutCompletionForm: () => undefined,
   rememberPlayoutCompletionForm: () => {},
   canWorkWithInventoryItem: () => true,

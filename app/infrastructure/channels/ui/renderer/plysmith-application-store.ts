@@ -194,7 +194,6 @@ export type ApplicationCommand =
   | 'delete_analysis_note'
   | 'create_analysis_record'
   | 'start_inventory_revision'
-  | 'promote_analysis_to_inventory_revision'
   | 'remove_last_move'
   | 'prepare_inventory_metadata_revision'
   | 'save_inventory_revision'
@@ -482,8 +481,10 @@ export interface AnalysisRecordFormDraft {
   readonly folderId?: string | null | undefined;
   readonly destination: 'inventory' | 'context';
   readonly noteScope: 'global' | 'context';
-  readonly open: boolean;
 }
+
+export type AnalysisAcceptanceTarget = 'note' | 'inventory' | 'record';
+export type AnalysisAcceptanceMode = 'add_variation' | 'continuation';
 
 export interface PlayoutCompletionFormDraft {
   readonly title: string;
@@ -681,6 +682,13 @@ export class PlysmithApplicationStore {
   >();
   readonly #activeAnalysisNoteForms = new Map<string, string>();
   readonly #analysisRecordForms = new Map<string, AnalysisRecordFormDraft>();
+  readonly #analysisAcceptanceChoices = new Map<
+    string,
+    {
+      readonly target: AnalysisAcceptanceTarget;
+      readonly mode: AnalysisAcceptanceMode;
+    }
+  >();
   readonly #playoutCompletionForms = new Map<
     string,
     { readonly draftId: string; readonly form: PlayoutCompletionFormDraft }
@@ -3332,6 +3340,27 @@ export class PlysmithApplicationStore {
     if (scratch !== undefined) {
       if (scratch.cursor !== scratch.steps.length) return;
       if (scratch.steps.length > 0) {
+        const key = JSON.stringify([scopeKey(state.scope), scratch.scratchId]);
+        const recordForm = this.#analysisRecordForms.get(key);
+        const pathNote = this.getPathNoteFormDraft(scratch.scratchId);
+        const comment = this.getVariationCommentDraft(scratch.scratchId);
+        if (
+          scratch.steps.length === 1 &&
+          scratch.intent.kind === 'exploration' &&
+          scratch.origin.kind === 'inventory_anchor' &&
+          ((recordForm !== undefined &&
+            (recordForm.title.trim() !== '' ||
+              recordForm.noteBody.trim() !== '')) ||
+            (pathNote !== undefined &&
+              pathNote.body.trim() !== '' &&
+              pathNote.body !== pathNote.preparedBody) ||
+            (comment !== undefined && comment.body.trim() !== '') ||
+            scratch.noteDraft !== undefined)
+        ) {
+          this.#announcement = 'analysis.acceptance.lastMoveDrafts';
+          this.#publishViewState();
+          return;
+        }
         if (
           scratch.steps.length === 1 &&
           scratch.intent.kind === 'exploration' &&
@@ -3511,6 +3540,145 @@ export class PlysmithApplicationStore {
     return draft?.scratchId === scratchId ? draft : undefined;
   }
 
+  getAnalysisAcceptanceChoice(scope: WorkScope, scratchId: string) {
+    return this.#analysisAcceptanceChoices.get(
+      JSON.stringify([scopeKey(scope), scratchId]),
+    );
+  }
+
+  #clearAnalysisAcceptanceDrafts(scope: WorkScope, scratchId: string): void {
+    const key = JSON.stringify([scopeKey(scope), scratchId]);
+    this.#analysisAcceptanceChoices.delete(key);
+    this.#analysisRecordForms.delete(key);
+    if (this.#pathNoteFormDrafts.get(scopeKey(scope))?.scratchId === scratchId)
+      this.#pathNoteFormDrafts.delete(scopeKey(scope));
+    if (
+      this.#variationCommentDrafts.get(scopeKey(scope))?.scratchId === scratchId
+    )
+      this.#variationCommentDrafts.delete(scopeKey(scope));
+  }
+
+  async selectAnalysisAcceptance(
+    target: AnalysisAcceptanceTarget,
+    mode: AnalysisAcceptanceMode = 'add_variation',
+  ): Promise<void> {
+    const state = this.#readyAnalysisState();
+    const scratch = state?.analysis.scratch;
+    if (
+      state === undefined ||
+      scratch === undefined ||
+      this.#busyCommand !== undefined
+    )
+      return;
+    const record = state.analysis.record;
+    if (
+      (target === 'note' &&
+        (scratch.origin.kind !== 'inventory_anchor' || scratch.cursor === 0)) ||
+      (target === 'inventory' &&
+        (record?.itemType !== 'analysis' ||
+          scratch.origin.kind !== 'inventory_anchor' ||
+          record.historical ||
+          record.revisionId !== record.currentRevisionId ||
+          (state.scope.kind === 'context' && !record.contextMember) ||
+          state.contextWorkspace?.pendingRevisionImpacts.some(
+            (impact) => impact.itemId === record.itemId,
+          ) ||
+          scratch.origin.itemId !== record.itemId ||
+          scratch.origin.revisionId !== record.revisionId ||
+          scratch.cursor !== scratch.steps.length ||
+          scratch.steps.length === 0)) ||
+      (scratch.intent.kind === 'inventory_revision' &&
+        !state.analysis.allowedActions.includes('continue_exploration'))
+    )
+      return;
+    if (
+      scratch.noteDraft !== undefined &&
+      this.getAnalysisAcceptanceChoice(state.scope, scratch.scratchId)
+        ?.target !== 'record' &&
+      this.getPathNoteFormDraft(scratch.scratchId) === undefined
+    ) {
+      this.#pathNoteFormDrafts.set(scopeKey(state.scope), {
+        scratchId: scratch.scratchId,
+        preparedBody: '',
+        body: scratch.noteDraft.body,
+        noteScope: 'global',
+      });
+    }
+    const lifecycle = this.#lifecycle;
+    const outcome = await this.#runCommand(
+      'update_scratch',
+      async (client) => {
+        let current = scratch;
+        if (
+          current.noteDraft !== undefined ||
+          current.intent.kind === 'inventory_revision'
+        ) {
+          const updated = await client.updateAnalysisScratch({
+            scope: state.scope,
+            expectedScratchId: current.scratchId,
+            expectedScratchRevision: current.scratchRevision,
+            action: {
+              kind:
+                current.intent.kind === 'inventory_revision'
+                  ? 'continue_exploration'
+                  : 'clear_note',
+            },
+          });
+          if (updated.scratch === undefined)
+            throw new Error('The analysis scratch unexpectedly disappeared.');
+          current = updated.scratch;
+        }
+        if (lifecycle !== this.#lifecycle || client !== this.#client)
+          return undefined;
+        this.#analysisAcceptanceChoices.set(
+          JSON.stringify([scopeKey(state.scope), scratch.scratchId]),
+          { target, mode },
+        );
+        if (target !== 'inventory')
+          return { scratch: current, preview: undefined };
+        const promoted = await client.promoteAnalysisToInventoryRevision(
+          record!.itemId,
+          {
+            scope: state.scope,
+            baseRevisionId: record!.revisionId,
+            anchorId:
+              current.origin.kind === 'inventory_anchor'
+                ? current.origin.anchorId
+                : '',
+            expectedScratchId: current.scratchId,
+            expectedScratchRevision: current.scratchRevision,
+            ...(mode === 'add_variation'
+              ? { mode: 'add_variation' as const }
+              : {}),
+          },
+        );
+        if (lifecycle !== this.#lifecycle || client !== this.#client)
+          return undefined;
+        const preview = await client.previewInventoryRevision({
+          scope: state.scope,
+          expectedScratchId: promoted.scratch.scratchId,
+          expectedScratchRevision: promoted.scratch.scratchRevision,
+        });
+        return { scratch: promoted.scratch, preview };
+      },
+      false,
+    );
+    if (outcome === undefined) return;
+    this.#analysisAcceptanceChoices.set(
+      JSON.stringify([scopeKey(state.scope), scratch.scratchId]),
+      { target, mode },
+    );
+    this.#inventoryRevisionPreview =
+      outcome.preview === undefined
+        ? undefined
+        : bindInventoryRevisionPreview(
+            state.scope,
+            outcome.scratch,
+            outcome.preview,
+          );
+    await this.#refreshAndFinishCommand();
+  }
+
   getPlayoutCompletionForm(
     scope: WorkScope,
     draftId: string,
@@ -3546,59 +3714,6 @@ export class PlysmithApplicationStore {
     });
   }
 
-  async promoteAnalysisToInventoryRevision(
-    mode?: 'add_variation',
-  ): Promise<void> {
-    const state = this.#readyAnalysisState();
-    const scratch = state?.analysis.scratch;
-    const record = state?.analysis.record;
-    const origin = scratch?.origin;
-    if (
-      state === undefined ||
-      scratch === undefined ||
-      record === undefined ||
-      record.itemType !== 'analysis' ||
-      scratch.intent.kind !== 'exploration' ||
-      origin?.kind !== 'inventory_anchor' ||
-      origin.itemId !== record.itemId ||
-      origin.revisionId !== record.revisionId ||
-      scratch.cursor !== scratch.steps.length ||
-      scratch.steps.length === 0
-    ) {
-      return;
-    }
-    const outcome = await this.#runCommand(
-      'promote_analysis_to_inventory_revision',
-      async (client) => {
-        const result = await client.promoteAnalysisToInventoryRevision(
-          record.itemId,
-          {
-            scope: state.scope,
-            baseRevisionId: record.revisionId,
-            anchorId: origin.anchorId,
-            expectedScratchId: scratch.scratchId,
-            expectedScratchRevision: scratch.scratchRevision,
-            ...(mode === undefined ? {} : { mode }),
-          },
-        );
-        const preview = await client.previewInventoryRevision({
-          scope: state.scope,
-          expectedScratchId: result.scratch.scratchId,
-          expectedScratchRevision: result.scratch.scratchRevision,
-        });
-        return Object.freeze({ result, preview });
-      },
-      false,
-    );
-    if (outcome === undefined) return;
-    this.#inventoryRevisionPreview = bindInventoryRevisionPreview(
-      state.scope,
-      outcome.result.scratch,
-      outcome.preview,
-    );
-    await this.#refreshAndFinishCommand();
-  }
-
   async moveAnalysisCursor(cursor: number): Promise<void> {
     const state = this.#readyAnalysisState();
     const scratchRevision = state?.analysis.scratch?.scratchRevision;
@@ -3619,9 +3734,10 @@ export class PlysmithApplicationStore {
     );
   }
 
-  getPathNoteFormDraft(scratchId: string, preparedBody: string) {
+  getPathNoteFormDraft(scratchId: string, preparedBody?: string) {
     const draft = this.#pathNoteFormDrafts.get(scopeKey(this.#scope));
-    return draft?.scratchId === scratchId && draft.preparedBody === preparedBody
+    return draft?.scratchId === scratchId &&
+      (preparedBody === undefined || draft.preparedBody === preparedBody)
       ? draft
       : undefined;
   }
@@ -3630,13 +3746,13 @@ export class PlysmithApplicationStore {
     scratchId: string,
     body: string,
     noteScope: 'global' | 'context',
+    preparedBody?: string,
   ): void {
     const scratch = this.#readyAnalysisState()?.analysis.scratch;
-    if (scratch?.scratchId !== scratchId || scratch.noteDraft === undefined)
-      return;
+    if (scratch?.scratchId !== scratchId) return;
     this.#pathNoteFormDrafts.set(scopeKey(this.#scope), {
       scratchId,
-      preparedBody: scratch.noteDraft.body,
+      preparedBody: preparedBody ?? scratch.noteDraft?.body ?? '',
       body,
       noteScope,
     });
@@ -3707,6 +3823,7 @@ export class PlysmithApplicationStore {
       this.#finishCommand();
       return false;
     }
+    this.#clearAnalysisAcceptanceDrafts(state.scope, scratch.scratchId);
     if (
       state.scope.kind === 'free' &&
       scratch.origin.kind === 'inventory_anchor'
@@ -3785,7 +3902,7 @@ export class PlysmithApplicationStore {
       this.#finishCommand();
       return false;
     }
-    this.#variationCommentDrafts.delete(scopeKey(state.scope));
+    this.#clearAnalysisAcceptanceDrafts(state.scope, scratch.scratchId);
     this.#inventoryRevisionPreview = undefined;
     this.#analysisFocus = Object.freeze({
       itemId: result.saved.itemId,
@@ -3866,6 +3983,10 @@ export class PlysmithApplicationStore {
     )
       return false;
     const scratchRevision = scratch.scratchRevision;
+    this.#analysisAcceptanceChoices.set(
+      JSON.stringify([scopeKey(state.scope), scratch.scratchId]),
+      { target: 'record', mode: 'add_variation' },
+    );
     const lifecycle = this.#lifecycle;
     const targetContextId =
       destination === 'context' && state.scope.kind === 'context'
@@ -3926,6 +4047,7 @@ export class PlysmithApplicationStore {
       false,
     );
     if (result === undefined) return false;
+    this.#clearAnalysisAcceptanceDrafts(state.scope, scratch.scratchId);
     this.#analysisFocus = undefined;
     this.#announcement = includesNote
       ? 'analysis.savedWithNote'
@@ -3943,7 +4065,8 @@ export class PlysmithApplicationStore {
     if (
       state === undefined ||
       scratch?.origin.kind !== 'inventory_anchor' ||
-      scratch.noteDraft === undefined ||
+      scratch.intent.kind !== 'exploration' ||
+      scratch.cursor === 0 ||
       normalizedBody === ''
     ) {
       return false;
@@ -3984,6 +4107,7 @@ export class PlysmithApplicationStore {
       false,
     );
     if (result === undefined) return false;
+    this.#clearAnalysisAcceptanceDrafts(state.scope, scratch.scratchId);
     this.#analysisFocus = Object.freeze({
       itemId: result.itemId,
       revisionId: result.revisionId,
@@ -4344,6 +4468,7 @@ export class PlysmithApplicationStore {
     this.#analysisUnavailable.clear();
     this.#variationCommentDrafts.clear();
     this.#pathNoteFormDrafts.clear();
+    this.#analysisAcceptanceChoices.clear();
     this.#analysisNoteForms.clear();
     this.#activeAnalysisNoteForms.clear();
     this.#analysisRecordForms.clear();

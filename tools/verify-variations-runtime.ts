@@ -1,7 +1,14 @@
 // Opt-in after build: real isolated Host and Electron acceptance of native variations.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import {
+  access,
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import {
   _electron as electron,
@@ -35,14 +42,22 @@ const applicationHome = path.join(artifacts, 'home');
 const free = { kind: 'free' } as const;
 const draftsOnly = process.argv.includes('--drafts-only');
 const manualOnly = process.argv.includes('--manual-only');
+const manualAcceptanceOnly = process.argv.includes('--manual-acceptance-only');
+const pathOnly = process.argv.includes('--path-only');
 const noteNotationOnly = process.argv.includes('--note-notation-only');
+const navigationOnly = process.argv.includes('--navigation-only');
 const configurationRestartOnly = process.argv.includes(
   '--configuration-restart-only',
 );
 const draftCase = process.argv
   .find((value) => value.startsWith('--draft-case='))
   ?.slice(13);
-const draftCases = ['note-switches', 'record-form', 'remote-note'] as const;
+const draftCases = [
+  'note-switches',
+  'record-form',
+  'remote-note',
+  'note-defaults',
+] as const;
 assert.ok(
   draftCase === undefined ||
     (draftsOnly && draftCases.some((name) => name === draftCase)),
@@ -226,7 +241,29 @@ async function revealVariations(container: Page | Locator = page) {
   }
   throw new Error('Unexpected variation expansion loop.');
 }
+function revisionSaveLabel() {
+  return new RegExp(
+    '^(' +
+      [
+        'inventory.saveRevision',
+        'inventory.mode.add_variation',
+        'inventory.mode.extend',
+        'analysis.replaceMainLine',
+      ]
+        .map((id) => label(id))
+        .join('|') +
+      ')$',
+  );
+}
+async function chooseAcceptance(target: 'note' | 'inventory' | 'record') {
+  await page.locator('#analysis-acceptance-target').selectOption(target);
+  await expect(page.locator('#analysis-acceptance-target')).toHaveValue(target);
+}
 async function reviewPath() {
+  if (await page.locator('#analysis-acceptance-target').count()) {
+    await expect(page.locator('#analysis-acceptance-target')).toBeEnabled();
+    return;
+  }
   const review = page.getByRole('button', {
     name: label('draft.reviewChange'),
     exact: true,
@@ -234,28 +271,28 @@ async function reviewPath() {
   await expect
     .poll(
       async () =>
+        (await page.locator('#analysis-acceptance-target').isVisible()) ||
         (await review.isVisible()) ||
         (await page
           .getByRole('button', {
-            name: label('inventory.saveRevision'),
+            name: revisionSaveLabel(),
             exact: true,
           })
           .isVisible()),
     )
     .toBe(true);
+  if (await page.locator('#analysis-acceptance-target').isVisible()) {
+    await expect(page.locator('#analysis-acceptance-target')).toBeEnabled();
+    return;
+  }
   if (await review.isVisible()) await review.click();
 }
 async function saveAsVariation() {
   await reviewPath();
-  await page
-    .getByRole('button', {
-      name: label('inventory.mode.add_variation'),
-      exact: true,
-    })
-    .click();
+  await chooseAcceptance('inventory');
   await expect(
     page.getByRole('button', {
-      name: label('inventory.saveRevision'),
+      name: revisionSaveLabel(),
       exact: true,
     }),
   ).toBeVisible();
@@ -268,7 +305,7 @@ async function awaitSaved(revision: number) {
   await expect(page.locator('[data-tree-draft]')).toHaveCount(0);
   await expect(
     page.getByRole('button', {
-      name: label('inventory.saveRevision'),
+      name: revisionSaveLabel(),
       exact: true,
     }),
   ).toHaveCount(0);
@@ -385,13 +422,17 @@ async function verifyNoteNotation() {
             })
             .click();
         await reviewPath();
-        await page
-          .getByRole('button', {
-            name: label('analysis.prepareNote'),
-            exact: true,
-          })
-          .click();
+        await chooseAcceptance('note');
         const field = page.getByLabel(label('analysis.pathNoteComment'));
+        if (contextId)
+          await page
+            .getByRole('radiogroup', {
+              name: label('analysis.noteVisibility'),
+              exact: true,
+            })
+            .getByRole('radio')
+            .first()
+            .press('Space');
         await expect(field).toHaveValue(expected);
         if (contextId) {
           await page
@@ -423,7 +464,7 @@ async function verifyNoteNotation() {
             (await readScoped()).contributions.some(
               (note) =>
                 note.body === expected &&
-                note.anchorId === record.rootAnchorId &&
+                note.anchorId === record.steps[0]!.anchorId &&
                 note.moves.length === 0,
             ),
           )
@@ -547,7 +588,144 @@ async function verifyFormDrafts() {
             .getByRole('button', { name: label('activity.' + id), exact: true })
             .click();
         };
-        if (name === 'note-switches') {
+        if (name === 'note-defaults') {
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('context:' + context.contextId);
+          const visibility = () =>
+            page.getByRole('radiogroup', {
+              name: label('analysis.noteVisibility'),
+              exact: true,
+            });
+          const global = () => visibility().getByRole('radio').last();
+          const privateNote = () => visibility().getByRole('radio').first();
+          await page
+            .getByRole('button', {
+              name: label('analysis.addNoteAtPathStart'),
+              exact: true,
+            })
+            .click();
+          await expect(global()).toBeChecked();
+          await expect(global()).toHaveAccessibleName(
+            label('analysis.generalNote'),
+          );
+          await page
+            .locator('form textarea')
+            .fill('Explicitly private root thought');
+          await privateNote().press('Space');
+          await activity('manage');
+          await activity('analyze');
+          await expect(privateNote()).toBeChecked();
+          await page
+            .getByRole('button', {
+              name: label('analysis.saveNoteEdit'),
+              exact: true,
+            })
+            .click();
+          await expect
+            .poll(async () =>
+              (
+                await client.getInventoryRevision(
+                  record.itemId,
+                  record.revisionId,
+                  { scopeKind: 'context', contextId: context.contextId },
+                )
+              ).contributions.some(
+                (note) => note.body === 'Explicitly private root thought',
+              ),
+            )
+            .toBe(true);
+          assert.equal(
+            (await read()).contributions.some(
+              (note) => note.body === 'Explicitly private root thought',
+            ),
+            false,
+          );
+          await page
+            .getByRole('button', {
+              name: label('analysis.addNoteAtPathStart'),
+              exact: true,
+            })
+            .click();
+          await expect(global()).toBeChecked();
+          await page
+            .locator('form textarea')
+            .fill('Inventory thought by default');
+          await page
+            .getByRole('button', {
+              name: label('analysis.saveNoteEdit'),
+              exact: true,
+            })
+            .click();
+          await expect
+            .poll(async () =>
+              (await read()).contributions.some(
+                (note) => note.body === 'Inventory thought by default',
+              ),
+            )
+            .toBe(true);
+          await move('e2', 'e4');
+          await reviewPath();
+          await chooseAcceptance('note');
+          await expect(global()).toBeChecked();
+          await privateNote().press('Space');
+          await page
+            .locator('#analysis-path-note')
+            .fill('Keep my private path choice');
+          await chooseAcceptance('record');
+          await page
+            .locator('#analysis-record-note')
+            .fill('Own analysis thought');
+          await expect(global()).toBeChecked();
+          await privateNote().press('Space');
+          await chooseAcceptance('inventory');
+          await page.getByLabel(label('analysis.variationComment')).check();
+          await expect(global()).toBeChecked();
+          await privateNote().press('Space');
+          await chooseAcceptance('note');
+          await expect(privateNote()).toBeChecked();
+          await expect(page.locator('#analysis-path-note')).toHaveValue(
+            'Keep my private path choice',
+          );
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('free');
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('context:' + context.contextId);
+          await expect(privateNote()).toBeChecked();
+          await chooseAcceptance('record');
+          await expect(privateNote()).toBeChecked();
+          await chooseAcceptance('inventory');
+          await expect(privateNote()).toBeChecked();
+          await page
+            .getByLabel(label('analysis.acceptance.otherDrafts'))
+            .check();
+          await page
+            .getByRole('button', {
+              name: label('analysis.discard'),
+              exact: true,
+            })
+            .click();
+          await move('d2', 'd4');
+          await reviewPath();
+          await chooseAcceptance('note');
+          await expect(global()).toBeChecked();
+          await page
+            .getByRole('button', {
+              name: label('analysis.saveNoteEdit'),
+              exact: true,
+            })
+            .click();
+          await expect
+            .poll(async () =>
+              (await read()).contributions.some(
+                (note) => note.body === '1. d4',
+              ),
+            )
+            .toBe(true);
+          await shot('global-note-defaults');
+        } else if (name === 'note-switches') {
           await editNote('First note');
           await edit().fill('Unsaved first note');
           await editNote('Second note');
@@ -576,12 +754,7 @@ async function verifyFormDrafts() {
         } else if (name === 'record-form') {
           await move('e2', 'e4');
           await reviewPath();
-          await page
-            .getByRole('button', {
-              name: label('analysis.saveAsRecord'),
-              exact: true,
-            })
-            .click();
+          await chooseAcceptance('record');
           await page.locator('#analysis-title').fill('Free draft title');
           await page.locator('#analysis-record-note').fill('Free draft note');
           await page
@@ -589,12 +762,7 @@ async function verifyFormDrafts() {
             .selectOption('context:' + context.contextId);
           await move('d2', 'd4');
           await reviewPath();
-          await page
-            .getByRole('button', {
-              name: label('analysis.saveAsRecord'),
-              exact: true,
-            })
-            .click();
+          await chooseAcceptance('record');
           await expect(page.locator('#analysis-title')).toHaveValue('');
           await expect(page.locator('#analysis-record-note')).toHaveValue('');
           await page.locator('#analysis-title').fill('Context draft title');
@@ -626,6 +794,98 @@ async function verifyFormDrafts() {
           );
           await expect(page.locator('#analysis-record-note')).toHaveValue(
             'Context draft note',
+          );
+          await expect(
+            page
+              .getByRole('radiogroup', {
+                name: label('analysis.noteVisibility'),
+                exact: true,
+              })
+              .getByRole('radio')
+              .last(),
+          ).toBeChecked();
+          await page
+            .getByRole('radiogroup', {
+              name: label('analysis.noteVisibility'),
+              exact: true,
+            })
+            .getByRole('radio')
+            .first()
+            .press('Space');
+          await page
+            .getByRole('radio', {
+              name: label('analysis.inventoryOnly'),
+              exact: true,
+            })
+            .press('Space');
+          const saveOwn = page.getByRole('button', {
+            name: label('analysis.saveAsAnalysis'),
+            exact: true,
+          });
+          await expect(saveOwn).toBeDisabled();
+          await expect(
+            page.getByText(label('analysis.acceptance.privateRecordNote'), {
+              exact: true,
+            }),
+          ).toBeVisible();
+          const visibility = page.getByRole('radiogroup', {
+            name: label('analysis.noteVisibility'),
+            exact: true,
+          });
+          await visibility
+            .getByRole('radio', {
+              name: label('analysis.generalNote'),
+              exact: true,
+            })
+            .press('Space');
+          await expect(saveOwn).toBeEnabled();
+          await page
+            .getByRole('radiogroup', {
+              name: label('analysis.destination'),
+              exact: true,
+            })
+            .getByRole('radio')
+            .first()
+            .press('Space');
+          await visibility.getByRole('radio').first().press('Space');
+          await saveOwn.click();
+          await expect(
+            page.getByRole('heading', {
+              name: 'Context draft title',
+              exact: true,
+            }),
+          ).toBeVisible();
+          const ownItem = (await client.searchInventory({})).items.find(
+            (item) => item.displayName === 'Context draft title',
+          )!;
+          const publicOwn = await client.getInventoryRevision(
+            ownItem.itemId,
+            ownItem.currentRevisionId,
+            { scopeKind: 'free' },
+          );
+          const privateOwn = await client.getInventoryRevision(
+            ownItem.itemId,
+            ownItem.currentRevisionId,
+            { scopeKind: 'context', contextId: context.contextId },
+          );
+          assert.equal(
+            publicOwn.contributions.some(
+              (note) => note.body === 'Context draft note',
+            ),
+            false,
+          );
+          assert.equal(
+            privateOwn.contributions.some(
+              (note) => note.body === 'Context draft note',
+            ),
+            true,
+          );
+          assert.equal(privateOwn.contextMember, true);
+          await page
+            .getByLabel(label('scope.label'), { exact: true })
+            .selectOption('free');
+          await expect(page.locator('#analysis-title')).toHaveValue(
+            'Free draft title',
           );
         } else {
           await editNote('First note');
@@ -706,6 +966,11 @@ async function verifyVariations() {
     await verifyConfigurationRestart();
     return;
   }
+  if (manualAcceptanceOnly) {
+    await launch();
+    await verifyManualAcceptance();
+    return;
+  }
   if (manualOnly) {
     await launch();
     await verifyManualCorrections();
@@ -748,103 +1013,195 @@ async function verifyVariations() {
   });
   await launch();
   await open();
-  await step(
-    'panel drag, keyboard, cancellation, limits and area persistence',
-    async () => {
-      const divider = page.getByRole('separator');
-      await expect(divider).toHaveAttribute('aria-valuenow', '55');
-      const box = (await divider.boundingBox())!;
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
-      await page.mouse.move(box.x + box.width / 2, box.y - 100, { steps: 8 });
-      await page.mouse.up();
-      const dragged = Number(await divider.getAttribute('aria-valuenow'));
-      assert.ok(dragged < 55);
-      await divider.press('ArrowDown');
-      assert.ok(Number(await divider.getAttribute('aria-valuenow')) > dragged);
-      await divider.press('Home');
-      assert.equal(
-        await divider.getAttribute('aria-valuenow'),
-        await divider.getAttribute('aria-valuemin'),
-      );
-      await divider.press('End');
-      assert.equal(
-        await divider.getAttribute('aria-valuenow'),
-        await divider.getAttribute('aria-valuemax'),
-      );
-      const engine = page.locator(
-        'section[aria-labelledby="engine-analysis-title"]',
-      );
-      const groups = engine.getByRole('list');
-      await expect(groups.getByRole('listitem').first()).toBeVisible();
-      // Stress a wrapped provider toolbar without requiring Maia weights in this test home.
-      const controls = engine.locator('select').first().locator('..');
-      await controls.evaluate((element) => (element.style.minHeight = '240px'));
-      assert.ok((await groups.boundingBox())!.height >= 79);
-      await controls.evaluate((element) => (element.style.minHeight = ''));
-      await divider.press('ArrowUp');
-      const remembered = await divider.getAttribute('aria-valuenow');
-      const after = (await divider.boundingBox())!;
-      await page.mouse.move(
-        after.x + after.width / 2,
-        after.y + after.height / 2,
-      );
-      await page.mouse.down();
-      await page.mouse.move(after.x + after.width / 2, after.y - 80, {
-        steps: 5,
-      });
-      await page.keyboard.press('Escape');
-      await page.mouse.up();
-      await expect(divider).toHaveAttribute('aria-valuenow', remembered!);
-      await page
-        .getByRole('navigation', { name: 'Plysmith' })
-        .getByRole('button', { name: label('activity.manage'), exact: true })
-        .click();
-      await expect
-        .poll(async () => (await client.getStartupResume()).area)
-        .toBe('manage');
-      await page
-        .getByRole('navigation', { name: 'Plysmith' })
-        .getByRole('button', { name: label('activity.analyze'), exact: true })
-        .click();
-      await expect(page.getByRole('separator')).toHaveAttribute(
-        'aria-valuenow',
-        remembered!,
-      );
-      await expect
-        .poll(async () => (await client.getStartupResume()).area)
-        .toBe('analyze');
-      await page
-        .getByRole('combobox', {
-          name: label('positionAnalysis.budget'),
-          exact: true,
-        })
-        .selectOption('thorough');
-      await closeDesktop();
-      await launch();
-      await expect(
-        page.getByRole('combobox', {
-          name: label('positionAnalysis.budget'),
-          exact: true,
-        }),
-      ).toHaveValue('thorough');
-      await expect(page.getByRole('separator')).toHaveAttribute(
-        'aria-valuenow',
-        remembered!,
-      );
-      await page.setViewportSize({ width: 390, height: 844 });
-      await expect(page.getByRole('separator')).toHaveCount(0);
-      await page.setViewportSize({ width: 1600, height: 1000 });
-      await page.screenshot();
-      await expect(page.getByRole('separator')).toHaveAttribute(
-        'aria-valuenow',
-        remembered!,
-      );
-      await shot('resized-panels-with-stockfish');
-      // Exercise the existing save workflows at the smallest move-pane size.
-      await page.getByRole('separator').press('Home');
-    },
-  );
+  if (navigationOnly) {
+    await step(
+      'arrows reveal the selected collapsed branch, scroll to its blue move and restore it after restart',
+      async () => {
+        const started = await client.startInventoryRevision(record.itemId, {
+          scope: free,
+          baseRevisionId: record.revisionId,
+          anchorId: record.steps[0]!.anchorId,
+          mode: 'add_variation',
+          expectedScratchId: null,
+          expectedScratchRevision: null,
+          firstMove: { kind: 'notation', value: 'c5', locale: 'en-GB' },
+        });
+        const request = {
+          scope: free,
+          expectedScratchId: started.scratch.scratchId,
+          expectedScratchRevision: started.scratch.scratchRevision,
+        };
+        const preview = await client.previewInventoryRevision(request);
+        const saved = await client.saveInventoryRevision({
+          ...request,
+          previewFingerprint: preview.previewFingerprint,
+        });
+        record = await client.getInventoryRevision(
+          record.itemId,
+          saved.revisionId,
+          { scopeKind: 'free' },
+        );
+        await open();
+        const branch = record.tree!.nodes.find(
+          (node) => node.move.san === 'c5',
+        )!;
+        const branchMove = page.locator(
+          `[data-tree-anchor="${branch.anchorId}"]`,
+        );
+        const toggle = page.locator(
+          `[data-tree-line="${branch.anchorId}"] > div button[aria-expanded]`,
+        );
+        if ((await toggle.getAttribute('aria-expanded')) === 'false')
+          await toggle.click();
+        await branchMove.click();
+        await expect(branchMove).toHaveAttribute('aria-current', 'step');
+        await expect(branchMove).toHaveCSS(
+          'background-color',
+          'rgb(234, 242, 252)',
+        );
+        await toggle.click();
+        await expect(branchMove).toHaveCount(0);
+        await page
+          .getByRole('button', {
+            name: label('analysis.previousMove'),
+            exact: true,
+          })
+          .click();
+        await expect(
+          page.locator(`[data-tree-anchor="${record.steps[0]!.anchorId}"]`),
+        ).toHaveAttribute('aria-current', 'step');
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await page
+          .getByRole('button', {
+            name: label('analysis.nextMove'),
+            exact: true,
+          })
+          .click();
+        await expect(branchMove).toHaveAttribute('aria-current', 'step');
+        await expect(branchMove).toHaveCSS(
+          'background-color',
+          'rgb(234, 242, 252)',
+        );
+        await expect(branchMove).toBeInViewport();
+        await toggle.click();
+        await closeDesktop();
+        await launch();
+        const restoredMove = page.locator(
+          `[data-tree-anchor="${branch.anchorId}"]`,
+        );
+        await expect(restoredMove).toHaveAttribute('aria-current', 'step');
+        await expect(restoredMove).toHaveCSS(
+          'background-color',
+          'rgb(234, 242, 252)',
+        );
+        await expect(restoredMove).toBeInViewport();
+        await shot('navigation-reveals-current-variation');
+      },
+    );
+    return;
+  }
+  if (!pathOnly)
+    await step(
+      'panel drag, keyboard, cancellation, limits and area persistence',
+      async () => {
+        const divider = page.getByRole('separator');
+        await expect(divider).toHaveAttribute('aria-valuenow', '55');
+        const box = (await divider.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2, box.y - 100, { steps: 8 });
+        await page.mouse.up();
+        const dragged = Number(await divider.getAttribute('aria-valuenow'));
+        assert.ok(dragged < 55);
+        await divider.press('ArrowDown');
+        assert.ok(
+          Number(await divider.getAttribute('aria-valuenow')) > dragged,
+        );
+        await divider.press('Home');
+        assert.equal(
+          await divider.getAttribute('aria-valuenow'),
+          await divider.getAttribute('aria-valuemin'),
+        );
+        await divider.press('End');
+        assert.equal(
+          await divider.getAttribute('aria-valuenow'),
+          await divider.getAttribute('aria-valuemax'),
+        );
+        const engine = page.locator(
+          'section[aria-labelledby="engine-analysis-title"]',
+        );
+        const groups = engine.getByRole('list');
+        await expect(groups.getByRole('listitem').first()).toBeVisible();
+        // Stress a wrapped provider toolbar without requiring Maia weights in this test home.
+        const controls = engine.locator('select').first().locator('..');
+        await controls.evaluate(
+          (element) => (element.style.minHeight = '240px'),
+        );
+        assert.ok((await groups.boundingBox())!.height >= 79);
+        await controls.evaluate((element) => (element.style.minHeight = ''));
+        await divider.press('ArrowUp');
+        const remembered = await divider.getAttribute('aria-valuenow');
+        const after = (await divider.boundingBox())!;
+        await page.mouse.move(
+          after.x + after.width / 2,
+          after.y + after.height / 2,
+        );
+        await page.mouse.down();
+        await page.mouse.move(after.x + after.width / 2, after.y - 80, {
+          steps: 5,
+        });
+        await page.keyboard.press('Escape');
+        await page.mouse.up();
+        await expect(divider).toHaveAttribute('aria-valuenow', remembered!);
+        await page
+          .getByRole('navigation', { name: 'Plysmith' })
+          .getByRole('button', { name: label('activity.manage'), exact: true })
+          .click();
+        await expect
+          .poll(async () => (await client.getStartupResume()).area)
+          .toBe('manage');
+        await page
+          .getByRole('navigation', { name: 'Plysmith' })
+          .getByRole('button', { name: label('activity.analyze'), exact: true })
+          .click();
+        await expect(page.getByRole('separator')).toHaveAttribute(
+          'aria-valuenow',
+          remembered!,
+        );
+        await expect
+          .poll(async () => (await client.getStartupResume()).area)
+          .toBe('analyze');
+        await page
+          .getByRole('combobox', {
+            name: label('positionAnalysis.budget'),
+            exact: true,
+          })
+          .selectOption('thorough');
+        await closeDesktop();
+        await launch();
+        await expect(
+          page.getByRole('combobox', {
+            name: label('positionAnalysis.budget'),
+            exact: true,
+          }),
+        ).toHaveValue('thorough');
+        await expect(page.getByRole('separator')).toHaveAttribute(
+          'aria-valuenow',
+          remembered!,
+        );
+        await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.getByRole('separator')).toHaveCount(0);
+        await page.setViewportSize({ width: 1600, height: 1000 });
+        await page.screenshot();
+        await expect(page.getByRole('separator')).toHaveAttribute(
+          'aria-valuenow',
+          remembered!,
+        );
+        await shot('resized-panels-with-stockfish');
+        // Exercise the existing save workflows at the smallest move-pane size.
+        await page.getByRole('separator').press('Home');
+      },
+    );
   const e4 = record.steps[0]!.anchorId;
   await step(
     'scratch middle is readonly and its actual end remains playable',
@@ -914,12 +1271,61 @@ async function verifyVariations() {
       await page.locator(`[data-tree-anchor="${e4}"]`).click();
       await move('c7', 'c5');
       await reviewPath();
+      await chooseAcceptance('record');
+      await page.locator('#analysis-title').fill(record.displayName);
+      await page
+        .locator('#analysis-record-note')
+        .fill('Comment survives a name conflict');
       await page
         .getByRole('button', {
-          name: label('inventory.mode.add_variation'),
+          name: label('analysis.saveAsAnalysis'),
           exact: true,
         })
         .click();
+      await expect(page.locator('#analysis-acceptance-target')).toHaveValue(
+        'record',
+      );
+      await expect(page.locator('#analysis-title')).toBeEnabled();
+      await expect(page.locator('#analysis-title')).toHaveValue(
+        record.displayName,
+      );
+      await expect(page.locator('#analysis-record-note')).toHaveValue(
+        'Comment survives a name conflict',
+      );
+      await page.locator('#analysis-title').fill('Retained separate title');
+      await page
+        .locator('#analysis-record-note')
+        .fill('Retained separate note');
+      await chooseAcceptance('note');
+      await page
+        .locator('#analysis-path-note')
+        .fill('Retained alternative note');
+      await page.locator('#analysis-acceptance-target').press('Backspace');
+      assert.equal(
+        (await client.getAnalysisWorkspace({ scopeKind: 'free' })).scratch!
+          .steps.length,
+        1,
+      );
+      await chooseAcceptance('inventory');
+      await chooseAcceptance('note');
+      await expect(page.locator('#analysis-path-note')).toHaveValue(
+        'Retained alternative note',
+      );
+      await chooseAcceptance('record');
+      await expect(page.locator('#analysis-title')).toHaveValue(
+        'Retained separate title',
+      );
+      await expect(page.locator('#analysis-record-note')).toHaveValue(
+        'Retained separate note',
+      );
+      await chooseAcceptance('inventory');
+      await expect(
+        page.getByRole('button', {
+          name: label('inventory.mode.add_variation'),
+          exact: true,
+        }),
+      ).toBeDisabled();
+      await page.getByLabel(label('analysis.acceptance.otherDrafts')).check();
       await reviewPath();
       await page.getByLabel(label('analysis.variationComment')).check();
       await expect(
@@ -933,9 +1339,10 @@ async function verifyVariations() {
       await page
         .getByLabel(label('analysis.pathNoteComment'))
         .fill('1... c5\nSicilian counterplay');
+      await page.getByLabel(label('analysis.acceptance.otherDrafts')).check();
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -956,6 +1363,12 @@ async function verifyVariations() {
     },
   );
   const c5 = record.tree!.nodes.find((node) => node.move.san === 'c5')!;
+  await expect(
+    page.locator(`[data-tree-anchor="${c5.anchorId}"]`),
+  ).toHaveAttribute('aria-current', 'step');
+  await page
+    .locator(`[data-tree-line="${c5.anchorId}"] > div button[aria-expanded]`)
+    .click();
   await expect(page.locator(`[data-tree-anchor="${c5.anchorId}"]`)).toHaveCount(
     0,
   );
@@ -998,12 +1411,7 @@ async function verifyVariations() {
       ).toHaveCount(0);
       await move('g1', 'f3');
       await reviewPath();
-      await page
-        .getByRole('button', {
-          name: label('analysis.prepareNote'),
-          exact: true,
-        })
-        .click();
+      await chooseAcceptance('note');
       const field = page.getByLabel(label('analysis.pathNoteComment'));
       await expect(field).toBeVisible();
       await expect(
@@ -1080,12 +1488,7 @@ async function verifyVariations() {
     await page.locator(`[data-tree-anchor="${c5.anchorId}"]`).click();
     await move('g1', 'f3');
     await reviewPath();
-    await page
-      .getByRole('button', {
-        name: label('analysis.saveAsRecord'),
-        exact: true,
-      })
-      .click();
+    await chooseAcceptance('record');
     await expect(
       page
         .locator('[data-tree-draft] [data-analysis-path-actions]')
@@ -1212,6 +1615,13 @@ async function verifyVariations() {
       await page.getByLabel(label('analysis.variationComment')).check();
       const comment = '1... c6\nContext-specific plan';
       await page.getByLabel(label('analysis.pathNoteComment')).fill(comment);
+      await expect(
+        page.getByRole('radio', {
+          name: label('analysis.generalNote'),
+          exact: true,
+        }),
+      ).toBeChecked();
+      await page.getByRole('radio', { name: /Only in/ }).press('Space');
       await expect(page.getByRole('radio', { name: /Only in/ })).toBeChecked();
       await page
         .getByRole('navigation', { name: 'Plysmith' })
@@ -1231,7 +1641,7 @@ async function verifyVariations() {
       await shot('variation-context-comment');
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1322,6 +1732,8 @@ async function verifyVariations() {
         })
         .click();
       const draft = page.locator('article[data-note-draft-scope]');
+      await expect(draft).toHaveAttribute('data-note-draft-scope', 'global');
+      await draft.getByRole('radio', { name: /Only in/ }).press('Space');
       await expect(draft).toHaveAttribute('data-note-draft-scope', 'context');
       await draft
         .getByText(label('analysis.generalNote'), { exact: true })
@@ -1374,7 +1786,7 @@ async function verifyVariations() {
       await saveAsVariation();
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1407,7 +1819,7 @@ async function verifyVariations() {
       await saveAsVariation();
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1535,6 +1947,13 @@ async function verifyVariations() {
       await page
         .getByRole('textbox', { name: label('analysis.newNote'), exact: true })
         .fill('Do not lose this context-specific variation note.');
+      await expect(
+        page.getByRole('radio', {
+          name: label('analysis.generalNote'),
+          exact: true,
+        }),
+      ).toBeChecked();
+      await page.getByRole('radio', { name: /Only in/ }).press('Space');
       await page
         .getByRole('button', {
           name: label('analysis.saveNoteEdit'),
@@ -1567,7 +1986,7 @@ async function verifyVariations() {
       await shot('variation-takeback-with-note-protection');
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1634,7 +2053,7 @@ async function verifyVariations() {
       ).toHaveCount(1);
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1645,6 +2064,14 @@ async function verifyVariations() {
         record.steps.map((entry) => entry.move.san),
         ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5'],
       );
+      await expect(
+        page.locator(`[data-tree-anchor="${c5.anchorId}"]`),
+      ).toHaveAttribute('aria-current', 'step');
+      await page
+        .locator(
+          `[data-tree-line="${c5.anchorId}"] > div button[aria-expanded]`,
+        )
+        .click();
       await expect(
         page.locator(`[data-tree-anchor="${c5.anchorId}"]`),
       ).toHaveCount(0);
@@ -1662,7 +2089,7 @@ async function verifyVariations() {
       await reviewPath();
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1748,7 +2175,7 @@ async function verifyVariations() {
           .fill(name);
         await page
           .getByRole('button', {
-            name: label('inventory.saveRevision'),
+            name: revisionSaveLabel(),
             exact: true,
           })
           .click();
@@ -1777,7 +2204,7 @@ async function verifyVariations() {
       await shot('metadata-rename-real-draft-loss');
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();
@@ -1863,7 +2290,7 @@ async function verifyVariations() {
       await expect(summary).toHaveValue('Preserved local summary');
       await shot('metadata-local-input-after-remote-refresh');
       const save = page.getByRole('button', {
-        name: label('inventory.saveRevision'),
+        name: revisionSaveLabel(),
         exact: true,
       });
       await expect(save).toBeEnabled();
@@ -1992,6 +2419,348 @@ async function verifyVariations() {
   );
   await verifyManualCorrections();
 }
+async function verifyManualAcceptance() {
+  await step(
+    'manual PGN uses the unified destinations without changing its six sources',
+    async () => {
+      const input = await client.registerImportInput({
+        inputLocator: path.join(repo, 'docs/manual/manual.pgn'),
+      });
+      const preview = await client.prepareImport({
+        inputHandle: input.inputHandle,
+        languageTag: locale,
+      });
+      const titles = [
+        'Grundstellung',
+        'Italienische Eröffnung',
+        'Lehrpartie mit Matt',
+        'Opposition',
+        'Eröffnungsskizze',
+        'Entwicklungsskizze',
+      ];
+      assert.equal(preview.candidates.length, titles.length);
+      await client.publishImport({
+        previewId: preview.previewId,
+        candidates: preview.candidates.map((candidate, index) => ({
+          sourceOrder: candidate.sourceOrder,
+          displayName: 'Manual - ' + titles[index],
+          itemType: index === 2 ? 'game' : 'analysis',
+        })),
+        folder: { kind: 'new', displayName: 'Manual' },
+        confirmWarnings: true,
+      });
+      const items = (await client.searchInventory({})).items;
+      const originals = await Promise.all(
+        items.map((item) =>
+          client.getInventoryRevision(item.itemId, item.currentRevisionId, {
+            scopeKind: 'free',
+          }),
+        ),
+      );
+      async function select(title: string) {
+        const item = items.find(
+          (item) => item.displayName === 'Manual - ' + title,
+        )!;
+        record = await client.getInventoryRevision(
+          item.itemId,
+          item.currentRevisionId,
+          { scopeKind: 'free' },
+        );
+        await open();
+      }
+      async function manualShot(name: string) {
+        await page.getByRole('separator').press('End');
+        await page
+          .locator(
+            name === 'analysis-path'
+              ? '[data-tree-draft]'
+              : '[data-analysis-path-actions]',
+          )
+          .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+        await page.locator('#analysis-acceptance-target').focus();
+        await expect(
+          page.locator('#analysis-acceptance-target'),
+        ).toBeInViewport();
+        if (name !== 'analysis-path')
+          await expect(
+            page.locator('[data-analysis-path-actions]').getByRole('button', {
+              name:
+                name === 'game-save-options'
+                  ? label('analysis.saveNoteEdit')
+                  : revisionSaveLabel(),
+              exact: true,
+            }),
+          ).toBeInViewport();
+        await shot(name);
+        if (process.argv.includes('--update-manual-screenshots'))
+          await copyFile(
+            path.join(artifacts, name + '.png'),
+            path.join(repo, 'docs/manual/screenshots', name + '.png'),
+          );
+      }
+      const window = await app!.browserWindow(page);
+      await window.evaluate((window) => window.setContentSize(1600, 1100));
+      await page.setViewportSize({ width: 1600, height: 1100 });
+      await select('Lehrpartie mit Matt');
+      await page
+        .getByRole('button', { name: label('analysis.path'), exact: true })
+        .click();
+      await move('d2', 'd4');
+      await reviewPath();
+      await chooseAcceptance('note');
+      await expect(
+        page.locator('#analysis-acceptance-target option[value="inventory"]'),
+      ).toBeDisabled();
+      await manualShot('game-save-options');
+      await page
+        .getByRole('button', { name: label('analysis.discard'), exact: true })
+        .click();
+      await select('Italienische Eröffnung');
+      await page
+        .getByRole('button', { name: label('analysis.path'), exact: true })
+        .click();
+      await move('d2', 'd4');
+      await reviewPath();
+      await manualShot('analysis-path');
+      await chooseAcceptance('inventory');
+      await page
+        .locator('#analysis-acceptance-mode')
+        .selectOption('continuation');
+      await manualShot('analysis-save-options');
+      await page
+        .getByRole('button', { name: label('analysis.discard'), exact: true })
+        .click();
+      await page
+        .locator(`[data-tree-anchor="${record.steps[4]!.anchorId}"]`)
+        .click();
+      await move('d7', 'd6');
+      await reviewPath();
+      await chooseAcceptance('record');
+      await page.locator('#analysis-title').fill('Manual - Italienisch mit d6');
+      await page
+        .getByRole('button', {
+          name: label('analysis.saveAsAnalysis'),
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole('heading', {
+          name: 'Manual - Italienisch mit d6',
+          exact: true,
+        }),
+      ).toBeVisible();
+      const ownItem = (await client.searchInventory({})).items.find(
+        (item) => item.displayName === 'Manual - Italienisch mit d6',
+      )!;
+      record = await client.getInventoryRevision(
+        ownItem.itemId,
+        ownItem.currentRevisionId,
+        { scopeKind: 'free' },
+      );
+      await move('d2', 'd3');
+      await reviewPath();
+      await chooseAcceptance('inventory');
+      await page
+        .locator('#analysis-acceptance-mode')
+        .selectOption('continuation');
+      await page
+        .getByRole('button', {
+          name: label('inventory.mode.extend'),
+          exact: true,
+        })
+        .click();
+      await expect.poll(async () => (await read()).steps.length).toBe(2);
+      record = await read();
+      await move('g8', 'f6');
+      await reviewPath();
+      await chooseAcceptance('inventory');
+      await page
+        .locator('#analysis-acceptance-mode')
+        .selectOption('continuation');
+      await manualShot('analysis-mainline-review');
+      await page
+        .getByRole('button', { name: label('analysis.discard'), exact: true })
+        .click();
+      for (const source of originals)
+        assert.deepEqual(
+          await client.getInventoryRevision(source.itemId, source.revisionId, {
+            scopeKind: 'free',
+          }),
+          source,
+        );
+      assert.equal((await client.searchInventory({})).items.length, 7);
+      await select('Grundstellung');
+      await move('e2', 'e4');
+      await reviewPath();
+      await chooseAcceptance('record');
+      await page.locator('#analysis-title').fill('Explicit root-only save');
+      await page
+        .locator('#analysis-record-note')
+        .fill('Do not silently omit this text');
+      await page
+        .getByRole('button', {
+          name: label('analysis.previousMove'),
+          exact: true,
+        })
+        .click();
+      await expect(page.locator('#analysis-record-note')).toHaveValue(
+        'Do not silently omit this text',
+      );
+      await expect(
+        page.getByRole('button', {
+          name: label('analysis.saveAsAnalysis'),
+          exact: true,
+        }),
+      ).toBeDisabled();
+      await expect(
+        page.getByText(label('analysis.acceptance.rootNoteOmitted'), {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.getByLabel(label('analysis.acceptance.otherDrafts')).check();
+      await page
+        .getByRole('button', {
+          name: label('analysis.saveAsAnalysis'),
+          exact: true,
+        })
+        .click();
+      await expect(
+        page.getByRole('heading', {
+          name: 'Explicit root-only save',
+          exact: true,
+        }),
+      ).toBeVisible();
+      const rootItem = (await client.searchInventory({})).items.find(
+        (item) => item.displayName === 'Explicit root-only save',
+      )!;
+      const root = await client.getInventoryRevision(
+        rootItem.itemId,
+        rootItem.currentRevisionId,
+        { scopeKind: 'free' },
+      );
+      assert.equal(root.steps.length, 0);
+      assert.equal(root.contributions.length, 0);
+      await select('Italienische Eröffnung');
+      const bishop = page.locator(
+        `[data-tree-anchor="${record.steps[4]!.anchorId}"]`,
+      );
+      await bishop.click();
+      await bishop
+        .locator('..')
+        .getByRole('button', { name: label('analysis.addNote'), exact: true })
+        .click();
+      const editor = page.locator('form textarea');
+      await editor.fill(
+        'Ich möchte die Antwort d6 mit der Hauptlinie vergleichen.',
+      );
+      await page.getByRole('separator').press('End');
+      await editor.scrollIntoViewIfNeeded();
+      await expect(
+        page.getByText(label('analysis.generalNote'), { exact: true }),
+      ).toBeVisible();
+      await shot('note-editor');
+      if (process.argv.includes('--update-manual-screenshots'))
+        await copyFile(
+          path.join(artifacts, 'note-editor.png'),
+          path.join(repo, 'docs/manual/screenshots/note-editor.png'),
+        );
+      await editor.fill('');
+      await page
+        .getByRole('button', { name: label('analysis.cancel'), exact: true })
+        .click();
+      async function captureManualImage(name: string) {
+        await expect(
+          page.getByText(label('positionAnalysis.loading'), { exact: true }),
+        ).toHaveCount(0);
+        await shot(name);
+        if (process.argv.includes('--update-manual-screenshots'))
+          await copyFile(
+            path.join(artifacts, name + '.png'),
+            path.join(repo, 'docs/manual/screenshots', name + '.png'),
+          );
+      }
+      const knight = record.tree!.nodes.find(
+        (node) =>
+          node.move.san === 'Nf6' &&
+          !record.steps.some((step) => step.anchorId === node.anchorId),
+      )!;
+      const nested = record.tree!.nodes.find(
+        (node) => node.move.san === 'Ng5',
+      )!;
+      const toggle = (anchor: string) =>
+        page.locator(
+          `[data-tree-line="${anchor}"] > div button[aria-expanded]`,
+        );
+      await expect(toggle(knight.anchorId)).toHaveAttribute(
+        'aria-expanded',
+        'false',
+      );
+      await toggle(knight.anchorId).scrollIntoViewIfNeeded();
+      await captureManualImage('saved-line-collapsed');
+      await toggle(knight.anchorId).click();
+      await toggle(nested.anchorId).click();
+      const current = page.locator(`[data-tree-anchor="${nested.anchorId}"]`);
+      await current.click();
+      await toggle(nested.anchorId).click();
+      await toggle(knight.anchorId).click();
+      await page
+        .getByRole('button', {
+          name: label('analysis.previousMove'),
+          exact: true,
+        })
+        .click();
+      await page
+        .getByRole('button', { name: label('analysis.nextMove'), exact: true })
+        .click();
+      await expect(current).toHaveAttribute('aria-current', 'step');
+      await expect(current).toHaveCSS('background-color', 'rgb(234, 242, 252)');
+      await expect(current).toBeInViewport();
+      await current.evaluate((element) =>
+        element.scrollIntoView({ block: 'center' }),
+      );
+      await captureManualImage('saved-line');
+      const { context } = await client.createWorkingContext({
+        displayName: 'Italienisch vertiefen',
+      });
+      await client.addContextReference(context.contextId, {
+        itemId: record.itemId,
+        anchorId: record.steps[4]!.anchorId,
+      });
+      await page
+        .getByLabel(label('scope.label'), { exact: true })
+        .selectOption('context:' + context.contextId);
+      await open();
+      await bishop.click();
+      await bishop
+        .locator('..')
+        .getByRole('button', { name: label('analysis.addNote'), exact: true })
+        .click();
+      await editor.fill(
+        'Für dieses Vorhaben die Antwort d6 genauer untersuchen.',
+      );
+      await expect(
+        page.getByRole('radio', {
+          name: label('analysis.generalNote'),
+          exact: true,
+        }),
+      ).toBeChecked();
+      await page.getByRole('separator').press('End');
+      await editor.scrollIntoViewIfNeeded();
+      await captureManualImage('context-note-editor');
+      await editor.fill('');
+      await page
+        .getByRole('button', { name: label('analysis.cancel'), exact: true })
+        .click();
+      for (const source of originals)
+        assert.deepEqual(
+          await client.getInventoryRevision(source.itemId, source.revisionId, {
+            scopeKind: 'free',
+          }),
+          source,
+        );
+    },
+  );
+}
 async function verifyManualCorrections() {
   await step(
     'reentered prefix preserves notes and displays only the actual extension',
@@ -2059,11 +2828,12 @@ async function verifyManualCorrections() {
       await move('f8', 'c5');
       await move('h2', 'h3');
       await reviewPath();
-      await expect(page.locator('#revision-actions-title')).toHaveText(
-        label('inventory.mode.extend'),
+      await expect(page.locator('#analysis-acceptance-mode')).toHaveValue(
+        'continuation',
       );
       await expect(
-        page.getByText(locale === 'de-DE' ? '1 neuer Zug' : '1 new move', {
+        page.getByRole('button', {
+          name: label('inventory.mode.extend'),
           exact: true,
         }),
       ).toBeVisible();
@@ -2091,7 +2861,7 @@ async function verifyManualCorrections() {
       await shot('reentered-prefix-review');
       await page
         .getByRole('button', {
-          name: label('inventory.saveRevision'),
+          name: revisionSaveLabel(),
           exact: true,
         })
         .click();

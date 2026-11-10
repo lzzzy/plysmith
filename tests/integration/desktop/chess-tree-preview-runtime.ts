@@ -36,14 +36,14 @@ function render() {
   </IntlProvider>);
 }
 window.audit = {
-  show(language = 'en-GB', side = 'white', customRows = false) {
+  show(language = 'en-GB', side = 'white', customRows = false, initialAnchor = 'root') {
     generation++; locale = language; custom = customRows;
     selections.length = 0; removals.length = 0;
     const nextSide = side === 'white' ? 'black' : 'white';
     const nextNumber = side === 'white' ? 9 : 10;
     const node = (nodeIndex, parentNodeIndex, siblingOrder, anchorId, san, after) =>
       ({nodeIndex, parentNodeIndex, siblingOrder, anchorId, move: {san}, after});
-    props = {anchorId: 'root', disabled: false, record: {
+    props = {anchorId: initialAnchor, disabled: false, record: {
       itemId: 'record', revisionId: 'revision', rootAnchorId: 'root', steps: [], root: state(side, 9),
       tree: {nodes: [
         node(0, null, 0, 'main', 'e4', state(nextSide, nextNumber)),
@@ -160,6 +160,38 @@ test('nested draft expansion removes only ancestor previews and preserves the dr
   await expect(preview('branch')).toHaveText('9. Nxf6+');
   await expect(page.locator('[data-test-draft]')).toHaveCount(0);
   await expect(toggle('branch')).toBeEnabled();
+});
+
+test('navigation reveals a collapsed active branch and its ancestors without closing siblings or preventing manual collapse', async () => {
+  await page.evaluate('window.audit.show()');
+  await toggle('sibling').click();
+  await page.evaluate('window.audit.update({anchorId: "nested-reply"})');
+  for (const anchor of ['branch', 'nested', 'sibling'])
+    await expect(toggle(anchor)).toHaveAttribute('aria-expanded', 'true');
+  await expect(move('nested-reply')).toHaveAttribute('aria-current', 'step');
+  await expect(move('sibling')).toBeVisible();
+  await toggle('branch').click();
+  await expect(move('nested-reply')).toHaveCount(0);
+  await page.evaluate('window.audit.update({disabled: true})');
+  await expect(toggle('branch')).toHaveAttribute('aria-expanded', 'false');
+  await page.evaluate(
+    'window.audit.update({anchorId: "nested", disabled: false})',
+  );
+  await expect(move('nested')).toHaveAttribute('aria-current', 'step');
+  await toggle('branch').click();
+  await page.evaluate('window.audit.update({anchorId: "nested-reply"})');
+  await expect(move('nested-reply')).toHaveAttribute('aria-current', 'step');
+  await expect(toggle('sibling')).toHaveAttribute('aria-expanded', 'true');
+  assert.deepEqual(await page.evaluate('window.audit.selections'), []);
+});
+
+test('a restored active move initially opens nested variations', async () => {
+  await page.evaluate(
+    'window.audit.show("de-DE", "white", false, "nested-reply")',
+  );
+  await expect(move('nested-reply')).toHaveAttribute('aria-current', 'step');
+  await expect(move('nested-reply')).toBeVisible();
+  await expect(preview('sibling')).toHaveText('9. Dh5');
 });
 
 test('preview text is inert, move selection and exact branch deletion keep their existing disabled behavior', async () => {

@@ -994,6 +994,136 @@ test('discarding an anchored context exploration restores its saved position', a
   assert.equal(restored.record?.currentAnchorId.value, sourceAnchorId?.value);
 });
 
+for (const contextual of [false, true]) {
+  test(`path note resume follows the contrasted move while derived provenance retains the source (context: ${contextual})`, async (t) => {
+    const store = storeFixture(t).open();
+    const base = await createFreeRecord(store, 'Source', 'e2e4');
+    const workspace = workspaceUseCases(store);
+    const context = contextual
+      ? await workspace.create.execute({ displayName: 'Notes' })
+      : undefined;
+    if (context !== undefined) {
+      await workspace.addReference.execute({
+        contextId: context.context.contextId,
+        itemId: base.itemId,
+        anchorId: base.rootAnchorId,
+      });
+    }
+    const scope =
+      context === undefined
+        ? freeWorkScope()
+        : contextWorkScope(context.context.contextId);
+    const analysis = analysisUseCases(store);
+    const source = await analysis.get.execute({
+      scope,
+      preview: {
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: base.rootAnchorId,
+      },
+    });
+    const origin = {
+      kind: 'inventory_anchor' as const,
+      itemId: base.itemId,
+      revisionId: base.revisionId,
+      anchorId: base.rootAnchorId,
+    };
+    let current = await analysis.update.execute({
+      scope,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: {
+        kind: 'start',
+        origin,
+        firstMove: { kind: 'coordinates', value: 'c2c4' },
+      },
+    });
+    current = await analysis.update.execute({
+      scope,
+      expectedScratchId: current.scratch!.scratchId,
+      expectedScratchRevision: current.scratch!.scratchRevision,
+      action: {
+        kind: 'apply_move',
+        move: { kind: 'coordinates', value: 'e7e5' },
+      },
+    });
+    current = await analysis.update.execute({
+      scope,
+      expectedScratchId: current.scratch!.scratchId,
+      expectedScratchRevision: current.scratch!.scratchRevision,
+      action: { kind: 'move_cursor', cursor: 1 },
+    });
+    current = await analysis.update.execute({
+      scope,
+      expectedScratchId: current.scratch!.scratchId,
+      expectedScratchRevision: current.scratch!.scratchRevision,
+      action: { kind: 'prepare_note', body: '1.c4: only the selected prefix' },
+    });
+    assert.equal(current.scratch!.noteDraft!.moves.length, 1);
+    assert.equal(current.scratch!.steps.length, 2);
+    const saved = await analysis.createNote.execute({
+      scope,
+      expectedScratchId: current.scratch!.scratchId,
+      expectedScratchRevision: current.scratch!.scratchRevision,
+      languageTag: 'en-GB',
+      noteScope:
+        context === undefined
+          ? { kind: 'global' }
+          : { kind: 'context', contextId: context.context.contextId },
+    });
+    const resumed = await analysis.get.execute({ scope });
+    assert.deepEqual(saved.anchorId, source.record!.steps[0]!.anchorId);
+    const savedNote = resumed.record!.contributions.find(
+      (note) => note.contributionId.value === saved.contributionId.value,
+    );
+    assert.equal(savedNote?.body, '1.c4: only the selected prefix');
+    assert.deepEqual(savedNote?.moves, []);
+    assert.deepEqual(resumed.record!.currentAnchorId, saved.anchorId);
+    assert.equal(resumed.currentState.fen, source.record!.steps[0]!.after.fen);
+    assert.deepEqual(
+      resumed.record!.contributions.filter(
+        (note) => note.contributionId.value !== saved.contributionId.value,
+      ),
+      source.record!.contributions,
+    );
+    assert.deepEqual(resumed.record!.steps, source.record!.steps);
+    current = await analysis.update.execute({
+      scope,
+      expectedScratchId: null,
+      expectedScratchRevision: null,
+      action: {
+        kind: 'start',
+        origin,
+        firstMove: { kind: 'coordinates', value: 'c2c4' },
+      },
+    });
+    const child = await analysis.create.execute({
+      scope,
+      expectedScratchId: current.scratch!.scratchId,
+      expectedScratchRevision: current.scratch!.scratchRevision,
+      displayName: 'Derived from the source',
+      languageTag: 'en-GB',
+      ...(context === undefined
+        ? {}
+        : { targetContextId: context.context.contextId }),
+    });
+    const derived = await analysis.get.execute({
+      scope,
+      preview: {
+        itemId: child.itemId,
+        revisionId: child.revisionId,
+        anchorId: child.rootAnchorId,
+      },
+    });
+    assert.deepEqual(derived.record!.origin, origin);
+    assert.equal(derived.record!.root.fen, source.record!.root.fen);
+    assert.deepEqual(
+      derived.record!.steps.map((step) => step.move.san),
+      ['c4'],
+    );
+  });
+}
+
 test('stores a context note at the source anchor without creating another inventory item', async (t) => {
   const store = storeFixture(t).open();
   const base = await createFreeRecord(store, 'Ausgangsanalyse', 'h2h3');

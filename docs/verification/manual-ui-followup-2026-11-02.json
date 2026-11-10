@@ -1,0 +1,75 @@
+{
+  "date": "2026-11-02",
+  "scope": "README and manual alignment with unified path acceptance, inventory-wide note defaults and visible variation navigation",
+  "baselineCommit": "69b05c72bef3a39676546174af591159cb2c8d17",
+  "precedingVerification": "note-scope-navigation-2026-11-02.json",
+  "languages": ["de-DE", "en-GB"],
+  "screenshotLanguage": "de-DE, explicitly shared by the English manual",
+  "fixture": "docs/manual/manual.pgn",
+  "verification": {
+    "documents": 20,
+    "localLinks": 296,
+    "anchors": 18,
+    "issues": [],
+    "toolsTypecheck": true,
+    "scopedLint": true,
+    "scopedPrettier": true,
+    "nativeExitCode": 0,
+    "screenshotsVisuallyReviewed": true,
+    "unchangedSixSourceRecords": true,
+    "productCodeChanged": false,
+    "fullSuiteRepeated": false
+  },
+  "nativeArtifactDirectory": "build/verification/variations/43d0a26e-46d1-49c5-9538-1a9d7d7981df",
+  "nativeSteps": [
+    "isolated real Stockfish analysis provider",
+    "manual PGN uses the unified destinations without changing its six sources"
+  ],
+  "rendererErrors": 0,
+  "screenshots": {
+    "docs/manual/screenshots/game-save-options.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "77af54d0bfde7dbfcab5d2c37b6bb745aa89888419e3e8b151d1ab4152d3bbac"
+    },
+    "docs/manual/screenshots/analysis-path.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "13fbf5f9f7c749e9dfa62b7bba3fc854f0f637525b0733e9429f7ac0fc38ce52"
+    },
+    "docs/manual/screenshots/analysis-save-options.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "da577c1b64d49b582bc10e763ab3a802a32a6903e6b2607c7eb46989a3fa151f"
+    },
+    "docs/manual/screenshots/analysis-mainline-review.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "eab20e8cdca68dea524ac483b6a36cfd8007c20e128e1c1ee5a4190e7dcb29af"
+    },
+    "docs/manual/screenshots/note-editor.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "0d54a4c03db0b2aa84f75f8ac59e4466ec57b4ae4487c30f8c70c2f54773efb5"
+    },
+    "docs/manual/screenshots/saved-line-collapsed.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "ec980db323cfcde883d79d5de886db29884628633c196555e76e425f3cfccdd3"
+    },
+    "docs/manual/screenshots/saved-line.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "ff4746662a811989053f1829eb124ecb04ecf66aec878bed9f0987949ed91d6a"
+    },
+    "docs/manual/screenshots/context-note-editor.png": {
+      "width": 1600,
+      "height": 1100,
+      "sha256": "c97673ae5eb812ab44de1f1b1c3b56927f061dfca35e43eaa5f9ea8e7351b3b1"
+    }
+  },
+  "limits": [
+    "Only documentation and the existing screenshot verifier changed in this follow-up. Earlier product regression results are recorded in the preceding verification.",
+    "Screenshots are unedited native captures at 100% zoom from an isolated local Host and Electron profile. No user data or Lichess account was used."
+  ]
+}

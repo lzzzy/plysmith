@@ -13,7 +13,7 @@ The analysis "Manual - Grundstellung", which has no moves, can be the starting p
 For a small library around 1.e4, you can proceed as follows:
 
 1. Open "Manual - Grundstellung" and play 1.e4 on the analysis board.
-2. Choose **Save as separate analysis** and enter the name "Repertoire - 1.e4". The new entry contains this first continuation and has a genuine origin connection to "Manual - Grundstellung".
+2. Choose **Accept as → Separate analysis** and enter the name "Repertoire - 1.e4". The new entry contains this first continuation and has a genuine origin connection to "Manual - Grundstellung".
 3. Open "Repertoire - 1.e4" and select the position after 1.e4. Try 1...c6, for example, and save the path as a separate analysis called "Repertoire - Caro-Kann".
 4. For another reply, begin again at 1.e4 in "Repertoire - 1.e4". You can create another separate analysis for 1...e5 in the same way.
 

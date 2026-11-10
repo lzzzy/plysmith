@@ -498,6 +498,17 @@ async function addRootNote(body: string, context = false) {
   await page!
     .getByRole('textbox', { name: label('analysis.newNote'), exact: true })
     .fill(body);
+  if (context) {
+    await expect(
+      page!.getByRole('radio', {
+        name: label('analysis.generalNote'),
+        exact: true,
+      }),
+    ).toBeChecked();
+    await page!
+      .getByRole('radio', { name: /^(Nur in |Only in )/ })
+      .press('Space');
+  }
   await saveNote();
   await expect
     .poll(async () =>
@@ -1392,7 +1403,7 @@ try {
   if (italianIndex !== -1) {
     for (const contextual of [false, true]) {
       await step(
-        `Consecutive unsaved takebacks remove Ng5 and Nf6 (context: ${contextual})`,
+        `Consecutive unsaved takebacks remove the imported nested branch (context: ${contextual})`,
         async () => {
           await page!.setViewportSize({ width: 1600, height: 1000 });
           if (contextual) {
@@ -1447,13 +1458,20 @@ try {
               ),
           )!;
           const ng5 = nodes.find(
-            (node) => node.parentNodeIndex === nf6.nodeIndex,
+            (node) =>
+              node.parentNodeIndex === nf6.nodeIndex && node.move.san === 'Ng5',
           )!;
           assert.equal(ng5.move.san, 'Ng5');
-          assert.equal(
-            nodes.some((node) => node.parentNodeIndex === ng5.nodeIndex),
-            false,
-          );
+          const continuation = [ng5];
+          for (;;) {
+            const next = nodes.find(
+              (node) =>
+                node.parentNodeIndex === continuation.at(-1)!.nodeIndex &&
+                node.siblingOrder === 0,
+            );
+            if (next === undefined) break;
+            continuation.push(next);
+          }
           const parent = nodes[nf6.parentNodeIndex!]!;
           const scope = {
             scopeKind: contextual ? ('context' as const) : ('free' as const),
@@ -1461,11 +1479,16 @@ try {
           };
           await openAnalysis(contextual);
           await revealVariations();
-          await page!.locator(`[data-tree-anchor="${ng5.anchorId}"]`).click();
-          await atAnchor(ng5.anchorId, contextual);
+          const last = continuation.at(-1)!;
+          await page!.locator(`[data-tree-anchor="${last.anchorId}"]`).click();
+          await atAnchor(last.anchorId, contextual);
           let draftId: string | undefined;
           let draftRevision = 0;
-          for (const cut of [nf6, parent]) {
+          for (const cut of [
+            ...continuation.slice(0, -1).reverse(),
+            nf6,
+            parent,
+          ]) {
             await page!
               .getByRole('button', {
                 name: label('analysis.takeBackLastMove'),
@@ -1529,7 +1552,17 @@ try {
             item.currentRevisionId,
             scope,
           );
-          const removed = new Set([nf6.anchorId, ng5.anchorId]);
+          const removed = new Set<string>();
+          const pending = [nf6];
+          while (pending.length > 0) {
+            const node = pending.pop()!;
+            removed.add(node.anchorId);
+            pending.push(
+              ...nodes.filter(
+                (child) => child.parentNodeIndex === node.nodeIndex,
+              ),
+            );
+          }
           assert.deepEqual(
             nodesOf(saved).map((node) => node.anchorId),
             nodes

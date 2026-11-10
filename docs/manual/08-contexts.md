@@ -33,14 +33,18 @@ Spätere Einträge und neue Unterordner kommen nicht automatisch hinzu. Sie ents
 
 ## Eigene Notizen und Arbeitsstände
 
-Öffnen Sie die italienische Analyse im Kontext „Italienisch vertiefen“. Ihre gespeicherten Züge und allgemeinen Notizen sind dieselben wie im Bestand. Ergänzen Sie nun an einem Halbzug eine Notiz und achten Sie auf deren Geltung:
+Öffnen Sie die italienische Analyse im Kontext „Italienisch vertiefen“. Ihre gespeicherten Züge und allgemeinen Notizen sind dieselben wie im Bestand. Ergänzen Sie nun an einem Halbzug eine Notiz und achten Sie auf deren Geltung. Neue Notizentwürfe sind immer mit **Im gesamten Bestand** vorbelegt; eine ausdrücklich gewählte Kontextsichtbarkeit bleibt beim Weiterarbeiten erhalten:
 
 - **Nur in Italienisch vertiefen** hält beispielsweise eine Frage für dieses Vorhaben fest. Die Auswahl nennt Ihren aktiven Kontext. Die Notiz erscheint nicht in Ihren anderen Kontexten.
-- **Allgemein** ergänzt den gemeinsam verwendeten Eintrag und ist auch außerhalb dieses Kontexts sichtbar.
+- **Im gesamten Bestand** ergänzt den gemeinsam verwendeten Eintrag und ist auch außerhalb dieses Kontexts sichtbar.
+
+[![Neue Notiz im Kontext Italienisch vertiefen mit vorausgewähltem Im gesamten Bestand](screenshots/context-note-editor.png)](screenshots/context-note-editor.png)
+
+Im Bild ist **Im gesamten Bestand** vorausgewählt, obwohl Sie gerade im Kontext arbeiten. Für eine Frage, die nur hier gelten soll, wählen Sie vor dem Speichern ausdrücklich **Nur in Italienisch vertiefen**. Beim Wechsel des Übernahmeziels oder Arbeitskontexts bleibt eine bereits getroffene Wahl im Entwurf erhalten. Die Geltung vorhandener Notizen ändert sich dadurch nicht.
 
 [![Analyse in einem Arbeitskontext mit allgemeinen und kontextbezogenen Notizen](screenshots/context-analysis.png)](screenshots/context-analysis.png)
 
-Allgemeine Notizen erscheinen auf grauem Hintergrund, Kontextnotizen auf gelblichem Hintergrund mit einer goldfarbenen Linie. Beim Bearbeiten sehen Sie ausdrücklich, ob die Notiz **Allgemein** oder **Nur in diesem Arbeitskontext** gilt. Eine allgemeine Notiz bleibt allgemein, auch wenn Sie sie aus einem Kontext heraus bearbeiten.
+Allgemeine Notizen erscheinen auf grauem Hintergrund, Kontextnotizen auf gelblichem Hintergrund mit einer goldfarbenen Linie. Beim Bearbeiten sehen Sie ausdrücklich, ob die Notiz **Im gesamten Bestand** oder **Nur in diesem Arbeitskontext** gilt. Eine allgemeine Notiz bleibt allgemein, auch wenn Sie sie aus einem Kontext heraus bearbeiten.
 
 Analysepfade und gemerkte Analysepositionen sind je Arbeitsbereich getrennt. Sie können in „Italienisch vertiefen“ einen vorläufigen Pfad beginnen, in einem anderen Kontext weiterarbeiten und später zu Ihrer Untersuchung zurückkehren. Plysmith merkt sich Analysepfade auch über einen Neustart. Das ist weiterhin ein Entwurf, keine gespeicherte Variante und kein neuer Eintrag.
 

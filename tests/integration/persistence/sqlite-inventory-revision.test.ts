@@ -6,6 +6,7 @@ import { test, type TestContext } from 'node:test';
 import Database from 'better-sqlite3';
 
 import {
+  CreateAnalysisNote,
   CreateAnalysisRecord,
   CreatePositionNote,
   FreeAnalysisSession,
@@ -102,6 +103,14 @@ function useCases(store: SqlitePersistenceAdapter) {
       freeSession,
       clock,
       inventoryEvents: noEvents,
+      workspaceEvents: noEvents,
+    }),
+    createNote: new CreateAnalysisNote({
+      reader: store,
+      writer: store,
+      freeSession,
+      clock,
+      analysisEvents: noEvents,
       workspaceEvents: noEvents,
     }),
     createPositionNote: new CreatePositionNote({
@@ -928,7 +937,16 @@ for (const scenario of [
         (entry) =>
           String(entry.contributionId.value) === saved.commentContributionId,
       )!;
-      assert.deepEqual(note.anchorId, selected);
+      const selectedLine = await cases.getRevision.execute({
+        scope: request.scope,
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: selected,
+      });
+      assert.deepEqual(
+        note.anchorId,
+        selectedLine.steps[selectedLine.cursor]?.anchorId ?? selected,
+      );
       assert.equal(note.body, comment.body);
       assert.deepEqual(note.moves, []);
       assert.equal(saved.dataRevision, preview.dataRevision + 1);
@@ -987,6 +1005,350 @@ test('native variations keep transposed occurrences separate and preserve contex
   assert.deepEqual(current.contributions, base.contributions);
   assert.equal(current.historical, false);
   assert.deepEqual(two.impacts, []);
+});
+
+for (const delivery of ['path', 'variation'] as const) {
+  for (const visibility of ['free', 'context', 'context-global'] as const) {
+    for (const scenario of [
+      'italian',
+      'side',
+      'nested',
+      'end',
+      'root',
+      'root-only',
+      'root-variations',
+      'transposition',
+    ] as const) {
+      test(`analysis path note target uses the contrasted occurrence (${delivery}, ${visibility}, ${scenario})`, async (t) => {
+        const store = storeFixture(t);
+        const cases = useCases(store);
+        let base =
+          scenario === 'italian'
+            ? await createFrenchLine(cases, 'Italian', [
+                'e4',
+                'e5',
+                'Sf3',
+                'Sc6',
+                'Lc4',
+                'Lc5',
+              ])
+            : scenario.startsWith('root-')
+              ? await createFrenchLine(cases, 'Empty root', [])
+              : await createBranchingRecord(store);
+        let originAnchor = base.rootAnchorId;
+        let expectedAnchor = base.rootAnchorId;
+        let move = 'c4';
+        if (scenario === 'italian') {
+          originAnchor = base.steps[4]!.anchorId;
+          expectedAnchor = base.steps[5]!.anchorId;
+          move = 'd6';
+        } else if (scenario === 'side') {
+          originAnchor = base.tree!.nodes[2]!.anchorId;
+          expectedAnchor = base.tree!.nodes[3]!.anchorId;
+          move = 'e6';
+        } else if (scenario === 'nested' || scenario === 'transposition') {
+          originAnchor =
+            base.tree!.nodes[scenario === 'nested' ? 5 : 9]!.anchorId;
+          if (scenario === 'transposition') {
+            assert.equal(
+              base.tree!.nodes[4]!.after.position.positionKey,
+              base.tree!.nodes[9]!.after.position.positionKey,
+            );
+            const other = await appendMove(
+              cases,
+              base,
+              base.tree!.nodes[4]!.anchorId,
+              'g6',
+            );
+            base = await cases.getRevision.execute({
+              scope: freeWorkScope(),
+              itemId: base.itemId,
+              revisionId: other.revisionId,
+            });
+          }
+          const extended = await appendMove(
+            cases,
+            base,
+            originAnchor,
+            scenario === 'nested' ? 'Sf6' : 'g6',
+          );
+          expectedAnchor = extended.currentAnchorId;
+          base = await cases.getRevision.execute({
+            scope: freeWorkScope(),
+            itemId: base.itemId,
+            revisionId: extended.revisionId,
+          });
+          move = 'e6';
+        } else if (scenario === 'end') {
+          originAnchor = base.steps.at(-1)!.anchorId;
+          expectedAnchor = originAnchor;
+          move = 'Nf3';
+        } else if (scenario === 'root') {
+          expectedAnchor = base.steps[0]!.anchorId;
+        } else if (scenario === 'root-variations') {
+          const variation = await prepareVariation(
+            cases,
+            base,
+            base.rootAnchorId,
+            ['d4'],
+          );
+          const preview = await cases.previewRevision.execute(variation);
+          const saved = await cases.saveRevision.execute({
+            ...variation,
+            previewFingerprint: preview.previewFingerprint,
+          });
+          base = await cases.getRevision.execute({
+            scope: freeWorkScope(),
+            itemId: base.itemId,
+            revisionId: saved.revisionId,
+          });
+          assert.deepEqual(base.steps, []);
+        }
+        const context =
+          visibility === 'free'
+            ? undefined
+            : await addIndependentContextUse(cases, base, 'Notes');
+        const scope =
+          context === undefined
+            ? freeWorkScope()
+            : contextWorkScope(context.context.contextId);
+        const noteScope =
+          visibility === 'context'
+            ? {
+                kind: 'context' as const,
+                contextId: context!.context.contextId,
+              }
+            : { kind: 'global' as const };
+        const origin = {
+          kind: 'inventory_anchor' as const,
+          itemId: base.itemId,
+          revisionId: base.revisionId,
+          anchorId: originAnchor,
+        };
+        let started = await cases.update.execute({
+          scope,
+          expectedScratchId: null,
+          expectedScratchRevision: null,
+          action: {
+            kind: 'start',
+            origin,
+            firstMove: { kind: 'notation', value: move, locale: 'en-GB' },
+          },
+        });
+        assert.deepEqual(started.scratch!.origin, origin);
+        const originalRoot = started.scratch!.root;
+        const body = `Alternative ${move}`;
+        let contributionId: string;
+        let revisionId = base.revisionId;
+        if (delivery === 'path') {
+          started = await cases.update.execute({
+            scope,
+            expectedScratchId: started.scratch!.scratchId,
+            expectedScratchRevision: started.scratch!.scratchRevision,
+            action: { kind: 'prepare_note', body },
+          });
+          assert.deepEqual(started.scratch!.origin, origin);
+          assert.deepEqual(started.scratch!.root, originalRoot);
+          const saved = await cases.createNote.execute({
+            scope,
+            expectedScratchId: started.scratch!.scratchId,
+            expectedScratchRevision: started.scratch!.scratchRevision,
+            languageTag: 'en-GB',
+            noteScope,
+          });
+          contributionId = String(saved.contributionId.value);
+          assert.deepEqual(saved.anchorId, expectedAnchor);
+          const resume = inspectStore(store, (database) =>
+            database
+              .prepare(
+                'SELECT anchor_id AS anchorId, current_position_id AS positionId, analysis_scratch_draft_id AS scratchId FROM workspace_analysis_resume WHERE context_id IS ?',
+              )
+              .get(context?.context.contextId.value ?? null),
+          ) as {
+            anchorId: number;
+            positionId: number;
+            scratchId: number | null;
+          };
+          assert.equal(resume.anchorId, expectedAnchor.value);
+          assert.equal(resume.scratchId, null);
+          const position = inspectStore(store, (database) =>
+            database
+              .prepare(
+                'SELECT o.position_id AS positionId FROM chess_anchor a JOIN chess_occurrence_snapshot o ON o.occurrence_id = a.occurrence_id WHERE a.anchor_id = ? AND o.revision_id = ?',
+              )
+              .get(expectedAnchor.value, base.revisionId.value),
+          ) as { positionId: number };
+          assert.equal(resume.positionId, position.positionId);
+        } else {
+          const promoted = await cases.promoteRevision.execute({
+            scope,
+            itemId: base.itemId,
+            baseRevisionId: base.revisionId,
+            anchorId: originAnchor,
+            expectedScratchId: started.scratch!.scratchId,
+            expectedScratchRevision: started.scratch!.scratchRevision,
+            mode: 'add_variation',
+          });
+          assert.deepEqual(promoted.scratch.origin, origin);
+          assert.deepEqual(promoted.scratch.root, originalRoot);
+          const request = {
+            scope,
+            expectedScratchId: promoted.scratch.scratchId,
+            expectedScratchRevision: promoted.scratch.scratchRevision,
+            comment: { body, noteScope, languageTag: 'en-GB' },
+          };
+          const preview = await cases.previewRevision.execute(request);
+          const saved = await cases.saveRevision.execute({
+            ...request,
+            previewFingerprint: preview.previewFingerprint,
+          });
+          assert.equal(saved.noOp, false);
+          contributionId = saved.commentContributionId!;
+          revisionId = saved.revisionId;
+        }
+        const current = await cases.getRevision.execute({
+          scope,
+          itemId: base.itemId,
+          revisionId,
+        });
+        const note = current.contributions.find(
+          (entry) => String(entry.contributionId.value) === contributionId,
+        )!;
+        assert.ok(note);
+        assert.deepEqual(note.anchorId, expectedAnchor);
+        assert.equal(note.body, body);
+        assert.deepEqual(note.moves, []);
+        assert.deepEqual(
+          current.contributions.filter(
+            (entry) => String(entry.contributionId.value) !== contributionId,
+          ),
+          base.contributions,
+        );
+        assert.deepEqual(current.steps, base.steps);
+        if (delivery === 'path') assert.deepEqual(current.tree, base.tree);
+        const global = await cases.getRevision.execute({
+          scope: freeWorkScope(),
+          itemId: base.itemId,
+          revisionId,
+        });
+        assert.equal(
+          global.contributions.some(
+            (entry) => String(entry.contributionId.value) === contributionId,
+          ),
+          visibility !== 'context',
+        );
+      });
+    }
+  }
+}
+
+test('a path note on a saved game contrasts the original move without revising its tree', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createBranchingRecord(store, 'game');
+  let current = await cases.update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: base.tree!.nodes[0]!.anchorId,
+      },
+      firstMove: { kind: 'notation', value: 'c5', locale: 'en-GB' },
+    },
+  });
+  current = await cases.update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: current.scratch!.scratchId,
+    expectedScratchRevision: current.scratch!.scratchRevision,
+    action: { kind: 'prepare_note', body: 'Alternative to 1...e5' },
+  });
+  const note = await cases.createNote.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: current.scratch!.scratchId,
+    expectedScratchRevision: current.scratch!.scratchRevision,
+    languageTag: 'en-GB',
+    noteScope: { kind: 'global' },
+  });
+  assert.deepEqual(note.anchorId, base.tree!.nodes[1]!.anchorId);
+  const after = await cases.getRevision.execute({
+    scope: freeWorkScope(),
+    itemId: base.itemId,
+    revisionId: base.revisionId,
+  });
+  assert.deepEqual(after.currentRevisionId, base.currentRevisionId);
+  assert.deepEqual(after.steps, base.steps);
+  assert.deepEqual(after.tree, base.tree);
+  assert.deepEqual(after.game, base.game);
+});
+
+test('a stale path note target is rejected without consuming its text or retargeting to the new revision', async (t) => {
+  const store = storeFixture(t);
+  const cases = useCases(store);
+  const base = await createFrenchLine(cases, 'Empty source', []);
+  const context = await addIndependentContextUse(
+    cases,
+    base,
+    'Concurrent note edit',
+  );
+  let started = await cases.update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: base.itemId,
+        revisionId: base.revisionId,
+        anchorId: base.rootAnchorId,
+      },
+      firstMove: { kind: 'notation', value: 'c4', locale: 'en-GB' },
+    },
+  });
+  started = await cases.update.execute({
+    scope: freeWorkScope(),
+    expectedScratchId: started.scratch!.scratchId,
+    expectedScratchRevision: started.scratch!.scratchRevision,
+    action: { kind: 'prepare_note', body: 'Keep my note' },
+  });
+  const scope = contextWorkScope(context.context.contextId);
+  const competing = await cases.startRevision.execute({
+    scope,
+    itemId: base.itemId,
+    baseRevisionId: base.revisionId,
+    anchorId: base.rootAnchorId,
+    mode: 'extend',
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    firstMove: { kind: 'notation', value: 'f4', locale: 'en-GB' },
+  });
+  const request = {
+    scope,
+    expectedScratchId: competing.scratch.scratchId,
+    expectedScratchRevision: competing.scratch.scratchRevision,
+  };
+  const preview = await cases.previewRevision.execute(request);
+  await cases.saveRevision.execute({
+    ...request,
+    previewFingerprint: preview.previewFingerprint,
+  });
+  const before = await store.readStoreStatus();
+  await assert.rejects(
+    cases.createNote.execute({
+      scope: freeWorkScope(),
+      expectedScratchId: started.scratch!.scratchId,
+      expectedScratchRevision: started.scratch!.scratchRevision,
+      languageTag: 'en-GB',
+      noteScope: { kind: 'global' },
+    }),
+  );
+  assert.deepEqual(await store.readStoreStatus(), before);
+  assert.deepEqual(await cases.freeSession.read(), started.scratch);
 });
 
 for (const contextComment of [false, true]) {
@@ -1090,7 +1452,7 @@ for (const contextComment of [false, true]) {
         String(entry.contributionId.value) === saved.commentContributionId,
     )!;
     assert.equal(note.body, comment.body.trim());
-    assert.deepEqual(note.anchorId, base.tree!.nodes[0]!.anchorId);
+    assert.deepEqual(note.anchorId, base.tree!.nodes[1]!.anchorId);
     assert.deepEqual(note.moves, []);
     await store.updateAnalysisNote({
       scope,

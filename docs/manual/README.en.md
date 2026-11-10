@@ -40,7 +40,7 @@ Both begin at a **starting position**. This can be the **initial position** or a
 
 **Notes** can describe a game or analysis as a whole, or refer to a particular half-move. You can add and edit notes. Information from imports is also included as notes.
 
-You can also keep continuations you try on the analysis board. For either type, an **analysis path** can be turned into a note at its starting point. You can then edit the note independently of the analysis path; the main line remains unchanged.
+You can also keep continuations you try on the analysis board. For either type, an **analysis path** can be turned into a note on the associated saved half-move. You can then edit the note independently of the analysis path; the main line remains unchanged.
 
 To pursue an investigation separately, you can start a **separate analysis** and save it as a new inventory entry. This is possible from either a game or an analysis: from any half-move or directly from the starting position. Its **origin** preserves the connection to the original entry and starting point. The original entry remains unchanged.
 
@@ -68,7 +68,7 @@ An analysis path does not have to change the saved move sequence. You can turn t
 
 [![Teaching game with the save options for its analysis path expanded](screenshots/game-save-options.png)](screenshots/game-save-options.png)
 
-The screenshot shows an analysis path in a **game**. **Turn path into note** records the continuation as a note at its starting point. You can add to and edit the note. **Save as separate analysis** creates a new entry in which you can pursue the investigation separately. In both cases, the game's saved moves remain unchanged.
+The screenshot shows an analysis path in a **game**. **Accept as → Note** records the continuation as a note on the replaced following half-move; at a line end, it belongs to the last saved half-move. You can add to and edit the note. **Accept as → Separate analysis** creates a new entry in which you can pursue the investigation separately. In both cases, the game's saved moves remain unchanged.
 
 [![Italian analysis with the additional save options for its analysis path](screenshots/analysis-save-options.png)](screenshots/analysis-save-options.png)
 

@@ -60,9 +60,10 @@ function command(operation: Operation): Promise<boolean> {
   });
 }
 
-// Only the dialog's store boundary is fake; React hooks, portals and events are real.
+// Only the component store boundary is fake; React hooks, portals and events are real.
 const store = {
   canWorkWithInventoryItem: () => true,
+  checkInventoryName: async () => undefined,
   getPlayoutCompletionForm: () => undefined,
   setPlayoutCompletionForm: () => undefined,
   openCompletedPlayout: async () => {
@@ -109,6 +110,8 @@ function Fixture() {
     phase: 'ready',
     scope: { kind: 'free' },
     preferences: { uiLocale: snapshot.locale },
+    inventory: { items: [] },
+    inventoryOrganization: { folders: [], linkedFolderIds: [] },
     refreshing: false,
     ...(snapshot.applicationBusy ? { busyCommand: 'complete_playout' } : {}),
     ...(snapshot.pendingCompletion

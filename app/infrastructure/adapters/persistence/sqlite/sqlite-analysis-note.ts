@@ -26,6 +26,7 @@ import {
   type WorkingContextId,
 } from '../../../../domain/identity/index.ts';
 import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
+import { resolveAnalysisNoteTarget } from './sqlite-analysis-note-target.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
 import { requireContextInventoryWorkAccess } from './sqlite-context-item.ts';
 import { incrementDataRevision } from './sqlite-store-helpers.ts';
@@ -68,10 +69,22 @@ export function createAnalysisNote(
     request.sourceContextId,
     request.origin.itemId,
   );
+  const sourceScope =
+    request.sourceScope ??
+    (request.sourceContextId === undefined
+      ? { kind: 'free' as const }
+      : { kind: 'context' as const, contextId: request.sourceContextId });
+  validatePositionNoteTarget(database, {
+    ...request.origin,
+    scope: sourceScope,
+    noteScope: request.noteScope,
+  });
+  const target = resolveAnalysisNoteTarget(database, request.origin);
+  const noteTarget = { ...request.origin, anchorId: target.anchorId };
 
   const contributionId = insertAnalysisNoteContribution(database, {
     itemId: request.origin.itemId,
-    anchorId: request.origin.anchorId,
+    anchorId: target.anchorId,
     note: request.note,
     noteScope: request.noteScope,
     languageTag: request.languageTag,
@@ -83,8 +96,8 @@ export function createAnalysisNote(
       : restoreContextResume(
           database,
           request.sourceContextId,
-          request.origin,
-          positionId,
+          noteTarget,
+          target.positionId,
           request.occurredAt,
         );
   if (request.sourceContextId !== undefined) {
@@ -94,8 +107,8 @@ export function createAnalysisNote(
     restoreContextResume(
       database,
       null,
-      request.origin,
-      positionId,
+      noteTarget,
+      target.positionId,
       request.occurredAt,
     );
     deleteContextScratch(database, null);
@@ -105,7 +118,7 @@ export function createAnalysisNote(
     contributionId,
     itemId: request.origin.itemId,
     revisionId: request.origin.revisionId,
-    anchorId: request.origin.anchorId,
+    anchorId: target.anchorId,
     scopeKind: request.noteScope.kind,
     ...(request.noteScope.kind === 'context'
       ? { contextId: request.noteScope.contextId }

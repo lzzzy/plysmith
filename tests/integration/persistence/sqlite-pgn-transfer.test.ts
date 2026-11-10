@@ -17,6 +17,13 @@ import { inheritedSourcePathSnapshot } from '../../fixtures/pgn-transfer-source-
 import { CompletePlayout } from '../../../app/application/playout/index.ts';
 import { stopPlayoutDraft } from '../../../app/domain/playout/index.ts';
 import { freeWorkScope } from '../../../app/domain/workspace/index.ts';
+import { localId } from '../../../app/domain/identity/index.ts';
+import {
+  CreateAnalysisNote,
+  FreeAnalysisSession,
+  UpdateAnalysisNote,
+  UpdateAnalysisScratch,
+} from '../../../app/application/analysis/index.ts';
 
 const time = '2026-10-12T12:00:00.000Z';
 const rules = new ChessJsRulesAdapter();
@@ -147,6 +154,135 @@ async function roundtrip(t: TestContext, source: ReturnType<typeof fixture>) {
     .run();
   return { target, snapshot };
 }
+
+test('application path notes at the contrasted move roundtrip as editable text without changing existing note paths', async (t) => {
+  const source = fixture(t);
+  const item = await seed(source, 'Contrasted path note', tree(false));
+  const root = source.db
+    .prepare(
+      `SELECT anchor.anchor_id AS id FROM chess_anchor AS anchor
+       JOIN chess_occurrence_snapshot AS occurrence
+         ON occurrence.occurrence_id = anchor.occurrence_id
+       WHERE occurrence.revision_id = ? AND occurrence.is_root = 1
+         AND anchor.anchor_kind = 'occurrence'`,
+    )
+    .get(item.revisionId.value) as { id: number };
+  const origin = {
+    kind: 'inventory_anchor' as const,
+    itemId: item.itemId,
+    revisionId: item.revisionId,
+    anchorId: localId('anchor', root.id),
+  };
+  source.db
+    .prepare(
+      `INSERT INTO workspace_analysis_note_path_step
+       VALUES ((SELECT min(contribution_id) FROM workspace_contribution),
+               0, 'g1', 'f3', NULL, 'Nf3')`,
+    )
+    .run();
+  const previous = await source.store.readPgnTransferSnapshot(check);
+  assert.equal(previous.manifest.contributions[0]!.moves.length, 1);
+  const record = await source.store.readAnalysisRecord(origin);
+  assert.ok(record);
+  const scope = freeWorkScope();
+  const clock = { now: () => time };
+  const events = { publish: () => undefined };
+  const freeSession = new FreeAnalysisSession({
+    persistence: source.store,
+    clock,
+  });
+  const update = new UpdateAnalysisScratch({
+    reader: source.store,
+    writer: source.store,
+    freeSession,
+    rules,
+    storeStatus: source.store,
+    clock,
+    events,
+    scratchId: () => 'contrasted-path-note',
+  });
+  const started = await update.execute({
+    scope,
+    expectedScratchId: null,
+    expectedScratchRevision: null,
+    action: {
+      kind: 'start',
+      origin,
+      firstMove: { kind: 'coordinates', value: 'd2d4' },
+    },
+  });
+  const preparedNote = await update.execute({
+    scope,
+    expectedScratchId: started.scratch!.scratchId,
+    expectedScratchRevision: started.scratch!.scratchRevision,
+    action: { kind: 'prepare_note', body: '1. d4' },
+  });
+  assert.equal(preparedNote.scratch!.noteDraft!.moves[0]!.san, 'd4');
+  const note = await new CreateAnalysisNote({
+    reader: source.store,
+    writer: source.store,
+    freeSession,
+    clock,
+    analysisEvents: events,
+    workspaceEvents: events,
+  }).execute({
+    scope,
+    expectedScratchId: preparedNote.scratch!.scratchId,
+    expectedScratchRevision: preparedNote.scratch!.scratchRevision,
+    noteScope: { kind: 'global' },
+    languageTag: 'en-GB',
+  });
+  assert.deepEqual(note.anchorId, record.steps[0]!.anchorId);
+  const savedRecord = await source.store.readAnalysisRecord({
+    ...origin,
+    anchorId: note.anchorId,
+  });
+  const savedNote = savedRecord!.contributions.find(
+    (entry) => entry.contributionId.value === note.contributionId.value,
+  );
+  assert.equal(savedNote?.body, '1. d4');
+  assert.deepEqual(savedNote?.moves, []);
+  const body = '1. d4 — An editable alternative to 1. e4.';
+  await new UpdateAnalysisNote({
+    writer: source.store,
+    clock,
+    events,
+  }).execute({
+    scope,
+    contributionId: note.contributionId,
+    expectedContributionVersion: savedNote!.contributionVersion,
+    body,
+  });
+  const snapshot = await source.store.readPgnTransferSnapshot(check);
+  const transferredNote = snapshot.manifest.contributions.find(
+    (entry) => entry.body === body,
+  );
+  assert.ok(transferredNote);
+  assert.deepEqual(transferredNote.moves, []);
+  assert.equal(transferredNote.movesRoot, null);
+  assert.notEqual(
+    transferredNote.anchor,
+    previous.manifest.contributions[0]!.anchor,
+  );
+  assert.deepEqual(
+    snapshot.manifest.contributions.filter((entry) => entry.body !== body),
+    previous.manifest.contributions,
+  );
+  const codec = new PgnInventoryTransferCodec(rules);
+  const signal = new AbortController().signal;
+  const bytes = await codec.encode(snapshot, signal, check);
+  const target = fixture(t);
+  await target.store.restorePgnTransfer(
+    await codec.decode(bytes, signal, check),
+    time,
+    check,
+  );
+  await target.reopen();
+  const restored = await target.store.readPgnTransferSnapshot(check);
+  assert.deepEqual(restored.manifest, snapshot.manifest);
+  assert.deepEqual(restored.records, snapshot.records);
+  assert.deepEqual(await codec.encode(restored, signal, check), bytes);
+});
 
 test('fresh startup reads and preferences permit carrier no-op; empty nested folders restore', async (t) => {
   const source = fixture(t),

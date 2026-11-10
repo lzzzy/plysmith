@@ -658,20 +658,29 @@ test('free record and note commits consume scratch atomically and restore the co
       occurredAt: timestamp,
     }),
   );
-  f.tx(() =>
+  const savedNote = f.tx(() =>
     createAnalysisNote(f.db, {
       sourceScope: free,
       expectedScratchId: noted.scratchId,
       expectedScratchRevision: noted.scratchRevision,
       origin,
-      note: noted.noteDraft!,
+      note: { body: noted.noteDraft!.body, moves: [] },
       noteScope: { kind: 'global' },
       languageTag: 'en-GB',
       occurredAt: timestamp,
     }),
   );
   assert.equal(readContextScratch(f.db, null), undefined);
-  assert.equal(readFreeAnalysisWorkspace(f.db).record?.cursor, 0);
+  f.reopen();
+  const resumed = readFreeAnalysisWorkspace(f.db).record;
+  assert.equal(resumed?.cursor, 1);
+  assert.equal(resumed?.currentAnchorId.value, savedNote.anchorId.value);
+  assert.notEqual(savedNote.anchorId.value, origin.anchorId.value);
+  const contribution = resumed?.contributions.find(
+    (note) => note.contributionId.value === savedNote.contributionId.value,
+  );
+  assert.equal(contribution?.body, 'Stored note');
+  assert.deepEqual(contribution?.moves, []);
 });
 
 test('global usage cleanup handles null scope and free work rejects trashed origins while historical reads remain available', (t) => {

@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   GitBranch,
-  GitBranchPlus,
   MessageSquarePlus,
   Pencil,
   Play,
@@ -54,6 +53,8 @@ import {
   type PlysmithApplicationStore,
   type AnalysisNoteFormDraft,
   type AnalysisRecordFormDraft,
+  type AnalysisAcceptanceTarget,
+  type AnalysisAcceptanceMode,
 } from './plysmith-application-store.ts';
 import { PositionAnalysisPanel } from './position-analysis-panel.tsx';
 import { AnalysisPanelLayout } from './analysis-panel-layout.tsx';
@@ -104,6 +105,10 @@ function AnalysisWorkspaceView({
   const intl = useIntl();
   const scratch = state.analysis.scratch;
   const record = state.analysis.record;
+  const acceptanceChoice =
+    scratch === undefined
+      ? undefined
+      : store.getAnalysisAcceptanceChoice?.(state.scope, scratch.scratchId);
   const emptyScratchCleanupRef = useRef<string | null>(null);
   const gameResult =
     record?.game === undefined
@@ -146,6 +151,10 @@ function AnalysisWorkspaceView({
     record !== undefined &&
     scratch.origin.anchorId ===
       (record.steps.at(-1)?.anchorId ?? record.rootAnchorId);
+  const continuationMessageId =
+    revisionMode === 'extend' || explorationStartsAtLineEnd
+      ? 'inventory.mode.extend'
+      : 'analysis.replaceMainLine';
   const revisionCandidate =
     record === undefined || revisionPreview === undefined
       ? undefined
@@ -216,7 +225,10 @@ function AnalysisWorkspaceView({
         )
       : undefined;
   const pathNoteDraft =
-    pathNoteTarget === undefined ? undefined : scratch?.noteDraft;
+    pathNoteTarget === undefined ||
+    (acceptanceChoice !== undefined && acceptanceChoice.target !== 'note')
+      ? undefined
+      : scratch?.noteDraft;
   const visibleScratchEntries = scratchEntries.slice(reusedScratchCount);
   const inlineScratchAnchor =
     scratch !== undefined &&
@@ -302,10 +314,7 @@ function AnalysisWorkspaceView({
   const [variationComment, setVariationComment] = useState({
     enabled: false,
     body: '',
-    noteScope:
-      state.scope.kind === 'context'
-        ? ('context' as const)
-        : ('global' as const),
+    noteScope: 'global' as 'global' | 'context',
   });
   function readRecordForm(): AnalysisRecordFormDraft {
     return (
@@ -314,9 +323,8 @@ function AnalysisWorkspaceView({
         : store.getAnalysisRecordForm?.(state.scope, scratch.scratchId)) ?? {
         title: '',
         noteBody: '',
-        open: false,
         destination: state.scope.kind === 'context' ? 'context' : 'inventory',
-        noteScope: state.scope.kind === 'context' ? 'context' : 'global',
+        noteScope: 'global',
         folderId:
           scratch?.origin.kind === 'inventory_anchor'
             ? undefined
@@ -347,24 +355,107 @@ function AnalysisWorkspaceView({
   const recordNoteBody = recordForm.noteBody;
   const destination = recordForm.destination;
   const recordNoteScope = recordForm.noteScope;
-  const showSaveRecord = recordForm.open;
   const setRecordTitle = (title: string) => updateRecordForm({ title });
   const setRecordFolderId = (folderId: string | null | undefined) =>
     updateRecordForm({ folderId });
   const setRecordNoteBody = (noteBody: string) =>
     updateRecordForm({ noteBody });
-  const setShowSaveRecord = (open: boolean) => updateRecordForm({ open });
   const [pathNoteScope, setPathNoteScope] = useState<'global' | 'context'>(
-    state.scope.kind === 'context' ? 'context' : 'global',
+    'global',
   );
   const [revisionDetailsOpen, setRevisionDetailsOpen] = useState(false);
-  const [analysisDetailsOpen, setAnalysisDetailsOpen] = useState(false);
+  const unifiedAcceptance =
+    scratch !== undefined &&
+    (scratch.intent.kind === 'exploration' ||
+      state.analysis.allowedActions.includes('continue_exploration'));
+  const acceptanceTarget =
+    acceptanceChoice?.target ??
+    (scratch?.noteDraft !== undefined
+      ? 'note'
+      : revisionScratch !== undefined
+        ? 'inventory'
+        : scratch?.origin.kind !== 'inventory_anchor'
+          ? 'record'
+          : '');
+  const acceptanceMode =
+    revisionIntent !== undefined
+      ? revisionIntent.mode === 'add_variation'
+        ? 'add_variation'
+        : 'continuation'
+      : (acceptanceChoice?.mode ?? 'add_variation');
+  const generatedNoteBody =
+    scratch === undefined
+      ? ''
+      : formatMoveSequence(
+          scratch.steps.slice(0, scratch.cursor),
+          state.preferences.uiLocale,
+        );
+  const canAcceptNote =
+    scratch?.origin.kind === 'inventory_anchor' && scratch.cursor > 0;
+  const canAcceptInventory =
+    record?.itemType === 'analysis' &&
+    !record.historical &&
+    record.revisionId === record.currentRevisionId &&
+    pendingRevisionImpact === undefined &&
+    (state.scope.kind === 'free' || record.contextMember) &&
+    scratch?.origin.kind === 'inventory_anchor' &&
+    scratch.origin.itemId === record.itemId &&
+    scratch.origin.revisionId === record.revisionId &&
+    scratch.cursor > 0 &&
+    scratch.cursor === scratch.steps.length;
+  const noteOrigin = scratch?.origin;
+  const noteAnchorIndex =
+    noteOrigin?.kind === 'inventory_anchor' && record !== undefined
+      ? noteOrigin.anchorId === record.rootAnchorId
+        ? -1
+        : record.steps.findIndex(
+            (step) => step.anchorId === noteOrigin.anchorId,
+          )
+      : -1;
+  const noteAnchor =
+    record?.steps[noteAnchorIndex + 1] ?? record?.steps[noteAnchorIndex];
+  const pathNoteForm =
+    scratch === undefined
+      ? undefined
+      : store.getPathNoteFormDraft?.(scratch.scratchId);
+  const otherDrafts = [
+    ...(acceptanceTarget === 'record' &&
+    scratch?.cursor === 0 &&
+    recordNoteBody.trim() !== ''
+      ? ['record_note']
+      : []),
+    ...(acceptanceTarget !== 'note' &&
+    pathNoteForm !== undefined &&
+    pathNoteForm.body.trim() !== '' &&
+    pathNoteForm.body !== pathNoteForm.preparedBody
+      ? ['note']
+      : []),
+    ...(acceptanceTarget !== 'record' &&
+    (recordTitle.trim() !== '' || recordNoteBody.trim() !== '')
+      ? ['record']
+      : []),
+    ...((acceptanceTarget !== 'inventory' ||
+      revisionIntent?.mode !== 'add_variation') &&
+    variationComment.body.trim() !== ''
+      ? ['inventory']
+      : []),
+  ];
+  const otherDraftKey = JSON.stringify([
+    acceptanceTarget,
+    otherDrafts,
+    noteBody,
+    recordTitle,
+    recordNoteBody,
+    variationComment.body,
+  ]);
+  const [confirmedDraftKey, setConfirmedDraftKey] = useState<string>();
+  const discardOtherDrafts = confirmedDraftKey === otherDraftKey;
+  const canConsumeDraft = otherDrafts.length === 0 || discardOtherDrafts;
   const [selectedPositionIndex, setSelectedPositionIndex] = useState(
     path.currentPositionIndex,
   );
   const moveListRef = useRef<HTMLDivElement>(null);
   const revisionSummaryRef = useRef<HTMLButtonElement>(null);
-  const analysisSummaryRef = useRef<HTMLButtonElement>(null);
   const activePositionIndex = Math.max(
     0,
     Math.min(selectedPositionIndex, Math.max(0, path.positions.length - 1)),
@@ -480,18 +571,22 @@ function AnalysisWorkspaceView({
 
   useEffect(() => {
     const draft =
-      scratch?.noteDraft === undefined
+      scratch === undefined
         ? undefined
-        : store.getPathNoteFormDraft?.(
-            scratch.scratchId,
-            scratch.noteDraft.body,
-          );
-    setNoteBody(draft?.body ?? scratch?.noteDraft?.body ?? '');
-    setPathNoteScope(
-      draft?.noteScope ??
-        (state.scope.kind === 'context' ? 'context' : 'global'),
+        : store.getPathNoteFormDraft?.(scratch.scratchId);
+    setNoteBody(
+      draft !== undefined && draft.body !== draft.preparedBody
+        ? draft.body
+        : (scratch?.noteDraft?.body ?? generatedNoteBody),
     );
-  }, [scratch?.scratchId, scratch?.noteDraft?.body, state.scope, store]);
+    setPathNoteScope(draft?.noteScope ?? 'global');
+  }, [
+    scratch?.scratchId,
+    scratch?.noteDraft?.body,
+    generatedNoteBody,
+    state.scope,
+    store,
+  ]);
 
   useEffect(
     () => setRevisionDetailsOpen(revisionScratch !== undefined),
@@ -503,16 +598,15 @@ function AnalysisWorkspaceView({
         ? {
             enabled: false,
             body: '',
-            noteScope: state.scope.kind === 'context' ? 'context' : 'global',
+            noteScope: 'global',
           }
         : (store.getVariationCommentDraft?.(scratch.scratchId) ?? {
             enabled: false,
             body: '',
-            noteScope: state.scope.kind === 'context' ? 'context' : 'global',
+            noteScope: 'global',
           }),
     );
   }, [scratch?.scratchId, state.scope, store]);
-  useEffect(() => setAnalysisDetailsOpen(false), [scratch?.scratchId]);
 
   useEffect(() => {
     if (
@@ -559,7 +653,11 @@ function AnalysisWorkspaceView({
     moveList
       .querySelector<HTMLElement>('[aria-current="step"]')
       ?.scrollIntoView({ block: 'nearest' });
-  }, [activePositionIndex]);
+  }, [
+    activePositionIndex,
+    activePosition?.target?.anchorId,
+    activePosition?.target?.itemId,
+  ]);
 
   useEffect(() => {
     function takeBackWithKeyboard(event: KeyboardEvent) {
@@ -612,6 +710,15 @@ function AnalysisWorkspaceView({
 
   async function saveRecord(event: FormEvent) {
     event.preventDefault();
+    if (!canConsumeDraft) return;
+    if (
+      scratch !== undefined &&
+      scratch.cursor > 0 &&
+      recordNoteBody.trim() !== '' &&
+      recordNoteScope === 'context' &&
+      destination !== 'context'
+    )
+      return;
     if (
       await store.createAnalysisRecord(
         recordTitle,
@@ -681,7 +788,7 @@ function AnalysisWorkspaceView({
       kind: 'create',
       targetKey: targetKey(target),
       body: '',
-      noteScope: canUseContextScope(target) ? 'context' : 'global',
+      noteScope: 'global',
     });
   }
 
@@ -1129,7 +1236,7 @@ function AnalysisWorkspaceView({
   }
 
   function renderPathNoteDraft() {
-    return pathNoteDraft === undefined ? null : (
+    return scratch === undefined || acceptanceTarget !== 'note' ? null : (
       <article
         className={`${styles.inlineNoteEditor!} ${pathNoteScope === 'global' ? styles.globalNoteEditor : ''}`}
         data-note-draft-scope={pathNoteScope}
@@ -1143,12 +1250,41 @@ function AnalysisWorkspaceView({
           className={styles.inlineNoteForm}
           onSubmit={(event) => {
             event.preventDefault();
-            void store.createAnalysisNote(pathNoteScope, noteBody);
+            if (canConsumeDraft)
+              void store.createAnalysisNote(pathNoteScope, noteBody);
           }}
         >
           <label htmlFor="analysis-path-note">
             <FormattedMessage id="analysis.pathNoteComment" />
+            {' — '}
+            <FormattedMessage
+              id="analysis.acceptance.noteAt"
+              values={{
+                move:
+                  noteAnchor === undefined
+                    ? intl.formatMessage({
+                        id: 'revisionImpact.initialPosition',
+                      })
+                    : formatMoveSequence(
+                        [noteAnchor],
+                        state.preferences.uiLocale,
+                      ),
+              }}
+            />
           </label>
+          {scratch.steps[0] !== undefined && (
+            <p className={styles.revisionHint}>
+              <FormattedMessage
+                id="analysis.acceptance.alternative"
+                values={{
+                  move: formatMoveSequence(
+                    [scratch.steps[0]],
+                    state.preferences.uiLocale,
+                  ),
+                }}
+              />
+            </p>
+          )}
           <textarea
             id="analysis-path-note"
             value={noteBody}
@@ -1158,10 +1294,10 @@ function AnalysisWorkspaceView({
                 scratch!.scratchId,
                 event.target.value,
                 pathNoteScope,
+                generatedNoteBody,
               );
             }}
             rows={3}
-            autoFocus
             disabled={isBusy}
             placeholder={intl.formatMessage({
               id: 'analysis.notePlaceholder',
@@ -1178,6 +1314,7 @@ function AnalysisWorkspaceView({
                   scratch!.scratchId,
                   noteBody,
                   noteScope,
+                  generatedNoteBody,
                 );
               }}
               aria-label={intl.formatMessage({
@@ -1203,19 +1340,16 @@ function AnalysisWorkspaceView({
             <button
               type="submit"
               className={styles.saveNoteButton}
-              disabled={isBusy || noteBody.trim() === ''}
+              disabled={
+                isBusy ||
+                !canConsumeDraft ||
+                !canAcceptNote ||
+                noteBody.trim() === ''
+              }
             >
               <Save aria-hidden="true" size={14} />
               <FormattedMessage id="analysis.saveNoteEdit" />
             </button>
-            <Button
-              className={styles.cancelNoteButton!}
-              onPress={() => void store.clearAnalysisNote()}
-              isDisabled={isBusy}
-            >
-              <ArrowLeft aria-hidden="true" size={14} />
-              <FormattedMessage id="analysis.backToPath" />
-            </Button>
           </div>
         </form>
       </article>
@@ -1224,517 +1358,601 @@ function AnalysisWorkspaceView({
 
   function renderPathActions() {
     return (
-      <div data-analysis-path-actions>
-        {renderPathNoteDraft()}
-        {revisionScratch !== undefined && pathNoteDraft === undefined && (
-          <section
-            className={styles.revisionActions}
-            aria-labelledby="revision-actions-title"
-          >
-            <div className={styles.draftBar}>
-              <button
-                ref={revisionSummaryRef}
-                type="button"
-                className={styles.draftToggle}
-                aria-controls="revision-details"
-                aria-expanded={revisionDetailsOpen}
-                onClick={() => setRevisionDetailsOpen((open) => !open)}
-              >
-                <ChevronDown aria-hidden="true" size={17} />
-                <span className={styles.draftToggleText}>
-                  <span className={styles.panelLabel}>
-                    <FormattedMessage id="draft.unsavedChange" />
-                  </span>
-                  <strong id="revision-actions-title">
-                    <FormattedMessage id={`inventory.mode.${revisionMode}`} />
-                  </strong>
-                </span>
-                {revisionMode !== 'metadata' && (
-                  <span className={styles.draftCount}>
-                    <FormattedMessage
-                      id="inventory.moveCount"
-                      values={{
-                        count:
-                          revisionPreview?.addedSteps.length ??
-                          revisionScratch.steps.length,
-                      }}
-                    />
-                  </span>
-                )}
-              </button>
-              {!revisionDetailsOpen && (
-                <Button
-                  className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
-                  onPress={() => {
-                    setRevisionDetailsOpen(true);
-                    revisionSummaryRef.current?.focus();
-                  }}
-                  isDisabled={isBusy}
-                >
-                  <ClipboardCheck aria-hidden="true" size={15} />
-                  <FormattedMessage id="draft.reviewChange" />
-                </Button>
-              )}
-            </div>
-            <div
-              id="revision-details"
-              className={styles.draftContent}
-              hidden={!revisionDetailsOpen}
+      <div
+        data-analysis-path-actions
+        className={unifiedAcceptance ? styles.analysisActions : undefined}
+      >
+        {unifiedAcceptance && scratch !== undefined && (
+          <>
+            <span className={styles.panelLabel}>
+              <FormattedMessage id="draft.unsavedChange" />
+            </span>
+            <label htmlFor="analysis-acceptance-target">
+              <FormattedMessage id="analysis.acceptance.target" />
+            </label>
+            <select
+              id="analysis-acceptance-target"
+              value={acceptanceTarget}
+              disabled={isBusy}
+              onChange={(event) =>
+                void store.selectAnalysisAcceptance(
+                  event.target.value as AnalysisAcceptanceTarget,
+                )
+              }
             >
-              {revisionPreview === undefined ? (
-                <p className={styles.revisionHint}>
-                  <FormattedMessage id="inventory.previewPending" />
-                </p>
-              ) : (
-                <div className={styles.revisionPreview}>
-                  {revisionIntent?.mode === 'add_variation' ? (
-                    <>
-                      <strong>
-                        <FormattedMessage id="analysis.variationScope" />
-                      </strong>
-                      <div className={styles.notePath}>
-                        {formatMoveSequence(
-                          revisionScratch.steps,
-                          state.preferences.uiLocale,
-                        )}
-                      </div>
-                      {revisionPreview.noOp &&
-                        revisionScratch.steps.length > 0 && (
-                          <p role="status">
-                            <FormattedMessage id="analysis.variationExists" />
-                          </p>
-                        )}
-                      <label className={styles.variationCommentChoice}>
-                        <input
-                          type="checkbox"
-                          checked={variationComment.enabled}
-                          disabled={isBusy}
-                          onChange={(event) =>
-                            updateVariationComment({
-                              enabled: event.target.checked,
-                              ...(event.target.checked &&
-                              variationComment.body === ''
-                                ? {
-                                    body: formatMoveSequence(
-                                      revisionScratch.steps,
-                                      state.preferences.uiLocale,
-                                    ),
-                                  }
-                                : {}),
-                            })
-                          }
-                        />
-                        <FormattedMessage id="analysis.variationComment" />
-                      </label>
-                      {variationComment.enabled && (
-                        <>
-                          <label htmlFor="variation-comment">
-                            <FormattedMessage id="analysis.pathNoteComment" />
-                          </label>
-                          <textarea
-                            id="variation-comment"
-                            value={variationComment.body}
-                            maxLength={128000}
-                            rows={3}
-                            disabled={isBusy}
-                            onChange={(event) =>
-                              updateVariationComment({
-                                body: event.target.value,
-                              })
-                            }
-                          />
-                          {state.scope.kind === 'context' && (
-                            <RadioGroup
-                              className={styles.inlineScopeGroup!}
-                              value={variationComment.noteScope}
-                              aria-label={intl.formatMessage({
-                                id: 'analysis.noteVisibility',
-                              })}
-                              onChange={(value) =>
-                                updateVariationComment({
-                                  noteScope: value as 'global' | 'context',
-                                })
-                              }
-                            >
-                              <Radio
-                                className={styles.inlineScopeOption!}
-                                value="context"
-                              >
-                                <FormattedMessage
-                                  id="analysis.contextOnly"
-                                  values={{
-                                    context: state.analysis.contextName,
-                                  }}
-                                />
-                              </Radio>
-                              <Radio
-                                className={styles.inlineScopeOption!}
-                                value="global"
-                              >
-                                <FormattedMessage id="analysis.generalNote" />
-                              </Radio>
-                            </RadioGroup>
-                          )}
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    record !== undefined &&
-                    revisionCandidate !== undefined && (
-                      <RevisionLineComparison
-                        previous={record}
-                        next={revisionCandidate}
-                        unchangedCount={revisionPreview.preservedMoveCount}
-                      />
+              <option value="" disabled>
+                {intl.formatMessage({ id: 'analysis.acceptance.choose' })}
+              </option>
+              <option value="note" disabled={!canAcceptNote}>
+                {intl.formatMessage({ id: 'analysis.acceptance.note' })}
+              </option>
+              <option value="inventory" disabled={!canAcceptInventory}>
+                {intl.formatMessage({ id: 'analysis.acceptance.inventory' })}
+              </option>
+              <option value="record">
+                {intl.formatMessage({ id: 'analysis.acceptance.record' })}
+              </option>
+            </select>
+            <p className={styles.revisionHint}>
+              <FormattedMessage
+                id={
+                  acceptanceTarget === 'inventory'
+                    ? 'analysis.acceptance.fullPath'
+                    : 'analysis.acceptance.prefix'
+                }
+                values={{ count: scratch.cursor, total: scratch.steps.length }}
+              />
+            </p>
+            {(!canAcceptNote || !canAcceptInventory) && (
+              <p className={styles.revisionHint}>
+                <FormattedMessage
+                  id={
+                    scratch.origin.kind !== 'inventory_anchor'
+                      ? 'analysis.acceptance.unsaved'
+                      : record?.itemType === 'game'
+                        ? 'analysis.acceptance.game'
+                        : record?.historical ||
+                            record?.revisionId !== record?.currentRevisionId ||
+                            (scratch.origin.kind === 'inventory_anchor' &&
+                              (scratch.origin.itemId !== record?.itemId ||
+                                scratch.origin.revisionId !==
+                                  record?.revisionId)) ||
+                            pendingRevisionImpact !== undefined ||
+                            (state.scope.kind === 'context' &&
+                              !record?.contextMember)
+                          ? 'analysis.acceptance.stale'
+                          : 'analysis.acceptance.atEnd'
+                  }
+                />
+              </p>
+            )}
+            {acceptanceTarget === 'inventory' && (
+              <>
+                <label htmlFor="analysis-acceptance-mode">
+                  <FormattedMessage id="analysis.acceptance.mode" />
+                </label>
+                <select
+                  id="analysis-acceptance-mode"
+                  value={acceptanceMode}
+                  disabled={isBusy || !canAcceptInventory}
+                  onChange={(event) =>
+                    void store.selectAnalysisAcceptance(
+                      'inventory',
+                      event.target.value as AnalysisAcceptanceMode,
                     )
-                  )}
-                  {revisionPreview.historicalGlobalContributionCount > 0 && (
-                    <div className={styles.impactWarning} role="status">
-                      <AlertTriangle aria-hidden="true" size={18} />
-                      <FormattedMessage
-                        id="inventory.globalNotesAffected"
-                        values={{
-                          count:
-                            revisionPreview.historicalGlobalContributionCount,
-                        }}
-                      />
-                    </div>
-                  )}
-                  {revisionPreview.affectedContexts.length > 0 && (
-                    <div className={styles.impactWarning}>
-                      <AlertTriangle aria-hidden="true" size={18} />
-                      <div>
-                        <strong>
-                          <FormattedMessage id="inventory.contextsAffected" />
-                        </strong>
-                        <p>
-                          <FormattedMessage id="inventory.contextsAffectedDetail" />
-                        </p>
-                        <ul>
-                          {revisionPreview.affectedContexts.map((context) => (
-                            <li key={context.contextId}>
-                              {context.contextName}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-                  <RevisionFollowingContexts
-                    contexts={revisionPreview.followingContexts}
-                  />
-                  <div className={styles.previewActions}>
+                  }
+                >
+                  <option value="add_variation">
+                    {intl.formatMessage({ id: 'inventory.mode.add_variation' })}
+                  </option>
+                  <option value="continuation">
+                    {intl.formatMessage({
+                      id: continuationMessageId,
+                    })}
+                  </option>
+                </select>
+                <p className={styles.revisionHint}>
+                  <FormattedMessage id="analysis.acceptance.globalStructure" />
+                </p>
+                {revisionScratch === undefined && (
+                  <Button
+                    className={styles.secondaryButton!}
+                    isDisabled={isBusy || !canAcceptInventory}
+                    onPress={() =>
+                      void store.selectAnalysisAcceptance(
+                        'inventory',
+                        acceptanceMode,
+                      )
+                    }
+                  >
+                    <RefreshCw aria-hidden="true" size={15} />
+                    <FormattedMessage id="analysis.acceptance.retryPreview" />
+                  </Button>
+                )}
+              </>
+            )}
+            {otherDrafts.length > 0 && (
+              <label className={styles.variationCommentChoice}>
+                <input
+                  type="checkbox"
+                  checked={discardOtherDrafts}
+                  disabled={isBusy}
+                  onChange={(event) =>
+                    setConfirmedDraftKey(
+                      event.target.checked ? otherDraftKey : undefined,
+                    )
+                  }
+                />
+                <FormattedMessage id="analysis.acceptance.otherDrafts" />
+              </label>
+            )}
+          </>
+        )}
+        {renderPathNoteDraft()}
+        {revisionScratch !== undefined &&
+          pathNoteDraft === undefined &&
+          (!unifiedAcceptance || acceptanceTarget === 'inventory') && (
+            <section
+              className={styles.revisionActions}
+              aria-label={
+                unifiedAcceptance
+                  ? intl.formatMessage({ id: 'analysis.acceptance.inventory' })
+                  : undefined
+              }
+              aria-labelledby={
+                unifiedAcceptance ? undefined : 'revision-actions-title'
+              }
+            >
+              {!unifiedAcceptance && (
+                <div className={styles.draftBar}>
+                  <button
+                    ref={revisionSummaryRef}
+                    type="button"
+                    className={styles.draftToggle}
+                    aria-controls="revision-details"
+                    aria-expanded={revisionDetailsOpen}
+                    onClick={() => setRevisionDetailsOpen((open) => !open)}
+                  >
+                    <ChevronDown aria-hidden="true" size={17} />
+                    <span className={styles.draftToggleText}>
+                      <span className={styles.panelLabel}>
+                        <FormattedMessage id="draft.unsavedChange" />
+                      </span>
+                      <strong id="revision-actions-title">
+                        <FormattedMessage
+                          id={`inventory.mode.${revisionMode}`}
+                        />
+                      </strong>
+                    </span>
+                    {revisionMode !== 'metadata' && (
+                      <span className={styles.draftCount}>
+                        <FormattedMessage
+                          id="inventory.moveCount"
+                          values={{
+                            count:
+                              revisionPreview?.addedSteps.length ??
+                              revisionScratch.steps.length,
+                          }}
+                        />
+                      </span>
+                    )}
+                  </button>
+                  {!revisionDetailsOpen && (
                     <Button
-                      className={styles.secondaryButton!}
+                      className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
                       onPress={() => {
-                        setRevisionDetailsOpen(false);
+                        setRevisionDetailsOpen(true);
                         revisionSummaryRef.current?.focus();
                       }}
                       isDisabled={isBusy}
                     >
-                      <ArrowLeft aria-hidden="true" size={16} />
-                      <FormattedMessage id="inventory.backToEdit" />
+                      <ClipboardCheck aria-hidden="true" size={15} />
+                      <FormattedMessage id="draft.reviewChange" />
                     </Button>
-                    <Button
-                      className={styles.primaryButton!}
-                      onPress={() =>
-                        void store.saveInventoryRevision(
-                          revisionIntent?.mode === 'add_variation' &&
-                            variationComment.enabled
-                            ? {
-                                body: variationComment.body,
-                                languageTag: state.preferences.uiLocale,
-                                noteScope:
-                                  variationComment.noteScope === 'context' &&
-                                  state.scope.kind === 'context'
-                                    ? {
-                                        kind: 'context',
-                                        contextId: state.scope.contextId,
-                                      }
-                                    : { kind: 'global' },
-                              }
-                            : undefined,
-                        )
-                      }
-                      isDisabled={
-                        isBusy ||
-                        revisionPreview.noOp ||
-                        (revisionIntent?.mode === 'add_variation' &&
-                          variationComment.enabled &&
-                          variationComment.body.trim() === '')
-                      }
-                    >
-                      <Save aria-hidden="true" size={16} />
-                      <FormattedMessage id="inventory.saveRevision" />
-                    </Button>
-                  </div>
+                  )}
                 </div>
               )}
-              {state.analysis.allowedActions.includes(
-                'continue_exploration',
-              ) && (
-                <Button
-                  className={styles.secondaryButton!}
-                  onPress={() => void store.continueAnalysisExploration()}
-                  isDisabled={isBusy}
-                >
-                  <GitBranch aria-hidden="true" size={16} />
-                  <FormattedMessage id="analysis.continueExploration" />
-                </Button>
-              )}
-              <Button
-                className={styles.discardButton!}
-                onPress={() => void store.discardAnalysisScratch()}
-                isDisabled={isBusy}
-              >
-                <Trash2 aria-hidden="true" size={15} />
-                <FormattedMessage id="inventory.discardRevision" />
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {scratch !== undefined &&
-          revisionScratch === undefined &&
-          pathNoteDraft === undefined && (
-            <section
-              className={styles.analysisActions}
-              aria-labelledby="analysis-actions-title"
-            >
-              <div className={styles.draftBar}>
-                <button
-                  ref={analysisSummaryRef}
-                  type="button"
-                  className={styles.draftToggle}
-                  aria-controls="analysis-actions-details"
-                  aria-expanded={analysisDetailsOpen}
-                  onClick={() => setAnalysisDetailsOpen((open) => !open)}
-                >
-                  <ChevronDown aria-hidden="true" size={17} />
-                  <span className={styles.draftToggleText}>
-                    <span className={styles.panelLabel}>
-                      <FormattedMessage id="draft.unsavedChange" />
-                    </span>
-                    <strong id="analysis-actions-title">
-                      <FormattedMessage id="analysis.newAnalysisPath" />
-                    </strong>
-                  </span>
-                  {scratch.cursor > 0 && (
-                    <span className={styles.draftCount}>
-                      <FormattedMessage
-                        id="inventory.moveCount"
-                        values={{ count: scratch.cursor }}
-                      />
-                    </span>
-                  )}
-                </button>
-                {!analysisDetailsOpen && (
-                  <Button
-                    className={`${styles.primaryButton!} ${styles.draftPrompt!}`}
-                    onPress={() => {
-                      setAnalysisDetailsOpen(true);
-                      analysisSummaryRef.current?.focus();
-                    }}
-                    isDisabled={isBusy}
-                  >
-                    <ClipboardCheck aria-hidden="true" size={15} />
-                    <FormattedMessage id="draft.reviewChange" />
-                  </Button>
-                )}
-              </div>
               <div
-                id="analysis-actions-details"
+                id="revision-details"
                 className={styles.draftContent}
-                hidden={!analysisDetailsOpen}
+                hidden={!unifiedAcceptance && !revisionDetailsOpen}
               >
-                {!showSaveRecord &&
-                  record?.itemType === 'analysis' &&
-                  scratch.origin.kind === 'inventory_anchor' &&
-                  scratch.cursor === scratch.steps.length &&
-                  scratch.steps.length > 0 && (
-                    <div className={styles.saveChoice}>
+                {revisionPreview === undefined ? (
+                  <p className={styles.revisionHint}>
+                    <FormattedMessage id="inventory.previewPending" />
+                  </p>
+                ) : (
+                  <div className={styles.revisionPreview}>
+                    {revisionIntent?.mode === 'add_variation' ? (
+                      <>
+                        <strong>
+                          <FormattedMessage id="analysis.variationScope" />
+                        </strong>
+                        <div className={styles.notePath}>
+                          {formatMoveSequence(
+                            revisionScratch.steps,
+                            state.preferences.uiLocale,
+                          )}
+                        </div>
+                        {revisionPreview.noOp &&
+                          revisionScratch.steps.length > 0 && (
+                            <p role="status">
+                              <FormattedMessage id="analysis.variationExists" />
+                            </p>
+                          )}
+                        <label className={styles.variationCommentChoice}>
+                          <input
+                            type="checkbox"
+                            checked={variationComment.enabled}
+                            disabled={isBusy}
+                            onChange={(event) =>
+                              updateVariationComment({
+                                enabled: event.target.checked,
+                                ...(event.target.checked &&
+                                variationComment.body === ''
+                                  ? {
+                                      body: formatMoveSequence(
+                                        revisionScratch.steps,
+                                        state.preferences.uiLocale,
+                                      ),
+                                    }
+                                  : {}),
+                              })
+                            }
+                          />
+                          <FormattedMessage id="analysis.variationComment" />
+                        </label>
+                        {variationComment.enabled && (
+                          <>
+                            <label htmlFor="variation-comment">
+                              <FormattedMessage id="analysis.pathNoteComment" />
+                              {' — '}
+                              <FormattedMessage
+                                id="analysis.acceptance.noteAt"
+                                values={{
+                                  move:
+                                    noteAnchor === undefined
+                                      ? intl.formatMessage({
+                                          id: 'revisionImpact.initialPosition',
+                                        })
+                                      : formatMoveSequence(
+                                          [noteAnchor],
+                                          state.preferences.uiLocale,
+                                        ),
+                                }}
+                              />
+                            </label>
+                            <textarea
+                              id="variation-comment"
+                              value={variationComment.body}
+                              maxLength={128000}
+                              rows={3}
+                              disabled={isBusy}
+                              onChange={(event) =>
+                                updateVariationComment({
+                                  body: event.target.value,
+                                })
+                              }
+                            />
+                            {state.scope.kind === 'context' && (
+                              <RadioGroup
+                                className={styles.inlineScopeGroup!}
+                                value={variationComment.noteScope}
+                                aria-label={intl.formatMessage({
+                                  id: 'analysis.noteVisibility',
+                                })}
+                                onChange={(value) =>
+                                  updateVariationComment({
+                                    noteScope: value as 'global' | 'context',
+                                  })
+                                }
+                              >
+                                <Radio
+                                  className={styles.inlineScopeOption!}
+                                  value="context"
+                                >
+                                  <FormattedMessage
+                                    id="analysis.contextOnly"
+                                    values={{
+                                      context: state.analysis.contextName,
+                                    }}
+                                  />
+                                </Radio>
+                                <Radio
+                                  className={styles.inlineScopeOption!}
+                                  value="global"
+                                >
+                                  <FormattedMessage id="analysis.generalNote" />
+                                </Radio>
+                              </RadioGroup>
+                            )}
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      record !== undefined &&
+                      revisionCandidate !== undefined && (
+                        <RevisionLineComparison
+                          previous={record}
+                          next={revisionCandidate}
+                          unchangedCount={revisionPreview.preservedMoveCount}
+                        />
+                      )
+                    )}
+                    {revisionPreview.historicalGlobalContributionCount > 0 && (
+                      <div className={styles.impactWarning} role="status">
+                        <AlertTriangle aria-hidden="true" size={18} />
+                        <FormattedMessage
+                          id="inventory.globalNotesAffected"
+                          values={{
+                            count:
+                              revisionPreview.historicalGlobalContributionCount,
+                          }}
+                        />
+                      </div>
+                    )}
+                    {revisionPreview.affectedContexts.length > 0 && (
+                      <div className={styles.impactWarning}>
+                        <AlertTriangle aria-hidden="true" size={18} />
+                        <div>
+                          <strong>
+                            <FormattedMessage id="inventory.contextsAffected" />
+                          </strong>
+                          <p>
+                            <FormattedMessage id="inventory.contextsAffectedDetail" />
+                          </p>
+                          <ul>
+                            {revisionPreview.affectedContexts.map((context) => (
+                              <li key={context.contextId}>
+                                {context.contextName}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                    <RevisionFollowingContexts
+                      contexts={revisionPreview.followingContexts}
+                    />
+                    <div className={styles.previewActions}>
+                      {!unifiedAcceptance && (
+                        <Button
+                          className={styles.secondaryButton!}
+                          onPress={() => {
+                            setRevisionDetailsOpen(false);
+                            revisionSummaryRef.current?.focus();
+                          }}
+                          isDisabled={isBusy}
+                        >
+                          <ArrowLeft aria-hidden="true" size={16} />
+                          <FormattedMessage id="inventory.backToEdit" />
+                        </Button>
+                      )}
                       <Button
                         className={styles.primaryButton!}
                         onPress={() =>
-                          void store.promoteAnalysisToInventoryRevision(
-                            'add_variation',
+                          void store.saveInventoryRevision(
+                            revisionIntent?.mode === 'add_variation' &&
+                              variationComment.enabled
+                              ? {
+                                  body: variationComment.body,
+                                  languageTag: state.preferences.uiLocale,
+                                  noteScope:
+                                    variationComment.noteScope === 'context' &&
+                                    state.scope.kind === 'context'
+                                      ? {
+                                          kind: 'context',
+                                          contextId: state.scope.contextId,
+                                        }
+                                      : { kind: 'global' },
+                                }
+                              : undefined,
                           )
                         }
-                        isDisabled={isBusy}
-                      >
-                        <GitBranchPlus aria-hidden="true" size={16} />
-                        <FormattedMessage id="inventory.mode.add_variation" />
-                      </Button>
-                      <Button
-                        className={styles.primaryButton!}
-                        onPress={() =>
-                          void store.promoteAnalysisToInventoryRevision()
+                        isDisabled={
+                          isBusy ||
+                          revisionPreview.noOp ||
+                          (unifiedAcceptance &&
+                            (!canConsumeDraft || !canAcceptInventory)) ||
+                          (revisionIntent?.mode === 'add_variation' &&
+                            variationComment.enabled &&
+                            variationComment.body.trim() === '')
                         }
-                        isDisabled={isBusy}
-                      >
-                        <GitBranch aria-hidden="true" size={16} />
-                        <FormattedMessage
-                          id={
-                            explorationStartsAtLineEnd
-                              ? 'inventory.mode.extend'
-                              : 'analysis.replaceMainLine'
-                          }
-                        />
-                      </Button>
-                    </div>
-                  )}
-                {!showSaveRecord &&
-                  scratch.origin.kind === 'inventory_anchor' &&
-                  scratch.cursor > 0 && (
-                    <div className={styles.saveChoice}>
-                      <strong className={styles.saveHeading}>
-                        <FormattedMessage id="analysis.saveAsNote" />
-                      </strong>
-                      <Button
-                        className={`${styles.primaryButton!} ${styles.noteAction!}`}
-                        onPress={() => {
-                          setShowSaveRecord(false);
-                          void store.prepareAnalysisNote(
-                            formatMoveSequence(
-                              scratch.steps.slice(0, scratch.cursor),
-                              state.preferences.uiLocale,
-                            ),
-                          );
-                        }}
-                        isDisabled={isBusy}
-                      >
-                        <ArrowLeft aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.prepareNote" />
-                      </Button>
-                    </div>
-                  )}
-
-                {!showSaveRecord && (
-                  <Button
-                    className={styles.primaryButton!}
-                    onPress={() => setShowSaveRecord(true)}
-                    isDisabled={isBusy}
-                  >
-                    <Save aria-hidden="true" size={16} />
-                    <FormattedMessage id="analysis.saveAsRecord" />
-                  </Button>
-                )}
-
-                {showSaveRecord && (
-                  <form className={styles.saveForm} onSubmit={saveRecord}>
-                    <strong>
-                      <FormattedMessage id="analysis.saveAsRecord" />
-                    </strong>
-                    <label htmlFor="analysis-title">
-                      <FormattedMessage id="analysis.recordTitle" />
-                    </label>
-                    <input
-                      id="analysis-title"
-                      value={recordTitle}
-                      onChange={(event) => setRecordTitle(event.target.value)}
-                      autoFocus
-                      disabled={isBusy}
-                    />
-                    <InventoryNameSuggestion
-                      name={recordTitle}
-                      store={store}
-                      onChoose={setRecordTitle}
-                      disabled={isBusy}
-                    />
-                    <InventoryFolderField
-                      state={state}
-                      value={recordFolderId}
-                      onChange={setRecordFolderId}
-                      contextOnly={destination === 'context'}
-                      canInherit={scratch.origin.kind === 'inventory_anchor'}
-                      disabled={isBusy}
-                    />
-                    {scratch.cursor > 0 && (
-                      <>
-                        <label htmlFor="analysis-record-note">
-                          <FormattedMessage id="analysis.recordNote" />
-                        </label>
-                        <textarea
-                          id="analysis-record-note"
-                          value={recordNoteBody}
-                          onChange={(event) =>
-                            setRecordNoteBody(event.target.value)
-                          }
-                          rows={3}
-                          disabled={isBusy}
-                          placeholder={intl.formatMessage({
-                            id: 'analysis.recordNotePlaceholder',
-                          })}
-                        />
-                      </>
-                    )}
-                    {state.scope.kind === 'context' && (
-                      <RadioGroup
-                        className={styles.destinationGroup!}
-                        value={destination}
-                        onChange={(value) => {
-                          const next = value as 'inventory' | 'context';
-                          updateRecordForm({
-                            destination: next,
-                            noteScope:
-                              next === 'context' ? 'context' : 'global',
-                          });
-                        }}
-                        aria-label={intl.formatMessage({
-                          id: 'analysis.destination',
-                        })}
-                      >
-                        <Radio
-                          value="context"
-                          className={styles.destinationOption!}
-                        >
-                          <FormattedMessage
-                            id="analysis.inventoryAndContext"
-                            values={{
-                              context: state.analysis.contextName,
-                            }}
-                          />
-                        </Radio>
-                        <Radio
-                          value="inventory"
-                          className={styles.destinationOption!}
-                        >
-                          <FormattedMessage id="analysis.inventoryOnly" />
-                        </Radio>
-                      </RadioGroup>
-                    )}
-                    <div className={styles.previewActions}>
-                      <Button
-                        className={styles.secondaryButton!}
-                        onPress={cancelSaveRecord}
-                        isDisabled={isBusy}
-                      >
-                        <X aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.cancel" />
-                      </Button>
-                      <button
-                        type="submit"
-                        className={styles.primaryButton}
-                        disabled={isBusy || recordTitle.trim() === ''}
                       >
                         <Save aria-hidden="true" size={16} />
-                        <FormattedMessage id="analysis.saveAsAnalysis" />
-                      </button>
+                        <FormattedMessage
+                          id={
+                            unifiedAcceptance
+                              ? revisionIntent?.mode === 'add_variation'
+                                ? 'inventory.mode.add_variation'
+                                : continuationMessageId
+                              : 'inventory.saveRevision'
+                          }
+                        />
+                      </Button>
                     </div>
-                  </form>
+                  </div>
                 )}
-
-                <Button
-                  className={styles.discardButton!}
-                  onPress={() => void store.discardAnalysisScratch()}
-                  isDisabled={isBusy}
-                >
-                  <Trash2 aria-hidden="true" size={15} />
-                  <FormattedMessage id="analysis.discard" />
-                </Button>
+                {!unifiedAcceptance &&
+                  state.analysis.allowedActions.includes(
+                    'continue_exploration',
+                  ) && (
+                    <Button
+                      className={styles.secondaryButton!}
+                      onPress={() => void store.continueAnalysisExploration()}
+                      isDisabled={isBusy}
+                    >
+                      <GitBranch aria-hidden="true" size={16} />
+                      <FormattedMessage id="analysis.continueExploration" />
+                    </Button>
+                  )}
+                {!unifiedAcceptance && (
+                  <Button
+                    className={styles.discardButton!}
+                    onPress={() => void store.discardAnalysisScratch()}
+                    isDisabled={isBusy}
+                  >
+                    <Trash2 aria-hidden="true" size={15} />
+                    <FormattedMessage id="inventory.discardRevision" />
+                  </Button>
+                )}
               </div>
             </section>
           )}
+
+        {unifiedAcceptance &&
+          scratch !== undefined &&
+          acceptanceTarget === 'record' && (
+            <form className={styles.saveForm} onSubmit={saveRecord}>
+              <strong>
+                <FormattedMessage id="analysis.saveAsRecord" />
+              </strong>
+              <label htmlFor="analysis-title">
+                <FormattedMessage id="analysis.recordTitle" />
+              </label>
+              <input
+                id="analysis-title"
+                value={recordTitle}
+                onChange={(event) => setRecordTitle(event.target.value)}
+                disabled={isBusy}
+              />
+              <InventoryNameSuggestion
+                name={recordTitle}
+                store={store}
+                onChoose={setRecordTitle}
+                disabled={isBusy}
+              />
+              <InventoryFolderField
+                state={state}
+                value={recordFolderId}
+                onChange={setRecordFolderId}
+                contextOnly={destination === 'context'}
+                canInherit={scratch.origin.kind === 'inventory_anchor'}
+                disabled={isBusy}
+              />
+              {(scratch.cursor > 0 || recordNoteBody.trim() !== '') && (
+                <>
+                  <label htmlFor="analysis-record-note">
+                    <FormattedMessage id="analysis.recordNote" />
+                  </label>
+                  <textarea
+                    id="analysis-record-note"
+                    value={recordNoteBody}
+                    onChange={(event) => setRecordNoteBody(event.target.value)}
+                    rows={3}
+                    disabled={isBusy}
+                    placeholder={intl.formatMessage({
+                      id: 'analysis.recordNotePlaceholder',
+                    })}
+                  />
+                  {scratch.cursor === 0 && (
+                    <p role="status" className={styles.revisionHint}>
+                      <FormattedMessage id="analysis.acceptance.rootNoteOmitted" />
+                    </p>
+                  )}
+                </>
+              )}
+              {state.scope.kind === 'context' && (
+                <RadioGroup
+                  className={styles.destinationGroup!}
+                  value={destination}
+                  onChange={(value) => {
+                    const next = value as 'inventory' | 'context';
+                    updateRecordForm({
+                      destination: next,
+                    });
+                  }}
+                  aria-label={intl.formatMessage({
+                    id: 'analysis.destination',
+                  })}
+                >
+                  <Radio value="context" className={styles.destinationOption!}>
+                    <FormattedMessage
+                      id="analysis.inventoryAndContext"
+                      values={{
+                        context: state.analysis.contextName,
+                      }}
+                    />
+                  </Radio>
+                  <Radio
+                    value="inventory"
+                    className={styles.destinationOption!}
+                  >
+                    <FormattedMessage id="analysis.inventoryOnly" />
+                  </Radio>
+                </RadioGroup>
+              )}
+              {state.scope.kind === 'context' &&
+                scratch.cursor > 0 &&
+                recordNoteBody.trim() !== '' && (
+                  <>
+                    <RadioGroup
+                      className={styles.inlineScopeGroup!}
+                      value={recordNoteScope}
+                      onChange={(value) =>
+                        updateRecordForm({
+                          noteScope: value as 'global' | 'context',
+                        })
+                      }
+                      aria-label={intl.formatMessage({
+                        id: 'analysis.noteVisibility',
+                      })}
+                    >
+                      <Radio
+                        value="context"
+                        isDisabled={destination !== 'context'}
+                        className={styles.inlineScopeOption!}
+                      >
+                        <FormattedMessage
+                          id="analysis.contextOnly"
+                          values={{ context: state.analysis.contextName }}
+                        />
+                      </Radio>
+                      <Radio
+                        value="global"
+                        className={styles.inlineScopeOption!}
+                      >
+                        <FormattedMessage id="analysis.generalNote" />
+                      </Radio>
+                    </RadioGroup>
+                    {destination !== 'context' &&
+                      recordNoteScope === 'context' && (
+                        <p role="status" className={styles.revisionHint}>
+                          <FormattedMessage id="analysis.acceptance.privateRecordNote" />
+                        </p>
+                      )}
+                  </>
+                )}
+              <div className={styles.previewActions}>
+                <button
+                  type="submit"
+                  className={styles.primaryButton}
+                  disabled={
+                    isBusy ||
+                    !canConsumeDraft ||
+                    recordTitle.trim() === '' ||
+                    (scratch.cursor > 0 &&
+                      recordNoteBody.trim() !== '' &&
+                      recordNoteScope === 'context' &&
+                      destination !== 'context')
+                  }
+                >
+                  <Save aria-hidden="true" size={16} />
+                  <FormattedMessage id="analysis.saveAsAnalysis" />
+                </button>
+              </div>
+            </form>
+          )}
+        {unifiedAcceptance && (
+          <Button
+            className={styles.discardButton!}
+            onPress={() => void store.discardAnalysisScratch()}
+            isDisabled={isBusy || !canConsumeDraft}
+          >
+            <Trash2 aria-hidden="true" size={15} />
+            <FormattedMessage id="analysis.discard" />
+          </Button>
+        )}
       </div>
     );
   }

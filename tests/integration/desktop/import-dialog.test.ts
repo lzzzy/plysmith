@@ -436,14 +436,14 @@ test('collapsed previews contain exactly the first half-move for either side and
           ],
         },
       };
-      const renderBranch = (draft = false) =>
+      const renderBranch = (draft = false, anchorId = 'main') =>
         renderToStaticMarkup(
           createElement(
             IntlProvider,
             { locale, messages: messages[locale] },
             createElement(ChessTreeMoveList, {
               record,
-              anchorId: 'branch',
+              anchorId,
               disabled: false,
               onSelect: () => {},
               ...(draft
@@ -482,6 +482,12 @@ test('collapsed previews contain exactly the first half-move for either side and
         1,
       );
       assert.match(forcedOpen, /aria-expanded="true" disabled/);
+      const active = renderBranch(false, 'reply');
+      assert.doesNotMatch(active, /data-tree-preview/);
+      assert.match(active, /data-tree-anchor="branch"/);
+      assert.match(active, /data-tree-anchor="reply"[^>]*aria-current="step"/);
+      assert.match(active, /aria-expanded="true"/);
+      assert.doesNotMatch(active, /disabled/);
     }
   }
 });
@@ -585,7 +591,7 @@ test('inline branches interrupt the owning line and compact pairs preserve every
             ],
           },
         },
-        anchorId: '6',
+        anchorId: '5',
         disabled: false,
         onSelect: () => {},
         draft: {
@@ -602,6 +608,7 @@ test('inline branches interrupt the owning line and compact pairs preserve every
     ['0', '1', '4', '5', '2', '3'],
   );
   assert.equal((markup.match(/data-test-draft/g) ?? []).length, 1);
+  assert.match(markup, /data-tree-anchor="5"[^>]*aria-current="step"/);
   assert.deepEqual(
     [...markup.matchAll(/<span[^>]*data-tree-preview[^>]*>(.*?)<\/span>/g)].map(
       (match) => match[1],

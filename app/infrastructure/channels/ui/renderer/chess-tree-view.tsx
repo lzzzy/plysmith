@@ -36,20 +36,29 @@ function ChessTreeList({
   draft,
 }: Parameters<typeof ChessTreeMoveList>[0]) {
   const intl = useIntl();
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const locale = intl.locale.startsWith('de') ? 'de-DE' : 'en-GB';
   const lines = chessTreeLayout(record, draft?.anchorId);
-  const draftOwners = new Set<string>();
-  let owner =
-    draft === undefined
-      ? undefined
-      : lines.find((line) =>
-          line.steps.some((step) => step.anchorId === draft.anchorId),
-        );
-  while (owner !== undefined) {
-    draftOwners.add(owner.key);
-    owner = lines.find((line) => line.key === owner!.parentKey);
+  function owners(target: string | undefined) {
+    const keys = new Set<string>();
+    let owner = lines.find((line) =>
+      line.steps.some((step) => step.anchorId === target),
+    );
+    while (owner !== undefined) {
+      keys.add(owner.key);
+      owner = lines.find((line) => line.key === owner!.parentKey);
+    }
+    return keys;
   }
+  const [expansion, setExpansion] = useState(() => ({
+    anchorId,
+    expanded: owners(anchorId),
+  }));
+  let expanded = expansion.expanded;
+  if (expansion.anchorId !== anchorId) {
+    expanded = new Set([...expanded, ...owners(anchorId)]);
+    setExpansion({ anchorId, expanded });
+  }
+  const draftOwners = owners(draft?.anchorId);
   const main = lines.find((line) => !line.variation);
   const rendered = new Map<string, ReactNode>();
   const moveLabel = (step: AnalysisRecordDto['steps'][number]) =>
@@ -123,11 +132,11 @@ function ChessTreeList({
               aria-expanded={!closed}
               disabled={draftOwners.has(line.key)}
               onClick={() =>
-                setExpanded((current) => {
-                  const next = new Set(current);
+                setExpansion((current) => {
+                  const next = new Set(current.expanded);
                   if (next.has(line.key)) next.delete(line.key);
                   else next.add(line.key);
-                  return next;
+                  return { ...current, expanded: next };
                 })
               }
             >

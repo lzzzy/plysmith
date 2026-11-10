@@ -468,6 +468,7 @@
 }
 
 .saveForm input,
+.analysisActions select,
 .analysisActions textarea,
 .inlineNoteForm textarea {
   width: 100%;
@@ -482,6 +483,7 @@
 }
 
 .saveForm input:focus,
+.analysisActions select:focus,
 .analysisActions textarea:focus,
 .inlineNoteForm textarea:focus {
   border-color: #4d78bd;
@@ -517,10 +519,6 @@
   color: #333c47;
   background: #ffffff;
   border: 1px solid #c5cbd3;
-}
-
-.noteAction {
-  width: 100%;
 }
 
 .dangerButton {
@@ -573,6 +571,16 @@
   gap: 8px;
   padding: 14px;
   border-top: 1px solid #e0e4e9;
+}
+
+.analysisActions > label {
+  color: #59636f;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.analysisActions .previewActions {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .revisionActions {
@@ -923,20 +931,10 @@
   border-top: 1px solid #e0e4e9;
 }
 
-.saveChoice {
-  display: grid;
-  gap: 7px;
-}
-
 .visibilityLabel {
   color: #616a75;
   font-size: 11px;
   font-weight: 650;
-}
-
-.saveHeading {
-  color: #3f4853;
-  font-size: 11px;
 }
 
 .destinationGroup {

@@ -1238,14 +1238,12 @@ async function rootSaveUi(folderId: string) {
   });
   await expect(board).toBeVisible();
   assert.equal(await board.getByRole('gridcell').count(), 64);
-  const toggle = page.locator('[aria-controls="analysis-actions-details"]');
-  if ((await toggle.getAttribute('aria-expanded')) === 'false')
-    await toggle.click();
   await page
-    .getByRole('button', {
-      name: /Als eigene Analyse speichern|Save as.*analysis/,
+    .getByRole('combobox', {
+      name: label('analysis.acceptance.target'),
+      exact: true,
     })
-    .click();
+    .selectOption('record');
   const title = page.getByLabel(/^(Titel|Title)$/);
   await title.fill('Opening root');
   await expect(

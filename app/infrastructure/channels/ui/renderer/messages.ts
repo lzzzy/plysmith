@@ -353,10 +353,41 @@ export const messages = {
     'analysis.replaceMainLine': 'Hauptvariante ab hier ersetzen',
     'analysis.continueExploration': 'Als Analysepfad weiterführen',
     'analysis.contextNote': 'Nur in diesem Arbeitskontext',
-    'analysis.generalNote': 'Allgemein',
+    'analysis.generalNote': 'Im gesamten Bestand',
     'analysis.resizePanels': 'Platz zwischen Zugliste und Engine aufteilen',
     'analysis.panelShare': 'Zugliste {moves} Prozent, Engine {engine} Prozent',
     'analysis.notePlaceholder': 'Was ist an dieser Fortsetzung wichtig?',
+    'analysis.acceptance.privateRecordNote':
+      'Der Kommentar ist bisher nur für diesen Kontext bestimmt. Wählen Sie ausdrücklich Im gesamten Bestand, um ihn nur im Bestand zu speichern, oder behalten Sie die Kontextzuordnung bei.',
+    'analysis.acceptance.retryPreview': 'Vorschau erneut laden',
+    'analysis.acceptance.lastMoveDrafts':
+      'Ihre Formulareingaben bleiben erhalten. Speichern Sie den Pfad oder wählen Sie ausdrücklich Analysepfad verwerfen, um auch diese Texte zu verwerfen.',
+    'analysis.acceptance.rootNoteOmitted':
+      'Ohne ausgewählte Halbzüge wird der Kommentar nicht übernommen. Entfernen Sie den Text oder bestätigen Sie sein Verwerfen vor dem Speichern.',
+    'analysis.acceptance.stale':
+      'Die Strukturübernahme benötigt die aktuelle Fassung des ursprünglichen Eintrags und im Kontext dessen Mitgliedschaft ohne offene Änderung. Öffnen Sie die aktuelle Fassung erneut.',
+    'analysis.acceptance.target': 'Übernehmen als',
+    'analysis.acceptance.choose': 'Ziel auswählen',
+    'analysis.acceptance.note': 'Notiz',
+    'analysis.acceptance.inventory': 'In dieser Analyse',
+    'analysis.acceptance.record': 'Eigene Analyse',
+    'analysis.acceptance.mode': 'Übernahmeart',
+    'analysis.acceptance.fullPath':
+      'Gesamter Pfad: {total} {total, plural, one {Halbzug} other {Halbzüge}}',
+    'analysis.acceptance.prefix':
+      'Bis zur Auswahl: {count} von {total} {total, plural, one {Halbzug} other {Halbzügen}}',
+    'analysis.acceptance.unsaved':
+      'Ohne gespeicherten Ausgangspunkt können Sie nur eine eigene Analyse speichern.',
+    'analysis.acceptance.game':
+      'Partien bleiben unverändert. Notiz und eigene Analyse sind möglich; eine Strukturübernahme ist nur bei Analysen möglich.',
+    'analysis.acceptance.atEnd':
+      'Eine Notiz benötigt mindestens einen ausgewählten Halbzug. Für die Strukturübernahme wählen Sie das Ende des Analysepfads.',
+    'analysis.acceptance.globalStructure':
+      'Die Zugfolge dieser Analyse wird im gesamten Bestand geändert. Die Sichtbarkeit einer zusätzlichen Notiz wählen Sie getrennt.',
+    'analysis.acceptance.otherDrafts':
+      'Nicht übernommene Texte in den Speicherformularen beim Speichern oder Verwerfen ausdrücklich verwerfen. Beim Zielwechsel bleiben sie erhalten.',
+    'analysis.acceptance.noteAt': 'Notiz zu {move}',
+    'analysis.acceptance.alternative': 'Untersuchte Alternative: {move}',
     'analysis.prepareNote': 'Pfad in Notiz übernehmen',
     'analysis.saveAsNote': 'Als Notiz am Ausgangspunkt',
     'analysis.pathNoteDraft': 'Notizentwurf',
@@ -376,7 +407,7 @@ export const messages = {
     'analysis.saved': 'Analyse wurde gespeichert.',
     'analysis.savedWithNote': 'Analyse und Notiz wurden gemeinsam gespeichert.',
     'analysis.noteSaved':
-      'Notiz wurde am Ausgangspunkt gespeichert. Es wurde keine neue Analyse angelegt.',
+      'Notiz wurde gespeichert. Es wurde keine neue Analyse angelegt.',
     'analysis.positionNoteSaved': 'Notiz wurde an der Stellung gespeichert.',
     'analysis.positionNoteUpdated': 'Notiz wurde aktualisiert.',
     'analysis.positionNoteDeleted': 'Notiz wurde gelöscht.',
@@ -996,10 +1027,41 @@ export const messages = {
     'analysis.replaceMainLine': 'Replace main line from here',
     'analysis.continueExploration': 'Continue as analysis path',
     'analysis.contextNote': 'This context only',
-    'analysis.generalNote': 'General',
+    'analysis.generalNote': 'Throughout the inventory',
     'analysis.resizePanels': 'Resize move list and engine panels',
     'analysis.panelShare': 'Move list {moves} percent, engine {engine} percent',
     'analysis.notePlaceholder': 'What matters about this continuation?',
+    'analysis.acceptance.privateRecordNote':
+      'This comment is currently private to this context. Explicitly choose Throughout the inventory to save it only in the inventory, or keep the context membership.',
+    'analysis.acceptance.retryPreview': 'Reload preview',
+    'analysis.acceptance.lastMoveDrafts':
+      'Your form entries are preserved. Save the path or explicitly choose Discard analysis path to discard this text too.',
+    'analysis.acceptance.rootNoteOmitted':
+      'Without selected half-moves, this comment is not included. Clear the text or acknowledge discarding it before saving.',
+    'analysis.acceptance.stale':
+      'Structural changes require the current version of the original entry and, in a context, membership without a pending change. Reopen the current version.',
+    'analysis.acceptance.target': 'Accept as',
+    'analysis.acceptance.choose': 'Choose a destination',
+    'analysis.acceptance.note': 'Note',
+    'analysis.acceptance.inventory': 'In this analysis',
+    'analysis.acceptance.record': 'Separate analysis',
+    'analysis.acceptance.mode': 'How to accept',
+    'analysis.acceptance.fullPath':
+      'Entire path: {total} {total, plural, one {half-move} other {half-moves}}',
+    'analysis.acceptance.prefix':
+      'Through selection: {count} of {total} {total, plural, one {half-move} other {half-moves}}',
+    'analysis.acceptance.unsaved':
+      'Without a saved starting point, you can only save a separate analysis.',
+    'analysis.acceptance.game':
+      'Games remain unchanged. Notes and separate analyses are available; structural changes require an analysis.',
+    'analysis.acceptance.atEnd':
+      'A note needs at least one selected half-move. Select the end of the analysis path to save structural changes.',
+    'analysis.acceptance.globalStructure':
+      'The move sequence of this analysis changes throughout the inventory. Choose the visibility of an optional note separately.',
+    'analysis.acceptance.otherDrafts':
+      'Explicitly discard text in the save forms that will not be included when saving or discarding. Switching destinations preserves it.',
+    'analysis.acceptance.noteAt': 'Note on {move}',
+    'analysis.acceptance.alternative': 'Explored alternative: {move}',
     'analysis.prepareNote': 'Turn path into note',
     'analysis.saveAsNote': 'As a note at the starting point',
     'analysis.pathNoteDraft': 'Note draft',
@@ -1018,8 +1080,7 @@ export const messages = {
     'analysis.discard': 'Discard analysis path',
     'analysis.saved': 'Analysis was saved.',
     'analysis.savedWithNote': 'Analysis and note were saved together.',
-    'analysis.noteSaved':
-      'Note was saved at the starting point. No new analysis was created.',
+    'analysis.noteSaved': 'Note was saved. No new analysis was created.',
     'analysis.positionNoteSaved': 'Note was saved at the position.',
     'analysis.positionNoteUpdated': 'Note was updated.',
     'analysis.positionNoteDeleted': 'Note was deleted.',

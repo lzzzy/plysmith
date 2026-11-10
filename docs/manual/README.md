@@ -38,7 +38,7 @@ Beide beginnen an einer **Ausgangsstellung**. Das kann die **Grundstellung** ode
 
 **Notizen** können eine Partie oder Analyse als Ganzes beschreiben oder sich auf einen bestimmten Halbzug beziehen. Sie können Notizen ergänzen und bearbeiten. Auch Angaben aus Importen werden als Notizen übernommen.
 
-Auch auf dem Analysebrett ausprobierte Fortsetzungen können Sie festhalten. Ein solcher **Analysepfad** lässt sich bei beiden als Notiz am Ausgangspunkt übernehmen. Die Notiz können Sie anschließend unabhängig vom Analysepfad bearbeiten; die Hauptlinie bleibt unverändert.
+Auch auf dem Analysebrett ausprobierte Fortsetzungen können Sie festhalten. Ein solcher **Analysepfad** lässt sich bei beiden als Notiz am zugehörigen gespeicherten Halbzug übernehmen. Die Notiz können Sie anschließend unabhängig vom Analysepfad bearbeiten; die Hauptlinie bleibt unverändert.
 
 Wenn Sie eine Untersuchung getrennt weiterführen möchten, können Sie eine **eigene Analyse** beginnen und als neuen Eintrag im Bestand speichern. Das ist sowohl bei einer Partie als auch bei einer Analyse möglich: ab jedem beliebigen Halbzug oder direkt ab der Ausgangsstellung. Die **Herkunft** hält dabei die Verbindung zum ursprünglichen Eintrag und zum Ausgangspunkt fest. Der ursprüngliche Eintrag bleibt unverändert.
 
@@ -66,7 +66,7 @@ Ein Analysepfad muss nicht gleich die gespeicherte Zugfolge verändern. Sie kön
 
 [![Lehrpartie mit den geöffneten Speicheroptionen ihres Analysepfads](screenshots/game-save-options.png)](screenshots/game-save-options.png)
 
-Die Abbildung zeigt einen Analysepfad an einer **Partie**. Mit **Pfad in Notiz übernehmen** halten Sie die Fortsetzung als Notiz am Ausgangspunkt fest. Sie können die Notiz ergänzen und bearbeiten. Mit **Als eigene Analyse speichern** legen Sie einen neuen Eintrag an, in dem Sie die Untersuchung getrennt weiterführen können. In beiden Fällen bleiben die gespeicherten Züge der Partie unverändert.
+Die Abbildung zeigt einen Analysepfad an einer **Partie**. Mit **Übernehmen als → Notiz** halten Sie die Fortsetzung als Notiz am ersetzten Folgehalbzug fest; am Linienende wird sie dem letzten gespeicherten Halbzug zugeordnet. Sie können die Notiz ergänzen und bearbeiten. Mit **Übernehmen als → Eigene Analyse** legen Sie einen neuen Eintrag an, in dem Sie die Untersuchung getrennt weiterführen können. In beiden Fällen bleiben die gespeicherten Züge der Partie unverändert.
 
 [![Italienische Analyse mit den zusätzlichen Speicheroptionen ihres Analysepfads](screenshots/analysis-save-options.png)](screenshots/analysis-save-options.png)
 

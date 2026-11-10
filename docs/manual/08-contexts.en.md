@@ -34,14 +34,18 @@ Later entries and new subfolders are not added automatically. You explicitly dec
 
 ## Your notes and work in progress
 
-Open the Italian analysis in the "Italienisch vertiefen" context. Its saved moves and general notes are the same as in the inventory. Now add a note at a half-move and pay attention to its scope:
+Open the Italian analysis in the "Italienisch vertiefen" context. Its saved moves and general notes are the same as in the inventory. Now add a note at a half-move and pay attention to its scope. New note drafts always default to **Throughout the inventory**; an explicitly chosen context scope is retained as you continue working:
 
 - **Only in Italienisch vertiefen** records, for example, a question for this topic. The option names your active context. The note does not appear in your other contexts.
-- **General** adds to the shared entry and is also visible outside this context.
+- **Throughout the inventory** adds to the shared entry and is also visible outside this context.
+
+[![New note in the Italienisch vertiefen context with Throughout the inventory selected by default](screenshots/context-note-editor.png)](screenshots/context-note-editor.png)
+
+The screenshot shows **Throughout the inventory** selected even though you are working in a context. For a question that should apply only here, explicitly choose **Only in Italienisch vertiefen** before saving. Switching the acceptance destination or working context retains a choice already made in the draft. This does not change the scope of existing notes.
 
 [![Analysis in a working context with general and context-specific notes](screenshots/context-analysis.png)](screenshots/context-analysis.png)
 
-General notes appear on a grey background; context notes use a yellowish background with a gold-coloured line. When editing, you can explicitly see whether a note is **General** or **This context only**. A general note stays general even when you edit it from within a context.
+General notes appear on a grey background; context notes use a yellowish background with a gold-coloured line. When editing, you can explicitly see whether a note is **Throughout the inventory** or **This context only**. A general note stays general even when you edit it from within a context.
 
 Analysis paths and remembered analysis positions are separate for each workspace. You can begin a provisional path in "Italienisch vertiefen", work in another context and return to your investigation later. Plysmith remembers analysis paths across restarts too. They are still drafts, not saved variations or new entries.
 

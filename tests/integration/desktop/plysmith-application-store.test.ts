@@ -5804,7 +5804,7 @@ test('continuing a saved game starts exploration instead of an analysis revision
       firstMove: { kind: 'coordinates', value: 'd7d5' },
     },
   });
-  await store.promoteAnalysisToInventoryRevision();
+  await store.selectAnalysisAcceptance('inventory', 'continuation');
   store.close();
 });
 
@@ -6103,9 +6103,20 @@ test('taking back the last exploration move uses the dedicated scratch action', 
   const store = createReadyStore(client);
   await store.start();
 
+  store.setAnalysisRecordForm({ kind: 'free' }, oneMoveScratch.scratchId, {
+    title: 'Preserved root title',
+    noteBody: 'Preserved root comment',
+    destination: 'inventory',
+    noteScope: 'global',
+  });
   await store.takeBackLastMove();
 
   assert.deepEqual(updateRequest?.action, { kind: 'remove_last_move' });
+  assert.equal(
+    store.getAnalysisRecordForm({ kind: 'free' }, oneMoveScratch.scratchId)
+      ?.title,
+    'Preserved root title',
+  );
   const snapshot = store.getSnapshot();
   assert.equal(
     snapshot.phase === 'ready'
@@ -6508,6 +6519,600 @@ for (const succeeds of [true, false]) {
   });
 }
 
+test('acceptance destinations preserve the path and separate form drafts through structure and context switches', async () => {
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'acceptance-path',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  const originalSteps = scratch.steps;
+  const calls: string[] = [];
+  const client = createClient({
+    getAnalysisWorkspace: async () => ({
+      ...savedLineAnalysis('13'),
+      scratch,
+      allowedActions: [
+        'apply_move',
+        'continue_exploration',
+        'create_analysis_record',
+        'prepare_note',
+        'discard_scratch',
+      ],
+    }),
+    updateAnalysisScratch: async (request) => {
+      calls.push(request.action.kind);
+      assert.equal(request.expectedScratchRevision, scratch.scratchRevision);
+      const { noteDraft: _note, ...rest } = scratch;
+      void _note;
+      scratch = {
+        ...rest,
+        scratchRevision: scratch.scratchRevision + 1,
+        intent: { kind: 'exploration' },
+      };
+      return { scratch, discarded: false, dataRevision: 0 };
+    },
+    promoteAnalysisToInventoryRevision: async (_id, request) => {
+      assert.equal(request.expectedScratchRevision, scratch.scratchRevision);
+      calls.push(request.mode ?? 'continuation');
+      scratch = {
+        ...scratch,
+        scratchRevision: scratch.scratchRevision + 1,
+        intent: {
+          kind: 'inventory_revision',
+          mode: request.mode ?? 'truncate_after',
+          itemId: '11',
+          baseRevisionId: '12',
+          cutAnchorId: '13',
+          returnAnchorId: '13',
+          displayName: 'Test',
+        },
+      };
+      return { scratch, dataRevision: 0 };
+    },
+    previewInventoryRevision: async () =>
+      revisionPreview({ addedSteps: scratch.steps }),
+  });
+  const store = createReadyStore(client);
+  await store.start();
+  store.setPathNoteFormDraft(
+    scratch.scratchId,
+    'Edited note',
+    'global',
+    '1. d4',
+  );
+  store.setVariationCommentDraft(scratch.scratchId, {
+    enabled: true,
+    body: 'Variation comment',
+    noteScope: 'global',
+  });
+  store.setAnalysisRecordForm({ kind: 'free' }, scratch.scratchId, {
+    title: 'Own plan',
+    noteBody: 'Own note',
+    folderId: '8',
+    destination: 'inventory',
+    noteScope: 'global',
+  });
+  await store.selectAnalysisAcceptance('inventory');
+  await store.selectAnalysisAcceptance('inventory', 'continuation');
+  await store.selectAnalysisAcceptance('note');
+  await store.selectAnalysisAcceptance('record');
+  assert.deepEqual(calls, [
+    'add_variation',
+    'continue_exploration',
+    'continuation',
+    'continue_exploration',
+  ]);
+  assert.deepEqual(scratch.steps, originalSteps);
+  assert.equal(scratch.cursor, 1);
+  assert.equal(scratch.origin.kind, 'inventory_anchor');
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.body,
+    'Edited note',
+  );
+  assert.equal(
+    store.getVariationCommentDraft(scratch.scratchId)?.body,
+    'Variation comment',
+  );
+  assert.equal(
+    store.getAnalysisRecordForm({ kind: 'free' }, scratch.scratchId)?.folderId,
+    '8',
+  );
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(
+    store.getAnalysisAcceptanceChoice(
+      { kind: 'context', contextId: '7' },
+      scratch.scratchId,
+    ),
+    undefined,
+  );
+  assert.equal(store.getPathNoteFormDraft(scratch.scratchId), undefined);
+  store.setPathNoteFormDraft(
+    scratch.scratchId,
+    'Private note',
+    'context',
+    '1. d4',
+  );
+  await store.selectAnalysisAcceptance('note');
+  await store.setScope({ kind: 'free' });
+  assert.equal(
+    store.getAnalysisAcceptanceChoice({ kind: 'free' }, scratch.scratchId)
+      ?.target,
+    'record',
+  );
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.body,
+    'Edited note',
+  );
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.noteScope,
+    'context',
+  );
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.body,
+    'Private note',
+  );
+  store.close();
+});
+
+test('switching a restored prepared note to another destination keeps its text for this session', async () => {
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'restored-note',
+    scratchRevision: 4,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+    noteDraft: {
+      body: 'Restored custom text',
+      moves: [{ from: 'd2', to: 'd4', san: 'd4' }],
+    },
+  };
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({
+        ...savedLineAnalysis('13'),
+        scratch,
+      }),
+      updateAnalysisScratch: async (request) => {
+        assert.equal(request.action.kind, 'clear_note');
+        const { noteDraft: _note, ...rest } = scratch;
+        void _note;
+        scratch = { ...rest, scratchRevision: 5 };
+        return { scratch, discarded: false, dataRevision: 0 };
+      },
+    }),
+  );
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.selectAnalysisAcceptance('record');
+  await store.selectAnalysisAcceptance('note');
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.body,
+    'Restored custom text',
+  );
+  assert.equal(
+    store.getPathNoteFormDraft(scratch.scratchId)?.noteScope,
+    'global',
+  );
+  assert.equal(store.hasInventoryRestoreDrafts(), true);
+  store.close();
+});
+
+test('structure acceptance rejects games and rewound prefixes without issuing a host command', async () => {
+  for (const scenario of ['game', 'prefix'] as const) {
+    const base = savedLineAnalysis('13');
+    const record = base.record!;
+    const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+      scratchId: 'guarded-path',
+      scratchRevision: 1,
+      intent: { kind: 'exploration' },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      root: initialState,
+      steps: [
+        {
+          before: initialState,
+          move: { from: 'd2', to: 'd4', san: 'd4' },
+          after: initialState,
+        },
+      ],
+      cursor: scenario === 'prefix' ? 0 : 1,
+    };
+    let commands = 0;
+    const store = createReadyStore(
+      createClient({
+        getAnalysisWorkspace: async () => ({
+          ...base,
+          record: {
+            ...record,
+            itemType: scenario === 'game' ? 'game' : 'analysis',
+          },
+          scratch,
+        }),
+        promoteAnalysisToInventoryRevision: async () => {
+          commands++;
+          throw new Error('Must not promote');
+        },
+      }),
+    );
+    await store.start();
+    await store.selectAnalysisAcceptance('inventory');
+    assert.equal(commands, 0);
+    assert.equal(
+      store.getAnalysisAcceptanceChoice({ kind: 'free' }, scratch.scratchId),
+      undefined,
+    );
+    store.close();
+  }
+});
+
+test('last-move takeback preserves form text until the path is explicitly discarded', async () => {
+  for (const destination of ['note', 'record', 'inventory'] as const) {
+    let scratch: AnalysisWorkspaceDto['scratch'] = {
+      scratchId: 'last-path',
+      scratchRevision: 1,
+      intent: { kind: 'exploration' },
+      origin: {
+        kind: 'inventory_anchor',
+        itemId: '11',
+        revisionId: '12',
+        anchorId: '13',
+      },
+      root: initialState,
+      steps: [
+        {
+          before: initialState,
+          move: { from: 'd2', to: 'd4', san: 'd4' },
+          after: initialState,
+        },
+      ],
+      cursor: 1,
+    };
+    let updates = 0;
+    const store = createReadyStore(
+      createClient({
+        getAnalysisWorkspace: async () => ({
+          ...savedLineAnalysis('13'),
+          ...(scratch === undefined ? {} : { scratch }),
+        }),
+        updateAnalysisScratch: async (request) => {
+          updates++;
+          assert.equal(request.action.kind, 'discard');
+          scratch = undefined;
+          return { discarded: true, dataRevision: 1 };
+        },
+      }),
+    );
+    await store.start();
+    if (destination === 'note')
+      store.setPathNoteFormDraft(
+        scratch.scratchId,
+        'Custom note',
+        'global',
+        '1. d4',
+      );
+    else if (destination === 'inventory')
+      store.setVariationCommentDraft(scratch.scratchId, {
+        enabled: true,
+        body: 'Custom comment',
+        noteScope: 'global',
+      });
+    else
+      store.setAnalysisRecordForm({ kind: 'free' }, scratch.scratchId, {
+        title: 'Custom title',
+        noteBody: '',
+        destination: 'inventory',
+        noteScope: 'global',
+      });
+    await store.takeBackLastMove();
+    assert.equal(updates, 0);
+    assert.ok(scratch);
+    assert.equal(store.hasInventoryRestoreDrafts(), true);
+    await store.discardAnalysisScratch();
+    assert.equal(updates, 1);
+    assert.equal(store.hasInventoryRestoreDrafts(), false);
+    store.close();
+  }
+});
+
+test('a failed acceptance preview retains the newly chosen structural mode after promotion', async () => {
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'failed-preview',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  let failPreview = false;
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({
+        ...savedLineAnalysis('13'),
+        scratch,
+        allowedActions: ['continue_exploration', 'discard_scratch'],
+      }),
+      updateAnalysisScratch: async () => {
+        scratch = {
+          ...scratch,
+          scratchRevision: scratch.scratchRevision + 1,
+          intent: { kind: 'exploration' },
+        };
+        return { scratch, discarded: false, dataRevision: 0 };
+      },
+      promoteAnalysisToInventoryRevision: async (_id, request) => {
+        scratch = {
+          ...scratch,
+          scratchRevision: scratch.scratchRevision + 1,
+          intent: {
+            kind: 'inventory_revision',
+            mode: request.mode ?? 'truncate_after',
+            itemId: '11',
+            baseRevisionId: '12',
+            cutAnchorId: '13',
+            returnAnchorId: '13',
+            displayName: 'Test',
+          },
+        };
+        return { scratch, dataRevision: 0 };
+      },
+      previewInventoryRevision: async () => {
+        if (failPreview) {
+          failPreview = false;
+          throw new Error('Transient preview failure');
+        }
+        return revisionPreview({
+          mode:
+            scratch.intent.kind === 'inventory_revision'
+              ? scratch.intent.mode
+              : 'add_variation',
+          addedSteps: scratch.steps,
+        });
+      },
+    }),
+  );
+  await store.start();
+  await store.selectAnalysisAcceptance('inventory', 'add_variation');
+  failPreview = true;
+  await store.selectAnalysisAcceptance('inventory', 'continuation');
+  assert.deepEqual(
+    store.getAnalysisAcceptanceChoice({ kind: 'free' }, scratch.scratchId),
+    { target: 'inventory', mode: 'continuation' },
+  );
+  const state = store.getSnapshot();
+  assert.equal(
+    state.phase === 'ready' ? state.inventoryRevisionPreview?.mode : undefined,
+    'truncate_after',
+  );
+  store.close();
+});
+
+test('an automatic separate-analysis destination survives a failed save after preparing its comment', async () => {
+  let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'automatic-own',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: { kind: 'initial_position' },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({ ...analysis(), scratch }),
+      updateAnalysisScratch: async () => {
+        scratch = {
+          ...scratch,
+          scratchRevision: 2,
+          noteDraft: { body: 'Own comment', moves: [scratch.steps[0]!.move] },
+        };
+        return { scratch, discarded: false, dataRevision: 0 };
+      },
+      createAnalysisRecord: async () => {
+        throw new Error('Name conflict');
+      },
+    }),
+  );
+  await store.start();
+  assert.equal(
+    await store.createAnalysisRecord(
+      'Existing name',
+      'inventory',
+      'global',
+      'Own comment',
+    ),
+    false,
+  );
+  assert.equal(
+    store.getAnalysisAcceptanceChoice({ kind: 'free' }, scratch.scratchId)
+      ?.target,
+    'record',
+  );
+  store.close();
+});
+
+test('acceptance selection blocks overlapping transitions and context switches until its preview finishes', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'preview-path',
+    scratchRevision: 1,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'd2', to: 'd4', san: 'd4' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  let promotions = 0;
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({
+        ...savedLineAnalysis('13'),
+        scratch,
+      }),
+      promoteAnalysisToInventoryRevision: async () => {
+        promotions++;
+        await gate;
+        return { scratch, dataRevision: 0 };
+      },
+      previewInventoryRevision: async () =>
+        revisionPreview({ addedSteps: scratch.steps }),
+    }),
+  );
+  await store.start();
+  const pending = store.selectAnalysisAcceptance('inventory');
+  await store.selectAnalysisAcceptance('record');
+  await store.setScope({ kind: 'context', contextId: '7' });
+  release();
+  await pending;
+  assert.equal(promotions, 1);
+  assert.equal(
+    store.getAnalysisAcceptanceChoice({ kind: 'free' }, scratch.scratchId)
+      ?.target,
+    'inventory',
+  );
+  const state = store.getSnapshot();
+  assert.equal(state.phase === 'ready' ? state.scope.kind : undefined, 'free');
+  store.close();
+});
+
+test('an unprepared path note prepares and saves only the selected prefix in its chosen scope', async () => {
+  const scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
+    scratchId: 'prefix-note',
+    scratchRevision: 2,
+    intent: { kind: 'exploration' },
+    origin: {
+      kind: 'inventory_anchor',
+      itemId: '11',
+      revisionId: '12',
+      anchorId: '13',
+    },
+    root: initialState,
+    steps: [
+      {
+        before: initialState,
+        move: { from: 'e2', to: 'e4', san: 'e4' },
+        after: initialState,
+      },
+      {
+        before: initialState,
+        move: { from: 'e7', to: 'e5', san: 'e5' },
+        after: initialState,
+      },
+    ],
+    cursor: 1,
+  };
+  const calls: string[] = [];
+  const store = createReadyStore(
+    createClient({
+      getAnalysisWorkspace: async () => ({
+        ...savedLineAnalysis('13'),
+        scratch,
+      }),
+      updateAnalysisScratch: async (request) => {
+        assert.deepEqual(request.action, {
+          kind: 'prepare_note',
+          body: 'Only e4',
+        });
+        assert.equal(request.expectedScratchRevision, 2);
+        calls.push('prepare');
+        return {
+          scratch: {
+            ...scratch,
+            scratchRevision: 3,
+            noteDraft: { body: 'Only e4', moves: [scratch.steps[0]!.move] },
+          },
+          discarded: false,
+          dataRevision: 0,
+        };
+      },
+      createAnalysisNote: async (request) => {
+        calls.push('save');
+        assert.equal(request.expectedScratchRevision, 3);
+        assert.deepEqual(request.noteScope, { kind: 'global' });
+        return {
+          contributionId: '21',
+          itemId: '11',
+          revisionId: '12',
+          anchorId: '14',
+          scopeKind: 'global',
+          dataRevision: 1,
+        };
+      },
+    }),
+  );
+  await store.start();
+  await store.selectAnalysisAcceptance('note');
+  assert.deepEqual(calls, []);
+  assert.equal(await store.createAnalysisNote('global', 'Only e4'), true);
+  assert.deepEqual(calls, ['prepare', 'save']);
+  assert.equal(scratch.cursor, 1);
+  store.close();
+});
+
 for (const mode of [undefined, 'add_variation'] as const) {
   test(`promoting an exploration as ${mode ?? 'inferred revision'} preserves moves and previews it`, async () => {
     const exploration: NonNullable<AnalysisWorkspaceDto['scratch']> = {
@@ -6568,7 +7173,10 @@ for (const mode of [undefined, 'add_variation'] as const) {
     const store = createReadyStore(client);
     await store.start();
 
-    await store.promoteAnalysisToInventoryRevision(mode);
+    await store.selectAnalysisAcceptance(
+      'inventory',
+      mode === 'add_variation' ? mode : 'continuation',
+    );
 
     assert.deepEqual(promoteRequest, {
       scope: { kind: 'free' },
@@ -9136,7 +9744,6 @@ test('restore preserves local content forms and refuses opening a file', async (
     noteBody: 'Keep me',
     destination: 'inventory' as const,
     noteScope: 'global' as const,
-    open: true,
   };
   store.setAnalysisRecordForm({ kind: 'free' }, 'scratch-test', draft);
   await store.prepareInventoryRestore();
@@ -9450,7 +10057,6 @@ test('analysis record forms bind their full values to scope and scratch for the 
     folderId: 'folder-a',
     destination: 'inventory',
     noteScope: 'global',
-    open: true,
   } as const;
   store.setAnalysisRecordForm(free, 'scratch-a', draft);
   store.setAnalysisRecordForm(context, 'scratch-a', {

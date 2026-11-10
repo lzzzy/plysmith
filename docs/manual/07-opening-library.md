@@ -11,7 +11,7 @@ Die zuglose Analyse „Manual - Grundstellung“ kann der Ausgangspunkt einer so
 Für eine kleine Bibliothek zu 1.e4 können Sie so vorgehen:
 
 1. Öffnen Sie „Manual - Grundstellung“ und spielen Sie auf dem Analysebrett 1.e4.
-2. Wählen Sie **Als eigene Analyse speichern** und vergeben Sie den Namen „Repertoire - 1.e4“. Der neue Eintrag enthält diese erste Fortsetzung und hat eine echte Herkunftsverbindung zur „Manual - Grundstellung“.
+2. Wählen Sie **Übernehmen als → Eigene Analyse** und vergeben Sie den Namen „Repertoire - 1.e4“. Der neue Eintrag enthält diese erste Fortsetzung und hat eine echte Herkunftsverbindung zur „Manual - Grundstellung“.
 3. Öffnen Sie „Repertoire - 1.e4“ und wählen Sie die Stellung nach 1.e4. Probieren Sie beispielsweise 1…c6 aus und speichern Sie den Pfad als eigene Analyse „Repertoire - Caro-Kann“.
 4. Beginnen Sie für eine weitere Antwort erneut bei 1.e4 in „Repertoire - 1.e4“. So können Sie eine weitere eigene Analyse zu 1…e5 anlegen.
 

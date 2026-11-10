@@ -427,7 +427,9 @@ app.on('window-all-closed', () => app.quit());
                 locale,
               );
               const title = page.getByRole('textbox');
-              const choice = page.getByRole('combobox');
+              const choice = page.getByRole('combobox', {
+                name: /^(Ergebnis|Result)/,
+              });
               await title.fill('Result confirmation');
               await choice.selectOption(result);
               await page
@@ -504,8 +506,11 @@ app.on('window-all-closed', () => app.quit());
             'Frozen completion',
           );
           await expect(page.getByRole('textbox')).toBeDisabled();
-          await expect(page.getByRole('combobox')).toHaveValue('draw');
-          await expect(page.getByRole('combobox')).toBeDisabled();
+          const result = page.getByRole('combobox', {
+            name: /^(Ergebnis|Result)/,
+          });
+          await expect(result).toHaveValue('draw');
+          await expect(result).toBeDisabled();
           const retry = page.getByRole('button', {
             name:
               locale === 'de-DE'

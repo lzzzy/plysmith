@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-02",
+  "scope": "Inventory-wide defaults for new note drafts and visible current moves when navigating collapsed variations",
+  "baselineCommit": "69b05c72bef3a39676546174af591159cb2c8d17",
+  "precedingVerification": "analysis-path-acceptance-2026-11-02.json",
+  "fullSuiteRepeated": false,
+  "behavior": [
+    "New position notes, path notes, optional variation comments and separate-analysis comments default to global visibility, including within contexts.",
+    "The global label is Im gesamten Bestand / Throughout the inventory.",
+    "Explicit private draft choices survive target, area and context switches; existing saved notes are untouched.",
+    "Changing or restoring the selected anchor expands only its branch ancestors, preserving expanded siblings and manual collapse between navigation steps.",
+    "Scrolling also follows anchor changes at the same path index; the current move remains blue and in view."
+  ],
+  "verification": {
+    "focusedTests": 271,
+    "focusedFailed": 0,
+    "browserTests": 7,
+    "browserFailed": 0,
+    "browserRedBeforeFix": {
+      "passed": 5,
+      "failed": 2
+    },
+    "typechecks": [
+      "tsconfig.renderer.json",
+      "tsconfig.tests.json",
+      "tsconfig.tools.json"
+    ],
+    "scopedLint": true,
+    "scopedPrettier": true,
+    "desktopBuild": true,
+    "diffCheck": true
+  },
+  "nativeDesktop": {
+    "defaults": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --drafts-only --draft-case=note-defaults",
+      "exitCode": 0,
+      "passedSteps": 1,
+      "rendererErrors": 0,
+      "artifactDirectory": "build/verification/variations/3b944309-fd9a-4d46-bd02-1ca38bac2172"
+    },
+    "privateDrafts": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --drafts-only --draft-case=record-form",
+      "exitCode": 0,
+      "passedSteps": 1,
+      "rendererErrors": 0,
+      "artifactDirectory": "build/verification/variations/d9a492e4-5c35-4c69-ac5c-ef5df0004de3"
+    },
+    "navigation": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --navigation-only",
+      "exitCode": 0,
+      "passedSteps": 3,
+      "rendererErrors": 0,
+      "artifactDirectory": "build/verification/variations/8ced696c-2ad0-4e36-8df6-712ca1918fed"
+    },
+    "manual": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --manual-acceptance-only --update-manual-screenshots",
+      "exitCode": 0,
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "artifactDirectory": "build/verification/variations/0f8d9db3-1379-432c-93c6-c18627425ddf"
+    }
+  },
+  "manual": {
+    "subsequentDocumentationVerification": "manual-ui-followup-2026-11-02.json",
+    "captureHashScope": "These hashes describe this earlier capture; the linked documentation follow-up records the current screenshots.",
+    "languages": ["de-DE", "en-GB"],
+    "fixture": "docs/manual/manual.pgn",
+    "screenshots": {
+      "docs/manual/screenshots/note-editor.png": "11325ea33a572b5483e7bc36cdafb79490b65d37e97d1bddd43f7c96f95ca601",
+      "docs/manual/screenshots/game-save-options.png": "ada4d0dddb6df0b3943cc0550efeb1e9c0e1d26e41eec5e536f101c6ac4bd5ca",
+      "docs/manual/screenshots/analysis-path.png": "1e1a352a83b713654c4b9a88698e03b2390d1585f2c6f92bda09c91b0e1d38c7",
+      "docs/manual/screenshots/analysis-save-options.png": "f533a402583f4d2e2c067e69010f5b422cfe3212bd4823355774cf8f7b0ba32b",
+      "docs/manual/screenshots/analysis-mainline-review.png": "ff6aaf34d746dc4df59a5b6b32bdb69159cf5af5d9025092c48e885d778b5b3c"
+    },
+    "localLinksChecked": 236
+  },
+  "modelOrSchemaChanges": false,
+  "existingNoteRewrites": false,
+  "limits": [
+    "The preceding 1470-test full-suite pass is the baseline; this follow-up used focused regressions and the listed native checks.",
+    "No human screen-reader study or external Lichess account used."
+  ]
+}

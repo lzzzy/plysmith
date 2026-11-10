@@ -1,0 +1,170 @@
+{
+  "date": "2026-11-02",
+  "scope": "Unified analysis-path acceptance with preserved save workflows, exact note targets and draft safety",
+  "baselineCommit": "69b05c72bef3a39676546174af591159cb2c8d17",
+  "releaseState": "Verified working-tree changes; no release or commit requested",
+  "modelOrSchemaChanges": false,
+  "existingNoteRewrites": false,
+  "fullSourceVerification": {
+    "command": "NODE_OPTIONS=--max-old-space-size=1024 pnpm verify",
+    "exitCode": 0,
+    "tests": 1470,
+    "passed": 1470,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "log": "build/path-final-verify.log",
+    "phases": [
+      {
+        "files": 44,
+        "tests": 333,
+        "durationMilliseconds": 129791.7984
+      },
+      {
+        "files": 86,
+        "tests": 1137,
+        "durationMilliseconds": 687250.0754
+      }
+    ],
+    "otherGates": [
+      "All four TypeScript projects",
+      "ESLint",
+      "Architecture boundaries: 590 modules, 2739 dependencies",
+      "Host-client browser compatibility",
+      "Generated contracts and configuration schemas",
+      "Desktop production build",
+      "Prettier"
+    ]
+  },
+  "focusedRegressions": {
+    "storePassed": 254,
+    "astraPersistencePassed": 154,
+    "astraBackupAndNoteFollowupPassed": 56,
+    "countsOverlapFullSuite": true,
+    "coverage": [
+      "Safe destination and structural-mode changes without inventory publication",
+      "Per-scope and per-scratch form drafts, title, folder and note visibility",
+      "Note and separate-analysis cursor prefixes, including root-only saves",
+      "Exact contrasted half-move anchor on main, side and nested lines; line-end and root fallback",
+      "Repeated positions and transpositions do not select a different occurrence",
+      "Atomic variation plus optional scoped comment; no-op and stale/CAS preservation",
+      "Busy preview serialization and preview-failure mode consistency",
+      "Failed separate-analysis creation after preparing a comment retains its form",
+      "Last anchored move takeback protects typed drafts; free-position takeback keeps root forms",
+      "Context-private separate-analysis comments require explicit General visibility for inventory-only saving",
+      "Application to SQLite to PGN encode/decode to restore/reopen/reexport for new notes and existing structured notes",
+      "Immutable games, context impacts, metadata, history, source ancestry and fair-play boundaries"
+    ]
+  },
+  "nativeDesktop": {
+    "path-complete-runtime": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --path-only",
+      "exitCode": 0,
+      "artifactDirectory": "build/verification/variations/9498d53e-b29e-46c0-859f-ba1dbe0639d6",
+      "passedSteps": 22,
+      "rendererErrors": 0,
+      "screenshots": 23,
+      "steps": [
+        "isolated real Stockfish analysis provider",
+        "native analysis without import",
+        "scratch middle is readonly and its actual end remains playable",
+        "create variation from board and save optional editable comment",
+        "explicit main-line selection resets branch intent while arrows retain it",
+        "comment-only at a stored branch anchor is an editable independent text copy",
+        "siblings remain visible when navigating and collapsing is explicit",
+        "own analysis retains actual origin",
+        "DE and EN small and wide viewports",
+        "Host and Desktop restart preserves branches and notes",
+        "global variation and context-only comment remain separate across area changes",
+        "neutral global notes, sticky context notes, silent scope and explicit editing",
+        "nested native drafts and branches stay inside their owning variation",
+        "Manage preview pairs half-moves, nests variants and navigates canonical positions",
+        "takeback on the last variation move protects context notes and preserves siblings",
+        "delete a whole nested variation from its symbol row without changing the main line",
+        "delete a collapsed parent variation, then restart with the remaining main line and sibling",
+        "metadata rename shows real draft loss before saving and stays direct without loss",
+        "metadata form retains edited fields across a real external revision refresh",
+        "stopped playout form survives area and context switches and saves the visible result",
+        "reentered prefix preserves notes and displays only the actual extension",
+        "Stockfish detail-level draft defaults and responsive settings"
+      ]
+    },
+    "path-form-runtime": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --drafts-only --draft-case=record-form",
+      "exitCode": 0,
+      "artifactDirectory": "build/verification/variations/e0dc7876-0b54-497b-a297-6b4efcdbcad0",
+      "passedSteps": 1,
+      "rendererErrors": 0,
+      "screenshots": 0,
+      "steps": ["form drafts: record-form"]
+    },
+    "path-notation-runtime": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --note-notation-only",
+      "exitCode": 0,
+      "artifactDirectory": "build/verification/variations/8e4bcb72-7d30-489c-af04-654b569666fc",
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "screenshots": 4,
+      "steps": [
+        "continuous white-start notation survives note saving and restart",
+        "continuous black-start notation survives note saving and restart"
+      ]
+    },
+    "path-manual-final-runtime": {
+      "command": "node --max-old-space-size=512 tools/verify-variations-runtime.ts --manual-acceptance-only --update-manual-screenshots",
+      "exitCode": 0,
+      "artifactDirectory": "build/verification/variations/96e8c4db-7955-4ac8-b0c6-f9e6a72eeb66",
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "screenshots": 4,
+      "steps": [
+        "isolated real Stockfish analysis provider",
+        "manual PGN uses the unified destinations without changing its six sources"
+      ]
+    }
+  },
+  "review": {
+    "reviewer": "gpt-6-astra",
+    "integratedFindingsResolved": 6,
+    "remainingFindings": 0,
+    "additionalNativeRegression": "A replayed saved suffix followed by new moves now labels the operation from the effective extension preview; saving preserves the existing note and survives restart."
+  },
+  "manual": {
+    "languages": ["de-DE", "en-GB"],
+    "sharedScreenshotsLocale": "de-DE",
+    "localLinksChecked": 236,
+    "fixture": "docs/manual/manual.pgn",
+    "fixtureSha256": "1aaf6f33db5c2b015cc1754b7006e0d42d5b7633896f7bfb02a9767de2fb1859",
+    "screenshots": {
+      "docs/manual/screenshots/analysis-path.png": {
+        "width": 1600,
+        "height": 1100,
+        "sha256": "96c41987acaaa06aa13e5ab29dbc01347321404a6ac96890c634e6a0139c368a"
+      },
+      "docs/manual/screenshots/game-save-options.png": {
+        "width": 1600,
+        "height": 1100,
+        "sha256": "8ba9e603fbd730c00a3372a542ac42ba104f58bbd7a3609e4e9de76330473d38"
+      },
+      "docs/manual/screenshots/analysis-save-options.png": {
+        "width": 1600,
+        "height": 1100,
+        "sha256": "4c5c9438a477f89febcd17f38942c0fab58185af8ffd04de9440e5ab98497f56"
+      },
+      "docs/manual/screenshots/analysis-mainline-review.png": {
+        "width": 1600,
+        "height": 1100,
+        "sha256": "70d3bcca0ce9a86d250e99b680b42276d3883fe14f47aaff7852895ab6859ff2"
+      }
+    },
+    "capture": "Native isolated Electron, 100% zoom, real pane resizing and scrolling; no montage",
+    "subsequentUiAndScreenshotVerification": "note-scope-navigation-2026-11-02.json",
+    "captureHashScope": "Hashes below describe this preceding capture; the linked follow-up records current screenshot hashes after the note-scope label change."
+  },
+  "limits": [
+    "No human screen-reader acceptance or empirical usability study claimed.",
+    "No external Lichess account or real user profile used; live/fair-play behavior covered by the full isolated suite.",
+    "Form fields remain session drafts; existing scratch restart persistence is unchanged."
+  ]
+}

@@ -41,6 +41,7 @@ import {
   validatePositionNoteTarget,
 } from './sqlite-analysis-note.ts';
 import { analysisContentFingerprint } from './sqlite-analysis-content-fingerprint.ts';
+import { resolveAnalysisNoteTarget } from './sqlite-analysis-note-target.ts';
 import { readContextScratch } from './sqlite-analysis-scratch-state.ts';
 import { ensurePosition } from './sqlite-chess-state.ts';
 import { deleteContextScratch } from './sqlite-context-scratch.ts';
@@ -89,6 +90,7 @@ interface RevisionCandidate {
   readonly reusedRows: readonly TreeRow[];
   readonly addedSteps: readonly AnalysisScratchStep[];
   readonly comment: InventoryRevisionComment | undefined;
+  readonly commentAnchorId: AnchorId | undefined;
   readonly replacedMove: TreeRow | undefined;
   readonly candidateSteps: readonly AnalysisScratchStep[];
   readonly preservedMoveCount: number;
@@ -375,7 +377,7 @@ export function saveInventoryRevision(
       ? undefined
       : insertAnalysisNoteContribution(database, {
           itemId: candidate.base.itemId,
-          anchorId: intent.cutAnchorId,
+          anchorId: candidate.commentAnchorId!,
           note: { body: candidate.comment.body, moves: Object.freeze([]) },
           noteScope: candidate.comment.noteScope,
           languageTag: candidate.comment.languageTag,
@@ -454,12 +456,20 @@ function buildCandidate(
   ) {
     throw inventoryDisplayNameConflict();
   }
+  const commentAnchorId =
+    comment === undefined
+      ? undefined
+      : resolveAnalysisNoteTarget(database, {
+          itemId: base.itemId,
+          revisionId: base.revisionId,
+          anchorId: intent.cutAnchorId,
+        }).anchorId;
   if (comment !== undefined) {
     validatePositionNoteTarget(database, {
       scope,
       itemId: base.itemId,
       revisionId: base.revisionId,
-      anchorId: intent.cutAnchorId,
+      anchorId: commentAnchorId!,
       noteScope: comment.noteScope,
     });
   }
@@ -583,6 +593,7 @@ function buildCandidate(
     reusedRows,
     addedSteps,
     comment,
+    commentAnchorId,
     replacedMove,
     candidateSteps,
     preservedMoveCount,
@@ -599,6 +610,7 @@ function buildCandidate(
       dependencies: impact.fingerprintValue,
       tree: base.tree,
       comment: comment ?? null,
+      commentAnchorId: commentAnchorId?.value ?? null,
     }),
     dataRevision,
   });
@@ -1188,8 +1200,10 @@ function rebaseExplorationScratch(
     .prepare(
       `SELECT scratch_mode AS scratchMode, origin_item_id AS originItemId,
               origin_revision_id AS originRevisionId,
-              origin_anchor_id AS originAnchorId
-         FROM analysis_scratch_draft WHERE scratch_draft_id = ?`,
+              origin_anchor_id AS originAnchorId,
+              EXISTS (SELECT 1 FROM analysis_scratch_step step
+                WHERE step.scratch_draft_id = scratch.scratch_draft_id) AS hasSteps
+         FROM analysis_scratch_draft scratch WHERE scratch_draft_id = ?`,
     )
     .get(request.scratchId) as
     | {
@@ -1197,6 +1211,7 @@ function rebaseExplorationScratch(
         originItemId: number | null;
         originRevisionId: number | null;
         originAnchorId: number | null;
+        hasSteps: number;
       }
     | undefined;
   if (
@@ -1205,6 +1220,21 @@ function rebaseExplorationScratch(
     scratch.originRevisionId !== request.baseRevisionId.value ||
     scratch.originAnchorId !== request.anchorId ||
     !request.targetAnchorIds.has(request.anchorId)
+  ) {
+    return false;
+  }
+  const source = {
+    itemId: request.itemId,
+    revisionId: request.baseRevisionId,
+    anchorId: localId('anchor', request.anchorId),
+  };
+  if (
+    scratch.hasSteps === 1 &&
+    resolveAnalysisNoteTarget(database, source).anchorId.value !==
+      resolveAnalysisNoteTarget(database, {
+        ...source,
+        revisionId: request.targetRevisionId,
+      }).anchorId.value
   ) {
     return false;
   }

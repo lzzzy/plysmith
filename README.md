@@ -8,6 +8,12 @@ Endspiel untersuchen und aus einer Stellung gegen eine Engine spielen.
 
 Das [deutsche Manual](docs/manual/README.md) führt mit einem kleinen,
 importierbaren Beispielbestand durch die Grundlagen und alle Bereiche der App.
+Eigene Fortsetzungen übernehmen Sie über die gemeinsame Auswahl **Übernehmen als**
+als Notiz, in eine bestehende Analyse oder als eigene Analyse. Die gespeicherten
+Züge einer Partie bleiben dabei unverändert. Die einzelnen Wege erklärt
+[Stellungen untersuchen und Gedanken festhalten](docs/manual/03-analysis.md).
+
+[![Analyse einer italienischen Eröffnung mit Varianten und blau markiertem aktuellem Halbzug](docs/manual/screenshots/saved-line.png)](docs/manual/screenshots/saved-line.png)
 
 Dies ist eine Windows-Beta zur Erprobung der Anwendung. Weitere Rückmeldungen
 helfen, Plysmith zu verbessern. Spätere Versionen können möglicherweise nicht

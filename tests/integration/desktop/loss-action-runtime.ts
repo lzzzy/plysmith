@@ -35,6 +35,7 @@ function render() {
 }
 function prepare(kind) { calls.push(kind); state = { ...state, destructiveAction: { ...state.destructiveAction, status: 'loading' } }; render(); }
 const store = {
+  checkInventoryName: async () => undefined,
   getSnapshot: () => state,
   cancelDestructiveAction: () => { calls.push('cancel'); state = { ...state, destructiveAction: undefined }; render(); },
   confirmDestructiveAction: async () => { calls.push('confirm'); state = { ...state, destructiveAction: { ...state.destructiveAction, status: 'submitting' } }; render(); return true; },
@@ -71,8 +72,12 @@ window.lossTest = {
   logLevel: 'silent',
 });
 assert.ok(
-  !Object.keys(bundle.metafile.inputs).some((input) =>
-    /host_client|plysmith-application-store\.ts$|bootstrap/.test(input),
+  !Object.values(bundle.metafile.outputs).some((output) =>
+    Object.entries(output.inputs).some(
+      ([input, details]) =>
+        details.bytesInOutput > 0 &&
+        /host_client|plysmith-application-store\.ts$|bootstrap/.test(input),
+    ),
   ),
 );
 const script = bundle.outputFiles.find((file) => file.path.endsWith('.js'));

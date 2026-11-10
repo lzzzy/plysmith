@@ -258,7 +258,7 @@ test(
       (entry) => entry.contributionId === saved.commentContributionId,
     );
     assert.equal(note?.body, comment.body);
-    assert.equal(note?.anchorId, e4);
+    assert.equal(note?.anchorId, base.steps[1]!.anchorId);
     assert.deepEqual(note?.moves, []);
     await tool('update_analysis_note', {
       scope,

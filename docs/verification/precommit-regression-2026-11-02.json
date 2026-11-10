@@ -1,0 +1,210 @@
+{
+  "date": "2026-11-02",
+  "scope": "Complete working-tree regression before the user's own acceptance test and any commit or push",
+  "baselineCommit": "69b05c72bef3a39676546174af591159cb2c8d17",
+  "fullSourceVerification": {
+    "log": "build/final-regression-final-2026-11-02.log",
+    "exitCode": 0,
+    "phases": [
+      {
+        "tests": 333,
+        "pass": 333,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 107566.764
+      },
+      {
+        "tests": 1137,
+        "pass": 1137,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 525844.5571
+      }
+    ],
+    "tests": 1470,
+    "passed": 1470,
+    "gates": [
+      "Four TypeScript projects",
+      "ESLint",
+      "Architecture boundaries",
+      "Host-client browser compatibility",
+      "Generated contracts and configuration schemas",
+      "Complete Node test suite",
+      "Desktop production build",
+      "Prettier"
+    ]
+  },
+  "browserVerification": {
+    "tests": 22,
+    "passed": 22,
+    "failed": 0,
+    "log": "build/precommit-browser-regressions-final.log",
+    "includesInlineScenarios": true,
+    "finalAnalysisMatrix": {
+      "log": "build/precommit-analysis-matrix-final.log",
+      "exitCode": 0,
+      "combinations": 8,
+      "dimensions": ["de-DE / en-GB", "1280 / 390 px", "inventory / context"]
+    }
+  },
+  "desktopVerification": [
+    {
+      "name": "variations",
+      "exitCode": 0,
+      "log": "build/precommit-variations.log",
+      "durationSeconds": 275.7460387,
+      "artifactProof": "build/verification/variations/67d2dcb0-f838-4023-9b6b-5e1d99053a19/proof.json",
+      "passedSteps": 23,
+      "rendererErrors": 0,
+      "screenshots": 24
+    },
+    {
+      "name": "form-drafts",
+      "exitCode": 0,
+      "log": "build/precommit-form-drafts.log",
+      "durationSeconds": 74.9193065,
+      "artifactProof": "build/verification/variations/70bc0916-f253-49dd-a931-8773a4bc1669/proof.json",
+      "passedSteps": 4,
+      "rendererErrors": 0,
+      "screenshots": 2
+    },
+    {
+      "name": "notation",
+      "exitCode": 0,
+      "log": "build/precommit-notation.log",
+      "durationSeconds": 86.3444583,
+      "artifactProof": "build/verification/variations/1566671b-87b2-4e83-8e0a-8b3c53cbc84d/proof.json",
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "screenshots": 4
+    },
+    {
+      "name": "navigation",
+      "exitCode": 0,
+      "log": "build/precommit-navigation.log",
+      "durationSeconds": 45.182916,
+      "artifactProof": "build/verification/variations/111c6782-737c-4bcc-8693-9fa01afd141e/proof.json",
+      "passedSteps": 3,
+      "rendererErrors": 0,
+      "screenshots": 1
+    },
+    {
+      "name": "manual",
+      "exitCode": 0,
+      "log": "build/precommit-manual.log",
+      "durationSeconds": 81.0879928,
+      "artifactProof": "build/verification/variations/1c952a52-3124-4678-b981-9c78d1600e68/proof.json",
+      "passedSteps": 2,
+      "rendererErrors": 0,
+      "screenshots": 8
+    },
+    {
+      "name": "folders",
+      "exitCode": 0,
+      "log": "build/precommit-folders.log",
+      "durationSeconds": 216.8552769,
+      "artifactProof": "build/verification/folder-organization/f9d2bacd-e9e9-4b0e-9f03-02f87ec21efb/proof.json",
+      "passedSteps": 14,
+      "rendererErrors": 0,
+      "screenshots": null
+    },
+    {
+      "name": "import",
+      "exitCode": 0,
+      "log": "build/precommit-import.log",
+      "durationSeconds": 211.4256454,
+      "artifactProof": "build/verification/import/2bc1ba4e-5012-4e74-8bed-231f1a32608a/proof.json",
+      "passedSteps": 14,
+      "rendererErrors": 0,
+      "screenshots": 20
+    },
+    {
+      "name": "backup-restore",
+      "exitCode": 0,
+      "log": "build/precommit-backup-restore.log",
+      "durationSeconds": 65.1616405,
+      "artifactProof": "C:/Users/luzzy/AppData/Local/Temp/plysmith-transfer-runtime-93yrhq/proof.json",
+      "passedSteps": 5,
+      "rendererErrors": 0,
+      "screenshots": 8
+    },
+    {
+      "name": "live",
+      "exitCode": 0,
+      "log": "build/precommit-live.log",
+      "durationSeconds": 147.0811533,
+      "artifactProof": "build/verification/live/d32f3455-f789-45f8-8ec9-7c370990bfb5/proof.json",
+      "passedSteps": 9,
+      "rendererErrors": 0,
+      "screenshots": 58
+    },
+    {
+      "name": "analysis-setup",
+      "exitCode": 0,
+      "log": "build/precommit-analysis-setup-final.log",
+      "passedSteps": 5
+    },
+    {
+      "name": "saved-playout",
+      "exitCode": 0,
+      "log": "build/precommit-saved-playout-verified.log",
+      "passedSteps": 24
+    }
+  ],
+  "postFixtureGates": {
+    "exitCode": 0,
+    "typecheck": "build/precommit-post-typecheck.log",
+    "lint": "build/precommit-post-lint.log",
+    "boundaries": "build/precommit-post-boundaries.log",
+    "format": "build/precommit-post-format.log",
+    "modules": 590,
+    "dependencies": 2740
+  },
+  "documentation": {
+    "documents": 20,
+    "localLinks": 296,
+    "anchors": 18,
+    "screenshotsChecked": 8,
+    "pgnSha256": "1aaf6f33db5c2b015cc1754b7006e0d42d5b7633896f7bfb02a9767de2fb1859",
+    "issues": []
+  },
+  "testMaintenance": {
+    "reviewerAndAuthor": "gpt-6-astra updated the isolated analysis exploration fixture; parent reviewed and executed all verification",
+    "resolvedFindings": [
+      "SSR fixtures distinguish inactive collapsed variations from active automatically expanded variations, with explicit assertions for both states.",
+      "Opt-in workflows use the unified acceptance selector and choose private note scope explicitly after checking the inventory-wide default.",
+      "Browser fixtures supply current store boundaries and valid inventory/folder state; result selection uses its accessible label.",
+      "Bundle isolation checks reject emitted runtime dependencies rather than unused parsed imports from tree-shaken sibling views.",
+      "Imported nested-branch takebacks select Ng5 by notation, follow its actual continuation and verify the removed subtree in both scopes.",
+      "The complete analysis matrix preserves forms and six half-moves, root-only saves, and explicit comment-loss acknowledgements."
+    ],
+    "files": [
+      "tests/integration/desktop/import-dialog.test.ts",
+      "tests/integration/desktop/analysis-exploration-runtime.ts",
+      "tests/integration/desktop/loss-action-runtime.ts",
+      "tests/integration/desktop/playout-navigation-runtime.ts",
+      "tools/verify-folder-organization-runtime.ts",
+      "tools/verify-import-runtime.ts",
+      "tools/verify-variations-runtime.ts",
+      "tools/fixtures/analysis-setup-runtime.tsx",
+      "tools/verify-analysis-setup-runtime.ts"
+    ],
+    "skippedAssertionsOrScenarios": 0
+  },
+  "applicationCodeChangedDuringThisVerification": false,
+  "unresolvedProductFindings": 0,
+  "modelOrSchemaChanges": false,
+  "userProfilesChanged": false,
+  "commitOrPushPerformed": false,
+  "userAcceptancePending": true,
+  "limits": [
+    "Live behavior used a controlled test provider; no real Lichess account or external game was used.",
+    "Native file-picker responses were stubbed in the owned import and backup processes.",
+    "Step counts overlap and include setup actions; no combined independent-test total is claimed.",
+    "Installer and release publication were outside this task."
+  ]
+}

@@ -8,6 +8,12 @@ position against an engine.
 
 The [English user manual](docs/manual/README.en.md) introduces
 the concepts and all areas of the app using a small, importable example inventory.
+Use the shared **Accept as** selector to keep a continuation as a note, within
+an existing analysis, or as a separate analysis. A game's saved moves remain
+unchanged. See [Investigating positions and recording your thoughts](docs/manual/03-analysis.en.md)
+for each workflow.
+
+[![Italian opening analysis with variations and the current half-move highlighted in blue; German UI](docs/manual/screenshots/saved-line.png)](docs/manual/screenshots/saved-line.png)
 
 This is a Windows beta for trying the application. Your feedback helps improve
 Plysmith. Later versions may not read all previous data and settings.
