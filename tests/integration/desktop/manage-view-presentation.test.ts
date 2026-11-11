@@ -285,7 +285,8 @@ test('pending and loading folders hide partial metadata while ready siblings rem
       assert.doesNotMatch(folder, /Loading records/);
     } else {
       assert.match(folder, /aria-busy="true"/);
-      assert.match(folder, /role="status"[^>]*>Loading records/);
+      assert.match(folder, /<li[^>]*><span role="status">Loading records/);
+      assert.doesNotMatch(folder, /<li[^>]* role="status"/);
       assert.doesNotMatch(
         folder,
         /Record child|No records|No matching records/,

@@ -426,8 +426,10 @@ export function InventoryFolderView({
         {!isCollapsed && (
           <ul className={styles.items} aria-busy={isLoading}>
             {isLoading ? (
-              <li className={styles.empty} role="status">
-                <FormattedMessage id="folders.loading" />
+              <li className={styles.empty}>
+                <span role="status">
+                  <FormattedMessage id="folders.loading" />
+                </span>
               </li>
             ) : folderState?.status === 'failed' ? (
               <li className={styles.loadFailure}>
