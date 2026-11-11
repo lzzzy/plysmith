@@ -100,10 +100,7 @@ try {
   }
   await navigation.getByRole('button', { name: /Verwalten|Manage/ }).click();
   await Promise.race([
-    Promise.any([
-      window.getByRole('heading', { name: 'Arbeitskontexte' }).waitFor(),
-      window.getByRole('heading', { name: 'Working contexts' }).waitFor(),
-    ]),
+    window.locator('#inventory-title').waitFor(),
     window
       .getByText(
         /Application Host nicht erreichbar|Application Host unavailable/,
@@ -149,8 +146,8 @@ try {
   const scopeSelector = window.getByRole('combobox', {
     name: /Arbeitskontext|Working context/,
   });
-  await scopeSelector.waitFor();
-  assert.ok((await scopeSelector.locator('option').count()) >= 1);
+  if (await scopeSelector.isVisible())
+    assert.ok((await scopeSelector.locator('option').count()) >= 1);
   await verifyAccessibility(window, 'manage');
   await window.screenshot({
     path: path.join(verificationDirectory, 'manage.png'),
@@ -241,7 +238,10 @@ try {
     });
     await window.setViewportSize(originalViewport);
     await selectedRow.click();
-    await window.locator('#work-scope:enabled').waitFor();
+    await activityNavigation
+      .getByRole('button', { name: /Verwalten|Manage/ })
+      .and(window.locator(':enabled'))
+      .waitFor();
     verifiedInventoryPreview = true;
   }
 

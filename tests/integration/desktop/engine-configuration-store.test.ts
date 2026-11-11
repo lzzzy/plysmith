@@ -488,6 +488,8 @@ function createStore(
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],
+      unfiledItemCount: 0,
+      unfiledContextItemCount: 0,
       dataRevision: 0,
     }),
     changeInventoryOrganization: unexpected,

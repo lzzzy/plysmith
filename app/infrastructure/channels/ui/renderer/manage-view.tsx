@@ -85,9 +85,12 @@ export function ManageView({
   const [collapsedFamilies, setCollapsedFamilies] = useState<
     ReadonlySet<string>
   >(() => new Set());
-  const visibleItems = state.inventory.items.map((item) =>
-    inventoryItemForScope(item, state),
-  );
+  const activeContextId =
+    state.scope.kind === 'context' ? state.scope.contextId : undefined;
+  const scopeReady = !state.scopePending;
+  const visibleItems = scopeReady
+    ? state.inventory.items.map((item) => inventoryItemForScope(item, state))
+    : [];
   const selectedItem = visibleItems.find(
     (item) => item.itemId === state.selectedInventoryItemId,
   );
@@ -104,15 +107,14 @@ export function ManageView({
             (group.folderId ?? null) === state.inspectedInventoryFolderId,
         )
       : undefined;
-  const isBusy = state.busyCommand !== undefined || state.refreshing;
+  const isBusy =
+    !scopeReady || state.busyCommand !== undefined || state.refreshing;
   const selectedImpact =
     selectedItem === undefined
       ? undefined
       : state.contextWorkspace?.pendingRevisionImpacts.find(
           (impact) => impact.itemId === selectedItem.itemId,
         );
-  const activeContextId =
-    state.scope.kind === 'context' ? state.scope.contextId : undefined;
   const activeContext = state.contexts.contexts.find(
     (context) => context.contextId === activeContextId,
   );
@@ -126,6 +128,10 @@ export function ManageView({
       : state.scope.kind === 'context' && state.inventoryContextOnly
         ? 'context'
         : 'inventory';
+  const showInspector =
+    state.useWorkingContexts ||
+    selectedFolder !== undefined ||
+    selectedItem !== undefined;
 
   useEffect(() => setQuery(state.inventoryQuery), [state.inventoryQuery]);
   useEffect(() => {
@@ -212,19 +218,18 @@ export function ManageView({
             <Download aria-hidden="true" size={16} />
             <FormattedMessage id="import.open" />
           </Button>
-          <span className={styles.inventoryCount}>
+          <span
+            className={styles.inventoryCount}
+            data-scope-pending={state.scopePending}
+          >
             <FormattedMessage
               id="manage.resultCount"
-              values={{ count: state.inventory.items.length }}
+              values={{ count: state.inventoryTotalCount }}
             />
           </span>
           <Button
             className={styles.primaryButton!}
-            isDisabled={
-              state.busyCommand !== undefined ||
-              state.refreshing ||
-              state.fairPlayBlocked
-            }
+            isDisabled={isBusy || state.fairPlayBlocked}
             onPress={() => void store.openNewPlayout()}
           >
             <Play aria-hidden="true" size={16} />
@@ -232,11 +237,7 @@ export function ManageView({
           </Button>
           <Button
             className={styles.primaryButton!}
-            isDisabled={
-              state.busyCommand !== undefined ||
-              state.refreshing ||
-              state.fairPlayBlocked
-            }
+            isDisabled={isBusy || state.fairPlayBlocked}
             onPress={() => {
               if (state.analysis?.scratchHasChanges)
                 setAnalysisStart('initial');
@@ -248,11 +249,7 @@ export function ManageView({
           </Button>
           <Button
             className={styles.secondaryButton!}
-            isDisabled={
-              state.busyCommand !== undefined ||
-              state.refreshing ||
-              state.fairPlayBlocked
-            }
+            isDisabled={isBusy || state.fairPlayBlocked}
             onPress={() => setAnalysisStart('setup')}
           >
             <ChessPieceGlyph className={styles.setupGlyph!} symbol="♔" />
@@ -262,126 +259,144 @@ export function ManageView({
       </header>
 
       {!state.fairPlayBlocked && <ImportDialog state={state} store={store} />}
-      <div className={styles.manageGrid}>
-        <aside className={styles.contextPanel} aria-labelledby="contexts-title">
-          <div className={styles.panelHeading}>
-            <div>
-              <h2 id="contexts-title">
-                <FormattedMessage id="manage.contexts" />
-              </h2>
-            </div>
-            <Button
-              className={styles.iconButton!}
-              aria-label={intl.formatMessage({ id: 'manage.createContext' })}
-              onPress={() => setShowCreateContext((visible) => !visible)}
-            >
-              {showCreateContext ? (
-                <X aria-hidden="true" size={17} />
-              ) : (
-                <Plus aria-hidden="true" size={17} />
-              )}
-            </Button>
-          </div>
-
-          {showCreateContext && (
-            <CreateContextForm
-              isBusy={state.busyCommand !== undefined}
-              onCancel={() => setShowCreateContext(false)}
-              onCreate={async (request) => {
-                const created = await store.createWorkingContext(request);
-                if (created) setShowCreateContext(false);
-                return created;
-              }}
-            />
-          )}
-
-          <div className={styles.contextList}>
-            <Button
-              className={`${styles.contextButton!} ${state.scope.kind === 'free' ? styles.activeContext : ''}`}
-              onPress={() => void store.selectManagementScope({ kind: 'free' })}
-            >
-              <Library aria-hidden="true" size={17} />
-              <span>
-                <strong>
-                  <FormattedMessage id="scope.free" />
-                </strong>
-              </span>
-            </Button>
-            {state.contexts.contexts.map((context) => (
-              <div key={context.contextId} className={styles.contextRow}>
-                <Button
-                  className={`${styles.contextButton!} ${state.scope.kind === 'context' && state.scope.contextId === context.contextId ? styles.activeContext : ''}`}
-                  onPress={() =>
-                    void store.selectManagementScope({
-                      kind: 'context',
-                      contextId: context.contextId,
-                    })
-                  }
-                >
-                  <Boxes aria-hidden="true" size={17} />
-                  <span>
-                    <strong>{context.displayName}</strong>
-                    <small>
-                      <FormattedMessage
-                        id="manage.itemCount"
-                        values={{ count: context.itemCount }}
-                      />
-                    </small>
-                  </span>
-                  {context.pendingRevisionImpactCount > 0 && (
-                    <span
-                      className={styles.impactBadge}
-                      aria-label={intl.formatMessage(
-                        { id: 'revisionImpact.badge' },
-                        { count: context.pendingRevisionImpactCount },
-                      )}
-                    >
-                      {context.pendingRevisionImpactCount}
-                    </span>
-                  )}
-                </Button>
-                {activeContextId === context.contextId && (
-                  <InventoryActions
-                    label={intl.formatMessage(
-                      { id: 'manage.actionsFor' },
-                      { name: context.displayName },
-                    )}
-                    disabled={isBusy}
-                    actions={[
-                      {
-                        id: 'edit',
-                        label: intl.formatMessage({ id: 'manage.editContext' }),
-                        icon: <Pencil size={16} />,
-                        onPress: () => setEditContext(true),
-                      },
-                      {
-                        id: 'delete',
-                        label: intl.formatMessage({
-                          id: 'manage.deleteContext',
-                        }),
-                        icon: <Trash2 size={16} />,
-                        destructive: true,
-                        onPress: () =>
-                          void store.prepareContextDeletion(context.contextId),
-                      },
-                    ]}
-                  />
-                )}
+      <div
+        className={styles.manageGrid}
+        data-working-contexts={state.useWorkingContexts}
+        data-has-inspector={showInspector}
+      >
+        {state.useWorkingContexts && (
+          <aside
+            className={styles.contextPanel}
+            aria-labelledby="contexts-title"
+          >
+            <div className={styles.panelHeading}>
+              <div>
+                <h2 id="contexts-title">
+                  <FormattedMessage id="manage.contexts" />
+                </h2>
               </div>
-            ))}
-            {state.contexts.nextCursor !== undefined && (
               <Button
-                className={styles.loadMoreButton!}
-                onPress={() => void store.loadMoreContexts()}
-                isDisabled={state.busyCommand !== undefined}
+                className={styles.iconButton!}
+                aria-label={intl.formatMessage({ id: 'manage.createContext' })}
+                onPress={() => setShowCreateContext((visible) => !visible)}
               >
-                <FormattedMessage id="manage.loadMoreContexts" />
+                {showCreateContext ? (
+                  <X aria-hidden="true" size={17} />
+                ) : (
+                  <Plus aria-hidden="true" size={17} />
+                )}
               </Button>
-            )}
-          </div>
-        </aside>
+            </div>
 
-        <section className={styles.inventoryPanel}>
+            {showCreateContext && (
+              <CreateContextForm
+                isBusy={state.busyCommand !== undefined}
+                onCancel={() => setShowCreateContext(false)}
+                onCreate={async (request) => {
+                  const created = await store.createWorkingContext(request);
+                  if (created) setShowCreateContext(false);
+                  return created;
+                }}
+              />
+            )}
+
+            <div className={styles.contextList}>
+              <Button
+                className={`${styles.contextButton!} ${state.scope.kind === 'free' ? styles.activeContext : ''}`}
+                onPress={() =>
+                  void store.selectManagementScope({ kind: 'free' })
+                }
+              >
+                <Library aria-hidden="true" size={17} />
+                <span>
+                  <strong>
+                    <FormattedMessage id="scope.free" />
+                  </strong>
+                </span>
+              </Button>
+              {state.contexts.contexts.map((context) => (
+                <div key={context.contextId} className={styles.contextRow}>
+                  <Button
+                    className={`${styles.contextButton!} ${state.scope.kind === 'context' && state.scope.contextId === context.contextId ? styles.activeContext : ''}`}
+                    onPress={() =>
+                      void store.selectManagementScope({
+                        kind: 'context',
+                        contextId: context.contextId,
+                      })
+                    }
+                  >
+                    <Boxes aria-hidden="true" size={17} />
+                    <span>
+                      <strong>{context.displayName}</strong>
+                      <small>
+                        <FormattedMessage
+                          id="manage.itemCount"
+                          values={{ count: context.itemCount }}
+                        />
+                      </small>
+                    </span>
+                    {context.pendingRevisionImpactCount > 0 && (
+                      <span
+                        className={styles.impactBadge}
+                        aria-label={intl.formatMessage(
+                          { id: 'revisionImpact.badge' },
+                          { count: context.pendingRevisionImpactCount },
+                        )}
+                      >
+                        {context.pendingRevisionImpactCount}
+                      </span>
+                    )}
+                  </Button>
+                  {activeContextId === context.contextId && (
+                    <InventoryActions
+                      label={intl.formatMessage(
+                        { id: 'manage.actionsFor' },
+                        { name: context.displayName },
+                      )}
+                      disabled={isBusy}
+                      actions={[
+                        {
+                          id: 'edit',
+                          label: intl.formatMessage({
+                            id: 'manage.editContext',
+                          }),
+                          icon: <Pencil size={16} />,
+                          onPress: () => setEditContext(true),
+                        },
+                        {
+                          id: 'delete',
+                          label: intl.formatMessage({
+                            id: 'manage.deleteContext',
+                          }),
+                          icon: <Trash2 size={16} />,
+                          destructive: true,
+                          onPress: () =>
+                            void store.prepareContextDeletion(
+                              context.contextId,
+                            ),
+                        },
+                      ]}
+                    />
+                  )}
+                </div>
+              ))}
+              {state.contexts.nextCursor !== undefined && (
+                <Button
+                  className={styles.loadMoreButton!}
+                  onPress={() => void store.loadMoreContexts()}
+                  isDisabled={state.busyCommand !== undefined}
+                >
+                  <FormattedMessage id="manage.loadMoreContexts" />
+                </Button>
+              )}
+            </div>
+          </aside>
+        )}
+
+        <section
+          className={styles.inventoryPanel}
+          aria-busy={!scopeReady && state.refreshing}
+        >
           <div className={styles.inventoryToolbar}>
             <div>
               <h1 id="inventory-title">
@@ -435,7 +450,7 @@ export function ManageView({
           <RadioGroup
             className={styles.inventoryScope!}
             value={state.inventoryPresentation}
-            isDisabled={state.busyCommand !== undefined || state.refreshing}
+            isDisabled={isBusy}
             onChange={(value) =>
               void store.setInventoryPresentation(
                 value as 'folders' | 'origins',
@@ -451,28 +466,16 @@ export function ManageView({
               <FormattedMessage id="folders.origins" />
             </Radio>
           </RadioGroup>
-          {state.inventoryPresentation === 'folders' && (
-            <>
-              <InventoryFolderView
-                state={state}
-                store={store}
-                items={visibleItems}
-                onItemCommand={(item, command) =>
-                  void itemCommand(item, command)
-                }
-              />
-              {state.inventory.nextCursor !== undefined && (
-                <Button
-                  className={styles.loadMoreButton!}
-                  onPress={() => void store.loadMoreInventory()}
-                  isDisabled={state.busyCommand !== undefined}
-                >
-                  <FormattedMessage id="manage.loadMoreInventory" />
-                </Button>
-              )}
-            </>
+          {scopeReady && state.inventoryPresentation === 'folders' && (
+            <InventoryFolderView
+              key={JSON.stringify([activeContextId, state.inventoryQuery])}
+              state={state}
+              store={store}
+              items={visibleItems}
+              onItemCommand={(item, command) => void itemCommand(item, command)}
+            />
           )}
-          {state.inventory.items.length === 0 ? (
+          {!scopeReady ? null : state.inventoryTotalCount === 0 ? (
             <div className={styles.emptyInventory}>
               <FileSearch aria-hidden="true" size={25} />
               <strong>
@@ -538,35 +541,28 @@ export function ManageView({
                   ))}
                 </ul>
               </div>
-              {state.inventory.nextCursor !== undefined && (
-                <Button
-                  className={styles.loadMoreButton!}
-                  onPress={() => void store.loadMoreInventory()}
-                  isDisabled={state.busyCommand !== undefined}
-                >
-                  <FormattedMessage id="manage.loadMoreInventory" />
-                </Button>
-              )}
             </div>
           ) : null}
         </section>
 
-        <aside className={styles.inspector} aria-labelledby="inspector-title">
-          <div className={styles.panelHeading}>
-            <div>
-              <h2 id="inspector-title">
-                <FormattedMessage id="manage.details" />
-              </h2>
+        {showInspector && (
+          <aside className={styles.inspector} aria-labelledby="inspector-title">
+            <div className={styles.panelHeading}>
+              <div>
+                <h2 id="inspector-title">
+                  <FormattedMessage id="manage.details" />
+                </h2>
+              </div>
             </div>
-          </div>
-          {selectedFolder !== undefined ? (
-            <FolderInspector group={selectedFolder} state={state} />
-          ) : selectedItem === undefined ? (
-            <ContextSummary key={activeContextId ?? 'free'} state={state} />
-          ) : (
-            <ItemInspector item={selectedItem} state={state} store={store} />
-          )}
-        </aside>
+            {!scopeReady ? null : selectedFolder !== undefined ? (
+              <FolderInspector group={selectedFolder} state={state} />
+            ) : selectedItem === undefined ? (
+              <ContextSummary key={activeContextId ?? 'free'} state={state} />
+            ) : (
+              <ItemInspector item={selectedItem} state={state} store={store} />
+            )}
+          </aside>
+        )}
       </div>
       {itemAction !== undefined &&
         !state.fairPlayBlocked &&
@@ -596,7 +592,7 @@ export function ManageView({
             />
           </ManagementDialog>
         )}
-      {editContext && state.contextWorkspace !== undefined && (
+      {scopeReady && editContext && state.contextWorkspace !== undefined && (
         <ManagementDialog
           titleId="manage.editContext"
           busy={isBusy}

@@ -8,7 +8,9 @@ Zur Illustration verwenden wir in diesem Manual einen kleinen [Beispielbestand a
 
 In Plysmith verwalten Sie einen zentralen **Bestand** von Partien und Analysen. Die Idee ist, darin eine persönliche Sammlung zu Themen rund um Ihr Schachspiel aufzubauen: bewusst ausgewähltes Arbeitsmaterial für Ihr Training, Ihre Turniervorbereitung und Ihre schachlichen Interessen. Mit eigenen Notizen und Analysen können Sie dieses Material nach und nach weiterentwickeln.
 
-In **Verwalten** können Sie diesen Bestand sichten, Unpassendes entfernen und interessante Inhalte ordnen und vertiefen. Mit den später vorgestellten **Arbeitskontexten** können Sie parallel an einzelnen Themen dieses Bestands arbeiten. Dabei entwickeln Sie dieselbe persönliche Sammlung weiter und passen sie an Ihre Bedürfnisse an.
+In **Verwalten** können Sie diesen Bestand sichten, Unpassendes entfernen und interessante Inhalte ordnen und vertiefen. Frische Installationen starten mit einer einfachen Oberfläche. Sie arbeiten direkt im gesamten Bestand, ohne Kontextleiste, Kontextverwaltung oder Kontextzuordnungen. Neue Notizen gelten automatisch im gesamten Bestand.
+
+Mit den später vorgestellten **Arbeitskontexten** können Sie parallel an einzelnen Themen dieses Bestands arbeiten. Dafür schalten Sie in **Einstellungen** die Option **Arbeitskontexte verwenden** ein. Sie entwickeln weiterhin dieselbe persönliche Sammlung. Wenn bereits Kontexte vorhanden sind, bleibt beim ersten Start mit dieser Wahlmöglichkeit der bisherige Modus erhalten. Den Wechsel und die getrennten Arbeitsstände erklärt [Arbeitskontexte verwenden](04-settings.md#arbeitskontexte-verwenden).
 
 [![Gesamter Bestand mit dem Ordner Manual, sechs Einträgen und der Detailansicht der italienischen Eröffnung](screenshots/inventory.png)](screenshots/inventory.png)
 
@@ -58,7 +60,7 @@ Wenn Sie in **Analysieren** einen Zug im Zugverlauf anklicken, zeigt das Brett d
 
 [![Italienische Analyse mit vorläufigem d4-Pfad und dem Hinweis Ungespeicherte Änderung](screenshots/analysis-path.png)](screenshots/analysis-path.png)
 
-Hier wurde ab der Grundstellung 1.d4 ausprobiert. „Neuer Analysepfad“ und „Ungespeicherte Änderung“ markieren den vorläufigen Pfad. Plysmith merkt ihn sich vorübergehend auch über Kontextwechsel und einen Neustart hinweg. Dadurch wird er aber weder automatisch Teil der gespeicherten Partie oder Analyse noch ein neuer Bestandseintrag. Sie entscheiden, was daraus werden soll.
+Hier wurde ab der Grundstellung 1.d4 ausprobiert. „Neuer Analysepfad“ und „Ungespeicherte Änderung“ markieren den vorläufigen Pfad. Plysmith merkt ihn sich auch in der einfachen Oberfläche über einen Neustart hinweg. Dadurch wird er aber weder automatisch Teil der gespeicherten Partie oder Analyse noch ein neuer Bestandseintrag. Sie entscheiden, was daraus werden soll. Mit eingeschalteten Arbeitskontexten merkt sich jeder Arbeitsbereich seinen eigenen Pfad.
 
 ## Untersuchung übernehmen
 
@@ -92,8 +94,10 @@ Hinweise zu [Installation und Aktualisierung](../../README.md#installieren)
 finden Sie in der Projektübersicht.
 
 Die folgenden Kapitel führen Sie vom Import des Beispielmaterials zu eigenen
-Untersuchungen und Trainingspartien. Arbeiten Sie zunächst im **Gesamten Bestand**;
-erst das letzte Kapitel führt die parallele Arbeit mit Kontexten ein.
+Untersuchungen und Trainingspartien. Die Übungen beginnen in der einfachen
+Oberfläche. Haben Sie Arbeitskontexte bereits eingeschaltet, wählen Sie oben
+**Gesamter Bestand**, um denselben Weg nachzuvollziehen. Erst das letzte Kapitel
+führt die optionale parallele Arbeit mit Kontexten ein.
 
 1. [Beispielbestand importieren](01-import.md)
 2. [Bestand sichten und ordnen](02-inventory.md)

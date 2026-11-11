@@ -2,6 +2,20 @@
 
 Ihr Bestand bleibt Ihre persönliche, bewusst ausgewählte Sammlung. Mit **Arbeitskontexten** können Sie darin mehrere Themen parallel bearbeiten, etwa „Italienisch vertiefen“ und „Endspieltraining“. Jeder Kontext stellt die passenden Einträge und Ihre Arbeit daran zusammen. Sie verbessern damit denselben Bestand und passen ihn an Ihre Bedürfnisse an.
 
+## Arbeitskontexte einschalten
+
+Öffnen Sie **Einstellungen > Arbeitsweise** und schalten Sie **Arbeitskontexte verwenden** ein.
+Sie bleiben zunächst im Gesamtbestand mit dessen Arbeitsstand. Plysmith legt
+keinen Kontext für Sie an. Die Kontextleiste und die Kontextverwaltung werden
+sichtbar. Ist der Schalter bereits eingeschaltet, können Sie direkt fortfahren.
+
+Sie können die Funktion später wieder ausschalten. Dann kehren Sie zum eigenen
+Arbeitsstand des Gesamtbestands zurück. Ihre Kontexte samt Zuordnungen, Notizen
+und Arbeitsständen bleiben erhalten und können nach erneutem Einschalten wieder
+ausgewählt werden. Kontextnotizen bleiben auf ihren Kontext beschränkt.
+Einzelheiten zum Wechsel stehen unter
+[Arbeitskontexte verwenden](04-settings.md#arbeitskontexte-verwenden).
+
 ## Einen Kontext zusammenstellen
 
 Legen Sie in **Verwalten** über das Plus bei **Arbeitskontexte** einen Kontext an. Ein Name wie „Italienisch vertiefen“ genügt. Über **Arbeitskontext bearbeiten** können Sie später eine **Beschreibung** ergänzen, die Ihr Vorhaben festhält.
@@ -22,8 +36,9 @@ Die Bestandsansicht innerhalb eines Kontexts hilft Ihnen, weiteres Material zu f
 
 Die Aufnahme erstellt keine Kopie. Derselbe Eintrag kann in mehreren Kontexten verwendet werden, behält aber seinen eindeutigen Bestandsnamen und seine gemeinsame Ordnerablage.
 
-Plysmith merkt sich die gewählte Ansicht **Ordner** oder **Herkunft** für den
-Gesamten Bestand und jeden Arbeitskontext getrennt, auch nach einem Neustart.
+Plysmith merkt sich die gewählte Ansicht **Ordner** oder **Herkunft** und die
+eingeklappten Ordner für den Gesamtbestand und jeden Arbeitskontext getrennt.
+Diese Einstellungen bleiben auch nach einem Neustart erhalten.
 
 ## Ordner als Arbeitsziele
 
@@ -46,7 +61,7 @@ Im Bild ist **Im gesamten Bestand** vorausgewählt, obwohl Sie gerade im Kontext
 
 Allgemeine Notizen erscheinen auf grauem Hintergrund, Kontextnotizen auf gelblichem Hintergrund mit einer goldfarbenen Linie. Beim Bearbeiten sehen Sie ausdrücklich, ob die Notiz **Im gesamten Bestand** oder **Nur in diesem Arbeitskontext** gilt. Eine allgemeine Notiz bleibt allgemein, auch wenn Sie sie aus einem Kontext heraus bearbeiten.
 
-Analysepfade und gemerkte Analysepositionen sind je Arbeitsbereich getrennt. Sie können in „Italienisch vertiefen“ einen vorläufigen Pfad beginnen, in einem anderen Kontext weiterarbeiten und später zu Ihrer Untersuchung zurückkehren. Plysmith merkt sich Analysepfade auch über einen Neustart. Das ist weiterhin ein Entwurf, keine gespeicherte Variante und kein neuer Eintrag.
+Analysepfade und gemerkte Analysepositionen sind je Arbeitsbereich getrennt. Auch **Gesamter Bestand** hat einen eigenen Arbeitsstand, den Sie ebenso in der einfachen Oberfläche verwenden. Sie können in „Italienisch vertiefen“ einen vorläufigen Pfad beginnen, in einem anderen Kontext weiterarbeiten und später zu Ihrer Untersuchung zurückkehren. Plysmith merkt sich Analysepfade auch über einen Neustart. Das ist weiterhin ein Entwurf, keine gespeicherte Variante und kein neuer Eintrag.
 
 Wenn beim Öffnen eines anderen Eintrags bereits ein Analyseentwurf im Weg steht, bietet Plysmith **Vorhandene Analyse fortsetzen** oder **Entwurf verwerfen und Eintrag öffnen** an. Verwerfen Sie ihn nur, wenn Sie die Untersuchung nicht mehr benötigen.
 
@@ -54,7 +69,7 @@ Eine neue eigene Analyse oder eine neue Partie, die Sie aus einem Kontext heraus
 
 ## Gemeinsame Züge bewusst verändern
 
-Eine gespeicherte Variante und Änderungen an der Hauptlinie gehören zum Bestandseintrag. Sie gelten nicht nur für den Kontext, in dem Sie gearbeitet haben. Andere Kontexte können deshalb betroffen sein, insbesondere wenn dort Notizen oder ungespeicherte Untersuchungen an entfallenden Zügen hängen.
+Eine gespeicherte Variante und Änderungen an der Hauptlinie gehören zum Bestandseintrag. Sie gelten nicht nur für den Kontext, in dem Sie gearbeitet haben. Andere Kontexte können deshalb betroffen sein, insbesondere wenn dort Notizen oder ungespeicherte Untersuchungen an entfallenden Zügen hängen. Das gilt auch bei ausgeschaltetem **Arbeitskontexte verwenden**. Verlustdialoge zeigen betroffene Kontextinhalte weiterhin an.
 
 Prüfen Sie vor **Speichern** die Gegenüberstellung **Bisherige Fassung** und **Neue Fassung**. Sie zeigt, welche Züge erhalten bleiben, hinzukommen oder entfallen. Falls Plysmith **Beim Speichern entfallen Kontextinhalte** meldet, nennt es auch die betroffenen Notizen und ungespeicherten Analysen. Diese Folgen werden bereits mit dem Speichern angewendet. Ein Kontextwechsel allein schützt nicht vor solchen Änderungen am gemeinsamen Eintrag.
 

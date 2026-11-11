@@ -33,6 +33,6 @@ For closely related alternatives, a **variation** within the same analysis is of
 
 Use engines to check ideas and **Play out** to test them in practice. Keep the results that improve your library. Later changes to a source are not automatically applied to existing derived analyses. Check for yourself whether a new insight should also be reflected in your other analyses.
 
-The next chapter introduces working contexts for working on several topics in parallel.
+The next chapter shows how to enable **Use working contexts** and organise parallel topics. You can also continue building your opening library in the simple interface.
 
 [Back to overview](README.en.md). Next: [Working on topics in parallel with contexts](08-contexts.en.md).

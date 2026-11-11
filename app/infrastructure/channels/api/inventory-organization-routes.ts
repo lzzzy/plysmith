@@ -130,6 +130,8 @@ export function registerInventoryOrganizationRoutes(
           contextLinkCount: folder.contextLinkCount,
         })),
         linkedFolderIds: result.linkedFolderIds.map((id) => String(id.value)),
+        unfiledItemCount: result.unfiledItemCount,
+        unfiledContextItemCount: result.unfiledContextItemCount,
         dataRevision: result.dataRevision,
       };
     },

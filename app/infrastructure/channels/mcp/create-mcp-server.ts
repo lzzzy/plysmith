@@ -1535,6 +1535,10 @@ export function createMcpServer({
             return toolProblem(localProblem('request.invalid'));
           const dto = searchInventoryResultDto(
             await hostClient.searchInventory({
+              ...(args.folderId === undefined
+                ? {}
+                : { folderId: args.folderId }),
+              ...(args.itemId === undefined ? {} : { itemId: args.itemId }),
               ...(args.query === undefined ? {} : { query: args.query }),
               ...(args.contextId === undefined
                 ? {}

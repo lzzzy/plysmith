@@ -76,9 +76,7 @@ export function InventoryFolderView({
     contextOnly,
     intl.locale,
   );
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  const collapsed = state.collapsedInventoryFolders;
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
   const [dialog, setDialog] = useState<FolderDialog>();
   const [dropTarget, setDropTarget] = useState<string>();
@@ -86,26 +84,39 @@ export function InventoryFolderView({
     if (contextOnly) return true;
     let parentId = entry.parentFolderId;
     while (parentId !== undefined) {
-      if (collapsed.has(parentId)) return false;
+      if (collapsed?.has(parentId)) return false;
       parentId = state.inventoryOrganization.folders.find(
         (folder) => folder.folderId === parentId,
       )?.parentFolderId;
     }
     return true;
   });
+  const directoryIncomplete =
+    state.inventoryQuery === '' &&
+    (state.refreshing ||
+      visibleGroups.some((entry) => {
+        const key = entry.folderId ?? 'unfiled';
+        if (collapsed?.has(key)) return false;
+        return (
+          state.inventoryFolderStates !== undefined &&
+          state.inventoryFolderStates.get(key)?.status !== 'ready'
+        );
+      }));
+  const selectedItems = items.filter((item) => checked.has(item.itemId));
+  const selectionPending = selectedItems.length < checked.size;
   const busy = state.busyCommand !== undefined || state.refreshing;
   const scopeKey = `${contextId ?? 'free'}:${contextOnly}:${state.inventoryQuery}`;
   useEffect(() => {
-    setCollapsed(new Set());
     setChecked(new Set());
     setDialog(undefined);
   }, [scopeKey]);
   useEffect(() => {
+    if (directoryIncomplete) return;
     const available = new Set(items.map((item) => item.itemId));
     setChecked(
       (previous) => new Set([...previous].filter((id) => available.has(id))),
     );
-  }, [items]);
+  }, [items, directoryIncomplete]);
 
   async function removeFolder(folderId: string) {
     const preview = await store.previewContextFolderRemoval(folderId);
@@ -207,7 +218,11 @@ export function InventoryFolderView({
   }
 
   function beginDrag(event: DragEvent, payload: DragPayload) {
-    if (busy) {
+    if (
+      busy ||
+      (payload.kind === 'items' &&
+        payload.itemIds.some((id) => !items.some((item) => item.itemId === id)))
+    ) {
       event.preventDefault();
       return;
     }
@@ -300,7 +315,13 @@ export function InventoryFolderView({
         : contextOnly
           ? group.path
           : folder!.displayName;
-    const isCollapsed = collapsed.has(key);
+    const isCollapsed = collapsed?.has(key) ?? false;
+    const folderState = state.inventoryFolderStates?.get(key);
+    const isLoading =
+      folderState?.status === 'loading' ||
+      (state.inventoryQuery === '' &&
+        state.inventoryFolderStates !== undefined &&
+        folderState === undefined);
     const actions: InventoryAction[] = [];
     function add(
       id: string,
@@ -370,14 +391,7 @@ export function InventoryFolderView({
               { id: isCollapsed ? 'folders.expand' : 'folders.collapse' },
               { name },
             )}
-            onClick={() =>
-              setCollapsed((previous) => {
-                const next = new Set(previous);
-                if (next.has(key)) next.delete(key);
-                else next.add(key);
-                return next;
-              })
-            }
+            onClick={() => void store.toggleInventoryFolder(group.folderId)}
           >
             {isCollapsed ? (
               <ChevronRight size={16} />
@@ -410,20 +424,38 @@ export function InventoryFolderView({
           />
         </div>
         {!isCollapsed && (
-          <ul className={styles.items}>
-            {group.items.map(row)}
-            {group.items.length === 0 && (
+          <ul className={styles.items} aria-busy={isLoading}>
+            {isLoading ? (
+              <li className={styles.empty} role="status">
+                <FormattedMessage id="folders.loading" />
+              </li>
+            ) : folderState?.status === 'failed' ? (
+              <li className={styles.loadFailure}>
+                <span role="alert">
+                  <FormattedMessage id="folders.loadFailed" />
+                </span>
+                <Button
+                  className={styles.command!}
+                  isDisabled={busy}
+                  onPress={() =>
+                    void store.retryInventoryFolder(group.folderId)
+                  }
+                >
+                  <FormattedMessage id="action.retry" />
+                </Button>
+              </li>
+            ) : group.items.length === 0 ? (
               <li className={styles.empty}>
                 <FormattedMessage
                   id={
                     state.inventoryQuery === ''
-                      ? group.itemCount > 0
-                        ? 'folders.notLoaded'
-                        : 'folders.empty'
+                      ? 'folders.empty'
                       : 'folders.noMatches'
                   }
                 />
               </li>
+            ) : (
+              group.items.map(row)
             )}
           </ul>
         )}
@@ -455,7 +487,7 @@ export function InventoryFolderView({
             <InventorySelectionActions
               state={state}
               store={store}
-              items={items.filter((item) => checked.has(item.itemId))}
+              items={selectionPending ? [] : selectedItems}
               onClear={() => setChecked(new Set())}
               onCompleted={(ids) =>
                 setChecked(

@@ -853,6 +853,7 @@ async function basicUi() {
     archive,
     'Child creation uses the clicked parent without destination selection',
   );
+  const compactedFolders: string[] = [];
   for (const id of [
     seed.folders.endings,
     seed.folders.independent,
@@ -862,7 +863,10 @@ async function basicUi() {
     const expander = folderHeader(id).locator(
       'button[aria-expanded="true"]:not([aria-haspopup])',
     );
-    if (await expander.count()) await expander.click();
+    if (await expander.count()) {
+      await expander.click();
+      compactedFolders.push(id);
+    }
   }
   const selfDropHeader = folderHeader(archive);
   await selfDropHeader.evaluate((element) => {
@@ -1000,9 +1004,18 @@ async function basicUi() {
   }
   await screenshot('origins-de-wide');
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page
-    .getByRole('radio', { name: label('folders.view'), exact: true })
-    .press('Space');
+  const foldersView = page.getByRole('radio', {
+    name: label('folders.view'),
+    exact: true,
+  });
+  await foldersView.press('Space');
+  await expect(foldersView).toBeChecked();
+  for (const id of compactedFolders) {
+    const expander = folderHeader(id).locator(
+      'button[aria-expanded="false"]:not([aria-haspopup])',
+    );
+    if (await expander.count()) await expander.click();
+  }
   return archive;
 }
 

@@ -1,0 +1,114 @@
+{
+  "date": "2026-11-11",
+  "scope": "Unnötiges Leeren und erneutes Laden unveränderter Ordner nach Auswahl-/Bereichsspeicherung beheben.",
+  "precedingVerification": "lazy-folder-loading-2026-11-11.json",
+  "databaseSchemaChanged": false,
+  "protocolChanged": false,
+  "astraReview": {
+    "agents": 1,
+    "startupFailurePathFindingFixed": true,
+    "remainingP1P2": 0
+  },
+  "regression": {
+    "gateLog": "build/folder-flicker-gates.log",
+    "completedFocusedDesktopTests": 352,
+    "initialCoreCases": 4,
+    "skipped": 0,
+    "coreCasesPassedBeforeFix": 1,
+    "completedStoreTests": 301,
+    "startupFailureCasesFailedBeforeFix": 2,
+    "passed": 352,
+    "coreCasesFailedBeforeFix": 3,
+    "failed": 0,
+    "newTests": 8,
+    "newWholeSuiteRun": false
+  },
+  "staticChecks": {
+    "desktopBuild": true,
+    "rendererTypes": true,
+    "toolsTypes": true,
+    "repositoryFormat": true,
+    "scopedLint": true,
+    "nodeTypes": true,
+    "architectureBoundaries": true,
+    "testTypes": true
+  },
+  "nativeBefore": {
+    "proof": "build/verification/manual/desktop-modes-ID32R9/capture-proof-2026-11-11T00-31-18.539Z.json",
+    "log": "build/folder-flicker-native-red.log",
+    "trace": [
+      {
+        "kind": "selection-stability",
+        "minimumRows": 0,
+        "firstDetached": true,
+        "folderQueries": 4
+      }
+    ]
+  },
+  "nativeAfter": {
+    "multiPageFolderEntries": 70,
+    "trace": [
+      {
+        "kind": "selection-stability",
+        "minimumRows": 70,
+        "firstDetached": false,
+        "folderQueries": 0
+      },
+      {
+        "kind": "remote-resume-stability",
+        "minimumRows": 70,
+        "firstDetached": false,
+        "inspectorDetached": false
+      },
+      {
+        "kind": "area-return-stability",
+        "folderQueries": 0
+      }
+    ],
+    "screenshot": [
+      {
+        "name": "lazy-folder-complete.png",
+        "sha256": "3b266ebc7b23e0f2a24d68cdcd75bef8a7712f5e16a779f12e9786634153d0bc",
+        "width": 1600,
+        "height": 1100
+      }
+    ],
+    "completed": true,
+    "desktopStarts": 2,
+    "rendererErrors": 0,
+    "log": "build/folder-flicker-native-green.log",
+    "steps": [
+      "Selecting an entry retains all 70 row nodes and sends no folder requests.",
+      "A remote resume-only event preserves row and inspector DOM nodes without folder reloads.",
+      "Analysis and Manage area switches reuse unchanged complete folder contents.",
+      "Remembered closed folders load structure and authoritative counts without requesting their contents.",
+      "A 70-entry folder is published atomically after both internal pages; no partial rows appear.",
+      "A bulk selection survives a revision refresh with a failed folder and is restored after retry.",
+      "A two-entry bulk selection survives loading a sibling folder without losing checked rows.",
+      "Selected Details survive a reload inside a closed folder through an item-only lookup.",
+      "A folder request failure is local; retry restores its six entries without loading the closed sibling.",
+      "Search completes with all 70 matches while an older folder response is still held back.",
+      "Origins retains the full provenance result independently of lazy folder contents.",
+      "Context collapse remains independent through area switches and a native restart; the free view restores its own state.",
+      "No renderer errors."
+    ],
+    "desktopClosed": true,
+    "screenshotVisuallyReviewed": true,
+    "proof": "build/verification/manual/desktop-modes-evsNu9/capture-proof-2026-11-11T00-39-55.914Z.json",
+    "hostClosed": true,
+    "fixtureEntries": 76
+  },
+  "rendererAssets": [
+    {
+      "sha256": "1e3bf7bede7740a3fc07e186e06d128375297848dedf17d1f7267ee4daf6bb27",
+      "name": "index-CL2wmAyu.js"
+    }
+  ],
+  "sourceSha256": {
+    "app/infrastructure/channels/ui/renderer/plysmith-application-store.ts": "552886b60fcaf50637af85560426b582ac597e13ea99c1293b4317a482c0e3e8",
+    "tests/integration/desktop/plysmith-application-store.test.ts": "5916d6098db56e015543375b95f40d32d7fa0d93b27c6d027dfab77bc06af39e",
+    "docs/manual/02-inventory.md": "3db0e91353c0c8643bf4eff583067fd11cc850f9302ff4bf8997e49007032f35",
+    "docs/manual/02-inventory.en.md": "2ddaa0accabc21709de3a6164d5ccde212c52ec03edba85e20b10551dcb14a93"
+  },
+  "note": "Der vorangegangene Gesamtlauf bleibt ein historischer Nachweis. Dieser Follow-up prüft die letzten Store-Änderungen gezielt und nativ; keinen weiteren vollständigen pnpm-verify-Lauf behaupten."
+}

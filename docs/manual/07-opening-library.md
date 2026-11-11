@@ -31,6 +31,6 @@ Für eng zusammengehörige Alternativen genügt oft eine **Variante** innerhalb 
 
 Nutzen Sie Engines zum Prüfen und **Ausspielen** zum Erproben. Übernehmen Sie dabei gezielt die Ergebnisse, die Ihre Bibliothek besser machen. Spätere Änderungen an einer Quelle werden nicht automatisch in bestehende Ableitungen übertragen. Prüfen Sie deshalb selbst, ob eine neue Erkenntnis auch in Ihren anderen Analysen berücksichtigt werden sollte.
 
-Wenn Sie mehrere Themen parallel bearbeiten möchten, kommen im nächsten Kapitel die Arbeitskontexte hinzu.
+Wenn Sie mehrere Themen parallel bearbeiten möchten, zeigt das nächste Kapitel, wie Sie **Arbeitskontexte verwenden** einschalten und Ihre Themen zusammenstellen. Für Ihre Eröffnungsbibliothek können Sie ebenso in der einfachen Oberfläche bleiben.
 
 [Zur Übersicht](README.md) · Weiter mit [Mit Arbeitskontexten parallel arbeiten](08-contexts.md).

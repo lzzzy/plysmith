@@ -4,6 +4,19 @@ Your inventory remains your personal, deliberately selected collection. **Workin
 
 > The screenshots retain the real German UI. The example context names stay in German to match them; controls use their English labels here. See the [language and notation note](README.en.md).
 
+## Enabling working contexts
+
+Open **Settings > Workflow** and enable **Use working contexts**. You initially stay in
+All inventory with its current work in progress. Plysmith creates no context
+for you. The context bar and context management become visible. If the switch
+is already on, continue directly.
+
+You can disable the feature again later. This returns you to All inventory's
+own work in progress. Your contexts, assignments, notes and work in progress
+are retained and can be selected again after re-enabling the feature.
+Context notes remain limited to their context. See
+[Use working contexts](04-settings.en.md#use-working-contexts) for the details.
+
 ## Putting a context together
 
 In **Manage**, use the plus beside **Working contexts** to create a context. A name such as "Italienisch vertiefen" is enough. Later, **Edit working context** lets you add a **Description** explaining what you want to work on.
@@ -24,7 +37,7 @@ The inventory view within a context helps you find more material. It does not sw
 
 Adding an entry creates no copy. The same entry can be used in several contexts while retaining its unique inventory name and shared folder location.
 
-Plysmith remembers the choice of **Folders** or **Origins** separately for All inventory and each working context, including after a restart.
+Plysmith remembers the choice of **Folders** or **Origins** and which folders are collapsed separately for All inventory and each working context. Both settings survive a restart.
 
 ## Folders as working destinations
 
@@ -47,7 +60,7 @@ The screenshot shows **Throughout the inventory** selected even though you are w
 
 General notes appear on a grey background; context notes use a yellowish background with a gold-coloured line. When editing, you can explicitly see whether a note is **Throughout the inventory** or **This context only**. A general note stays general even when you edit it from within a context.
 
-Analysis paths and remembered analysis positions are separate for each workspace. You can begin a provisional path in "Italienisch vertiefen", work in another context and return to your investigation later. Plysmith remembers analysis paths across restarts too. They are still drafts, not saved variations or new entries.
+Analysis paths and remembered analysis positions are separate for each workspace. **All inventory** has its own work in progress, also used by the simple interface. You can begin a provisional path in "Italienisch vertiefen", work in another context and return to your investigation later. Plysmith remembers analysis paths across restarts too. They are still drafts, not saved variations or new entries.
 
 If an existing analysis draft stands in the way of opening another entry, Plysmith offers **Continue existing analysis** or **Discard draft and open item**. Discard it only when you no longer need the investigation.
 
@@ -55,7 +68,7 @@ A new separate analysis or new game saved from within a context becomes part of 
 
 ## Changing shared moves deliberately
 
-A saved variation and changes to the main line belong to the inventory entry. They do not apply only to the context in which you worked. Other contexts may therefore be affected, especially if their notes or unsaved investigations are attached to moves being removed.
+A saved variation and changes to the main line belong to the inventory entry. They do not apply only to the context in which you worked. Other contexts may therefore be affected, especially if their notes or unsaved investigations are attached to moves being removed. This also applies with **Use working contexts** disabled. Loss dialogs still show affected context content.
 
 Before choosing **Save**, check the comparison of **Previous version** and **New version**. It shows which moves remain, are added or are removed. If Plysmith reports **Saving removes work from these contexts**, it also lists the affected notes and unsaved analyses. Those consequences take effect when you save. Switching contexts alone does not protect against such changes to the shared entry.
 

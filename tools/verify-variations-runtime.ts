@@ -136,6 +136,21 @@ async function launch() {
     .getByText(/^(Verbunden|Connected)$/)
     .first()
     .waitFor();
+  const scopePicker = page.getByLabel(label('scope.label'), { exact: true });
+  if (!(await scopePicker.isVisible())) {
+    const { area } = await client.getStartupResume();
+    await page
+      .getByRole('button', { name: label('activity.settings'), exact: true })
+      .click();
+    await page
+      .getByRole('switch', { name: label('settings.workingContexts.label') })
+      .click();
+    await expect(scopePicker).toBeVisible();
+    if (area !== 'settings')
+      await page
+        .getByRole('button', { name: label(`activity.${area}`), exact: true })
+        .click();
+  }
   const window = await app.browserWindow(page);
   await window.evaluate((window) => {
     window.setContentSize(1600, 1000);

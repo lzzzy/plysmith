@@ -20,7 +20,7 @@ Wenn unter der Zugfolge Enginebewertungen angezeigt werden, können Sie den Plat
 
 Wählen Sie in der italienischen Eröffnung **1.e4**. Dort steht bereits die importierte Notiz über das Zentrum. Über ihren Stift **Notiz bearbeiten** können Sie den Text ergänzen. Fügen Sie beispielsweise „Welche Antwort von Schwarz möchte ich genauer untersuchen?“ hinzu und wählen Sie **Notiz speichern**.
 
-Für einen neuen Gedanken wählen Sie **3.Lc4** und klicken auf das Sprechblasensymbol mit Plus an diesem Halbzug. Neue Notizentwürfe sind mit **Im gesamten Bestand** vorbelegt. Schreiben Sie etwa „Ich möchte die Antwort d6 mit der Hauptlinie vergleichen.“ und speichern Sie die Notiz. Sie gehört jetzt zu diesem Halbzug.
+Für einen neuen Gedanken wählen Sie **3.Lc4** und klicken auf das Sprechblasensymbol mit Plus an diesem Halbzug. In der einfachen Oberfläche gilt die Notiz automatisch im gesamten Bestand. Schreiben Sie etwa „Ich möchte die Antwort d6 mit der Hauptlinie vergleichen.“ und speichern Sie die Notiz. Sie gehört jetzt zu diesem Halbzug.
 
 [![Notizentwurf am Halbzug 3.Lc4 mit allgemeiner Sichtbarkeit](screenshots/note-editor.png)](screenshots/note-editor.png)
 
@@ -46,7 +46,7 @@ Beim Wechsel des Speicherziels bleiben Ihre Texte, Sichtbarkeit und Angaben zur 
 
 ### Als Notiz übernehmen
 
-Für den gerade ausprobierten Zug **1.d4** wählen Sie bei **Übernehmen als** das Ziel **Notiz**. Die Zugfolge steht nun im Notizentwurf, ebenfalls mit der Vorgabe **Im gesamten Bestand**. Ergänzen Sie „Alternative zum Beginn der Lehrpartie“ und klicken Sie auf **Notiz speichern**.
+Für den gerade ausprobierten Zug **1.d4** wählen Sie bei **Übernehmen als** das Ziel **Notiz**. Die Zugfolge steht nun im Notizentwurf. Auch diese Notiz gilt in der einfachen Oberfläche im gesamten Bestand. Ergänzen Sie „Alternative zum Beginn der Lehrpartie“ und klicken Sie auf **Notiz speichern**.
 
 Die Fortsetzung ist danach als bearbeitbare Notiz an **1.e4** festgehalten: diesem gespeicherten Halbzug steht die untersuchte Alternative **1.d4** gegenüber. Beim Abzweigen gehört die Notiz zum ersetzten Folgehalbzug, am Ende einer gespeicherten Linie zum letzten Halbzug. Enthält die Analyse noch keine Züge, gehört sie zur Ausgangsstellung. Es entsteht weder eine neue Partie noch eine Variante im gespielten Verlauf. Öffnen Sie die Notiz später erneut, wenn Sie ihren Text ändern möchten.
 
@@ -108,7 +108,7 @@ Wählen Sie wieder **3…d6** und spielen Sie **4.Sc3**. Wählen Sie **Übernehm
 
 Die Arbeitsanalyse hat damit die eigene Hauptlinie **3…d6 4.Sc3**. Die ursprüngliche italienische Eröffnung wurde bei keinem dieser Schritte verändert.
 
-Vor Änderungen prüft Plysmith auch, ob Notizen oder andere Arbeitsstände betroffen sind. Eine Meldung über eine Notiz in der bisherigen Fassung bedeutet, dass deren Bezug nicht unverändert in die neue Fassung passt. Lesen Sie die konkreten Folgen. Über die Auswahl können Sie jederzeit zu **Notiz** oder **Eigene Analyse** wechseln und auch am Brett weiteruntersuchen; die Auswahl selbst speichert nichts. Beim Kürzen oder Löschen führt **Weiter bearbeiten** zurück zur Vorbereitung. Auswirkungen auf Arbeitskontexte werden im abschließenden Kontextkapitel behandelt.
+Vor Änderungen prüft Plysmith auch, ob Notizen oder andere Arbeitsstände betroffen sind. Eine Meldung über eine Notiz in der bisherigen Fassung bedeutet, dass deren Bezug nicht unverändert in die neue Fassung passt. Lesen Sie die konkreten Folgen. Der Verlustdialog bleibt auch in der einfachen Oberfläche erhalten und nennt betroffene Inhalte vorhandener Arbeitskontexte, selbst wenn deren Bedienung ausgeblendet ist. Über die Auswahl können Sie jederzeit zu **Notiz** oder **Eigene Analyse** wechseln und auch am Brett weiteruntersuchen. Gespeichert wird erst nach Ihrer Bestätigung. Beim Kürzen oder Löschen führt **Weiter bearbeiten** zurück zur Vorbereitung. Auswirkungen auf Arbeitskontexte werden im abschließenden Kontextkapitel behandelt.
 
 ## Eine neue Analyse ohne Quelle beginnen
 

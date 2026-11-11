@@ -39,6 +39,8 @@ export interface InventorySearchItem {
 export interface SearchInventoryRequest {
   readonly query?: string;
   readonly contextId?: WorkingContextId;
+  readonly folderId?: InventoryFolderId | 'unfiled';
+  readonly itemId?: InventoryItemId;
   readonly pageSize?: number;
   readonly cursor?: string;
 }

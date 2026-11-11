@@ -82,7 +82,9 @@ export function inventoryFolderGroups(
     path: '',
     depth: 0,
     items: byFolder.get(undefined) ?? [],
-    itemCount: byFolder.get(undefined)?.length ?? 0,
+    itemCount: contextOnly
+      ? organization.unfiledContextItemCount
+      : organization.unfiledItemCount,
   });
   return result;
 }

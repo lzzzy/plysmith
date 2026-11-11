@@ -16,6 +16,10 @@ The **Analyse** arrow in the row opens the entry on the analysis board. Clicking
 
 ## Finding an entry
 
+The Folders view first shows the structure and the number of entries. Expanding a folder automatically loads its complete contents. A loading message appears inside that folder until it is ready; if loading fails, you can retry that folder. Closed folders are loaded when you expand them. An entry you have already selected remains visible in Details even when its folder is closed.
+
+Search and the **Origins** view each load their complete results.
+
 Entries appear in ascending order of creation. Imported chapters follow their order in the PGN file; later edits or moves between folders do not change this order.
 
 For example, enter `Italienische` in **Search titles** and click **Search**. For the following exercises, clear the search field afterwards and search again so all entries are visible.
@@ -51,7 +55,7 @@ Folders and entries are deleted separately. **Delete folder and subfolders** rem
 
 Four entries remain: **Grundstellung**, **Italienische Eröffnung**, **Lehrpartie mit Matt** and **Opposition**, each with the prefix `Manual - `. These four are the starting point for the following chapters.
 
-The loss preview also matters when deleting entries later. An entry may by then have your own notes, analysis paths or uses in working contexts. Derived entries already saved independently remain when their source is deleted. Still, check the consequences listed each time before confirming.
+The loss preview also matters when deleting entries later. An entry may by then have your own notes, analysis paths or uses in working contexts. The loss dialog lists affected context content even in the simple interface. Hidden contexts retain their content, which can still be affected by changes to the shared inventory. Derived entries already saved independently remain when their source is deleted. Still, check the consequences listed each time before confirming.
 
 ## Viewing by origin
 
@@ -60,5 +64,7 @@ The **Origins** switch shows connections between entries created by derivation. 
 In the next chapter, you will save a separate analysis, "Manual - Italienisch mit d6", from the Italian opening. You can then switch to **Origins** here and expand its provenance family. This lets you find the investigation alongside its source, even if you later move it to another folder.
 
 **Folders** therefore answers how you organise your material by topic. **Origins** shows where a separate investigation came from. Both views lead to the same inventory entries.
+
+The desktop remembers which folders you collapse, including when you switch to **Analyse** and after a restart. A new search starts with its results expanded. Clearing the search brings back your remembered folder state.
 
 [Back to overview](README.en.md). Next: [Investigating positions and recording your thoughts](03-analysis.en.md).

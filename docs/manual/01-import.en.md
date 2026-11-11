@@ -6,7 +6,7 @@ You can follow the steps below with the [sample collection, `manual.pgn`](manual
 
 ## Choosing the file
 
-Open **Manage** and select **All inventory** at the top. In a newly set-up app, this area is still empty.
+Open **Manage**. The simple interface shows your entire inventory directly. In a newly set-up app, it is still empty. If you have enabled **Use working contexts**, select **All inventory** at the top.
 
 [![Empty All inventory before importing](screenshots/empty-inventory.png)](screenshots/empty-inventory.png)
 

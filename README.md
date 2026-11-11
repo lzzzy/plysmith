@@ -109,8 +109,12 @@ Hinweise zu Abhängigkeitsproblemen, Tests und Beiträgen finden Sie in
 ## Erste Schritte
 
 Beginnen Sie mit den [Grundlagen im Manual](docs/manual/README.md) und dem
-[Import des Beispielbestands](docs/manual/01-import.md). Der Übungsweg führt
-zunächst durch **Gesamter Bestand**; Arbeitskontexte kommen erst später hinzu.
+[Import des Beispielbestands](docs/manual/01-import.md). Frische Installationen
+starten mit einer einfachen Oberfläche direkt im gesamten Bestand.
+Für parallele Themen können Sie in **Einstellungen** den Schalter
+**Arbeitskontexte verwenden** einschalten. Wenn bereits Kontexte vorhanden sind,
+bleibt beim ersten Start mit dieser Wahlmöglichkeit der bisherige Modus erhalten.
+Den Wechsel erklärt [das Manual](docs/manual/04-settings.md#arbeitskontexte-verwenden).
 Zum Sichten und für eigene Untersuchungen benötigen Sie noch keine Engine.
 
 Für einzelne Aufgaben können Sie direkt weiterlesen:

@@ -140,6 +140,8 @@ test('folder organization preserves HTTP and MCP parity for reads, all changes, 
             },
           ],
           linkedFolderIds: [folderId],
+          unfiledItemCount: 4,
+          unfiledContextItemCount: 2,
           dataRevision: 12,
         };
       },
@@ -324,6 +326,8 @@ test('folder organization preserves HTTP and MCP parity for reads, all changes, 
       },
     ],
     linkedFolderIds: ['3'],
+    unfiledItemCount: 4,
+    unfiledContextItemCount: 2,
     dataRevision: 12,
   });
   for (const change of [

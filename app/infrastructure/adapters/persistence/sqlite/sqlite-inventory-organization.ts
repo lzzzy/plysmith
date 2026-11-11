@@ -67,10 +67,10 @@ export function readInventoryOrganization(
     .prepare(
       `SELECT folder_id AS folderId, count(*) AS itemCount,
     sum(CASE WHEN EXISTS (SELECT 1 FROM workspace_context_item AS member WHERE member.item_id = item.item_id AND member.context_id = ?) THEN 1 ELSE 0 END) AS contextItemCount
-    FROM inventory_item AS item WHERE lifecycle = 'active' AND current_revision_id IS NOT NULL AND folder_id IS NOT NULL GROUP BY folder_id`,
+    FROM inventory_item AS item WHERE lifecycle = 'active' AND current_revision_id IS NOT NULL GROUP BY folder_id`,
     )
     .all(request.contextId?.value ?? null) as {
-    folderId: number;
+    folderId: number | null;
     itemCount: number;
     contextItemCount: number;
   }[];
@@ -89,6 +89,8 @@ export function readInventoryOrganization(
     )
     .all(request.contextId?.value ?? null) as { folderId: number }[];
   return Object.freeze({
+    unfiledItemCount: byId.get(null)?.itemCount ?? 0,
+    unfiledContextItemCount: byId.get(null)?.contextItemCount ?? 0,
     folders: Object.freeze(
       readFolders(database).map((folder) =>
         Object.freeze({

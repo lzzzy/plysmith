@@ -282,6 +282,7 @@ for (const locale of ['de-DE', 'en-GB']) {
             getSnapshot: () => ({
               phase: 'ready',
               activity: 'settings',
+              useWorkingContexts: true,
               scope: { kind: 'free' },
               preferences: { uiLocale: locale },
               contexts: { contexts: [] },

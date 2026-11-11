@@ -53,6 +53,8 @@ export const InventoryOrganizationSchema = Type.Object(
       ),
     ),
     linkedFolderIds: Type.Array(localId),
+    unfiledItemCount: revision,
+    unfiledContextItemCount: revision,
     dataRevision: revision,
   },
   { ...objectOptions, $id: 'InventoryOrganization' },
@@ -1616,6 +1618,8 @@ export const InventorySearchQuerySchema = Type.Object(
   {
     query: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
     contextId: Type.Optional(localId),
+    folderId: Type.Optional(Type.Union([localId, Type.Literal('unfiled')])),
+    itemId: Type.Optional(localId),
     pageSize: Type.Optional(pageSize),
     cursor: Type.Optional(cursor),
   },

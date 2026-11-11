@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Activity,
   Bug,
@@ -54,6 +54,24 @@ export function SettingsView({
     state.diagnostics.configuredLevel,
   );
   const [reportReviewOpen, setReportReviewOpen] = useState(false);
+  const workingContextsPending = useRef(false);
+  const [savingWorkingContexts, setSavingWorkingContexts] = useState(false);
+  const workingContextsDisabled =
+    savingWorkingContexts ||
+    state.busyCommand !== undefined ||
+    state.refreshing;
+
+  async function toggleWorkingContexts() {
+    if (workingContextsDisabled || workingContextsPending.current) return;
+    workingContextsPending.current = true;
+    setSavingWorkingContexts(true);
+    try {
+      await store.setUseWorkingContexts(!state.useWorkingContexts);
+    } finally {
+      workingContextsPending.current = false;
+      setSavingWorkingContexts(false);
+    }
+  }
 
   useEffect(() => {
     setDraftLocale(state.preferences.uiLocale);
@@ -128,6 +146,42 @@ export function SettingsView({
             )}
             <FormattedMessage id={saving ? 'state.saving' : 'action.apply'} />
           </Button>
+        </div>
+      </section>
+
+      <section
+        className={styles.settingsSection}
+        aria-labelledby="working-contexts-title"
+      >
+        <div className={styles.sectionHeading}>
+          <div>
+            <h2 id="working-contexts-title">
+              <FormattedMessage id="settings.workingContexts.title" />
+            </h2>
+            <p id="working-contexts-description">
+              <FormattedMessage id="settings.workingContexts.description" />
+            </p>
+          </div>
+        </div>
+        <div className={styles.controlRow}>
+          <button
+            type="button"
+            role="switch"
+            className={styles.workingContextsSwitch}
+            aria-checked={state.useWorkingContexts}
+            aria-describedby="working-contexts-description"
+            aria-disabled={workingContextsDisabled}
+            onClick={() => void toggleWorkingContexts()}
+          >
+            <span className={styles.switchTrack} aria-hidden="true" />
+            <FormattedMessage id="settings.workingContexts.label" />
+          </button>
+          <span role="status">
+            {(savingWorkingContexts ||
+              state.busyCommand === 'set_working_context_mode') && (
+              <FormattedMessage id="state.saving" />
+            )}
+          </span>
         </div>
       </section>
 

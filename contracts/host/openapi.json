@@ -5697,11 +5697,23 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "unfiledContextItemCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unfiledItemCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "folders",
           "linkedFolderIds",
+          "unfiledItemCount",
+          "unfiledContextItemCount",
           "dataRevision"
         ],
         "type": "object"
@@ -6449,6 +6461,24 @@
           "cursor": {
             "maxLength": 512,
             "minLength": 1,
+            "type": "string"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9]\\d{0,15}$",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "unfiled"
+                ],
+                "type": "string"
+              }
+            ]
+          },
+          "itemId": {
+            "pattern": "^[1-9]\\d{0,15}$",
             "type": "string"
           },
           "pageSize": {
@@ -15869,6 +15899,34 @@
           {
             "in": "query",
             "name": "contextId",
+            "required": false,
+            "schema": {
+              "pattern": "^[1-9]\\d{0,15}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "folderId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[1-9]\\d{0,15}$",
+                  "type": "string"
+                },
+                {
+                  "enum": [
+                    "unfiled"
+                  ],
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "itemId",
             "required": false,
             "schema": {
               "pattern": "^[1-9]\\d{0,15}$",

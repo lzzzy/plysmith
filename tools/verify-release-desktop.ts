@@ -71,7 +71,15 @@ for (const iteration of [1, 2]) {
     });
     const client = await connectHost(discovery, { origin: 'app://plysmith' });
     if (iteration === 1) {
+      await window
+        .getByRole('button', { name: /Einstellungen|Settings/ })
+        .click();
+      const contextMode = window.getByRole('switch', {
+        name: /Arbeitskontexte verwenden|Use working contexts/,
+      });
+      assert.equal(await contextMode.getAttribute('aria-checked'), 'false');
       await client.createWorkingContext({ displayName: 'Release-Pruefung' });
+      await contextMode.click();
     }
     const scopeSelector = window.getByRole('combobox', {
       name: /Arbeitskontext|Working context/,

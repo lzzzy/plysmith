@@ -4,7 +4,7 @@ Mit dem [Beispielbestand `manual.pgn`](manual.pgn) können Sie die folgenden Sch
 
 ## Datei auswählen
 
-Öffnen Sie **Verwalten** und wählen Sie oben **Gesamter Bestand**. In einer neu eingerichteten App ist dieser Bereich noch leer.
+Öffnen Sie **Verwalten**. In der einfachen Oberfläche sehen Sie direkt Ihren gesamten Bestand. In einer neu eingerichteten App ist er noch leer. Falls Sie **Arbeitskontexte verwenden** eingeschaltet haben, wählen Sie oben **Gesamter Bestand**.
 
 [![Leerer Gesamter Bestand vor dem Import](screenshots/empty-inventory.png)](screenshots/empty-inventory.png)
 

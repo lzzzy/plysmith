@@ -6,15 +6,51 @@ Bis hierher haben Sie selbst Fortsetzungen untersucht. Eine Engine ergänzt Ihre
 
 Unter **Einstellungen > Sprache** wählen Sie **Deutsch** oder **English** und klicken auf **Übernehmen**. Die Wahl betrifft die Oberfläche und die Schachnotation. Ihre eigenen Namen und Notiztexte werden dadurch nicht übersetzt.
 
-[![Sprache und weitere Einstellungen in Plysmith](screenshots/settings-general.png)](screenshots/settings-general.png)
+[![Sprache, Arbeitsweise mit ausgeschalteten Arbeitskontexten und Datensicherung](screenshots/settings-general.png)](screenshots/settings-general.png)
 
 Der persönliche Datenordner einer Standardinstallation liegt unter `%LOCALAPPDATA%\Plysmith`, getrennt vom Programm. In den Einstellungen gibt es derzeit keine Auswahl für einen anderen Datenpfad. Ein Diagnosebericht ersetzt keine Datensicherung.
 
 Unter **Lokales System** sehen Sie, ob der **Datenspeicher** verbunden ist. **Technische Details** enthält unter anderem das Release, das Sie bei einer Fehlermeldung angeben können.
 
+## Arbeitskontexte verwenden
+
+Mit dem Schalter **Arbeitskontexte verwenden** unter **Einstellungen > Arbeitsweise** wählen Sie,
+ob Sie direkt im gesamten Bestand arbeiten oder zusätzlich mehrere Themen mit
+eigenen Arbeitsständen führen möchten. Frische Installationen beginnen mit
+ausgeschaltetem Schalter. Sind bereits Arbeitskontexte vorhanden, bleibt beim
+ersten Start mit dieser Wahlmöglichkeit der bisherige Modus mit Kontexten erhalten.
+Danach merkt sich Plysmith Ihre ausdrückliche Wahl auch über einen Neustart.
+
+Bei ausgeschaltetem Schalter sehen Sie die einfache Oberfläche. Kontextleiste,
+Kontextverwaltung, Zuordnungen zu Kontexten und die Geltungswahl für Notizen
+werden ausgeblendet. Neue Analysen und Partien speichern Sie direkt im Bestand.
+Neue Notizen gelten im gesamten Bestand. Ordner, Herkunft, Analyse, Ausspielen
+und Live stehen Ihnen weiterhin zur Verfügung.
+
+Beim **Einschalten** bleiben Sie im Gesamtbestand mit dessen Arbeitsstand.
+Es wird kein Kontext angelegt oder automatisch ausgewählt. Über die nun sichtbare
+Kontextleiste können Sie anschließend einen vorhandenen Kontext wählen oder in
+**Verwalten** einen anlegen. Den Ablauf erklärt
+[Mit Arbeitskontexten parallel arbeiten](08-contexts.md).
+
+Beim **Ausschalten** wechseln Sie zu **Gesamter Bestand** und dessen eigenem
+gemerkten Arbeitsstand. Der Analysepfad oder die gemerkte Stellung eines Kontexts
+wird dabei nicht in den Gesamtbestand übernommen. Vorhandene Kontexte,
+Zuordnungen, Kontextnotizen und Kontextarbeitsstände bleiben erhalten. Wenn Sie
+die Funktion später wieder einschalten, bleiben Sie zunächst im Gesamtbestand.
+Wählen Sie Ihren Kontext ausdrücklich, um dort weiterzuarbeiten. Kontextnotizen
+werden durch den Wechsel nicht zu allgemeinen Notizen.
+
+Schließen Sie eine laufende Aktion oder ausstehende Entscheidung vor dem Wechsel
+ab. Eine laufende Partie im Kontext müssen Sie vor dem Ausschalten pausieren oder
+abschließen. Speichern oder verwerfen Sie zuerst eine offene Live-Aufzeichnung.
+Auch in der einfachen Oberfläche bleiben Verlustdialoge wirksam.
+Änderungen oder Löschungen am gemeinsamen Bestand können erhaltene Kontextinhalte
+betreffen. Die Vorschau nennt diese Folgen vor Ihrer Bestätigung.
+
 ## Datensicherung
 
-Unter **Einstellungen > Datensicherung** sichern Sie den gesamten gespeicherten Bestand: Analysen, Partien, Ordner, notwendige Herkunft und allgemeine Notizen. Arbeitskontexte, laufende Entwürfe, kontextbezogene Notizen, Engines und Einstellungen sind nicht enthalten.
+Unter **Einstellungen > Datensicherung** sichern Sie Analysen, Partien, Ordner, notwendige Herkunft und allgemeine Notizen aus dem gesamten gespeicherten Bestand. Arbeitskontexte, laufende Entwürfe, kontextbezogene Notizen, Engines und Einstellungen sind nicht enthalten. Diese Grenze gilt in beiden Oberflächen. Auch der gemerkte Arbeitsstand des Gesamtbestands und die Wahl **Arbeitskontexte verwenden** liegen ebenfalls außerhalb der PGN-Sicherung.
 
 1. Wählen Sie **Bestand sichern**.
 2. Wählen Sie im Dateidialog einen Zielordner und einen neuen `.pgn`-Dateinamen. Bestehende Dateien werden nicht überschrieben.
@@ -22,7 +58,7 @@ Unter **Einstellungen > Datensicherung** sichern Sie den gesamten gespeicherten 
 
 [![Datensicherung des importierten Manualbestands mit Inhaltszahlen](screenshots/settings-backup.png)](screenshots/settings-backup.png)
 
-Für **Sicherung auswählen** muss der Zielbestand frisch und leer sein, auch ohne Arbeitskontexte oder Entwürfe. Sichtbar leere Listen allein genügen nicht. Beenden Sie außerdem laufende Imports, Ausspielen und Liveaufnahmen. Plysmith löscht oder vereinigt keine vorhandenen Inhalte, um Platz für eine Sicherung zu schaffen.
+Für **Sicherung auswählen** muss der Zielbestand frisch und leer sein, auch ohne Arbeitskontexte oder Entwürfe. Auch ausgeblendete Arbeitskontexte zählen bei der Prüfung. Beenden Sie außerdem laufende Imports, Ausspielen und Liveaufnahmen. Plysmith löscht oder vereinigt keine vorhandenen Inhalte, um Platz für eine Sicherung zu schaffen.
 
 Nach der Dateiauswahl wird die Sicherung vollständig geprüft. Kontrollieren Sie die Inhaltszahlen in **Wiederherstellung prüfen** und bestätigen Sie erst dann **Bestand wiederherstellen**. Während der Prüfung und in der Vorschau können Sie abbrechen. Während der abschließenden Wiederherstellung ist Abbruch gesperrt. Die Vorschau läuft nach zehn Minuten ab; wählen Sie die Datei dann erneut. Bei einem Verbindungsausfall prüfen Sie zuerst den aktuellen Bestand, bevor Sie einen neuen Versuch beginnen.
 

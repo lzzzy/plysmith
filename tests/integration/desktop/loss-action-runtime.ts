@@ -49,7 +49,7 @@ window.lossTest = {
   show(kind = 'context_item', status = 'ready', language = 'en-GB', name = 'Analysis') {
     generation += 1; calls = []; locale = language; mode = kind;
     const preview = kind === 'inventory' ? inventoryPreview : contextPreview;
-    state = { phase: 'ready', scope: { kind: 'context', contextId: 'context' }, selectedInventoryItemId: 'item', inventory: { items: [{ itemId: 'item', currentRevisionId: 'revision', displayName: name }] }, refreshing: false,
+    state = { phase: 'ready', useWorkingContexts: true, scope: { kind: 'context', contextId: 'context' }, selectedInventoryItemId: 'item', inventory: { items: [{ itemId: 'item', currentRevisionId: 'revision', displayName: name }] }, refreshing: false,
       destructiveAction: { kind, status, displayName: name, itemId: 'item', contextId: 'context', preview, errorMessageId: 'unknown.backend.code' },
       revisionImpact: { impact: { impactId: 'impact', impactVersion: 3, dataRevision: 7, useTargetLoss: counts, removeFromContextLoss: { ...counts, activeNoteCount: 13 } }, pinnedRevision: revision, targetRevision: { ...revision, revisionNumber: 2 } } };
     document.documentElement.lang = language;

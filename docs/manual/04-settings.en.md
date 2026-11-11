@@ -8,15 +8,47 @@ So far, you have investigated continuations yourself. An engine adds to your own
 
 Under **Settings > Language**, choose **Deutsch** or **English** and click **Apply**. This choice affects the interface and chess notation. It does not translate your own names or note text.
 
-[![Language and other settings in Plysmith](screenshots/settings-general.png)](screenshots/settings-general.png)
+[![Language, workflow with working contexts turned off, and data backup](screenshots/settings-general.png)](screenshots/settings-general.png)
 
 A standard installation keeps your personal data folder at `%LOCALAPPDATA%\Plysmith`, separate from the program. Settings currently offers no choice of a different data path. A diagnostic report does not replace a data backup.
 
 Under **Local system**, you can see whether the **Data store** is connected. **Technical details** includes the release, which you can include when reporting a problem.
 
+## Use working contexts
+
+The **Use working contexts** switch under **Settings > Workflow** lets you choose whether to
+work directly with the entire inventory or also manage parallel topics with
+their own work in progress. Fresh installations start with the switch off.
+If working contexts already exist, the first start with this option retains
+the previous mode with contexts. Plysmith then remembers your explicit choice
+across restarts.
+
+With the switch off, you see the simple interface. The context bar, context
+management, context assignments and note scope selector are hidden. New analyses
+and games are saved directly to the inventory. New notes apply throughout the
+inventory. Folders, origins, analysis, playout and Live remain available.
+
+When you **enable** the switch, you stay in All inventory with its current work
+in progress. No context is created or selected automatically. Use the newly
+visible context bar to select an existing context, or create one in **Manage**.
+See [Working on topics in parallel with contexts](08-contexts.en.md).
+
+When you **disable** the switch, you return to **All inventory** and its own
+remembered work in progress. A context's analysis path or remembered position
+is not transferred to All inventory. Existing contexts, assignments, context
+notes and context work in progress are retained. Enabling the feature again
+initially leaves you in All inventory. Select your context to resume
+working there. Switching modes does not turn context notes into general notes.
+
+Finish any active operation or pending decision before switching. Before
+disabling contexts, pause or finish a running playout in the context and save
+or discard any open live recording. Loss dialogs remain active in the simple
+interface too. Changing or deleting shared inventory content can affect retained context content. The preview lists these
+consequences before you confirm.
+
 ## Data backup
 
-Under **Settings > Data backup**, back up the entire saved inventory: analyses, games, folders, required provenance and general notes. Working contexts, ongoing drafts, context notes, engines and settings are not included.
+Under **Settings > Data backup**, back up analyses, games, folders, required provenance and general notes from the entire saved inventory. Working contexts, ongoing drafts, context notes, engines and settings are not included. This boundary applies in both interfaces. All inventory's remembered work in progress and the **Use working contexts** preference are also outside the PGN backup.
 
 1. Choose **Back up inventory**.
 2. In the file dialog, choose a destination folder and a new `.pgn` file name. Existing files are never overwritten.
@@ -24,7 +56,7 @@ Under **Settings > Data backup**, back up the entire saved inventory: analyses, 
 
 [![Backup of the imported manual inventory showing its contents](screenshots/settings-backup.png)](screenshots/settings-backup.png)
 
-**Choose backup** requires a fresh, empty destination inventory, without working contexts or drafts. Empty visible lists alone are not sufficient. Finish active imports, playouts and live recordings as well. Plysmith never deletes or merges existing content to make room for a restore.
+**Choose backup** requires a fresh, empty destination inventory, without working contexts or drafts. Hidden working contexts also count when Plysmith checks the destination. Finish active imports, playouts and live recordings as well. Plysmith never deletes or merges existing content to make room for a restore.
 
 After selecting a file, Plysmith checks the complete backup. Check the counts in **Review restore**, then explicitly confirm **Restore inventory**. You can cancel during checking and in the preview. Cancellation is disabled during final publication. The preview expires after ten minutes; select the file again afterwards. If the connection fails, check the current inventory before starting another attempt.
 

@@ -104,6 +104,17 @@ export function registerInventoryRoutes(
     async (request) =>
       searchInventoryResultDto(
         await dependencies.searchInventory.execute({
+          ...(request.query.folderId === undefined
+            ? {}
+            : {
+                folderId:
+                  request.query.folderId === 'unfiled'
+                    ? 'unfiled'
+                    : parseLocalId('inventory-folder', request.query.folderId),
+              }),
+          ...(request.query.itemId === undefined
+            ? {}
+            : { itemId: parseLocalId('inventory-item', request.query.itemId) }),
           ...(request.query.query === undefined
             ? {}
             : { query: request.query.query }),

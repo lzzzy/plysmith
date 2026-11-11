@@ -18,6 +18,10 @@
   font-size: 12px;
 }
 
+.inventoryCount[data-scope-pending='true'] {
+  visibility: hidden;
+}
+
 .headerActions {
   display: flex;
   align-items: center;
@@ -64,6 +68,14 @@
 .inventoryPanel,
 .inspector {
   min-width: 0;
+}
+
+.manageGrid[data-working-contexts='false'] {
+  grid-template-columns: minmax(0, 1fr) 292px;
+}
+
+.manageGrid[data-has-inspector='false'] {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .contextPanel {
@@ -890,6 +902,10 @@
 @media (max-width: 1180px) {
   .manageGrid {
     grid-template-columns: 220px minmax(360px, 1fr);
+  }
+
+  .manageGrid[data-working-contexts='false'] {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .inspector {

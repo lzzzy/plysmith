@@ -17,6 +17,7 @@ import type {
   ListWorkingContextsResultDto,
   PlayoutDto,
   SearchInventoryResultDto,
+  SearchInventoryRequestDto,
   SetWorkScopeResumeRequestDto,
   StartupResumeDto,
   WorkScopeWorkspaceDto,
@@ -28,6 +29,7 @@ import {
   PlysmithApplicationStore,
   type PlysmithApplicationClient,
 } from '../../../app/infrastructure/channels/ui/renderer/plysmith-application-store.ts';
+import type { InventoryOrganization } from '../../../app/infrastructure/channels/ui/renderer/plysmith-application-store.ts';
 import { chessTreePath } from '../../../app/infrastructure/channels/ui/renderer/chess-tree-presentation.ts';
 import type { RendererDiagnosticEvent } from '../../../app/infrastructure/channels/ui/desktop/contract.ts';
 
@@ -354,6 +356,8 @@ function createClient(
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],
+      unfiledItemCount: 0,
+      unfiledContextItemCount: 0,
       dataRevision: (await statusRead).persistence.dataRevision,
     }),
     changeInventoryOrganization: async () =>
@@ -2616,7 +2620,7 @@ test('inventory selection stops when external work invalidates remaining context
   );
 });
 
-test('inventory selection preserves loaded pages and remaining items after a partial failure', async (t) => {
+test('inventory selection preserves the complete remaining list after a partial failure', async (t) => {
   const fixture = inventorySelectionFixture();
   const items = Array.from({ length: 54 }, (_, index) => ({
     ...fixture.item,
@@ -2658,7 +2662,6 @@ test('inventory selection preserves loaded pages and remaining items after a par
   const store = createReadyStore(fixture.client);
   t.after(() => store.close());
   await store.start();
-  await store.loadMoreInventory();
   const selected = items.slice(50, 53);
   const preview = await store.previewInventorySelection('delete', selected);
   assert.ok(preview);
@@ -3455,7 +3458,10 @@ test('engine settings are saved and removed once with a visible restart boundary
   store.close();
 });
 
-test('inventory and contexts remain reachable across result pages', async () => {
+test('inventory is published completely while context pages remain reachable', async (t) => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  t.after(() => release.resolve());
   const firstItem = {
     lifecycle: 'active' as const,
     itemId: '11',
@@ -3494,21 +3500,24 @@ test('inventory and contexts remain reachable across result pages', async () => 
     displayName: 'Zweiter Context',
   };
   const client = createClient({
-    searchInventory: async (request) =>
-      request.cursor === undefined
-        ? {
-            ancestors: [],
-            provenanceEdges: [],
-            items: [firstItem],
-            nextCursor: 'inventory-page-2',
-            dataRevision: 0,
-          }
-        : {
-            ancestors: [],
-            provenanceEdges: [],
-            items: [firstItem, secondItem],
-            dataRevision: 0,
-          },
+    searchInventory: async (request) => {
+      if (request.cursor === undefined)
+        return {
+          ancestors: [],
+          provenanceEdges: [],
+          items: [firstItem],
+          nextCursor: 'inventory-page-2',
+          dataRevision: 0,
+        };
+      entered.resolve();
+      await release.promise;
+      return {
+        ancestors: [],
+        provenanceEdges: [],
+        items: [firstItem, secondItem],
+        dataRevision: 0,
+      };
+    },
     listWorkingContexts: async (request) =>
       request.cursor === undefined
         ? {
@@ -3519,9 +3528,15 @@ test('inventory and contexts remain reachable across result pages', async () => 
         : { contexts: [firstContext, secondContext], dataRevision: 0 },
   });
   const store = createReadyStore(client);
-  await store.start();
+  t.after(() => store.close());
+  const starting = store.start();
+  await entered.promise;
+  const loading = readyStore(store);
+  assert.deepEqual(loading.inventory.items, []);
+  assert.equal(loading.inventoryFolderStates.get('unfiled')?.status, 'loading');
+  release.resolve();
+  await starting;
 
-  await store.loadMoreInventory();
   await store.loadMoreContexts();
 
   const snapshot = store.getSnapshot();
@@ -3539,6 +3554,102 @@ test('inventory and contexts remain reachable across result pages', async () => 
     assert.equal(snapshot.contexts.nextCursor, undefined);
   }
   store.close();
+});
+
+test('complete inventory retries a cursor invalidated by a concurrent write', async (t) => {
+  let revision = 0;
+  let firstPages = 0;
+  const source = lifecycleFixture().item;
+  const client = createClient({
+    getSystemStatus: async () => status(revision),
+    getUserPreferences: async () => preferences(revision),
+    listWorkingContexts: async () => contexts(revision),
+    getAnalysisWorkspace: async () => analysis(revision),
+    searchInventory: async (request) => {
+      if (request.cursor === undefined) {
+        firstPages++;
+        return { ...inventory(revision), items: [source], nextCursor: 'next' };
+      }
+      if (revision === 0) {
+        revision = 1;
+        throw workAccessProblem('inventory.invalid_search');
+      }
+      return inventory(revision);
+    },
+  });
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(firstPages, 2);
+  const snapshot = readyStore(store);
+  assert.deepEqual(snapshot.inventory.items, [source]);
+  assert.equal(snapshot.inventory.dataRevision, 1);
+  assert.equal(snapshot.inventory.nextCursor, undefined);
+  assert.equal(snapshot.errorCode, undefined);
+});
+
+test('an obsolete inventory page cannot publish a partial list for a new search', async (t) => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const source = lifecycleFixture().item;
+  const publications: string[][] = [];
+  const client = createClient({
+    searchInventory: async (request) => {
+      if (request.query === 'new')
+        return { ...inventory(), items: [{ ...source, itemId: 'new' }] };
+      if (request.cursor === undefined)
+        return { ...inventory(), items: [source], nextCursor: 'next' };
+      entered.resolve();
+      await release.promise;
+      return inventory();
+    },
+  });
+  const store = createReadyStore(client);
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  store.subscribe(() => {
+    const snapshot = store.getSnapshot();
+    if (snapshot.phase === 'ready')
+      publications.push(snapshot.inventory.items.map((item) => item.itemId));
+  });
+  const starting = store.start();
+  await entered.promise;
+  const searching = store.searchInventory('new');
+  release.resolve();
+  await Promise.all([starting, searching]);
+  assert.deepEqual(
+    readyStore(store).inventory.items.map((item) => item.itemId),
+    ['new'],
+  );
+  assert.ok(publications.length > 0);
+  assert.ok(
+    publications.every(
+      (items) =>
+        items.length === 0 || (items.length === 1 && items[0] === 'new'),
+    ),
+  );
+});
+
+test('an invalid inventory cursor without a revision change remains a visible error', async (t) => {
+  const store = createReadyStore(
+    createClient({
+      searchInventory: async (request) => {
+        if (request.cursor !== undefined)
+          throw workAccessProblem('inventory.invalid_search');
+        return { ...inventory(), nextCursor: 'next' };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  const snapshot = readyStore(store);
+  assert.deepEqual(snapshot.inventory.items, []);
+  assert.deepEqual(snapshot.inventoryFolderStates.get('unfiled'), {
+    status: 'failed',
+    errorCode: 'inventory.invalid_search',
+  });
 });
 
 test('analysis navigation restores context and free return points', async () => {
@@ -4240,7 +4351,8 @@ test('saving an analysis note sends its explicit context visibility once', async
   store.close();
 });
 
-test('path note forms retain edits per scope and reject stale scratch or prepared bodies', async () => {
+test('path note forms retain edits per scope and reject stale scratch or prepared bodies', async (t) => {
+  livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
   let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'path-form',
     scratchRevision: 2,
@@ -4678,7 +4790,8 @@ for (const { remote, duringDiscard } of [
 }
 
 for (const scopeKind of ['free', 'context'] as const) {
-  test(`saving an analysis follows the committed resume and continues from its last anchor in ${scopeKind} scope`, async () => {
+  test(`saving an analysis follows the committed resume and continues from its last anchor in ${scopeKind} scope`, async (t) => {
+    livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
     const scope =
       scopeKind === 'free'
         ? { kind: 'free' as const }
@@ -5631,7 +5744,8 @@ test('one-step rename retains its draft and requires a fresh visible preview onl
 
 for (const scopeKind of ['free', 'context'] as const) {
   for (const atLineEnd of [false, true]) {
-    test(`new moves from a saved ${atLineEnd ? 'line end' : 'root-only analysis'} remain neutral in ${scopeKind} scope`, async () => {
+    test(`new moves from a saved ${atLineEnd ? 'line end' : 'root-only analysis'} remain neutral in ${scopeKind} scope`, async (t) => {
+      livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
       const scope =
         scopeKind === 'free'
           ? { kind: 'free' as const }
@@ -6519,7 +6633,8 @@ for (const succeeds of [true, false]) {
   });
 }
 
-test('acceptance destinations preserve the path and separate form drafts through structure and context switches', async () => {
+test('acceptance destinations preserve the path and separate form drafts through structure and context switches', async (t) => {
+  livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
   let scratch: NonNullable<AnalysisWorkspaceDto['scratch']> = {
     scratchId: 'acceptance-path',
     scratchRevision: 1,
@@ -8070,7 +8185,7 @@ test('explicit management deselection survives stale refresh and a repeated cont
   store.close();
 });
 
-test('inventory pagination promotes matching ancestors without duplicate family nodes or edges', async () => {
+test('complete inventory promotes matching ancestors without duplicate family nodes or edges', async () => {
   const source: SearchInventoryResultDto['items'][number] = {
     lifecycle: 'active' as const,
     itemId: '11',
@@ -8118,13 +8233,12 @@ test('inventory pagination promotes matching ancestors without duplicate family 
     }),
   );
   await store.start();
-  await store.loadMoreInventory();
   const loaded = store.getSnapshot();
   assert.equal(loaded.phase, 'ready');
   if (loaded.phase === 'ready') {
     assert.deepEqual(
       loaded.inventory.items.map((item) => item.itemId),
-      ['21', '11'],
+      ['11', '21'],
     );
     assert.deepEqual(loaded.inventory.ancestors, []);
     assert.deepEqual(loaded.inventory.provenanceEdges, [edge]);
@@ -8947,6 +9061,7 @@ test('live recording is saved only explicitly after completion with selected fol
 });
 
 test('live context switch remains pending until central confirmation', async (t) => {
+  livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
   const store = createReadyStore(
     createClient({ getLiveState: async () => liveFixture() }),
   );
@@ -9856,6 +9971,885 @@ test('backup status reacts to events and reconnects only while settings is open'
   assert.equal(reads, closed);
 });
 
+test('resume selection keeps ready folder contents visible without loading them again', async (t) => {
+  const fixture = lifecycleFixture();
+  let folderReads = 0;
+  const search = fixture.client.searchInventory;
+  fixture.client.searchInventory = async (request) => {
+    if (request.folderId !== undefined) folderReads++;
+    return search(request);
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  const publications: string[] = [];
+  store.subscribe(() => {
+    const snapshot = store.getSnapshot();
+    if (snapshot.phase === 'ready')
+      publications.push(
+        snapshot.inventoryFolderStates.get('unfiled')?.status ?? 'missing',
+      );
+  });
+  await store.selectInventoryItem(fixture.item);
+  assert.equal(fixture.backend.revision, 1);
+  assert.equal(folderReads, 1);
+  assert.ok(publications.every((status) => status === 'ready'));
+  assert.equal(readyStore(store).inventory.dataRevision, 1);
+});
+
+test('switching activities stays busy from the first target snapshot until the header is ready', async (t) => {
+  const fixture = lifecycleFixture();
+  fixture.client.getInventoryOrganization = async () => ({
+    folders: [],
+    linkedFolderIds: [],
+    unfiledItemCount: 1,
+    unfiledContextItemCount: 0,
+    dataRevision: fixture.backend.revision,
+  });
+  let folderReads = 0;
+  const headerRevisions: number[] = [];
+  const search = fixture.client.searchInventory;
+  fixture.client.searchInventory = async (request) => {
+    if (request.folderId !== undefined) folderReads++;
+    return search(request);
+  };
+  fixture.client.getSystemStatus = async () => {
+    headerRevisions.push(fixture.backend.revision);
+    return status(fixture.backend.revision);
+  };
+  let emit: (event: HostEvent) => void = () => undefined;
+  const saveStartup = fixture.client.setStartupResume;
+  fixture.client.setStartupResume = async (request) => {
+    const saved = await saveStartup(request);
+    emit({
+      ...changedEvent(saved.dataRevision),
+      kind: 'workspace.startup-updated',
+      payload: { startupVersion: saved.startupVersion! },
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    return saved;
+  };
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => fixture.client,
+    createEventSubscription: (_connection, onChange) => {
+      emit = onChange;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  const phases: boolean[] = [];
+  let target: 'analyze' | 'manage' = 'analyze';
+  store.subscribe(() => {
+    const state = readyStore(store);
+    if (state.activity === target && phases.at(-1) !== state.refreshing)
+      phases.push(state.refreshing);
+  });
+  for (const activity of ['analyze', 'manage'] as const) {
+    target = activity;
+    phases.length = 0;
+    headerRevisions.length = 0;
+    store.setActivity(activity);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(fixture.backend.startup.area, activity);
+    assert.deepEqual(phases, [true, false]);
+    assert.deepEqual(headerRevisions, [fixture.backend.revision]);
+  }
+  assert.equal(folderReads, 1);
+  assert.equal(readyStore(store).inventory.dataRevision, 2);
+});
+
+test('context switch publishes one loading interval even when resume events arrive before the write responses', async (t) => {
+  for (const entry of ['picker', 'sidebar'] as const)
+    await t.test(entry, async (t) => {
+      const fixture = lifecycleFixture();
+      const target = { kind: 'context', contextId: '7' } as const;
+      await fixture.client.setWorkScopeResume({
+        scope: target,
+        area: 'manage',
+        expectedResumeVersion: null,
+        presentation: 'folders',
+        selectedItemId: fixture.item.itemId,
+        selectedAnchorId: fixture.item.rootAnchorId,
+      });
+      let emit: (event: HostEvent) => void = () => undefined;
+      const saveStartup = fixture.client.setStartupResume;
+      fixture.client.setStartupResume = async (request) => {
+        const saved = await saveStartup(request);
+        emit({
+          ...changedEvent(saved.dataRevision),
+          kind: 'workspace.startup-updated',
+          payload: { startupVersion: saved.startupVersion! },
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return saved;
+      };
+      const saveResume = fixture.client.setWorkScopeResume;
+      fixture.client.setWorkScopeResume = async (request) => {
+        const saved = await saveResume(request);
+        emit({
+          ...changedEvent(saved.dataRevision),
+          kind: 'workspace.resume-updated',
+          payload: {
+            area: saved.area,
+            resumeVersion: saved.resume.resumeVersion,
+          },
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        return saved;
+      };
+      const readOrganization = fixture.client.getInventoryOrganization;
+      const targetReads: number[] = [];
+      fixture.client.getInventoryOrganization = async (request) => {
+        if (request.contextId === target.contextId)
+          targetReads.push(fixture.backend.revision);
+        return readOrganization(request);
+      };
+      const store = new PlysmithApplicationStore({
+        getBootstrap: async () => ({
+          kind: 'ready',
+          generation: 1,
+          connection,
+        }),
+        createClient: () => fixture.client,
+        createEventSubscription: (_connection, onChange) => {
+          emit = onChange;
+          return { ready: Promise.resolve(), close: () => undefined };
+        },
+      });
+      t.after(() => store.close());
+      await store.start();
+      const phases = [false];
+      store.subscribe(() => {
+        const snapshot = readyStore(store);
+        const busy = snapshot.refreshing || snapshot.busyCommand !== undefined;
+        if (phases.at(-1) !== busy) phases.push(busy);
+        if (!busy && snapshot.scope.kind === 'context')
+          assert.deepEqual(snapshot.scopeWorkspace.scope, target);
+      });
+      if (entry === 'picker') await store.setScope(target);
+      else await store.selectManagementScope(target);
+
+      assert.deepEqual(phases, [false, true, false]);
+      assert.deepEqual(targetReads, [entry === 'picker' ? 2 : 3]);
+      assert.deepEqual(fixture.backend.startup.scope, target);
+      assert.equal(
+        readyStore(store).scopeWorkspace.dataRevision,
+        targetReads[0],
+      );
+      assert.equal(
+        readyStore(store).selectedInventoryItemId,
+        entry === 'picker' ? fixture.item.itemId : undefined,
+      );
+    });
+});
+
+test('a failed scope startup write still loads the requested context and reports the conflict', async (t) => {
+  const fixture = lifecycleFixture();
+  fixture.client.setStartupResume = async () => {
+    throw workAccessProblem('workspace.startup_conflict');
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+
+  const target = { kind: 'context', contextId: '7' } as const;
+  await store.setScope(target);
+
+  const snapshot = readyStore(store);
+  assert.deepEqual(snapshot.scopeWorkspace.scope, target);
+  assert.equal(snapshot.refreshing, false);
+  assert.equal(snapshot.errorCode, 'workspace.startup_conflict');
+  assert.deepEqual(fixture.backend.startup.scope, { kind: 'free' });
+});
+
+test('a rapid return to the previous scope stays pending until that scope is read again', async (t) => {
+  const fixture = lifecycleFixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const saveStartup = fixture.client.setStartupResume;
+  fixture.client.setStartupResume = async (request) => {
+    const saved = await saveStartup(request);
+    if (request.scope.kind === 'context') {
+      entered.resolve();
+      await release.promise;
+    }
+    return saved;
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  await store.start();
+  const free = { kind: 'free' } as const;
+  const entering = store.setScope({ kind: 'context', contextId: '7' });
+  await entered.promise;
+  const returning = store.setScope(free);
+
+  const pending = readyStore(store);
+  assert.deepEqual(pending.scopeWorkspace.scope, free);
+  assert.deepEqual(pending.scope, free);
+  assert.equal(pending.scopePending, true);
+
+  release.resolve();
+  await Promise.all([entering, returning]);
+  assert.equal(readyStore(store).scopePending, undefined);
+  assert.equal(readyStore(store).scopeWorkspace.dataRevision, 2);
+  assert.deepEqual(fixture.backend.startup.scope, free);
+});
+
+test('an unobserved inventory revision before selection still invalidates the folder cache', async (t) => {
+  const fixture = lifecycleFixture();
+  let name = 'Original';
+  let folderReads = 0;
+  fixture.client.searchInventory = async (request) => {
+    if (request.folderId !== undefined) folderReads++;
+    const other = { ...fixture.item, itemId: '21', displayName: name };
+    return {
+      ...inventory(fixture.backend.revision),
+      items:
+        request.itemId === fixture.item.itemId
+          ? [fixture.item]
+          : [fixture.item, other],
+    };
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  name = 'Changed remotely';
+  fixture.backend.revision++;
+  await store.selectInventoryItem(fixture.item);
+  assert.equal(folderReads, 2);
+  assert.equal(
+    readyStore(store).inventory.items.find((item) => item.itemId === '21')
+      ?.displayName,
+    name,
+  );
+  assert.equal(readyStore(store).inventory.dataRevision, 2);
+});
+
+test('remote resume revisions preserve cached folders even after an older header arrives late', async (t) => {
+  const fixture = lifecycleFixture();
+  fixture.client.getInventoryOrganization = async () => ({
+    folders: [],
+    linkedFolderIds: [],
+    unfiledItemCount: 1,
+    unfiledContextItemCount: 0,
+    dataRevision: fixture.backend.revision,
+  });
+  let folderReads = 0;
+  let hold = false;
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  const search = fixture.client.searchInventory;
+  fixture.client.searchInventory = async (request) => {
+    if (request.folderId !== undefined) folderReads++;
+    return search(request);
+  };
+  fixture.client.getSystemStatus = async () => {
+    const snapshot = status(fixture.backend.revision);
+    if (hold) {
+      hold = false;
+      entered.resolve();
+      await released.promise;
+    }
+    return snapshot;
+  };
+  let emit: (event: HostEvent) => void = () => undefined;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => fixture.client,
+    createEventSubscription: (_connection, onChange) => {
+      emit = onChange;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => {
+    released.resolve();
+    store.close();
+  });
+  await store.start();
+  hold = true;
+  const refreshing = store.refresh();
+  await entered.promise;
+  fixture.backend.revision++;
+  emit({
+    ...changedEvent(1),
+    kind: 'workspace.resume-updated',
+    payload: { area: 'manage', resumeVersion: 1 },
+  });
+  released.resolve();
+  await refreshing;
+  fixture.backend.revision++;
+  emit({
+    ...changedEvent(2),
+    kind: 'workspace.startup-updated',
+    payload: { startupVersion: 1 },
+  });
+  await store.refresh();
+  assert.equal(folderReads, 1);
+  assert.equal(readyStore(store).inventory.dataRevision, 2);
+});
+
+test(
+  'a startup refresh waiting for a folder cannot block saving a newer activity',
+  { timeout: 5000 },
+  async (t) => {
+    const fixture = lifecycleFixture();
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    fixture.client.searchInventory = async (request) => {
+      const snapshot = {
+        ...inventory(fixture.backend.revision),
+        items: [fixture.item],
+      };
+      if (request.folderId !== undefined) {
+        entered.resolve();
+        await released.promise;
+      }
+      return snapshot;
+    };
+    const store = createReadyStore(fixture.client);
+    t.after(() => {
+      released.resolve();
+      store.close();
+    });
+    const starting = store.start();
+    await entered.promise;
+    store.setActivity('manage');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    store.setActivity('analyze');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(fixture.backend.startup.area, 'analyze');
+    assert.equal(readyStore(store).activity, 'analyze');
+    assert.equal(readyStore(store).status.persistence.dataRevision, 1);
+    released.resolve();
+    await starting;
+  },
+);
+
+test(
+  'a resume revision cancels old folder pages without reloading a completed sibling',
+  { timeout: 5000 },
+  async (t) => {
+    livePreferenceStorage(t).set(
+      'plysmith.collapsedInventoryFolders:free',
+      '["1","2","3"]',
+    );
+    const fixture = lifecycleFixture();
+    fixture.client.getInventoryOrganization = async () =>
+      lazyOrganization(fixture.backend.revision);
+    const entered = Promise.withResolvers<void>();
+    const released = Promise.withResolvers<void>();
+    let completedSiblingReads = 0;
+    fixture.client.searchInventory = async (request) => {
+      const revision = fixture.backend.revision;
+      if (request.itemId)
+        return { ...inventory(revision), items: [fixture.item] };
+      if (request.folderId === 'unfiled') {
+        completedSiblingReads++;
+        return { ...inventory(revision), items: [fixture.item] };
+      }
+      if (revision === 0) {
+        if (!request.cursor)
+          return {
+            ...inventory(0),
+            items: [lazyItem('1', 'old')],
+            nextCursor: 'late',
+          };
+        entered.resolve();
+        await released.promise;
+        return inventory(0);
+      }
+      return { ...inventory(revision), items: [lazyItem('1')] };
+    };
+    const store = createReadyStore(fixture.client);
+    t.after(() => {
+      released.resolve();
+      store.close();
+    });
+    await store.start();
+    const opening = store.toggleInventoryFolder('1');
+    await entered.promise;
+    const publications: string[] = [];
+    store.subscribe(() => {
+      const snapshot = store.getSnapshot();
+      if (snapshot.phase === 'ready')
+        publications.push(
+          snapshot.inventoryFolderStates.get('unfiled')?.status ?? 'missing',
+        );
+    });
+    await store.selectInventoryItem(fixture.item);
+    assert.equal(completedSiblingReads, 1);
+    assert.ok(publications.every((status) => status === 'ready'));
+    assert.ok(
+      !readyStore(store).inventory.items.some((item) => item.itemId === 'old'),
+    );
+    released.resolve();
+    await opening;
+    assert.ok(
+      !readyStore(store).inventory.items.some((item) => item.itemId === 'old'),
+    );
+    assert.equal(
+      readyStore(store).inventoryFolderStates.get('1')?.status,
+      'ready',
+    );
+  },
+);
+
+for (const stage of ['read', 'write'] as const) {
+  test('management still loads after a failed startup ' + stage, async (t) => {
+    const fixture = lifecycleFixture();
+    fixture.backend.startup = { ...fixture.backend.startup, area: 'analyze' };
+    const store = createReadyStore(fixture.client);
+    t.after(() => store.close());
+    await store.start();
+    const error =
+      stage === 'read' ? 'host.unavailable' : 'workspace.startup_conflict';
+    if (stage === 'read')
+      fixture.client.getStartupResume = async () => {
+        throw workAccessProblem(error);
+      };
+    else
+      fixture.client.setStartupResume = async () => {
+        throw workAccessProblem(error);
+      };
+    store.setActivity('manage');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const snapshot = readyStore(store);
+    assert.equal(
+      snapshot.inventoryFolderStates.get('unfiled')?.status,
+      'ready',
+    );
+    assert.deepEqual(snapshot.inventory.items, [fixture.item]);
+    assert.equal(snapshot.errorCode, error);
+  });
+}
+
+function lazyOrganization(dataRevision = 0): InventoryOrganization {
+  return {
+    folders: [
+      {
+        folderId: '1',
+        displayName: 'Parent',
+        itemCount: 1,
+        contextItemCount: 1,
+        contextLinkCount: 0,
+      },
+      {
+        folderId: '2',
+        parentFolderId: '1',
+        displayName: 'Child',
+        itemCount: 1,
+        contextItemCount: 1,
+        contextLinkCount: 0,
+      },
+      {
+        folderId: '3',
+        displayName: 'Sibling',
+        itemCount: 1,
+        contextItemCount: 1,
+        contextLinkCount: 0,
+      },
+    ],
+    linkedFolderIds: [],
+    unfiledItemCount: 1,
+    unfiledContextItemCount: 1,
+    dataRevision,
+  };
+}
+
+function lazyItem(
+  folderId: string,
+  itemId = (folderId === 'unfiled' ? '4' : folderId) + '1',
+) {
+  return {
+    ...lifecycleFixture().item,
+    itemId,
+    displayName: 'Entry ' + itemId,
+    ...(folderId === 'unfiled' ? {} : { folderId }),
+  };
+}
+
+test('remembered collapsed folders and their hidden descendants are not fetched', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.collapsedInventoryFolders:free', '["1","3","unfiled"]');
+  const requests: SearchInventoryRequestDto[] = [];
+  const store = createReadyStore(
+    createClient({
+      getInventoryOrganization: async () => lazyOrganization(),
+      searchInventory: async (request) => {
+        requests.push(request);
+        assert.ok(request.folderId);
+        return { ...inventory(), items: [lazyItem(request.folderId)] };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(requests.length, 0);
+  assert.equal(readyStore(store).inventoryTotalCount, 4);
+  assert.equal(readyStore(store).inventoryOrganization.folders.length, 3);
+  await store.toggleInventoryFolder('1');
+  assert.deepEqual(
+    requests.map((request) => request.folderId),
+    ['1', '2'],
+  );
+  assert.deepEqual(
+    readyStore(store).inventory.items.map((item) => item.itemId),
+    ['11', '21'],
+  );
+  await store.toggleInventoryFolder('1');
+  await store.toggleInventoryFolder('1');
+  assert.equal(requests.length, 2);
+  assert.equal(
+    storage.get('plysmith.collapsedInventoryFolders:free'),
+    '["3","unfiled"]',
+  );
+});
+
+test('collapse invalidates an unfinished folder and reopening cannot accept its late page', async (t) => {
+  livePreferenceStorage(t).set(
+    'plysmith.collapsedInventoryFolders:free',
+    '["1","3","unfiled"]',
+  );
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let firstPages = 0;
+  const store = createReadyStore(
+    createClient({
+      getInventoryOrganization: async () => lazyOrganization(),
+      searchInventory: async (request) => {
+        if (request.folderId !== '1') return inventory();
+        if (request.cursor) {
+          entered.resolve();
+          await release.promise;
+          return { ...inventory(), items: [lazyItem('1', '19')] };
+        }
+        firstPages++;
+        return {
+          ...inventory(),
+          items: [lazyItem('1')],
+          ...(firstPages === 1 ? { nextCursor: 'late-page' } : {}),
+        };
+      },
+    }),
+  );
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  await store.start();
+  const opening = store.toggleInventoryFolder('1');
+  await entered.promise;
+  assert.deepEqual(readyStore(store).inventory.items, []);
+  await store.toggleInventoryFolder('1');
+  await store.toggleInventoryFolder('1');
+  assert.equal(firstPages, 2);
+  release.resolve();
+  await opening;
+  assert.deepEqual(
+    readyStore(store).inventory.items.map((item) => item.itemId),
+    ['11'],
+  );
+  assert.equal(
+    readyStore(store).inventoryFolderStates.get('1')?.status,
+    'ready',
+  );
+});
+
+for (const destination of ['search', 'context', 'origins'] as const) {
+  test(
+    'a slow folder cannot block navigation to ' + destination,
+    { timeout: 5000 },
+    async (t) => {
+      const storage = livePreferenceStorage(t);
+      storage.set('plysmith.useWorkingContexts', 'true');
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      let hold = true;
+      const client = contextWorkClient(
+        () => 0,
+        () => ['11'],
+        {
+          getInventoryOrganization: async () => lazyOrganization(),
+          searchInventory: async (request) => {
+            if (
+              hold &&
+              request.folderId === '1' &&
+              request.contextId === undefined
+            ) {
+              entered.resolve();
+              await release.promise;
+              return { ...inventory(), items: [lazyItem('1', 'old')] };
+            }
+            return {
+              ...inventory(),
+              items: [lazyItem(request.folderId ?? 'unfiled')],
+            };
+          },
+        },
+      );
+      const store = createReadyStore(client);
+      t.after(() => {
+        release.resolve();
+        store.close();
+      });
+      const starting = store.start();
+      await entered.promise;
+      if (destination === 'search') await store.searchInventory('Entry');
+      else if (destination === 'context')
+        await store.setScope({ kind: 'context', contextId: '7' });
+      else await store.setInventoryPresentation('origins');
+      const navigated = readyStore(store);
+      assert.ok(navigated.inventory.items.length > 0);
+      assert.ok(
+        !navigated.inventory.items.some((item) => item.itemId === 'old'),
+      );
+      if (destination === 'search')
+        assert.equal(navigated.inventoryQuery, 'Entry');
+      if (destination === 'context')
+        assert.deepEqual(navigated.scope, { kind: 'context', contextId: '7' });
+      if (destination === 'origins')
+        assert.equal(navigated.inventoryPresentation, 'origins');
+      hold = false;
+      release.resolve();
+      await starting;
+      assert.ok(
+        !readyStore(store).inventory.items.some(
+          (item) => item.itemId === 'old',
+        ),
+      );
+    },
+  );
+}
+
+test('a failed folder is local and retry retains successful sibling contents', async (t) => {
+  const requests: string[] = [];
+  let fail = true;
+  const store = createReadyStore(
+    createClient({
+      getInventoryOrganization: async () => lazyOrganization(),
+      searchInventory: async (request) => {
+        assert.ok(request.folderId);
+        requests.push(request.folderId);
+        if (request.folderId === '1' && fail)
+          throw workAccessProblem('host.unavailable');
+        return { ...inventory(), items: [lazyItem(request.folderId)] };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(
+    readyStore(store).inventoryFolderStates.get('1')?.status,
+    'failed',
+  );
+  assert.equal(
+    readyStore(store).inventoryFolderStates.get('3')?.status,
+    'ready',
+  );
+  assert.deepEqual(
+    readyStore(store).inventory.items.map((item) => item.itemId),
+    ['21', '31', '41'],
+  );
+  assert.equal(readyStore(store).errorCode, undefined);
+  requests.length = 0;
+  fail = false;
+  await store.retryInventoryFolder('1');
+  assert.deepEqual(requests, ['1']);
+  assert.deepEqual(
+    readyStore(store).inventory.items.map((item) => item.itemId),
+    ['11', '21', '31', '41'],
+  );
+});
+
+test('selected entry metadata resumes inside a closed folder without loading that folder', async (t) => {
+  livePreferenceStorage(t).set(
+    'plysmith.collapsedInventoryFolders:free',
+    '["1","3","unfiled"]',
+  );
+  const requests: SearchInventoryRequestDto[] = [];
+  const source = lazyItem('1');
+  const store = createReadyStore(
+    createClient({
+      getInventoryOrganization: async () => lazyOrganization(),
+      getWorkScopeWorkspace: async () => ({
+        scope: { kind: 'free' },
+        dataRevision: 0,
+        managementResume: {
+          presentation: 'folders',
+          resumeVersion: 1,
+          selectedItemId: source.itemId,
+          updatedAt: source.updatedAt,
+        },
+      }),
+      searchInventory: async (request) => {
+        requests.push(request);
+        assert.equal(request.itemId, source.itemId);
+        assert.equal(request.folderId, undefined);
+        return { ...inventory(), items: [source] };
+      },
+    }),
+  );
+  t.after(() => store.close());
+  await store.start();
+  assert.equal(requests.length, 1);
+  assert.equal(readyStore(store).selectedInventoryItemId, source.itemId);
+  assert.deepEqual(readyStore(store).inventory.items, [source]);
+  assert.equal(readyStore(store).inventoryFolderStates.has('1'), false);
+});
+
+test('revision changes invalidate ready folders and a late old revision cannot replace them', async (t) => {
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let revision = 0;
+  const requests: number[] = [];
+  const store = createReadyStore(
+    createClient({
+      getSystemStatus: async () => status(revision),
+      getUserPreferences: async () => preferences(revision),
+      listWorkingContexts: async () => contexts(revision),
+      getAnalysisWorkspace: async () => analysis(revision),
+      getInventoryOrganization: async () => lazyOrganization(revision),
+      searchInventory: async (request) => {
+        if (request.folderId === '1' && revision === 0) {
+          entered.resolve();
+          await release.promise;
+          return { ...inventory(0), items: [lazyItem('1', 'old')] };
+        }
+        requests.push(revision);
+        return {
+          ...inventory(revision),
+          items: [lazyItem(request.folderId ?? 'unfiled')],
+        };
+      },
+    }),
+  );
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  const starting = store.start();
+  await entered.promise;
+  revision = 1;
+  await store.refresh();
+  assert.equal(readyStore(store).inventory.dataRevision, 1);
+  assert.equal(requests.length, 4);
+  release.resolve();
+  await starting;
+  assert.equal(readyStore(store).inventory.dataRevision, 1);
+  assert.ok(
+    !readyStore(store).inventory.items.some((item) => item.itemId === 'old'),
+  );
+});
+
+test('creating a context and deleting it restore each target scope folder preferences', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.useWorkingContexts', 'true');
+  storage.set('plysmith.collapsedInventoryFolders:free', '["1","3","unfiled"]');
+  storage.set('plysmith.collapsedInventoryFolders:7', '["2"]');
+  const fixture = lifecycleFixture();
+  fixture.client.getInventoryOrganization = async () =>
+    lazyOrganization(fixture.backend.revision);
+  fixture.client.createWorkingContext = async () => ({
+    context: fixture.context,
+    dataRevision: 0,
+  });
+  const store = createReadyStore(fixture.client);
+  t.after(() => store.close());
+  await store.start();
+  assert.deepEqual(
+    [...readyStore(store).collapsedInventoryFolders],
+    ['1', '3', 'unfiled'],
+  );
+  assert.equal(
+    await store.createWorkingContext({ displayName: 'New context' }),
+    true,
+  );
+  assert.deepEqual([...readyStore(store).collapsedInventoryFolders], ['2']);
+  await store.prepareContextDeletion(fixture.context.contextId);
+  await store.confirmDestructiveAction();
+  assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+  assert.deepEqual(
+    [...readyStore(store).collapsedInventoryFolders],
+    ['1', '3', 'unfiled'],
+  );
+});
+
+test('remote context deletion restores free folder preferences without overwriting either scope', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.useWorkingContexts', 'true');
+  storage.set('plysmith.collapsedInventoryFolders:free', '["1","3","unfiled"]');
+  storage.set('plysmith.collapsedInventoryFolders:7', '["2"]');
+  const fixture = lifecycleFixture();
+  fixture.client.getInventoryOrganization = async () =>
+    lazyOrganization(fixture.backend.revision);
+  let emit: (event: HostEvent) => void = () => undefined;
+  const store = new PlysmithApplicationStore({
+    getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
+    createClient: () => fixture.client,
+    createEventSubscription: (_connection, onChange) => {
+      emit = onChange;
+      return { ready: Promise.resolve(), close: () => undefined };
+    },
+  });
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  assert.deepEqual([...readyStore(store).collapsedInventoryFolders], ['2']);
+  fixture.backend.contextExists = false;
+  fixture.backend.revision++;
+  emit({
+    ...changedEvent(1),
+    kind: 'workspace.context-deleted',
+    payload: { contextId: '7' },
+  });
+  await store.refresh();
+  assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+  assert.deepEqual(
+    [...readyStore(store).collapsedInventoryFolders],
+    ['1', '3', 'unfiled'],
+  );
+  assert.equal(storage.get('plysmith.collapsedInventoryFolders:7'), '["2"]');
+});
+
+test('search expansion is transient and stored folder preferences survive a new store', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.collapsedInventoryFolders:free', '["1","unfiled"]');
+  const client = createClient({
+    getInventoryOrganization: async () => lazyOrganization(),
+    searchInventory: async (request) => ({
+      ...inventory(),
+      items: [lazyItem(request.folderId ?? '1')],
+    }),
+  });
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  await store.searchInventory('Entry');
+  assert.equal(readyStore(store).collapsedInventoryFolders.size, 0);
+  await store.toggleInventoryFolder('3');
+  assert.deepEqual([...readyStore(store).collapsedInventoryFolders], ['3']);
+  await store.searchInventory('');
+  assert.deepEqual(
+    [...readyStore(store).collapsedInventoryFolders],
+    ['1', 'unfiled'],
+  );
+  store.close();
+  const restarted = createReadyStore(client);
+  t.after(() => restarted.close());
+  await restarted.start();
+  assert.deepEqual(
+    [...readyStore(restarted).collapsedInventoryFolders],
+    ['1', 'unfiled'],
+  );
+  assert.equal(readyStore(restarted).inventoryFolderStates.has('1'), false);
+});
+
 function createReadyStore(client: PlysmithApplicationClient) {
   return new PlysmithApplicationStore({
     getBootstrap: async () => ({ kind: 'ready', generation: 1, connection }),
@@ -9886,6 +10880,544 @@ function livePreferenceStorage(t: TestContext) {
     else Reflect.deleteProperty(globalThis, 'localStorage');
   });
   return values;
+}
+
+for (const stored of [undefined, 'true', 'false', 'malformed'] as const) {
+  for (const hasContexts of [false, true]) {
+    test(`working context mode starts with ${stored ?? 'missing'} preference and ${hasContexts ? 'existing' : 'no'} contexts`, async (t) => {
+      const storage = livePreferenceStorage(t);
+      if (stored !== undefined)
+        storage.set('plysmith.useWorkingContexts', stored);
+      const enabled = stored === 'true' || (stored !== 'false' && hasContexts);
+      const client = hasContexts
+        ? contextWorkClient(
+            () => 0,
+            () => ['11'],
+          )
+        : createClient();
+      // An explicit simple-mode choice must also bypass a stale context resume.
+      const startupScope =
+        hasContexts || stored === 'false'
+          ? { kind: 'context' as const, contextId: '7' }
+          : { kind: 'free' as const };
+      await client.setStartupResume({
+        scope: startupScope,
+        area: 'manage',
+        expectedStartupVersion: null,
+      });
+      const contextReads = t.mock.method(client, 'getWorkingContextWorkspace');
+      const store = createReadyStore(client);
+      t.after(() => store.close());
+      const snapshots: ReturnType<typeof readyStore>[] = [];
+      t.after(
+        store.subscribe(() => {
+          const state = store.getSnapshot();
+          if (state.phase === 'ready') snapshots.push(state);
+        }),
+      );
+      await store.start();
+      assert.ok(snapshots.length > 0);
+      for (const state of snapshots) {
+        assert.equal(state.useWorkingContexts, enabled);
+        assert.deepEqual(
+          state.scope,
+          enabled ? startupScope : { kind: 'free' },
+        );
+        if (!enabled) {
+          assert.equal(state.contextWorkspace, undefined);
+          assert.equal(state.inventoryContextOnly, false);
+          assert.deepEqual(state.scopeWorkspace.scope, { kind: 'free' });
+          if (state.analysis)
+            assert.deepEqual(state.analysis.scope, { kind: 'free' });
+        }
+      }
+      if (!enabled) assert.equal(contextReads.mock.callCount(), 0);
+      assert.equal(storage.get('plysmith.useWorkingContexts'), String(enabled));
+      assert.equal(readyStore(store).errorCode, undefined);
+    });
+  }
+}
+
+test('working context mode persists explicit choices and re-enabling stays free without changing context work', async (t) => {
+  const storage = livePreferenceStorage(t);
+  const client = contextWorkClient(
+    () => 0,
+    () => ['11'],
+  );
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  await store.setScope({ kind: 'context', contextId: '7' });
+  const context = readyStore(store).contextWorkspace;
+  const workspace = readyStore(store).scopeWorkspace;
+  const analysisBefore = readyStore(store).analysis;
+  assert.equal(await store.setUseWorkingContexts(false), true);
+  assert.equal(storage.get('plysmith.useWorkingContexts'), 'false');
+  assert.equal(readyStore(store).useWorkingContexts, false);
+  assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+  assert.equal(readyStore(store).contextWorkspace, undefined);
+  assert.equal(readyStore(store).inventoryContextOnly, false);
+  assert.deepEqual(readyStore(store).analysis?.scope, { kind: 'free' });
+  assert.deepEqual((await client.getStartupResume()).scope, { kind: 'free' });
+  assert.deepEqual(await client.getWorkingContextWorkspace('7'), context);
+  store.close();
+
+  const restarted = createReadyStore(client);
+  t.after(() => restarted.close());
+  await restarted.start();
+  assert.equal(readyStore(restarted).useWorkingContexts, false);
+  assert.equal(await restarted.setUseWorkingContexts(true), true);
+  assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+  assert.deepEqual(readyStore(restarted).scope, { kind: 'free' });
+  assert.deepEqual((await client.getStartupResume()).scope, { kind: 'free' });
+  await restarted.setScope({ kind: 'context', contextId: '7' });
+  assert.deepEqual(readyStore(restarted).contextWorkspace, context);
+  assert.deepEqual(readyStore(restarted).scopeWorkspace, workspace);
+  assert.deepEqual(readyStore(restarted).analysis, analysisBefore);
+  restarted.close();
+
+  const advanced = createReadyStore(client);
+  t.after(() => advanced.close());
+  await advanced.start();
+  assert.equal(readyStore(advanced).useWorkingContexts, true);
+  assert.deepEqual(readyStore(advanced).scope, {
+    kind: 'context',
+    contextId: '7',
+  });
+});
+
+test('working context mode blocks scope entry and management selection while disabled', async (t) => {
+  livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'false');
+  const client = contextWorkClient(
+    () => 0,
+    () => ['11'],
+  );
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  const before = readyStore(store);
+  const startup = await client.getStartupResume();
+  const contextReads = t.mock.method(client, 'getWorkingContextWorkspace');
+  const startupWrites = t.mock.method(client, 'setStartupResume');
+  const resumeWrites = t.mock.method(client, 'setWorkScopeResume');
+  await store.setScope({ kind: 'context', contextId: '7' });
+  await store.selectManagementScope({ kind: 'context', contextId: '7' });
+  assert.deepEqual(readyStore(store), before);
+  assert.deepEqual(await client.getStartupResume(), startup);
+  assert.equal(contextReads.mock.callCount(), 0);
+  assert.equal(startupWrites.mock.callCount(), 0);
+  assert.equal(resumeWrites.mock.callCount(), 0);
+});
+
+for (const initiallyEnabled of [false, true]) {
+  test(`working context mode rolls back a storage failure when ${initiallyEnabled ? 'disabling a context' : 'enabling'}`, async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', String(initiallyEnabled));
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    if (initiallyEnabled)
+      await store.setScope({ kind: 'context', contextId: '7' });
+    const before = readyStore(store);
+    const startup = await client.getStartupResume();
+    const failingStorage = t.mock.method(
+      globalThis.localStorage,
+      'setItem',
+      () => {
+        throw new Error('Storage unavailable');
+      },
+    );
+    assert.equal(await store.setUseWorkingContexts(!initiallyEnabled), false);
+    const after = readyStore(store);
+    assert.equal(after.errorCode, 'desktop.working_contexts_preference');
+    assert.equal(after.useWorkingContexts, initiallyEnabled);
+    assert.equal(
+      storage.get('plysmith.useWorkingContexts'),
+      String(initiallyEnabled),
+    );
+    assert.deepEqual(after.scope, before.scope);
+    assert.deepEqual(after.scopeWorkspace, before.scopeWorkspace);
+    assert.deepEqual(after.contextWorkspace, before.contextWorkspace);
+    assert.deepEqual(after.analysis, before.analysis);
+    assert.equal(after.inventoryContextOnly, before.inventoryContextOnly);
+    assert.deepEqual(after.status, before.status);
+    assert.equal(after.fairPlayBlocked, before.fairPlayBlocked);
+    assert.equal(after.busyCommand, undefined);
+    assert.deepEqual(await client.getStartupResume(), startup);
+    failingStorage.mock.restore();
+    assert.equal(await store.setUseWorkingContexts(!initiallyEnabled), true);
+    assert.equal(
+      storage.get('plysmith.useWorkingContexts'),
+      String(!initiallyEnabled),
+    );
+  });
+
+  test(`working context mode blocks ${initiallyEnabled ? 'disabling' : 'enabling'} during a command`, async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', String(initiallyEnabled));
+    const response =
+      Promise.withResolvers<
+        Awaited<ReturnType<PlysmithApplicationClient['setUiLanguage']>>
+      >();
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+      {
+        setUiLanguage: () => response.promise,
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    if (initiallyEnabled)
+      await store.setScope({ kind: 'context', contextId: '7' });
+    const startup = await client.getStartupResume();
+    const changingLanguage = store.setUiLanguage('en-GB');
+    try {
+      const before = readyStore(store);
+      assert.equal(before.busyCommand, 'set_language');
+      assert.equal(await store.setUseWorkingContexts(!initiallyEnabled), false);
+      assert.equal(
+        readyStore(store).errorCode,
+        'desktop.working_contexts_busy',
+      );
+      assert.equal(readyStore(store).busyCommand, 'set_language');
+      assert.equal(readyStore(store).useWorkingContexts, initiallyEnabled);
+      assert.deepEqual(readyStore(store).scope, before.scope);
+      assert.deepEqual(await client.getStartupResume(), startup);
+      assert.equal(
+        storage.get('plysmith.useWorkingContexts'),
+        String(initiallyEnabled),
+      );
+    } finally {
+      response.resolve({ changed: true, preferences: preferences() });
+      await changingLanguage;
+    }
+    assert.equal(await store.setUseWorkingContexts(!initiallyEnabled), true);
+  });
+
+  test(`working context mode blocks ${initiallyEnabled ? 'disabling' : 'enabling'} while a playout completion is unresolved`, async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', String(initiallyEnabled));
+    const view = playout(3, 0, [{ actor: 'user', san: 'e4' }], 'stopped');
+    let completions = 0;
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+      {
+        getPlayout: async () => view,
+        completePlayout: async () => {
+          completions++;
+          throw workAccessProblem('host.unavailable');
+        },
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    if (initiallyEnabled)
+      await store.setScope({ kind: 'context', contextId: '7' });
+    store.setActivity('playout');
+    assert.equal(
+      await store.completePlayout('Pending game', initiallyEnabled, 'draw'),
+      false,
+    );
+    const before = readyStore(store);
+    assert.ok(before.pendingPlayoutCompletion);
+    assert.equal(before.busyCommand, undefined);
+    const attempts = completions;
+    assert.equal(await store.setUseWorkingContexts(!initiallyEnabled), false);
+    assert.equal(readyStore(store).errorCode, 'desktop.working_contexts_busy');
+    assert.equal(readyStore(store).useWorkingContexts, initiallyEnabled);
+    assert.deepEqual(readyStore(store).scope, before.scope);
+    assert.equal(
+      readyStore(store).pendingPlayoutCompletion,
+      before.pendingPlayoutCompletion,
+    );
+    assert.equal(completions, attempts);
+    assert.equal(
+      storage.get('plysmith.useWorkingContexts'),
+      String(initiallyEnabled),
+    );
+  });
+}
+
+for (const statusKind of ['active', 'awaiting_policy'] as const) {
+  test(`working context mode retains a ${statusKind} context playout`, async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', 'true');
+    const view = playout(2, 0, [{ actor: 'user', san: 'e4' }], statusKind);
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+      {
+        getPlayout: async () => view,
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    await store.setScope({ kind: 'context', contextId: '7' });
+    const startup = await client.getStartupResume();
+    const stop = t.mock.method(client, 'stopPlayout');
+    const discard = t.mock.method(client, 'discardPlayout');
+    assert.equal(await store.setUseWorkingContexts(false), false);
+    assert.equal(
+      readyStore(store).errorCode,
+      'desktop.working_contexts_playout',
+    );
+    assert.equal(readyStore(store).useWorkingContexts, true);
+    assert.deepEqual(readyStore(store).scope, {
+      kind: 'context',
+      contextId: '7',
+    });
+    assert.deepEqual(readyStore(store).playout, view);
+    assert.deepEqual(await client.getStartupResume(), startup);
+    assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+    assert.equal(stop.mock.callCount(), 0);
+    assert.equal(discard.mock.callCount(), 0);
+  });
+}
+
+for (const role of ['play', 'observe'] as const) {
+  test(`working context mode refuses to leave a context during live ${role} without destructive navigation`, async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', 'true');
+    let live = await inactiveLiveClient.getLiveState();
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+      {
+        getLiveState: async () => live,
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    await store.setScope({ kind: 'context', contextId: '7' });
+    store.setActivity('live');
+    live = liveFixture(5, role);
+    await store.refreshLiveState();
+    await store.refresh();
+    const before = readyStore(store);
+    const discard = t.mock.method(client, 'discardLiveGame');
+    const disconnect = t.mock.method(client, 'disconnectLiveGame');
+    const save = t.mock.method(client, 'saveLiveGame');
+    assert.equal(await store.setUseWorkingContexts(false), false);
+    const after = readyStore(store);
+    assert.equal(after.errorCode, 'desktop.working_contexts_live');
+    assert.equal(after.useWorkingContexts, true);
+    assert.deepEqual(after.scope, before.scope);
+    assert.equal(after.activity, 'live');
+    assert.deepEqual(after.live, before.live);
+    assert.equal(after.fairPlayBlocked, role === 'play');
+    assert.deepEqual(after.status, before.status);
+    assert.equal(after.pendingLiveNavigation, undefined);
+    assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+    assert.equal(discard.mock.callCount(), 0);
+    assert.equal(disconnect.mock.callCount(), 0);
+    assert.equal(save.mock.callCount(), 0);
+  });
+}
+
+test(
+  'working context mode rolls back when a live session arrives during the free refresh',
+  { timeout: 5_000 },
+  async (t) => {
+    const storage = livePreferenceStorage(t);
+    storage.set('plysmith.useWorkingContexts', 'true');
+    let live = await inactiveLiveClient.getLiveState();
+    const client = contextWorkClient(
+      () => 0,
+      () => ['11'],
+      {
+        getLiveState: async () => live,
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    const scope = { kind: 'context', contextId: '7' } as const;
+    await store.setScope(scope);
+    const startup = await client.getStartupResume();
+    const discard = t.mock.method(client, 'discardLiveGame');
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    t.after(() => release.resolve());
+    const readWorkspace = client.getWorkScopeWorkspace;
+    t.mock.method(
+      client,
+      'getWorkScopeWorkspace',
+      async (request: Parameters<typeof readWorkspace>[0]) => {
+        if (request.scopeKind === 'free') {
+          entered.resolve();
+          await release.promise;
+        }
+        return readWorkspace(request);
+      },
+    );
+
+    const switching = store.setUseWorkingContexts(false);
+    try {
+      await entered.promise;
+      live = liveFixture(5, 'observe');
+      await store.refreshLiveState();
+      assert.deepEqual(readyStore(store).live, live);
+    } finally {
+      release.resolve();
+    }
+    assert.equal(await switching, false);
+    const state = readyStore(store);
+    assert.equal(state.errorCode, 'desktop.working_contexts_live');
+    assert.equal(state.useWorkingContexts, true);
+    assert.deepEqual(state.scope, scope);
+    assert.deepEqual(state.scopeWorkspace.scope, scope);
+    assert.deepEqual(state.live, live);
+    assert.equal(state.pendingLiveNavigation, undefined);
+    assert.equal(discard.mock.callCount(), 0);
+    assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+    assert.deepEqual(await client.getStartupResume(), startup);
+  },
+);
+
+test('working context mode retains an engine-waiting context playout hidden by fair play', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.useWorkingContexts', 'true');
+  let live = await inactiveLiveClient.getLiveState();
+  const view = playout(2, 0, [{ actor: 'user', san: 'e4' }], 'awaiting_policy');
+  const client = contextWorkClient(
+    () => 0,
+    () => ['11'],
+    {
+      getLiveState: async () => live,
+      getPlayout: async (request) =>
+        request.scopeKind === 'context' && request.contextId === '7'
+          ? view
+          : null,
+    },
+  );
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  const scope = { kind: 'context', contextId: '7' } as const;
+  await store.setScope(scope);
+  assert.deepEqual(readyStore(store).playout, view);
+  const startup = await client.getStartupResume();
+  live = { ...live, revision: live.revision + 1, fairPlayBlocked: true };
+  await store.refreshLiveState();
+  await store.refresh();
+  assert.equal(readyStore(store).fairPlayBlocked, true);
+  assert.ok(readyStore(store).playout == null);
+
+  assert.equal(await store.setUseWorkingContexts(false), false);
+  const state = readyStore(store);
+  assert.equal(state.errorCode, 'desktop.working_contexts_playout');
+  assert.equal(state.useWorkingContexts, true);
+  assert.deepEqual(state.scope, scope);
+  assert.deepEqual(state.scopeWorkspace.scope, scope);
+  assert.equal(state.fairPlayBlocked, true);
+  assert.ok(state.playout == null);
+  assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+  assert.deepEqual(await client.getStartupResume(), startup);
+});
+
+test('working context mode preserves the free refresh error after a successful context rollback', async (t) => {
+  const storage = livePreferenceStorage(t);
+  storage.set('plysmith.useWorkingContexts', 'true');
+  const client = contextWorkClient(
+    () => 0,
+    () => ['11'],
+  );
+  const store = createReadyStore(client);
+  t.after(() => store.close());
+  await store.start();
+  const scope = { kind: 'context', contextId: '7' } as const;
+  await store.setScope(scope);
+  const before = readyStore(store);
+  const startup = await client.getStartupResume();
+  const readWorkspace = client.getWorkScopeWorkspace;
+  let failedFreeRead = false;
+  let restoredContextRead = false;
+  t.mock.method(
+    client,
+    'getWorkScopeWorkspace',
+    async (request: Parameters<typeof readWorkspace>[0]) => {
+      if (request.scopeKind === 'free') {
+        failedFreeRead = true;
+        throw workAccessProblem('host.unavailable');
+      }
+      const workspace = await readWorkspace(request);
+      if (failedFreeRead && request.contextId === scope.contextId)
+        restoredContextRead = true;
+      return workspace;
+    },
+  );
+
+  assert.equal(await store.setUseWorkingContexts(false), false);
+  assert.equal(failedFreeRead, true);
+  assert.equal(restoredContextRead, true);
+  const state = readyStore(store);
+  assert.equal(state.errorCode, 'host.unavailable');
+  assert.equal(state.useWorkingContexts, true);
+  assert.deepEqual(state.scope, scope);
+  assert.deepEqual(state.scopeWorkspace, before.scopeWorkspace);
+  assert.deepEqual(state.contextWorkspace, before.contextWorkspace);
+  assert.equal(state.refreshing, false);
+  assert.equal(storage.get('plysmith.useWorkingContexts'), 'true');
+  assert.deepEqual(await client.getStartupResume(), startup);
+});
+
+for (const fairPlayBlocked of [false, true]) {
+  test(`working context mode preserves host status and fair-play ${fairPlayBlocked ? 'blocking' : 'clearance'} without leaking context work`, async (t) => {
+    livePreferenceStorage(t).set('plysmith.useWorkingContexts', 'true');
+    const live = {
+      ...(await inactiveLiveClient.getLiveState()),
+      fairPlayBlocked,
+    };
+    const client = contextWorkClient(
+      () => 7,
+      () => ['11'],
+      {
+        getLiveState: async () => live,
+      },
+    );
+    const store = createReadyStore(client);
+    t.after(() => store.close());
+    await store.start();
+    await store.setScope({ kind: 'context', contextId: '7' });
+    const before = readyStore(store);
+    const snapshots: ReturnType<typeof readyStore>[] = [];
+    t.after(
+      store.subscribe(() => {
+        const state = store.getSnapshot();
+        if (state.phase === 'ready' && !state.useWorkingContexts)
+          snapshots.push(state);
+      }),
+    );
+    assert.equal(await store.setUseWorkingContexts(false), true);
+    assert.ok(snapshots.length > 0);
+    for (const state of snapshots) {
+      assert.deepEqual(state.scope, { kind: 'free' });
+      assert.deepEqual(state.scopeWorkspace.scope, { kind: 'free' });
+      assert.equal(state.contextWorkspace, undefined);
+      assert.equal(state.inventoryContextOnly, false);
+      assert.deepEqual(state.status, before.status);
+      assert.equal(state.status.state, 'ready');
+      assert.equal(state.status.persistence.dataRevision, 7);
+      assert.equal(state.fairPlayBlocked, fairPlayBlocked);
+      assert.deepEqual(state.live, before.live);
+      if (fairPlayBlocked) assert.equal(state.analysis, undefined);
+      else assert.deepEqual(state.analysis?.scope, { kind: 'free' });
+    }
+    assert.equal(await store.setUseWorkingContexts(true), true);
+    assert.deepEqual(readyStore(store).scope, { kind: 'free' });
+    assert.equal(readyStore(store).fairPlayBlocked, fairPlayBlocked);
+    assert.deepEqual(readyStore(store).status, before.status);
+  });
 }
 
 test('Live defaults offline and remembers an explicit online or offline choice across desktop starts', async (t) => {
@@ -10221,6 +11753,8 @@ function analysisRemovalFixture(
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],
+      unfiledItemCount: 0,
+      unfiledContextItemCount: 0,
       dataRevision: backend.revision,
     }),
     getWorkScopeWorkspace: async (
@@ -10959,6 +12493,8 @@ test('folder selection survives area changes and remains independent for each wo
             },
           ],
           linkedFolderIds: ['2'],
+          unfiledItemCount: 0,
+          unfiledContextItemCount: 0,
           dataRevision: 0,
         }),
       },
@@ -11010,6 +12546,8 @@ test('detail selection is exclusive without losing the chosen creation destinati
           },
         ],
         linkedFolderIds: [],
+        unfiledItemCount: 0,
+        unfiledContextItemCount: 0,
         dataRevision: 0,
       }),
       createWorkingContext: async () => ({

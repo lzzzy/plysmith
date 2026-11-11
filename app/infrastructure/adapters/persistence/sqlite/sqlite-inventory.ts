@@ -33,6 +33,8 @@ interface InventoryCursor {
   readonly dataRevision: number;
   readonly query: string | null;
   readonly contextId: number | null;
+  readonly folderId: number | 'unfiled' | null;
+  readonly filteredItemId: number | null;
   readonly createdAt: string;
   readonly itemId: number;
 }
@@ -44,6 +46,11 @@ export function searchInventory(
 ): SearchInventoryResult {
   const expectedQuery = request.query ?? null;
   const expectedContextId = request.contextId?.value ?? null;
+  const expectedFolderId =
+    request.folderId === 'unfiled'
+      ? 'unfiled'
+      : (request.folderId?.value ?? null);
+  const expectedItemId = request.itemId?.value ?? null;
   const dataRevision = readDataRevision(database);
   const cursor =
     request.cursor === undefined
@@ -54,17 +61,21 @@ export function searchInventory(
     (cursor === undefined ||
       cursor.query !== expectedQuery ||
       cursor.dataRevision !== dataRevision ||
-      cursor.contextId !== expectedContextId)
+      cursor.contextId !== expectedContextId ||
+      cursor.folderId !== expectedFolderId ||
+      cursor.filteredItemId !== expectedItemId)
   ) {
     throw invalidInventorySearch();
   }
 
   const rows = database
-    .prepare(inventorySql(request.query !== undefined))
+    .prepare(inventorySql(request.query !== undefined, false, request))
     .all(
       ...(request.query === undefined ? [] : [literalFtsQuery(request.query)]),
       expectedContextId,
       expectedContextId,
+      ...(typeof expectedFolderId === 'number' ? [expectedFolderId] : []),
+      ...(expectedItemId === null ? [] : [expectedItemId]),
       cursor?.createdAt ?? null,
       cursor?.createdAt ?? '',
       cursor?.createdAt ?? '',
@@ -92,6 +103,8 @@ export function searchInventory(
             dataRevision,
             query: expectedQuery,
             contextId: expectedContextId,
+            folderId: expectedFolderId,
+            filteredItemId: expectedItemId,
             createdAt: last.createdAt,
             itemId: last.itemId,
           } satisfies InventoryCursor),
@@ -101,7 +114,11 @@ export function searchInventory(
   });
 }
 
-function inventorySql(withTextQuery: boolean, byId = false): string {
+function inventorySql(
+  withTextQuery: boolean,
+  byId = false,
+  filters: Pick<SearchInventoryRequest, 'folderId' | 'itemId'> = {},
+): string {
   return `
     SELECT i.item_id AS itemId,
            i.folder_id AS folderId,
@@ -147,6 +164,14 @@ function inventorySql(withTextQuery: boolean, byId = false): string {
           WHERE membership.item_id = i.item_id
             AND membership.context_id = ?
        ))
+       ${
+         filters.folderId === undefined
+           ? ''
+           : filters.folderId === 'unfiled'
+             ? 'AND i.folder_id IS NULL'
+             : 'AND i.folder_id = ?'
+       }
+       ${filters.itemId === undefined ? '' : 'AND i.item_id = ?'}
        AND (? IS NULL OR i.created_at_utc > ?
             OR (i.created_at_utc = ? AND i.item_id > ?))
        ${byId ? 'AND i.item_id = ?' : ''}
@@ -288,6 +313,15 @@ function decodeInventoryCursor(cursor: string): InventoryCursor | undefined {
     Number.isSafeInteger(value.dataRevision) &&
     (typeof value.query === 'string' || value.query === null) &&
     (Number.isSafeInteger(value.contextId) || value.contextId === null) &&
+    (value.folderId === null ||
+      value.folderId === 'unfiled' ||
+      (typeof value.folderId === 'number' &&
+        Number.isSafeInteger(value.folderId) &&
+        value.folderId > 0)) &&
+    (value.filteredItemId === null ||
+      (typeof value.filteredItemId === 'number' &&
+        Number.isSafeInteger(value.filteredItemId) &&
+        value.filteredItemId > 0)) &&
     typeof value.createdAt === 'string' &&
     Number.isSafeInteger(value.itemId) &&
     (value.itemId ?? 0) > 0

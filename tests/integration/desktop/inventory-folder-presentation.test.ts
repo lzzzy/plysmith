@@ -44,6 +44,8 @@ const organization: InventoryOrganization = {
     },
   ],
   linkedFolderIds: ['4'],
+  unfiledItemCount: 0,
+  unfiledContextItemCount: 0,
   dataRevision: 7,
 };
 

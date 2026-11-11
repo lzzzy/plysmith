@@ -2013,6 +2013,8 @@ export interface components {
                 readonly parentFolderId?: string;
             }[];
             readonly linkedFolderIds: readonly string[];
+            readonly unfiledContextItemCount: number;
+            readonly unfiledItemCount: number;
         };
         readonly InventoryOrganizationChangedEvent: {
             readonly correlationId: string;
@@ -2143,6 +2145,8 @@ export interface components {
         readonly InventorySearchQuery: {
             readonly contextId?: string;
             readonly cursor?: string;
+            readonly folderId?: string | "unfiled";
+            readonly itemId?: string;
             readonly pageSize?: string;
             readonly query?: string;
         };
@@ -5429,6 +5433,8 @@ export interface operations {
             readonly query?: {
                 readonly contextId?: string;
                 readonly cursor?: string;
+                readonly folderId?: string | "unfiled";
+                readonly itemId?: string;
                 readonly pageSize?: string;
                 readonly query?: string;
             };

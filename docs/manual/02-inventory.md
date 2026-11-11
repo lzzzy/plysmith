@@ -14,6 +14,10 @@ Der Pfeil **Analysieren** in der Zeile öffnet den Eintrag auf dem Analysebrett.
 
 ## Einen Eintrag finden
 
+Die Ordneransicht zeigt zuerst die Struktur und die Anzahl der Einträge. Beim Aufklappen lädt Plysmith automatisch den vollständigen Inhalt des jeweiligen Ordners. Solange er geladen wird, erscheint dort ein Ladehinweis; bei einem Fehler können Sie den Ladevorgang für diesen Ordner wiederholen. Geschlossene Ordner werden erst beim Aufklappen geladen. Ein bereits ausgewählter Eintrag bleibt auch bei geschlossenem Ordner in den Details sichtbar.
+
+Die Suche und die Ansicht **Herkunft** laden ihre Ergebnisse jeweils vollständig.
+
 Einträge stehen in aufsteigender Erstellungsreihenfolge. Importierte Kapitel
 folgen ihrer Reihenfolge in der PGN-Datei; spätere Bearbeitungen oder
 Verschiebungen ändern diese Reihenfolge nicht.
@@ -52,7 +56,7 @@ Ordner und Einträge werden getrennt gelöscht. **Ordner mit Unterordnern lösch
 
 Es bleiben vier Einträge: **Grundstellung**, **Italienische Eröffnung**, **Lehrpartie mit Matt** und **Opposition**, jeweils mit dem Präfix `Manual - `. Diese vier bilden den Ausgangspunkt der weiteren Kapitel.
 
-Die Verlustvorschau ist auch bei späteren Löschaktionen wichtig. Ein Eintrag kann inzwischen eigene Notizen, Analysepfade oder Verwendungen in Arbeitskontexten haben. Bereits als eigenständige Einträge gespeicherte Ableitungen bleiben beim Löschen ihrer Quelle erhalten. Prüfen Sie trotzdem die jeweils genannten Folgen, bevor Sie bestätigen.
+Die Verlustvorschau ist auch bei späteren Löschaktionen wichtig. Ein Eintrag kann inzwischen eigene Notizen, Analysepfade oder Verwendungen in Arbeitskontexten haben. Auch in der einfachen Oberfläche nennt der Verlustdialog betroffene Kontextinhalte. Ausgeblendete Kontexte behalten ihre Inhalte, können aber weiterhin von Änderungen am gemeinsamen Bestand betroffen sein. Bereits als eigenständige Einträge gespeicherte Ableitungen bleiben beim Löschen ihrer Quelle erhalten. Prüfen Sie trotzdem die jeweils genannten Folgen, bevor Sie bestätigen.
 
 ## Nach Herkunft betrachten
 
@@ -61,5 +65,7 @@ Der Umschalter **Herkunft** zeigt Zusammenhänge zwischen Einträgen, die durch 
 Im nächsten Kapitel speichern Sie aus der italienischen Eröffnung die eigene Analyse „Manual - Italienisch mit d6“. Danach können Sie hier auf **Herkunft** wechseln und die zugehörige Herkunftsfamilie aufklappen. So finden Sie die Untersuchung bei ihrem Ursprung wieder, auch wenn Sie sie später in einen anderen Ordner verschieben.
 
 **Ordner** beantwortet damit die Frage, wie Sie Ihr Material thematisch strukturieren. **Herkunft** zeigt, woraus eine eigene Untersuchung hervorgegangen ist. Beide Ansichten führen zu denselben Bestandseinträgen.
+
+Plysmith merkt sich im Desktop, welche Ordner Sie zuklappen. Das bleibt beim Wechsel zu **Analysieren** und über einen Neustart hinweg erhalten. Bei einer neuen Suche sind die Treffer zunächst aufgeklappt. Nach dem Beenden der Suche sehen Sie wieder Ihren gemerkten Klappzustand.
 
 [Zur Übersicht](README.md) · Weiter mit [Stellungen untersuchen und Gedanken festhalten](03-analysis.md).

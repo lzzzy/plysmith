@@ -101,9 +101,13 @@ tests, and contribution guidelines.
 ## Getting Started
 
 Start with the [manual's fundamentals](docs/manual/README.en.md) and
-[importing the example inventory](docs/manual/01-import.en.md). The exercises
-begin in **All inventory**; working contexts come later. You do not need
-an engine to review material or explore your own continuations.
+[importing the example inventory](docs/manual/01-import.en.md). Fresh installations
+start with a simple interface working directly with the entire inventory.
+For parallel topics, enable **Use working contexts** in **Settings**.
+If contexts already exist, the first start with this option retains the previous
+mode. [The manual](docs/manual/04-settings.en.md#use-working-contexts) explains
+switching modes. You do not need an engine to review material or explore your
+own continuations.
 
 For individual tasks, go directly to these chapters:
 

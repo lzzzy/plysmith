@@ -7,6 +7,18 @@ export const messages = {
     ...importMessages['de-DE'],
     ...inventoryBackupMessages['de-DE'],
     ...liveMessages['de-DE'],
+    'settings.workingContexts.title': 'Arbeitsweise',
+    'settings.workingContexts.label': 'Arbeitskontexte verwenden',
+    'settings.workingContexts.description':
+      'Arbeitskontexte bündeln ausgewählte Inhalte und eigene Notizen für parallele Themen. Beim Deaktivieren wechseln Sie zum Gesamtbestand. Ihre Arbeitskontexte und deren Inhalte bleiben erhalten und sind nach dem erneuten Aktivieren wieder verfügbar.',
+    'desktop.working_contexts_busy':
+      'Schließen Sie die laufende Aktion oder ausstehende Entscheidung ab, bevor Sie die Verwendung von Arbeitskontexten ändern.',
+    'desktop.working_contexts_live':
+      'Speichern oder verwerfen Sie zuerst die Live-Aufzeichnung, bevor Sie Arbeitskontexte deaktivieren.',
+    'desktop.working_contexts_playout':
+      'Pausieren Sie die Partie im Arbeitskontext oder schließen Sie sie ab, bevor Sie Arbeitskontexte deaktivieren.',
+    'desktop.working_contexts_preference':
+      'Die Einstellung konnte nicht gespeichert werden. Der bisherige Modus bleibt aktiv. Versuchen Sie es erneut.',
     'manage.actionsFor': 'Aktionen für „{name}“',
     'manage.selectionActions': 'Aktionen für die Auswahl',
     'manage.selectedCount': '{count} ausgewählt',
@@ -40,7 +52,8 @@ export const messages = {
     'folders.collapse': '„{name}“ zuklappen',
     'folders.empty': 'Keine Einträge',
     'folders.noMatches': 'Keine passenden Einträge',
-    'folders.notLoaded': 'Einträge noch nicht geladen',
+    'folders.loading': 'Einträge werden geladen …',
+    'folders.loadFailed': 'Die Einträge konnten nicht geladen werden.',
     'folders.dialog.create': 'Ordner anlegen',
     'folders.dialog.rename': 'Ordner umbenennen',
     'folders.dialog.delete': 'Ordner löschen?',
@@ -165,7 +178,6 @@ export const messages = {
     'manage.noResultsDetail':
       'Beginne eine eigene Analyse oder ändere den Suchbegriff.',
     'manage.loadMoreContexts': 'Weitere Arbeitskontexte laden',
-    'manage.loadMoreInventory': 'Weitere Bestände laden',
 
     'manage.details': 'Details',
     'manage.origin': 'Herkunft',
@@ -686,6 +698,18 @@ export const messages = {
     ...importMessages['en-GB'],
     ...inventoryBackupMessages['en-GB'],
     ...liveMessages['en-GB'],
+    'settings.workingContexts.title': 'Workflow',
+    'settings.workingContexts.label': 'Use working contexts',
+    'settings.workingContexts.description':
+      'Working contexts group selected content and your own notes for parallel topics. Turning them off switches to the full inventory. Your working contexts and their contents are kept and become available again when you turn them back on.',
+    'desktop.working_contexts_busy':
+      'Complete the current action or pending decision before changing the use of working contexts.',
+    'desktop.working_contexts_live':
+      'Save or discard the live recording before turning off working contexts.',
+    'desktop.working_contexts_playout':
+      'Pause or complete the game in the working context before turning off working contexts.',
+    'desktop.working_contexts_preference':
+      'The setting could not be saved. The previous mode remains active. Please try again.',
     'manage.actionsFor': 'Actions for “{name}”',
     'manage.selectionActions': 'Actions for selection',
     'manage.selectedCount': '{count} selected',
@@ -719,7 +743,8 @@ export const messages = {
     'folders.collapse': 'Collapse “{name}”',
     'folders.empty': 'No records',
     'folders.noMatches': 'No matching records',
-    'folders.notLoaded': 'Records not loaded yet',
+    'folders.loading': 'Loading records …',
+    'folders.loadFailed': 'The records could not be loaded.',
     'folders.dialog.create': 'Create folder',
     'folders.dialog.rename': 'Rename folder',
     'folders.dialog.delete': 'Delete folder?',
@@ -841,7 +866,6 @@ export const messages = {
     'manage.noResultsDetail':
       'Start your own analysis or change the search term.',
     'manage.loadMoreContexts': 'Load more contexts',
-    'manage.loadMoreInventory': 'Load more inventory',
 
     'manage.details': 'Details',
     'manage.origin': 'Origin',

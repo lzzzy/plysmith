@@ -4,6 +4,58 @@
   padding: 26px 36px 50px;
 }
 
+.workingContextsSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 8px;
+  color: #292f38;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.workingContextsSwitch:focus-visible {
+  outline: 2px solid #2868bd;
+  outline-offset: 2px;
+}
+
+.workingContextsSwitch[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.switchTrack {
+  display: flex;
+  flex: 0 0 38px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid #69717d;
+  border-radius: 12px;
+  background: #69717d;
+}
+
+.switchTrack::before {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  content: '';
+}
+
+.workingContextsSwitch[aria-checked='true'] .switchTrack {
+  justify-content: flex-end;
+  border-color: #2868bd;
+  background: #2868bd;
+}
+
 .liveTokenForm {
   display: flex;
   flex-wrap: wrap;

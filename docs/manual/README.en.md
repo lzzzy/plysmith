@@ -10,7 +10,9 @@ Throughout this manual, we use a small [sample collection in PGN format](manual.
 
 In Plysmith, you manage a central **inventory** of games and analyses. The idea is to build a personal collection around your chess: deliberately selected material for training, tournament preparation and your chess interests. You can develop this material over time with your own notes and analyses.
 
-In **Manage**, you can review this inventory, remove unsuitable material, organise interesting content and explore it further. The **working contexts** introduced later let you work on individual topics in parallel. You continue developing the same personal collection and adapting it to your needs.
+In **Manage**, you can review this inventory, remove unsuitable material, organise interesting content and explore it further. Fresh installations start with a simple interface. You work directly with the entire inventory, without a context bar, context management or context assignments. New notes automatically apply throughout the inventory.
+
+The **working contexts** introduced later let you work on individual topics in parallel. Enable **Use working contexts** in **Settings** to use them. You continue developing the same personal collection. If contexts already exist, the first start with this option retains the previous mode. [Use working contexts](04-settings.en.md#use-working-contexts) explains switching modes and their separate work in progress.
 
 [![All inventory with the Manual folder, six entries and details of the Italian opening](screenshots/inventory.png)](screenshots/inventory.png)
 
@@ -60,7 +62,7 @@ Clicking a move in the move sequence in **Analyse** shows the position after tha
 
 [![Italian analysis with a provisional d4 path and an Unsaved change indicator](screenshots/analysis-path.png)](screenshots/analysis-path.png)
 
-Here, 1.d4 has been tried from the initial position. **New analysis path** and **Unsaved change** mark the provisional path. Plysmith retains it temporarily, including across context switches and restarts. This does not automatically make it part of the saved game or analysis, or create a new inventory entry. You decide what to do with it.
+Here, 1.d4 has been tried from the initial position. **New analysis path** and **Unsaved change** mark the provisional path. Plysmith remembers it across restarts in the simple interface too. This does not automatically make it part of the saved game or analysis, or create a new inventory entry. You decide what to do with it. With working contexts enabled, each workspace remembers its own path.
 
 ## Keeping your investigation
 
@@ -92,7 +94,7 @@ The source and the derived analysis are two independent inventory entries. You c
 
 For [installation and updates](../../README.en.md#installation), see the project overview.
 
-The following chapters take you from importing the sample material to your own investigations and practice games. Start in **All inventory**; the final chapter introduces working on topics in parallel with contexts.
+The following chapters take you from importing the sample material to your own investigations and practice games. The exercises start in the simple interface. If you have already enabled working contexts, select **All inventory** at the top to follow the same steps. The final chapter introduces optional parallel work with contexts.
 
 1. [Importing the sample collection](01-import.en.md)
 2. [Reviewing and organising your inventory](02-inventory.en.md)

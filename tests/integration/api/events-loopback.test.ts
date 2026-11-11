@@ -277,7 +277,8 @@ describe('event stream loopback', { concurrency: false }, () => {
 
 test(
   'loopback: disconnect closes a subscription that completes registration late',
-  { timeout: 10000 },
+  // The guard includes cold host schema compilation, not just the disconnect.
+  { timeout: 30000 },
   async (t) => {
     const fixture = createFixture();
     let registrationStarted!: () => void;

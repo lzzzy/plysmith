@@ -1,0 +1,106 @@
+{
+  "date": "2026-11-11",
+  "scope": "Gezieltes vollständiges Laden expandierter Ordner mit scopebezogenen Klappzuständen, vollständiger Suche/Herkunft und erhaltener Detailauswahl.",
+  "baselineCommit": "a50361ed228a658459435ca077e9684739d49d4f",
+  "preexistingWorkingTreePreserved": true,
+  "databaseSchemaChanged": false,
+  "astraReview": {
+    "remainingP1P2": 0,
+    "findingsFixed": true,
+    "initialP2Findings": 2,
+    "agents": 2
+  },
+  "initialFullSuite": {
+    "integrationTotal": 1187,
+    "domainApplicationContractsPassed": 335,
+    "integrationPassed": 1185,
+    "log": "build/lazy-folder-verify-final.log",
+    "skipped": 0,
+    "passed": 1520,
+    "cleanFullSuiteRepeated": false,
+    "failed": 0,
+    "tests": 1522,
+    "cancelledByTestGuard": 2
+  },
+  "timeoutRecovery": {
+    "eventsLoopbackGuardMilliseconds": 30000,
+    "cancelled": 0,
+    "note": "Nur äußere Testfristen für Host-/Bridge-Kaltstarts angepasst; Assertions und Produktdeadlines unverändert.",
+    "log": "build/lazy-folder-timeout-recheck.log",
+    "failed": 0,
+    "twoHostMcpGuardMilliseconds": 90000,
+    "tests": 2,
+    "passed": 2
+  },
+  "finalSourceChecks": {
+    "skipped": 0,
+    "diffCheck": true,
+    "desktopBuild": true,
+    "scopedLint": true,
+    "generatedContracts": true,
+    "initialWholeRepositoryLint": true,
+    "failed": 0,
+    "formatLog": "build/lazy-folder-format-final.log",
+    "desktopTests": 344,
+    "passed": 344,
+    "hostClientBrowser": true,
+    "wholeRepositoryFormat": true,
+    "log": "build/lazy-folder-final-gates.log",
+    "boundaries": true,
+    "allFourTypechecks": true
+  },
+  "native": {
+    "proof": "build/verification/manual/desktop-modes-1JrFac/capture-proof-2026-11-10T23-51-41.210Z.json",
+    "desktopClosed": true,
+    "rendererErrors": 0,
+    "screenshots": [
+      {
+        "name": "lazy-folder-complete.png",
+        "sha256": "3b266ebc7b23e0f2a24d68cdcd75bef8a7712f5e16a779f12e9786634153d0bc",
+        "width": 1600,
+        "height": 1100
+      }
+    ],
+    "multiPageFolderEntries": 70,
+    "steps": [
+      "Remembered closed folders load structure and authoritative counts without requesting their contents.",
+      "A 70-entry folder is published atomically after both internal pages; no partial rows appear.",
+      "A bulk selection survives a revision refresh with a failed folder and is restored after retry.",
+      "A two-entry bulk selection survives loading a sibling folder without losing checked rows.",
+      "Selected Details survive a reload inside a closed folder through an item-only lookup.",
+      "A folder request failure is local; retry restores its six entries without loading the closed sibling.",
+      "Search completes with all 70 matches while an older folder response is still held back.",
+      "Origins retains the full provenance result independently of lazy folder contents.",
+      "Context collapse remains independent through area switches and a native restart; the free view restores its own state.",
+      "No renderer errors."
+    ],
+    "screenshotsVisuallyReviewed": true,
+    "hostClosed": true,
+    "fixtureEntries": 76,
+    "desktopStarts": 2,
+    "log": "build/lazy-folder-native-final.log",
+    "completed": true
+  },
+  "documentation": {
+    "german": "docs/manual/02-inventory.md",
+    "english": "docs/manual/02-inventory.en.md"
+  },
+  "sourceSha256": {
+    "app/application/inventory/inventory-models.ts": "795bb57502cd95d637816966e592d9c5ca5d9d77fc2e47bce244d779679af5ad",
+    "app/application/inventory/inventory-organization-models.ts": "bff09d4f3b7e172d00a6910cc7749da22dbe5a4eb79ff99342cb8b4f68a1474e",
+    "app/infrastructure/adapters/persistence/sqlite/sqlite-inventory.ts": "fabcd3c59d04abb11ecf85b0ea2fda94260b053b9ccea60aa328cc9c7158eaeb",
+    "app/infrastructure/adapters/persistence/sqlite/sqlite-inventory-organization.ts": "f23e5abd9a4e806f0fd45026ad518c6792b005f32155e34f1120dae7fd646f35",
+    "app/infrastructure/channels/api/inventory-routes.ts": "d9cab4463946fa687cd9adbeff57f3b9e79fd89bb043315d67ad4898d3c05ac6",
+    "app/infrastructure/channels/api/inventory-organization-routes.ts": "ed246bf0653be050b86d6164339fe6841fe83e200693b733ed3099e7ac395293",
+    "app/infrastructure/channels/api/schemas.ts": "9937e0734842c1d709e5d9215e90d8a75cb25d8aa0a71a09cab53b75d5dfb2b9",
+    "app/infrastructure/channels/mcp/schemas.ts": "eecc53f5f9b2b0c3c056696f7e980d1e27988fc05e84326d601c235a28fdbaa3",
+    "app/infrastructure/channels/mcp/create-mcp-server.ts": "c98a526e72c4dc82e202a664693a9cec9ba40de4c93cd7d7643c146929f977b0",
+    "app/infrastructure/channels/ui/renderer/plysmith-application-store.ts": "ab226fb76b0d297c299c7b08d519b5a9821837e69eabee40ce289a1b8bb6d362",
+    "app/infrastructure/channels/ui/renderer/inventory-folder-preferences.ts": "368a0b897d720f283d7f4ee2a70b3e7d6ec939ffc9eee2365786e60ce484f827",
+    "app/infrastructure/channels/ui/renderer/inventory-folder-view.tsx": "5ccafc45de8245d5a70e7ae09043064b21c3e950b7ef0d21f2ce922b30eff40d",
+    "app/infrastructure/channels/ui/renderer/inventory-folder-presentation.ts": "1c47bc0c2fda554fe295f782682f106a3ef6d22717a853644de4f61b957d5b44",
+    "app/infrastructure/channels/ui/renderer/manage-view.tsx": "7082a483226f2d9e83fd530e3c80627e213c43835a7a5e6a32e7a88dba372ded",
+    "contracts/host/generated/contract.ts": "926e492d519f761ae3458a06b7f859dfd0fa6053db0c3b049ff19cacfa98dfb7",
+    "contracts/host/openapi.json": "3be61cceba48d7c8e0d2b4e5280501995e172c45072192dd218c920c844fe47b"
+  }
+}

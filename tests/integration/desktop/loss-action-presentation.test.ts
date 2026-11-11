@@ -322,6 +322,7 @@ function managementState(selected = false, deletedSource = false) {
   };
   return {
     phase: 'ready',
+    useWorkingContexts: true,
     scope: { kind: 'context', contextId: 'context' },
     contexts: { contexts: [context] },
     contextWorkspace: {

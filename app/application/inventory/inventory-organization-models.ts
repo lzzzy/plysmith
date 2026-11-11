@@ -12,6 +12,8 @@ export interface GetInventoryOrganizationRequest {
 }
 
 export interface InventoryOrganization {
+  readonly unfiledItemCount: number;
+  readonly unfiledContextItemCount: number;
   readonly folders: readonly (InventoryFolder & {
     readonly itemCount: number;
     readonly contextLinkCount: number;

@@ -527,7 +527,8 @@ test(
 
 test(
   'an attached MCP client discovers a replacement host before one write',
-  { timeout: 20000 },
+  // Two hosts and a bridge start must fit the Windows helper startup budget.
+  { timeout: 90000 },
   async (t) => {
     const first = await createHttpHostFixture(t);
     const second = await createHttpHostFixture(t);

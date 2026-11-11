@@ -135,6 +135,8 @@ async function fixture(
     getInventoryOrganization: async () => ({
       folders: [],
       linkedFolderIds: [],
+      unfiledItemCount: 0,
+      unfiledContextItemCount: 0,
       dataRevision,
     }),
     searchInventory: async () => ({

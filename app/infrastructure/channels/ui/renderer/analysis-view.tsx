@@ -1208,11 +1208,13 @@ function AnalysisWorkspaceView({
             </Radio>
           </RadioGroup>
         )}
-        {editor.kind === 'create' && !canChooseContext && (
-          <div className={styles.visibilityLabel}>
-            <FormattedMessage id="analysis.generalNote" />
-          </div>
-        )}
+        {state.useWorkingContexts &&
+          editor.kind === 'create' &&
+          !canChooseContext && (
+            <div className={styles.visibilityLabel}>
+              <FormattedMessage id="analysis.generalNote" />
+            </div>
+          )}
         <div className={styles.inlineFormActions}>
           <button
             type="submit"
@@ -1331,11 +1333,11 @@ function AnalysisWorkspaceView({
                 <FormattedMessage id="analysis.generalNote" />
               </Radio>
             </RadioGroup>
-          ) : (
+          ) : state.useWorkingContexts ? (
             <div className={styles.visibilityLabel}>
               <FormattedMessage id="analysis.generalNote" />
             </div>
-          )}
+          ) : null}
           <div className={styles.inlineFormActions}>
             <button
               type="submit"

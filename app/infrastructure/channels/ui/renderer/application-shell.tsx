@@ -137,47 +137,49 @@ function ApplicationFrame({
       </aside>
 
       <div className={styles.applicationSurface}>
-        <header className={styles.scopeBar}>
-          <label htmlFor="work-scope">
-            <FormattedMessage id="scope.label" />
-          </label>
-          <select
-            id="work-scope"
-            value={
-              state.scope.kind === 'free'
-                ? 'free'
-                : `context:${state.scope.contextId}`
-            }
-            onChange={(event) => {
-              const value = event.target.value;
-              void store.setScope(
-                value === 'free'
-                  ? { kind: 'free' }
-                  : { kind: 'context', contextId: value.slice(8) },
-              );
-            }}
-            disabled={navigationBlocked}
-          >
-            <option value="free">
-              {intl.formatMessage({ id: 'scope.free' })}
-            </option>
-            {state.contexts.contexts.map((context) => (
-              <option
-                key={context.contextId}
-                value={`context:${context.contextId}`}
-              >
-                {context.displayName}
+        {state.useWorkingContexts && (
+          <header className={styles.scopeBar}>
+            <label htmlFor="work-scope">
+              <FormattedMessage id="scope.label" />
+            </label>
+            <select
+              id="work-scope"
+              value={
+                state.scope.kind === 'free'
+                  ? 'free'
+                  : `context:${state.scope.contextId}`
+              }
+              onChange={(event) => {
+                const value = event.target.value;
+                void store.setScope(
+                  value === 'free'
+                    ? { kind: 'free' }
+                    : { kind: 'context', contextId: value.slice(8) },
+                );
+              }}
+              disabled={navigationBlocked}
+            >
+              <option value="free">
+                {intl.formatMessage({ id: 'scope.free' })}
               </option>
-            ))}
-          </select>
-          {state.refreshing && (
-            <RefreshCw
-              className={styles.spinning}
-              aria-label={intl.formatMessage({ id: 'state.refreshing' })}
-              size={15}
-            />
-          )}
-        </header>
+              {state.contexts.contexts.map((context) => (
+                <option
+                  key={context.contextId}
+                  value={`context:${context.contextId}`}
+                >
+                  {context.displayName}
+                </option>
+              ))}
+            </select>
+            {state.refreshing && (
+              <RefreshCw
+                className={styles.spinning}
+                aria-label={intl.formatMessage({ id: 'state.refreshing' })}
+                size={15}
+              />
+            )}
+          </header>
+        )}
 
         {state.startupNotice !== undefined && (
           <section className={styles.errorNotice} role="status">
@@ -193,13 +195,23 @@ function ApplicationFrame({
           </section>
         )}
 
-        {state.errorCode !== undefined && (
-          <ErrorNotice
-            errorCode={state.errorCode}
-            className={styles.errorNotice}
-          />
+        {state.errorCode?.startsWith('desktop.working_contexts_') ? (
+          <div className={styles.errorNotice} role="alert">
+            <AlertTriangle aria-hidden="true" size={16} />
+            <FormattedMessage id={state.errorCode} />
+          </div>
+        ) : (
+          state.errorCode !== undefined && (
+            <ErrorNotice
+              errorCode={state.errorCode}
+              className={styles.errorNotice}
+            />
+          )
         )}
         <div className={styles.announcement} aria-live="polite">
+          {!state.useWorkingContexts && state.refreshing && (
+            <FormattedMessage id="state.refreshing" />
+          )}
           {state.announcement !== undefined && (
             <FormattedMessage id={state.announcement} />
           )}

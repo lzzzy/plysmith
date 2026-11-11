@@ -22,7 +22,7 @@ If engine evaluations appear below the move sequence, you can adjust the space b
 
 Select **1.e4** in the Italian opening. It already has an imported note about the centre. Use its **Edit note** pencil to add to the text. For example, add "Which reply by Black would I like to investigate more closely?" and choose **Save note**.
 
-For a new thought, select **3.Bc4** and click the speech bubble with a plus at that half-move. New note drafts default to **Throughout the inventory**. Write something like "I want to compare the d6 reply with the main line" and save the note. It now belongs to this half-move.
+For a new thought, select **3.Bc4** and click the speech bubble with a plus at that half-move. In the simple interface, the note automatically applies throughout the inventory. Write something like "I want to compare the d6 reply with the main line" and save the note. It now belongs to this half-move.
 
 [![Note draft at the half-move 3.Bc4 with inventory-wide visibility](screenshots/note-editor.png)](screenshots/note-editor.png)
 
@@ -48,7 +48,7 @@ Switching destinations preserves your text, visibility and separate-analysis fie
 
 ### Turning the path into a note
 
-For the move **1.d4** you just tried, choose **Accept as → Note**. The move sequence now appears in the note draft, also defaulting to **Throughout the inventory**. Add "Alternative to the start of the teaching game" and click **Save note**.
+For the move **1.d4** you just tried, choose **Accept as → Note**. The move sequence now appears in the note draft. In the simple interface, this note also applies throughout the inventory. Add "Alternative to the start of the teaching game" and click **Save note**.
 
 The continuation is now recorded as an editable note on **1.e4**, the saved half-move being replaced by the explored **1.d4** alternative. At a branch point, the note belongs to the replaced following half-move; at the end of a saved line it belongs to the last half-move. If the analysis has no moves yet, it belongs to the starting position. It creates neither a new game nor a variation in the played sequence. Open the note again later to change its text.
 
@@ -110,7 +110,7 @@ Select **3...d6** again and play **4.Nc3**. Choose **Accept as → In this analy
 
 Your working analysis now has its own main line **3...d6 4.Nc3**. None of these steps changed the original Italian opening.
 
-Before changes, Plysmith also checks whether notes or other work in progress are affected. A message about a note in the previous version means its reference does not fit unchanged into the new version. Read the specific consequences. The destination selector lets you switch to **Note** or **Separate analysis** and continue investigating on the board; selecting a destination saves nothing. When shortening or deleting, **Continue editing** returns you to preparation. Effects on working contexts are covered in the final chapter on contexts.
+Before changes, Plysmith also checks whether notes or other work in progress are affected. A message about a note in the previous version means its reference does not fit unchanged into the new version. Read the specific consequences. The loss dialog remains available in the simple interface and lists affected content in existing working contexts, even while their controls are hidden. The destination selector lets you switch to **Note** or **Separate analysis** and continue investigating on the board. Saving requires a separate confirmation. When shortening or deleting, **Continue editing** returns you to preparation. Effects on working contexts are covered in the final chapter on contexts.
 
 ## Starting a new analysis without a source
 
