@@ -44,7 +44,7 @@ Wie Sie Ihre Arbeit sichern, beschreibt das Manual unter
 [Datensicherung](docs/manual/04-settings.md#datensicherung). Für ältere Versionen
 ohne diese Funktion sichern Sie den vollständigen Datenordner bei geschlossener App.
 
-**Vor dem Wechsel:** Das Datenformat ist gegenüber beta.1 unverändert.
+**Vor dem Wechsel:** Das Datenformat ist seit beta.1 unverändert.
 Bestände aus alpha.7 oder älter lassen sich weiterhin nicht öffnen;
 eine Migration gibt es nicht.
 Schließen Sie Plysmith und sichern Sie vor der Aktualisierung den vollständigen

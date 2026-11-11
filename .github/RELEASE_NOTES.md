@@ -1,8 +1,30 @@
-# Plysmith 0.1.0-beta.2
+# Plysmith 0.1.0-beta.3
 
 ## Deutsch
 
-### Neu seit beta.1
+### Neu seit beta.2
+
+- **Arbeitskontexte nach Bedarf:** Neue Installationen starten mit dem
+  gesamten Bestand in einer vereinfachten Oberfläche. Unter **Einstellungen**
+  können Sie Arbeitskontexte ein- und ausschalten. Kontexte und ihre
+  Arbeitsstände bleiben beim Ausschalten erhalten. Bei Beständen mit
+  Arbeitskontexten sind diese beim ersten Start weiterhin sichtbar.
+- **Ordner laden gezielt:** Aufgeklappte Ordner zeigen jeweils ihre vollständigen
+  Inhalte. Plysmith merkt sich eingeklappte Ordner getrennt für den Gesamtbestand
+  und jeden Kontext. Bereichs- und Kontextwechsel geben die Bedienelemente
+  nach dem Laden einmal frei. Sammelaktionen melden ihren Abschluss, während
+  die geöffneten Ordner im Hintergrund nachladen.
+- **Einheitliche Übernahme von Analysepfaden:** Wählen Sie unter
+  **Übernehmen als** zwischen den verfügbaren Zielen. Neue Notizen sind für
+  den gesamten Bestand vorausgewählt. Beim Vor- und Zurückgehen wird der
+  aktuelle Halbzug auch in einer zuvor eingeklappten Variante sichtbar.
+- **Live-Verbindung:** Plysmith versucht nach vorübergehenden Kontofehlern
+  erneut zu verbinden und unterscheidet eine laufende eigene Partie von
+  einem noch ungeklärten Spielstatus. Die Fair-Play-Sperre gilt in beiden Fällen.
+- Das deutsche und englische Manual erklären die vereinfachte Oberfläche,
+  Arbeitskontexte, Ordner und Analysepfade mit aktualisierten Screenshots.
+
+### Bereits in beta.2 ergänzt
 
 - **PGN-Datensicherung und Wiederherstellung:** Unter **Einstellungen >
   Datensicherung** den gesamten gespeicherten Bestand mit Partien, Analysen,
@@ -76,10 +98,10 @@ Arbeitskontexte unterstützen die parallele Arbeit an Ihrem kuratierten Bestand.
 
 ### Vor dem Wechsel
 
-**Gegenüber beta.1 ist das Datenformat unverändert.** Bestehende beta.1-Bestände
-können weiterverwendet werden. Schließen Sie Plysmith vor der Aktualisierung
-und sichern Sie wichtige Arbeit. In beta.1 ohne integrierte Datensicherung
-kopieren Sie dazu den vollständigen Datenordner bei geschlossener App.
+**Das Datenformat ist seit beta.1 unverändert.** Bestehende Bestände aus
+beta.1 und beta.2 können weiterverwendet werden. Schließen Sie Plysmith vor
+der Aktualisierung und sichern Sie wichtige Arbeit. In beta.1 ohne integrierte
+Datensicherung kopieren Sie dazu den vollständigen Datenordner bei geschlossener App.
 
 **Datenformatbruch gegenüber alpha.7 und älter:** Frühere Bestände lassen sich
 weiterhin nicht öffnen. Es gibt keine Migration. Schließen Sie Plysmith und
@@ -121,14 +143,35 @@ vorhandene Inhalte werden weder zusammengeführt noch überschrieben.
 Eine Datenbankmigration gibt es nicht. Spätere Vorabversionen können erneut
 ein anderes Datenformat benötigen.
 
-[Installation und Projektüberblick](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/README.md),
-[deutsches Manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/docs/manual/README.md)
+[Installation und Projektüberblick](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.3/README.md),
+[deutsches Manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.3/docs/manual/README.md)
 und [Fehler melden](https://github.com/lzzzy/plysmith/issues/new/choose).
 SBOM, Lizenzinventar, Notices und Lizenzarchiv liegen den Release-Dateien bei.
 
 ## English
 
-### New Since beta.1
+### New Since beta.2
+
+- **Optional working contexts:** Fresh installations open the entire inventory
+  in a simplified interface. You can enable or disable working contexts in
+  **Settings**. Your contexts and their work are preserved when hidden.
+  Existing working contexts remain visible on the first launch after upgrading.
+- **Folders load on demand:** Expanded folders show their complete contents.
+  Plysmith remembers collapsed folders separately for the entire inventory
+  and for each context. Controls become available once the destination has
+  loaded when you switch areas or contexts. Bulk actions report completion
+  while expanded folders reload in the background.
+- **One menu for keeping analysis paths:** Use **Accept as** to choose an
+  available destination. New notes default to the entire inventory. Stepping
+  backwards or forwards reveals the current half-move even in a previously
+  collapsed variation.
+- **Live connection:** Plysmith retries after temporary account errors and
+  distinguishes an ongoing game of your own from an unverified game status.
+  The fair-play restriction applies in both cases.
+- The German and English manuals cover the simplified interface, working
+  contexts, folders and analysis paths with updated screenshots.
+
+### Already Added in beta.2
 
 - **PGN backup and restore:** Under **Settings > Data backup**, save the
   entire stored inventory, including games, analyses, folders, necessary
@@ -200,10 +243,10 @@ Working contexts support parallel work on your curated inventory.
 
 ### Before Upgrading
 
-**The data format is unchanged from beta.1.** Existing beta.1 inventories
-can still be used. Close Plysmith before upgrading and back up important
-work. In beta.1, which has no integrated backup, copy the complete data
-folder while the app is closed.
+**The data format is unchanged since beta.1.** Existing beta.1 and beta.2
+inventories can still be used. Close Plysmith before upgrading and back up
+important work. In beta.1, which has no integrated backup, copy the complete
+data folder while the app is closed.
 
 **Data-format break from alpha.7 and earlier:** Earlier inventories still
 cannot be opened. There is no migration. Close Plysmith and back up the complete
@@ -241,7 +284,7 @@ context-specific notes, engines or settings. Restore requires a fresh,
 empty inventory; existing contents are neither merged nor overwritten.
 There is no database migration. Later prereleases may require another data format.
 
-[Installation and project overview](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/README.en.md),
-[English manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.2/docs/manual/README.en.md)
+[Installation and project overview](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.3/README.en.md),
+[English manual](https://github.com/lzzzy/plysmith/blob/v0.1.0-beta.3/docs/manual/README.en.md)
 and [reporting bugs](https://github.com/lzzzy/plysmith/issues/new/choose).
 The SBOM, license inventory, notices and license archive accompany the release files.

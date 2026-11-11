@@ -41,7 +41,7 @@ program in `%LOCALAPPDATA%\Programs\Plysmith`. The data folder
 work as described in [Data backup](docs/manual/04-settings.en.md#data-backup).
 For older versions without this feature, copy the complete data folder while the app is closed.
 
-**Before upgrading:** The data format is unchanged from beta.1. Inventories
+**Before upgrading:** The data format is unchanged since beta.1. Inventories
 created by alpha.7 or earlier still cannot be opened, and there is no migration. Close Plysmith and
 back up the complete data folder before upgrading. To start a new inventory,
 move the previous data folder to a safe location. A new one will be created
