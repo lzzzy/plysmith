@@ -85,7 +85,7 @@ Bei der Übernahme einer neuen Fassung werden nicht mehr passende Notizen archiv
 
 [![Klärung einer neuen Fassung mit Vergleich, Speicherfolgen und drei Entscheidungen](screenshots/context-revision-review.png)](screenshots/context-revision-review.png)
 
-Das Bild können Sie an Ihrer Arbeitsanalyse nachvollziehen: Nehmen Sie „Manual - Italienisch mit d6“ zusätzlich in einen zweiten Kontext „Eröffnung vergleichen“ auf. Ergänzen Sie in „Italienisch vertiefen“ eine Kontextnotiz an **4.Sc3**, etwa „Diese Fortsetzung im nächsten Training ausspielen.“ Wechseln Sie oben zu **Gesamter Bestand** und kürzen Sie die Arbeitsanalyse um ihren letzten Hauptlinienzug **4.Sc3**. Prüfen Sie die Folgen und speichern Sie.
+Für diese Übung nehmen Sie „Manual - Italienisch mit d6“ in zwei Arbeitskontexte auf. Fügen Sie die Analyse zuerst „Italienisch vertiefen“ hinzu. Legen Sie anschließend „Eröffnung vergleichen“ an und nehmen Sie die Analyse auch dort auf. Ergänzen Sie in „Italienisch vertiefen“ eine Kontextnotiz an **4.Sc3**, etwa „Diese Fortsetzung im nächsten Training ausspielen.“ Wechseln Sie oben zu **Gesamter Bestand** und kürzen Sie die Arbeitsanalyse um ihren letzten Hauptlinienzug **4.Sc3**. Prüfen Sie die Folgen und speichern Sie.
 
 Zurück in „Italienisch vertiefen“ müssen Sie nun entscheiden, wie dieses Thema mit der neuen Fassung weiterarbeiten soll. Die importierte italienische Eröffnung bleibt unverändert. Wird eine Analyse dagegen nur in einem einzigen Arbeitskontext verwendet, kann dieser bereits beim Speichern auf die neue Fassung wechseln; die Vorschau nennt auch dann die Folgen.
 

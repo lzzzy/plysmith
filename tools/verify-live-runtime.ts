@@ -883,6 +883,15 @@ try {
   await step(
     'Browser game start globally blocks assistance, board confirms one move',
     async () => {
+      await button('activity.settings').click();
+      const contextMode = page!.getByRole('switch', {
+        name: label('settings.workingContexts.label'),
+        exact: true,
+      });
+      await expect(contextMode).toHaveAttribute('aria-checked', 'false');
+      await contextMode.click();
+      await expect(contextMode).toHaveAttribute('aria-checked', 'true');
+      await nav('activity.manage');
       await page!
         .getByLabel(label('scope.label'), { exact: true })
         .selectOption('context:' + contextId);

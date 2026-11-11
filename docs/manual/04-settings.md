@@ -60,6 +60,12 @@ Unter **Einstellungen > Datensicherung** sichern Sie Analysen, Partien, Ordner, 
 
 Für **Sicherung auswählen** muss der Zielbestand frisch und leer sein, auch ohne Arbeitskontexte oder Entwürfe. Auch ausgeblendete Arbeitskontexte zählen bei der Prüfung. Beenden Sie außerdem laufende Imports, Ausspielen und Liveaufnahmen. Plysmith löscht oder vereinigt keine vorhandenen Inhalte, um Platz für eine Sicherung zu schaffen.
 
+Plysmith zählt beim Prüfen auch früher gelöschte Bestandseinträge. Für einen
+frischen Zielbestand schließen Sie Plysmith, verschieben den vollständigen
+Plysmith-Datenordner an einen sicheren Ort und starten die App erneut. Die
+App legt dabei einen neuen Datenordner an. Den Standardpfad finden Sie in
+der [Installationsanleitung](../../README.md#installieren).
+
 Nach der Dateiauswahl wird die Sicherung vollständig geprüft. Kontrollieren Sie die Inhaltszahlen in **Wiederherstellung prüfen** und bestätigen Sie erst dann **Bestand wiederherstellen**. Während der Prüfung und in der Vorschau können Sie abbrechen. Während der abschließenden Wiederherstellung ist Abbruch gesperrt. Die Vorschau läuft nach zehn Minuten ab; wählen Sie die Datei dann erneut. Bei einem Verbindungsausfall prüfen Sie zuerst den aktuellen Bestand, bevor Sie einen neuen Versuch beginnen.
 
 [![Wiederherstellung des Manualbestands vor der Bestätigung](screenshots/settings-restore.png)](screenshots/settings-restore.png)

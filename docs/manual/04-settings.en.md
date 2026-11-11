@@ -58,6 +58,12 @@ Under **Settings > Data backup**, back up analyses, games, folders, required pro
 
 **Choose backup** requires a fresh, empty destination inventory, without working contexts or drafts. Hidden working contexts also count when Plysmith checks the destination. Finish active imports, playouts and live recordings as well. Plysmith never deletes or merges existing content to make room for a restore.
 
+Plysmith also counts previously deleted inventory entries during this check.
+To start with a fresh inventory, close Plysmith, move its complete data
+folder to a safe location and reopen the app. Plysmith creates a new data
+folder on startup. See [installation](../../README.en.md#installation) for
+the default path.
+
 After selecting a file, Plysmith checks the complete backup. Check the counts in **Review restore**, then explicitly confirm **Restore inventory**. You can cancel during checking and in the preview. Cancellation is disabled during final publication. The preview expires after ten minutes; select the file again afterwards. If the connection fails, check the current inventory before starting another attempt.
 
 [![Manual inventory restore before confirmation](screenshots/settings-restore.png)](screenshots/settings-restore.png)

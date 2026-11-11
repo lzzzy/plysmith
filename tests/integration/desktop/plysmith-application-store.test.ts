@@ -2448,6 +2448,51 @@ function inventorySelectionFixture() {
   return { ...fixture, items, removed };
 }
 
+test('inventory selection reports completion while refreshed folders are still loading', async (t) => {
+  const fixture = inventorySelectionFixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const search = fixture.client.searchInventory;
+  fixture.client.searchInventory = async (request) => {
+    if (request.folderId === 'unfiled' && fixture.backend.revision > 0) {
+      entered.resolve();
+      await release.promise;
+    }
+    return search(request);
+  };
+  const store = createReadyStore(fixture.client);
+  t.after(() => {
+    release.resolve();
+    store.close();
+  });
+  await store.start();
+  const preview = await store.previewInventorySelection(
+    'delete',
+    fixture.items,
+  );
+  assert.ok(preview);
+  let result:
+    Awaited<ReturnType<typeof store.applyInventorySelection>> | undefined;
+  const completed = store.applyInventorySelection(preview).then((value) => {
+    result = value;
+  });
+  await entered.promise;
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(result, {
+    status: 'completed',
+    completedItemIds: ['11', '31'],
+  });
+  assert.equal(readyStore(store).busyCommand, undefined);
+  assert.equal(
+    readyStore(store).inventoryFolderStates.get('unfiled')?.status,
+    'loading',
+  );
+
+  release.resolve();
+  await completed;
+});
+
 test('inventory selection stops on a partial failure and preserves completed identities', async (t) => {
   const fixture = inventorySelectionFixture();
   const firstDelete = fixture.client.deleteInventoryItem;

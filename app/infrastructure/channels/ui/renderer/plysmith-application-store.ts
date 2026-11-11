@@ -1271,7 +1271,7 @@ export class PlysmithApplicationStore {
     if (this.#activity === 'playout') await this.#prepareDefaultPlayout();
   }
 
-  async refresh(): Promise<void> {
+  async refresh(waitForFolders = true): Promise<void> {
     if (this.#client === undefined) return this.start();
     if (!this.#startupRestored) return;
     if (this.#refreshPromise !== undefined) {
@@ -1773,8 +1773,9 @@ export class PlysmithApplicationStore {
     });
     this.#refreshPromise = refreshPromise;
     await refreshPromise;
-    if (lifecycle === this.#lifecycle)
-      await this.#loadExpandedInventoryFolders();
+    if (lifecycle !== this.#lifecycle) return;
+    const folders = this.#loadExpandedInventoryFolders();
+    if (waitForFolders) await folders;
   }
 
   setActivity(activity: ActivityId): void {
@@ -3046,15 +3047,19 @@ export class PlysmithApplicationStore {
     const lifecycle = this.#lifecycle;
     const scope = this.#scope;
     const completedItemIds: string[] = [];
-    const succeeded = await this.#runCommand(command, async (client) => {
-      for (const [index, item] of items.entries()) {
-        if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
-          return false;
-        if (!(await apply(client, item, index))) return false;
-        completedItemIds.push(item.itemId);
-      }
-      return true;
-    });
+    const succeeded = await this.#runCommand(
+      command,
+      async (client) => {
+        for (const [index, item] of items.entries()) {
+          if (lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope))
+            return false;
+          if (!(await apply(client, item, index))) return false;
+          completedItemIds.push(item.itemId);
+        }
+        return true;
+      },
+      'header',
+    );
     return {
       status:
         lifecycle !== this.#lifecycle || !sameScope(scope, this.#scope)
@@ -5995,7 +6000,7 @@ export class PlysmithApplicationStore {
   async #runCommand<T>(
     command: ApplicationCommand,
     action: (client: PlysmithApplicationClient) => Promise<T>,
-    refreshAfter = true,
+    refreshAfter: boolean | 'header' = true,
   ): Promise<T | undefined> {
     const client = this.#client;
     if (
@@ -6015,7 +6020,7 @@ export class PlysmithApplicationStore {
       const result = await action(client);
       if (lifecycle !== this.#lifecycle) return undefined;
       succeeded = true;
-      if (refreshAfter) await this.refresh();
+      if (refreshAfter) await this.refresh(refreshAfter !== 'header');
       if (lifecycle !== this.#lifecycle) return undefined;
       this.#diagnose({
         level: 'info',
@@ -6028,7 +6033,7 @@ export class PlysmithApplicationStore {
     } catch (error) {
       if (lifecycle !== this.#lifecycle) return undefined;
       const errorCode = hostErrorCode(error);
-      await this.refresh();
+      await this.refresh(refreshAfter !== 'header');
       if (lifecycle !== this.#lifecycle) return undefined;
       this.#errorCode = errorCode;
       this.#diagnose({

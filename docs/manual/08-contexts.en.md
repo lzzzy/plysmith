@@ -84,7 +84,7 @@ When adopting a new version, notes whose references no longer fit are archived; 
 
 [![Reviewing a new version with a comparison, consequences of saving and three choices](screenshots/context-revision-review.png)](screenshots/context-revision-review.png)
 
-You can reproduce the screenshot with your working analysis: also add "Manual - Italienisch mit d6" to a second context, "Eröffnung vergleichen" (comparing openings). In "Italienisch vertiefen", add a context note at **4.Nc3**, such as "Play out this continuation in the next training session." Switch to **All inventory** at the top and shorten the working analysis by removing its last main line move, **4.Nc3**. Check the consequences and save.
+For this exercise, add "Manual - Italienisch mit d6" to two working contexts. First add the analysis to "Italienisch vertiefen". Then create "Eröffnung vergleichen" (comparing openings) and add the analysis there too. In "Italienisch vertiefen", add a context note at **4.Nc3**, such as "Play out this continuation in the next training session." Switch to **All inventory** at the top and shorten the working analysis by removing its last main line move, **4.Nc3**. Check the consequences and save.
 
 Back in "Italienisch vertiefen", you must now decide how this topic should continue with the new version. The imported Italian opening remains unchanged. If an analysis is used in only one working context, that context may already switch to the new version when you save; the preview lists the consequences in that case too.
 
