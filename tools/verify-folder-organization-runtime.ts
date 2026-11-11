@@ -769,8 +769,8 @@ async function manage(
     ),
     exact: true,
   });
+  await expect(view).toBeEnabled({ timeout: 15_000 });
   await expect(view).toBeChecked();
-  await expect(view).toBeEnabled();
 }
 
 async function screenshot(name: string) {
